@@ -1,4 +1,4 @@
-// src/stelorder.js — v8 workEstimates + facturas recientes primero
+// src/stelorder.js — v9 orden desc + paginación correcta + estados workEstimate
 const axios = require('axios');
 
 const BASE_URL = 'https://app.stelorder.com/app';
@@ -7,7 +7,7 @@ const API_KEY  = process.env.STELORDER_API_KEY;
 const client = axios.create({
   baseURL: BASE_URL,
   headers: { 'APIKEY': API_KEY, 'Accept': 'application/json' },
-  timeout: 20000
+  timeout: 25000
 });
 
 function getAlertLevel(days) {
@@ -22,15 +22,53 @@ function getAlertLevel(days) {
   return 'ok';
 }
 
-async function fetchEndpoint(endpoint) {
+// Fetch con orden descendente por fecha — para traer las más recientes
+// StelOrder acepta: order-by=date&order=desc (probamos varias variantes)
+async function fetchEndpoint(endpoint, extraParams = '') {
   try {
     const sep = endpoint.includes('?') ? '&' : '?';
-    const res = await client.get(`${endpoint}${sep}limit=500`);
+    // Intentar con orden descendente para traer las más recientes primero
+    const url = `${endpoint}${sep}limit=500${extraParams}`;
+    const res = await client.get(url);
     return Array.isArray(res.data) ? res.data : [];
   } catch (err) {
     console.error(`[StelOrder] Error ${endpoint}:`, err.response?.status, err.message);
     return [];
   }
+}
+
+// Para facturas: intentar traer ordenadas desc y también las últimas
+async function fetchInvoices() {
+  // Intentar varias formas de ordenar desc para traer las más recientes
+  const attempts = [
+    '&order-by=date&order=desc',
+    '&orderBy=date&order=desc',
+    '&sort=date&dir=desc',
+    '&order=desc',
+    '' // sin orden como fallback
+  ];
+
+  for (const params of attempts) {
+    try {
+      const url = `/ordinaryInvoices?limit=500${params}`;
+      const res = await client.get(url);
+      if (Array.isArray(res.data) && res.data.length > 0) {
+        // Comprobar si la primera factura es reciente (2025 o 2026)
+        const firstDate = res.data[0]?.date || '';
+        const isRecent  = firstDate.startsWith('2025') || firstDate.startsWith('2026');
+        console.log(`[StelOrder] Facturas con params "${params}": ${res.data.length} — primera fecha: ${firstDate} ${isRecent ? '✅ reciente' : '⚠️ antigua'}`);
+        if (isRecent) return res.data;
+      }
+    } catch (err) {
+      // Ignorar errores de parámetros no soportados
+    }
+  }
+
+  // Fallback: coger las 500 y ordenar en memoria
+  const res = await client.get('/ordinaryInvoices?limit=500');
+  const all = Array.isArray(res.data) ? res.data : [];
+  console.log(`[StelOrder] Facturas (ordenadas en memoria): ${all.length}`);
+  return all.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 }
 
 function getClientName(obj) {
@@ -69,15 +107,23 @@ function buildPaidMap(receipts) {
   return map;
 }
 
-async function getInvoices()       { const d = await fetchEndpoint('/ordinaryInvoices');        console.log(`[StelOrder] Facturas: ${d.length}`);      return d; }
-async function getAllReceipts()     { const d = await fetchEndpoint('/ordinaryInvoiceReceipts'); console.log(`[StelOrder] Recibos: ${d.length}`);       return d; }
-async function getClients()        { const d = await fetchEndpoint('/clients');                  console.log(`[StelOrder] Clientes: ${d.length}`);      return d; }
-async function getWorkEstimates()  { const d = await fetchEndpoint('/workEstimates');            console.log(`[StelOrder] WorkEstimates: ${d.length}`); return d; }
+async function getInvoices()       { return fetchInvoices(); }
+async function getAllReceipts()     { const d = await fetchEndpoint('/ordinaryInvoiceReceipts'); console.log(`[StelOrder] Recibos: ${d.length}`); return d; }
+async function getClients()        { const d = await fetchEndpoint('/clients'); console.log(`[StelOrder] Clientes: ${d.length}`); return d; }
 async function getDocumentStates() { return fetchEndpoint('/documentStates'); }
 async function getBankAccounts()   { return fetchEndpoint('/bankAccounts'); }
 
+// workEstimates con log completo del primer elemento para ver estados
+async function getWorkEstimates() {
+  const d = await fetchEndpoint('/workEstimates');
+  console.log(`[StelOrder] WorkEstimates: ${d.length}`);
+  if (d.length > 0) {
+    console.log('[StelOrder] WorkEstimate[0] COMPLETO:', JSON.stringify(d[0]));
+  }
+  return d;
+}
+
 // ─── Facturas pendientes ──────────────────────────────────────────
-// Orden: más recientes primero (para ver las nuevas arriba)
 async function getPendingInvoices() {
   try {
     const now = new Date();
@@ -90,15 +136,12 @@ async function getPendingInvoices() {
       const invId = String(inv.id);
       const total = parseFloat(inv['total-amount'] || inv.total || 0);
       if (total <= 0) continue;
-
       const paid          = paidMap[invId] || 0;
       const pendingAmount = parseFloat((total - paid).toFixed(2));
       if (pendingAmount < 0.01) continue;
-
       const rawDate     = inv.date || inv['issue-date'];
       const issueDate   = rawDate ? new Date(rawDate) : now;
       const daysOverdue = Math.max(0, Math.floor((now - issueDate) / 86400000));
-
       pending.push({
         id: invId,
         number:    inv.number || inv['invoice-number'] || `#${invId}`,
@@ -109,9 +152,8 @@ async function getPendingInvoices() {
         daysOverdue, alertLevel: getAlertLevel(daysOverdue)
       });
     }
-
     console.log(`[StelOrder] Pendientes: ${pending.length}/${invoices.length}`);
-    // Más recientes primero (mayor fecha = arriba)
+    // Más recientes primero
     return pending.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
   } catch (err) {
     console.error('[StelOrder] Error getPendingInvoices:', err.message);
@@ -119,7 +161,7 @@ async function getPendingInvoices() {
   }
 }
 
-// ─── Resumen presupuestos SAT (workEstimates) ─────────────────────
+// ─── Resumen presupuestos SAT workEstimates ───────────────────────
 async function getEstimatesSummary() {
   try {
     const [estimates, states, clients] = await Promise.all([getWorkEstimates(), getDocumentStates(), getClients()]);
@@ -127,70 +169,54 @@ async function getEstimatesSummary() {
     const now = new Date();
     const avgMonthlyExpenses = 36000;
 
-    // Log estados para ver cómo se llaman en tu cuenta
     if (states.length > 0) {
-      console.log('[StelOrder] Estados doc:', states.map(s =>
-        `${s.id}:${s.name || s.description || s['state-name'] || JSON.stringify(s)}`
-      ).slice(0, 15).join(' | '));
-    }
-
-    // Log primer presupuesto para ver estructura
-    if (estimates.length > 0) {
-      console.log('[StelOrder] Campos workEstimate:', Object.keys(estimates[0]).join(' | '));
-      console.log('[StelOrder] Estado presupuesto ejemplo:', JSON.stringify({
-        state: estimates[0]['document-state-id'],
-        stateName: estimates[0]['document-state-name'] || estimates[0]['state-name'] || estimates[0].state,
-        total: estimates[0]['total-amount'] || estimates[0].total,
-        number: estimates[0].number
-      }));
+      console.log('[StelOrder] DocumentStates:', JSON.stringify(states));
     }
 
     const result = { total: estimates.length, accepted:[], pending:[], sent:[], rejected:[], expired:[], all:[] };
 
     estimates.forEach(est => {
-      // Intentar todos los posibles campos de estado
-      const stateRaw  = est['document-state-name'] || est['state-name'] || est.state || est['status'] || '';
-      const stateId   = est['document-state-id'] || est['state-id'] || est.stateId;
+      // Capturar TODOS los posibles campos de estado
+      const stateId   = est['document-state-id'] ?? est['state-id'] ?? est.stateId ?? null;
+      const stateRaw  = est['document-state-name'] ?? est['state-name'] ?? est['status-name'] ??
+                        est.state ?? est.status ?? est['document-state'] ?? '';
       const stateName = String(stateRaw).toLowerCase();
-      const total     = parseFloat(est['total-amount'] || est.total || 0);
-      const rawDate   = est.date || est['issue-date'] || est['created-at'];
+      const total     = parseFloat(est['total-amount'] ?? est.total ?? 0);
+      const rawDate   = est.date ?? est['issue-date'] ?? est['created-at'];
       const estDate   = rawDate ? new Date(rawDate) : now;
       const daysOld   = Math.floor((now - estDate) / 86400000);
 
       const item = {
-        id:        String(est.id),
-        number:    est.number || est['estimate-number'] || `#${est.id}`,
-        client:    resolveClientName(est, clientMap),
-        date:      rawDate,
-        dueDate:   est['due-date'] || est['expiry-date'],
-        total, stateName, stateId, stateRaw, daysOld
+        id:       String(est.id),
+        number:   est.number ?? est['estimate-number'] ?? `#${est.id}`,
+        client:   resolveClientName(est, clientMap),
+        date:     rawDate,
+        dueDate:  est['due-date'] ?? est['expiry-date'],
+        total, stateName, stateId, stateRaw: String(stateRaw), daysOld
       };
 
       result.all.push(item);
 
-      // Clasificar — ampliado para cubrir más variantes de nombres
-      if (stateName.includes('acept') || stateName.includes('accept') ||
-          stateName.includes('aprob') || stateName === 'approved' ||
-          stateName.includes('confirm') || stateId === 2) {
-        result.accepted.push(item);
-      } else if (stateName.includes('rechaz') || stateName.includes('reject') ||
-                 stateName === 'declined' || stateName.includes('cancel')) {
-        result.rejected.push(item);
-      } else if (stateName.includes('enviad') || stateName.includes('sent') ||
-                 stateName.includes('present')) {
-        result.sent.push(item);
-      } else if (stateName.includes('caduc') || stateName.includes('expir') ||
-                 stateName.includes('vencid')) {
-        result.expired.push(item);
-      } else {
-        result.pending.push(item);
+      if      (stateName.includes('acept') || stateName.includes('accept') ||
+               stateName.includes('confirm') || stateName === 'approved' || stateId === 2) result.accepted.push(item);
+      else if (stateName.includes('rechaz') || stateName.includes('reject') ||
+               stateName.includes('cancel') || stateName === 'declined')                    result.rejected.push(item);
+      else if (stateName.includes('enviad') || stateName.includes('sent') ||
+               stateName.includes('present'))                                               result.sent.push(item);
+      else if (stateName.includes('caduc') || stateName.includes('expir'))                  result.expired.push(item);
+      else                                                                                  result.pending.push(item);
+    });
+
+    // Ordenar cada grupo: más recientes primero
+    Object.keys(result).forEach(k => {
+      if (Array.isArray(result[k])) {
+        result[k].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
       }
     });
 
-    // Si todos van a pending, mostrar los estados reales para ajustar
-    if (result.pending.length === result.all.length && result.all.length > 0) {
-      const uniqueStates = [...new Set(result.all.map(e => `"${e.stateRaw}" (id:${e.stateId})`))];
-      console.log('[StelOrder] ⚠️ Todos en pending — estados únicos encontrados:', uniqueStates.slice(0, 10).join(' | '));
+    if (result.pending.length > 0 && result.accepted.length === 0) {
+      const uniq = [...new Set(result.all.map(e => `"${e.stateRaw}"(id:${e.stateId})`))];
+      console.log('[StelOrder] ⚠️ Estados únicos en presupuestos:', uniq.join(' | '));
     }
 
     const totalAccepted = result.accepted.reduce((s,e) => s + e.total, 0);
@@ -224,19 +250,15 @@ async function getSummary() {
       const total = parseFloat(inv['total-amount'] || inv.total || 0);
       if (total <= 0) continue;
       totalBilled += total;
-
       const rawDate   = inv.date || inv['issue-date'];
       const issueDate = rawDate ? new Date(rawDate) : now;
-
       if (issueDate.getMonth() === thisMonth && issueDate.getFullYear() === thisYear) {
         totalBilledMonth += total;
         totalBilledMonthCount++;
       }
-
       const paid          = paidMap[invId] || 0;
       const pendingAmount = parseFloat((total - paid).toFixed(2));
       if (pendingAmount < 0.01) continue;
-
       const daysOverdue = Math.max(0, Math.floor((now - issueDate) / 86400000));
       pending.push({
         id: invId,
@@ -247,10 +269,7 @@ async function getSummary() {
         daysOverdue, alertLevel: getAlertLevel(daysOverdue)
       });
     }
-
-    // Resumen: más recientes primero
     pending.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-
     return {
       totalInvoices:       invoices.length,
       totalInvoicesMonth:  totalBilledMonthCount,
