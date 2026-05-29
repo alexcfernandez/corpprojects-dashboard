@@ -17,6 +17,9 @@ const { startScheduler, checkPendingInvoices, runDailySummary } = require('./sch
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
+// Necesario para Railway (está detrás de un proxy)
+app.set('trust proxy', 1);
+
 // ─── Middlewares de seguridad ────────────────────────────────────
 app.use(helmet({
   contentSecurityPolicy: false // Lo gestionamos en el frontend
