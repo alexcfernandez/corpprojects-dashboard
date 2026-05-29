@@ -1,6 +1,6 @@
 {
   "name": "corpprojects-dashboard",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Dashboard financiero Corp Projects Holding SL",
   "main": "src/server.js",
   "scripts": {
@@ -18,6 +18,8 @@
     "jsonwebtoken": "^9.0.2",
     "cors": "^2.8.5",
     "helmet": "^7.1.0",
-    "express-rate-limit": "^7.1.5"
+    "express-rate-limit": "^7.1.5",
+    "multer": "^1.4.5-lts.1",
+    "xlsx": "^0.18.5"
   }
 }
