@@ -193,7 +193,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
         <div class="card-title">
           Facturas sin cobrar
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <input type="text" class="srch" id="searchPend" placeholder="Buscar cliente / nº..." oninput="renderPendTable()">
+            <input type="text" class="srch" id="searchPend" placeholder="Buscar cliente / nº..." oninput="pendPage=0;renderPendTable()">
             <button class="btn bp" onclick="triggerAlertCheck()" id="alertBtn">🔔 Enviar alertas</button>
           </div>
         </div>
@@ -227,7 +227,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
         <div class="card-title">
           Presupuestos
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <input type="text" class="srch" id="searchEst" placeholder="Buscar cliente / nº..." oninput="renderEstTable()">
+            <input type="text" class="srch" id="searchEst" placeholder="Buscar cliente / nº..." oninput="estPage=0;renderEstTable()">
             <div class="ftabs">
               <button class="ftab on" onclick="setEstFilter('all',this)">Todos</button>
               <button class="ftab" onclick="setEstFilter('accepted',this)">✅ Aceptados</button>
@@ -346,6 +346,8 @@ const API = window.location.origin;
 let tok = localStorage.getItem('cp_token');
 let allPend = [], allEst = [], estData = {};
 let pendFilter = 'all', estFilter = 'all', bankFilter = 'all';
+let pendPage = 0, estPage = 0;
+const PAGE_SIZE = 20;
 let bankChartI, ageChartI;
 
 const MONTHS = ['Ene','Feb','Mar','Apr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
@@ -482,7 +484,7 @@ async function loadPending(){
   al.innerHTML=`<div>${crit?'🚨':'ℹ️'}</div><div><strong>${d.length} facturas pendientes — ${eur(tot)}</strong>${crit?`<p>${crit} facturas críticas con más de 60 días sin cobrar.</p>`:''}</div>`;
 }
 function setPendFilter(f,btn){
-  pendFilter=f;
+  pendFilter=f; pendPage=0;
   document.querySelectorAll('#tab-pendientes .ftab').forEach(b=>b.classList.remove('on'));
   btn.classList.add('on');renderPendTable();
 }
@@ -494,11 +496,12 @@ function renderPendTable(){
   else if(pendFilter==='urgent')list=list.filter(i=>['urgent','critical'].includes(i.alertLevel));
   else if(pendFilter==='critical')list=list.filter(i=>i.alertLevel==='critical');
   if(q)list=list.filter(i=>i.client.toLowerCase().includes(q)||i.number.toLowerCase().includes(q));
+  const total=list.length; list=list.slice(0,(pendPage+1)*PAGE_SIZE);
   const el=document.getElementById('pendTable');
   if(!list.length){el.innerHTML='<div class="empty"><div class="ei">🔍</div><div class="et">Sin resultados</div></div>';return;}
   el.innerHTML=`<table><thead><tr><th>Factura</th><th>Cliente</th><th>Emitida</th><th style="text-align:right">Total</th><th style="text-align:right">Pendiente</th><th>Días</th><th>Nivel</th></tr></thead>
   <tbody>${list.map(i=>`<tr style="${i.alertLevel==='critical'?'background:rgba(240,82,82,.04)':''}"><td><strong>${i.number}</strong></td><td>${i.client}</td><td>${dt(i.date)}</td><td style="text-align:right">${eur(i.total)}</td><td style="text-align:right;color:var(--red);font-weight:600">${eur(i.pending)}</td><td style="font-weight:600;color:${i.daysOverdue>=60?'var(--red)':i.daysOverdue>=45?'#f97316':i.daysOverdue>=30?'var(--amber)':'var(--text2)'}">${i.daysOverdue}d</td><td>${lvlBadge(i.alertLevel)}</td></tr>`).join('')}</tbody>
-  <tfoot><tr style="background:rgba(255,255,255,.02)"><td colspan="4" style="padding:8px 9px;font-weight:600">${list.length} facturas</td><td style="text-align:right;padding:8px 9px;color:var(--red);font-weight:600">${eur(list.reduce((s,i)=>s+i.pending,0))}</td><td colspan="2"></td></tr></tfoot></table>`;
+  <tfoot><tr style="background:rgba(255,255,255,.02)"><td colspan="4" style="padding:8px 9px;font-weight:600">${list.length} facturas</td><td style="text-align:right;padding:8px 9px;color:var(--red);font-weight:600">${eur(list.reduce((s,i)=>s+i.pending,0))}</td><td colspan="2"></td></tr></tfoot></table>${total>(pendPage+1)*PAGE_SIZE?`<button class="btn bgh" style="width:100%;margin-top:10px" onclick="pendPage++;renderPendTable()">Ver más (${total-(pendPage+1)*PAGE_SIZE} restantes)</button>`:''}` ;
 }
 
 // ESTIMATES
@@ -548,7 +551,7 @@ async function loadEstimates(){
 }
 
 function setEstFilter(f,btn){
-  estFilter=f;
+  estFilter=f; estPage=0;
   document.querySelectorAll('#tab-presupuestos .ftab').forEach(b=>b.classList.remove('on'));
   btn.classList.add('on');renderEstTable();
 }
@@ -560,11 +563,12 @@ function renderEstTable(){
   else if(estFilter==='sent')list=estData.sent||[];
   else if(estFilter==='rejected')list=estData.rejected||[];
   if(q)list=list.filter(i=>(i.client||'').toLowerCase().includes(q)||(i.number||'').toLowerCase().includes(q));
+  const total=list.length; list=list.slice(0,(estPage+1)*PAGE_SIZE);
   const el=document.getElementById('estTable');
   if(!list.length){el.innerHTML='<div class="empty"><div class="ei">📋</div><div class="et">No hay presupuestos con este filtro</div></div>';return;}
   el.innerHTML=`<table><thead><tr><th>Nº Presupuesto</th><th>Cliente</th><th>Fecha</th><th style="text-align:right">Importe</th><th>Estado</th><th>Días</th></tr></thead>
   <tbody>${list.map(e=>`<tr><td><strong>${e.number}</strong></td><td>${e.client}</td><td>${dt(e.date)}</td><td style="text-align:right;font-weight:600">${eur(e.total)}</td><td>${estBadge(e.stateName||'')} <span style="font-size:9px;color:var(--text3)">${e.stateRaw||''}</span></td><td style="color:${e.daysOld>60?'var(--red)':e.daysOld>30?'var(--amber)':'var(--text2)'}">${e.daysOld}d</td></tr>`).join('')}</tbody>
-  <tfoot><tr style="background:rgba(255,255,255,.02)"><td colspan="3" style="padding:8px 9px;font-weight:600">${list.length} presupuestos</td><td style="text-align:right;padding:8px 9px;font-weight:600;color:var(--green)">${eur(list.reduce((s,e)=>s+e.total,0))}</td><td colspan="2"></td></tr></tfoot></table>`;
+  <tfoot><tr style="background:rgba(255,255,255,.02)"><td colspan="3" style="padding:8px 9px;font-weight:600">${list.length} presupuestos</td><td style="text-align:right;padding:8px 9px;font-weight:600;color:var(--green)">${eur(list.reduce((s,e)=>s+e.total,0))}</td><td colspan="2"></td></tr></tfoot></table>${total>(estPage+1)*PAGE_SIZE?`<button class="btn bgh" style="width:100%;margin-top:10px" onclick="estPage++;renderEstTable()">Ver más (${total-(estPage+1)*PAGE_SIZE} restantes)</button>`:''}` ;
 }
 
 // AGE CHART
