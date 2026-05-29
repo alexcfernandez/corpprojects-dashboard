@@ -1,86 +1,144 @@
 // src/stelorder.js
-// Cliente para la API de StelOrder
+// Cliente para la API de StelOrder — endpoints correctos según documentación oficial
 const axios = require('axios');
 
-const BASE_URL = 'https://app.stelorder.com/api';
+const BASE_URL = 'https://app.stelorder.com/app';
 const API_KEY  = process.env.STELORDER_API_KEY;
 
 const client = axios.create({
   baseURL: BASE_URL,
   headers: {
-    'Authorization': API_KEY,
+    'APIKEY': API_KEY,
     'Content-Type': 'application/json',
     'Accept': 'application/json'
   },
   timeout: 15000
 });
 
-// ─── Facturas emitidas ───────────────────────────────────────────
-async function getInvoices({ page = 1, limit = 100, status } = {}) {
+// ─── Helper: nivel de alerta por días ────────────────────────────
+function getAlertLevel(days) {
+  const W = parseInt(process.env.ALERT_WARNING_DAYS  || 15);
+  const S = parseInt(process.env.ALERT_SECOND_DAYS   || 30);
+  const U = parseInt(process.env.ALERT_URGENT_DAYS   || 45);
+  const C = parseInt(process.env.ALERT_CRITICAL_DAYS || 60);
+  if (days >= C) return 'critical';
+  if (days >= U) return 'urgent';
+  if (days >= S) return 'warning2';
+  if (days >= W) return 'warning1';
+  return 'ok';
+}
+
+// ─── Facturas emitidas (ordinaryInvoices) ────────────────────────
+async function getInvoices({ limit = 100, offset = 0 } = {}) {
   try {
-    const params = { page, limit };
-    if (status) params.status = status;
-    const res = await client.get('/invoices', { params });
-    return res.data;
+    const res = await client.get('/ordinaryInvoices', {
+      params: { limit, offset }
+    });
+    return Array.isArray(res.data) ? res.data : [];
   } catch (err) {
-    console.error('[StelOrder] Error obteniendo facturas:', err.message);
-    return { data: [], total: 0 };
+    console.error('[StelOrder] Error getInvoices:', err.response?.status, err.message);
+    return [];
   }
 }
 
-// ─── Facturas pendientes de cobro ────────────────────────────────
-async function getPendingInvoices() {
+// ─── Recibos de facturas (cobros) ─────────────────────────────────
+// ordinaryInvoiceReceipts contiene el estado de cobro de cada factura
+async function getInvoiceReceipts({ limit = 500 } = {}) {
   try {
-    // Obtenemos todas y filtramos las no cobradas
-    const all = await getInvoices({ limit: 500 });
-    const invoices = Array.isArray(all) ? all : (all.data || []);
-    const now = new Date();
-
-    return invoices
-      .filter(inv => {
-        // Estado no cobrado: pending, unpaid, overdue según StelOrder
-        const unpaidStatuses = ['pending', 'unpaid', 'overdue', 'parcial', 'partial', '0', 0];
-        const isPending = unpaidStatuses.includes(inv.status) ||
-                          unpaidStatuses.includes(inv.payment_status) ||
-                          (inv.total_paid !== undefined && parseFloat(inv.total_paid) < parseFloat(inv.total || 0));
-        return isPending;
-      })
-      .map(inv => {
-        const issueDate = new Date(inv.date || inv.created_at);
-        const daysOverdue = Math.floor((now - issueDate) / (1000 * 60 * 60 * 24));
-        const total = parseFloat(inv.total || inv.amount || 0);
-        const paid  = parseFloat(inv.total_paid || inv.paid_amount || 0);
-        const pending = total - paid;
-
-        return {
-          id:          inv.id,
-          number:      inv.number || inv.invoice_number || `#${inv.id}`,
-          client:      inv.client?.name || inv.customer_name || inv.contact_name || 'Cliente',
-          date:        inv.date || inv.created_at,
-          dueDate:     inv.due_date || inv.expiry_date,
-          total:       total,
-          paid:        paid,
-          pending:     pending,
-          daysOverdue: daysOverdue,
-          status:      inv.status || inv.payment_status,
-          alertLevel:  getAlertLevel(daysOverdue)
-        };
-      })
-      .sort((a, b) => b.daysOverdue - a.daysOverdue);
-
+    const res = await client.get('/ordinaryInvoiceReceipts', {
+      params: { limit }
+    });
+    return Array.isArray(res.data) ? res.data : [];
   } catch (err) {
-    console.error('[StelOrder] Error en getPendingInvoices:', err.message);
+    console.error('[StelOrder] Error getInvoiceReceipts:', err.response?.status, err.message);
     return [];
   }
 }
 
 // ─── Clientes ────────────────────────────────────────────────────
-async function getClients() {
+async function getClients({ limit = 500 } = {}) {
   try {
-    const res = await client.get('/contacts', { params: { limit: 500, type: 'client' } });
-    return Array.isArray(res.data) ? res.data : (res.data?.data || []);
+    const res = await client.get('/clients', { params: { limit } });
+    return Array.isArray(res.data) ? res.data : [];
   } catch (err) {
-    console.error('[StelOrder] Error obteniendo clientes:', err.message);
+    console.error('[StelOrder] Error getClients:', err.response?.status, err.message);
+    return [];
+  }
+}
+
+// ─── Facturas pendientes de cobro ─────────────────────────────────
+async function getPendingInvoices() {
+  try {
+    const now = new Date();
+
+    // Traer facturas e invoiceReceipts en paralelo
+    const [invoices, receipts] = await Promise.all([
+      getInvoices({ limit: 500 }),
+      getInvoiceReceipts({ limit: 500 })
+    ]);
+
+    console.log(`[StelOrder] Facturas obtenidas: ${invoices.length}, Recibos: ${receipts.length}`);
+
+    // Crear mapa de recibos por invoiceId para cruzar datos
+    // Cada receipt tiene: id, invoiceId (o similar), amount, paymentDate, etc.
+    const receiptsByInvoice = {};
+    receipts.forEach(r => {
+      const invId = r['ordinary-invoice-id'] || r.invoiceId || r['invoice-id'] || r.ordinaryInvoiceId;
+      if (!invId) return;
+      if (!receiptsByInvoice[invId]) receiptsByInvoice[invId] = [];
+      receiptsByInvoice[invId].push(r);
+    });
+
+    const pending = [];
+
+    for (const inv of invoices) {
+      const invId = inv.id;
+      const total = parseFloat(inv.total || inv.amount || inv['total-amount'] || 0);
+      if (total <= 0) continue;
+
+      // Calcular cuánto está cobrado de esta factura
+      const invReceipts = receiptsByInvoice[invId] || [];
+      const paid = invReceipts.reduce((sum, r) => {
+        // Si tiene fecha de cobro, está cobrado
+        const payDate = r['payment-date'] || r.paymentDate || r['paid-date'];
+        const amount  = parseFloat(r.amount || r.total || 0);
+        return payDate ? sum + amount : sum;
+      }, 0);
+
+      const pendingAmount = total - paid;
+      if (pendingAmount <= 0.01) continue; // Cobrado (margen centavos)
+
+      // Fecha de emisión
+      const rawDate = inv.date || inv['issue-date'] || inv['created-at'] || inv.createdAt;
+      const issueDate = rawDate ? new Date(rawDate) : now;
+      const daysOverdue = Math.max(0, Math.floor((now - issueDate) / (1000 * 60 * 60 * 24)));
+
+      // Nombre cliente
+      const clientName = inv['client-name'] || inv.clientName ||
+                         inv.client?.name || inv['contact-name'] || 'Cliente';
+
+      // Número de factura
+      const number = inv.number || inv['invoice-number'] || inv['document-number'] || `#${invId}`;
+
+      pending.push({
+        id:          invId,
+        number,
+        client:      clientName,
+        date:        rawDate || now.toISOString(),
+        dueDate:     inv['due-date'] || inv.dueDate || inv['expiry-date'],
+        total,
+        paid,
+        pending:     pendingAmount,
+        daysOverdue,
+        alertLevel:  getAlertLevel(daysOverdue),
+        receipts:    invReceipts.length
+      });
+    }
+
+    return pending.sort((a, b) => b.daysOverdue - a.daysOverdue);
+
+  } catch (err) {
+    console.error('[StelOrder] Error getPendingInvoices:', err.message);
     return [];
   }
 }
@@ -88,53 +146,46 @@ async function getClients() {
 // ─── Resumen general ─────────────────────────────────────────────
 async function getSummary() {
   try {
-    const allInvoices = await getInvoices({ limit: 500 });
-    const invoices = Array.isArray(allInvoices) ? allInvoices : (allInvoices.data || []);
-    const pending  = await getPendingInvoices();
-    const now      = new Date();
+    const now = new Date();
     const thisMonth = now.getMonth();
     const thisYear  = now.getFullYear();
 
-    const invoicesThisMonth = invoices.filter(inv => {
-      const d = new Date(inv.date || inv.created_at);
+    const [invoices, pending] = await Promise.all([
+      getInvoices({ limit: 500 }),
+      getPendingInvoices()
+    ]);
+
+    // Facturas de este mes
+    const thisMonthInvoices = invoices.filter(inv => {
+      const d = new Date(inv.date || inv['issue-date'] || inv['created-at'] || 0);
       return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
     });
 
-    const totalBilled       = invoices.reduce((s, i) => s + parseFloat(i.total || 0), 0);
-    const totalBilledMonth  = invoicesThisMonth.reduce((s, i) => s + parseFloat(i.total || 0), 0);
-    const totalPending      = pending.reduce((s, i) => s + i.pending, 0);
-    const overdueCount      = pending.filter(i => i.daysOverdue > 30).length;
-    const criticalCount     = pending.filter(i => i.daysOverdue >= 60).length;
+    const totalBilled      = invoices.reduce((s, i) => s + parseFloat(i.total || i.amount || 0), 0);
+    const totalBilledMonth = thisMonthInvoices.reduce((s, i) => s + parseFloat(i.total || i.amount || 0), 0);
+    const totalPending     = pending.reduce((s, i) => s + i.pending, 0);
+    const overdueCount     = pending.filter(i => i.daysOverdue >= 30).length;
+    const criticalCount    = pending.filter(i => i.daysOverdue >= 60).length;
 
     return {
-      totalInvoices:      invoices.length,
+      totalInvoices:     invoices.length,
       totalBilled,
       totalBilledMonth,
-      pendingInvoices:    pending.length,
+      pendingInvoices:   pending.length,
       totalPending,
       overdueCount,
       criticalCount,
-      pendingList:        pending.slice(0, 20),
-      lastUpdated:        new Date().toISOString()
+      pendingList:       pending.slice(0, 25),
+      lastUpdated:       now.toISOString()
     };
   } catch (err) {
-    console.error('[StelOrder] Error en getSummary:', err.message);
-    return null;
+    console.error('[StelOrder] Error getSummary:', err.message);
+    return {
+      totalInvoices: 0, totalBilled: 0, totalBilledMonth: 0,
+      pendingInvoices: 0, totalPending: 0, overdueCount: 0,
+      criticalCount: 0, pendingList: [], lastUpdated: new Date().toISOString()
+    };
   }
 }
 
-// ─── Helper nivel de alerta ──────────────────────────────────────
-function getAlertLevel(days) {
-  const W  = parseInt(process.env.ALERT_WARNING_DAYS  || 15);
-  const S  = parseInt(process.env.ALERT_SECOND_DAYS   || 30);
-  const U  = parseInt(process.env.ALERT_URGENT_DAYS   || 45);
-  const C  = parseInt(process.env.ALERT_CRITICAL_DAYS || 60);
-
-  if (days >= C) return 'critical';   // 🔴🔴 60+ días
-  if (days >= U) return 'urgent';     // 🔴 45+ días
-  if (days >= S) return 'warning2';   // ⚠️⚠️ 30+ días
-  if (days >= W) return 'warning1';   // ⚠️ 15+ días
-  return 'ok';
-}
-
-module.exports = { getInvoices, getPendingInvoices, getClients, getSummary, getAlertLevel };
+module.exports = { getInvoices, getInvoiceReceipts, getPendingInvoices, getClients, getSummary, getAlertLevel };
