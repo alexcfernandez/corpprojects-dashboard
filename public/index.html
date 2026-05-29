@@ -489,7 +489,10 @@ function setPendFilter(f,btn){
 function renderPendTable(){
   const q=(document.getElementById('searchPend')?.value||'').toLowerCase();
   let list=allPend;
-  if(pendFilter!=='all')list=list.filter(i=>i.alertLevel===pendFilter);
+  if(pendFilter==='warning1')list=list.filter(i=>['warning1','warning2','urgent','critical'].includes(i.alertLevel));
+  else if(pendFilter==='warning2')list=list.filter(i=>['warning2','urgent','critical'].includes(i.alertLevel));
+  else if(pendFilter==='urgent')list=list.filter(i=>['urgent','critical'].includes(i.alertLevel));
+  else if(pendFilter==='critical')list=list.filter(i=>i.alertLevel==='critical');
   if(q)list=list.filter(i=>i.client.toLowerCase().includes(q)||i.number.toLowerCase().includes(q));
   const el=document.getElementById('pendTable');
   if(!list.length){el.innerHTML='<div class="empty"><div class="ei">🔍</div><div class="et">Sin resultados</div></div>';return;}
@@ -560,7 +563,7 @@ function renderEstTable(){
   const el=document.getElementById('estTable');
   if(!list.length){el.innerHTML='<div class="empty"><div class="ei">📋</div><div class="et">No hay presupuestos con este filtro</div></div>';return;}
   el.innerHTML=`<table><thead><tr><th>Nº Presupuesto</th><th>Cliente</th><th>Fecha</th><th style="text-align:right">Importe</th><th>Estado</th><th>Días</th></tr></thead>
-  <tbody>${list.map(e=>`<tr><td><strong>${e.number}</strong></td><td>${e.client}</td><td>${dt(e.date)}</td><td style="text-align:right;font-weight:600">${eur(e.total)}</td><td>${estBadge(e.stateName||'')}</td><td style="color:${e.daysOld>60?'var(--red)':e.daysOld>30?'var(--amber)':'var(--text2)'}">${e.daysOld}d</td></tr>`).join('')}</tbody>
+  <tbody>${list.map(e=>`<tr><td><strong>${e.number}</strong></td><td>${e.client}</td><td>${dt(e.date)}</td><td style="text-align:right;font-weight:600">${eur(e.total)}</td><td>${estBadge(e.stateName||'')} <span style="font-size:9px;color:var(--text3)">${e.stateRaw||''}</span></td><td style="color:${e.daysOld>60?'var(--red)':e.daysOld>30?'var(--amber)':'var(--text2)'}">${e.daysOld}d</td></tr>`).join('')}</tbody>
   <tfoot><tr style="background:rgba(255,255,255,.02)"><td colspan="3" style="padding:8px 9px;font-weight:600">${list.length} presupuestos</td><td style="text-align:right;padding:8px 9px;font-weight:600;color:var(--green)">${eur(list.reduce((s,e)=>s+e.total,0))}</td><td colspan="2"></td></tr></tfoot></table>`;
 }
 
