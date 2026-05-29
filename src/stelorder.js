@@ -1,4 +1,4 @@
-// src/stelorder.js — v7 sin paginación (StelOrder no soporta offset), legal-name confirmado
+// src/stelorder.js — v8 workEstimates + facturas recientes primero
 const axios = require('axios');
 
 const BASE_URL = 'https://app.stelorder.com/app';
@@ -22,7 +22,6 @@ function getAlertLevel(days) {
   return 'ok';
 }
 
-// StelOrder: límite máximo 500, sin paginación por offset
 async function fetchEndpoint(endpoint) {
   try {
     const sep = endpoint.includes('?') ? '&' : '?';
@@ -34,59 +33,34 @@ async function fetchEndpoint(endpoint) {
   }
 }
 
-// Nombre del cliente — campo legal-name confirmado como el correcto
 function getClientName(obj) {
-  return (
-    obj['legal-name']      ||
-    obj['fiscal-name']     ||
-    obj['commercial-name'] ||
-    obj['client-name']     ||
-    obj['contact-name']    ||
-    obj['company-name']    ||
-    obj.name               ||
-    ''
-  ).trim();
+  return (obj['legal-name'] || obj['fiscal-name'] || obj['commercial-name'] ||
+          obj['client-name'] || obj['contact-name'] || obj.name || '').trim();
 }
 
-// Extraer client-id del account-path
 function extractClientId(obj) {
   const path = obj['account-path'] || obj['client-path'] || '';
-  const m = path.match(/\/clients\/(\d+)/);
+  const m = path.match(/\/(?:clients|accounts)\/(\d+)/);
   return m ? m[1] : null;
 }
 
-async function getInvoices()        { const d = await fetchEndpoint('/ordinaryInvoices');       console.log(`[StelOrder] Facturas: ${d.length}`); return d; }
-async function getAllReceipts()      { const d = await fetchEndpoint('/ordinaryInvoiceReceipts');console.log(`[StelOrder] Recibos: ${d.length}`);  return d; }
-async function getClients()         { const d = await fetchEndpoint('/clients');                 console.log(`[StelOrder] Clientes: ${d.length}`); return d; }
-async function getSalesEstimates()  { const d = await fetchEndpoint('/salesEstimates');          console.log(`[StelOrder] Presupuestos: ${d.length}`); return d; }
-async function getDocumentStates()  { return fetchEndpoint('/documentStates'); }
-
-// Construir mapa clientId → nombre
 function buildClientMap(clients) {
   const map = {};
-  clients.forEach(c => {
-    const name = getClientName(c);
-    if (name) map[String(c.id)] = name;
-  });
+  clients.forEach(c => { const n = getClientName(c); if (n) map[String(c.id)] = n; });
   return map;
 }
 
-// Resolver nombre a partir de factura/presupuesto + mapa
 function resolveClientName(item, clientMap) {
-  // 1. Campo directo en el documento
   const direct = getClientName(item);
   if (direct) return direct;
-  // 2. Cruzar con mapa por account-path
   const cid = extractClientId(item);
-  if (cid && clientMap[cid]) return clientMap[cid];
-  return 'Sin nombre';
+  return (cid && clientMap[cid]) ? clientMap[cid] : 'Sin nombre';
 }
 
-// Construir mapa de pagos: invoiceId → total cobrado
 function buildPaidMap(receipts) {
   const map = {};
   receipts.forEach(r => {
-    if (!r['payment-date']) return; // sin fecha = no cobrado
+    if (!r['payment-date']) return;
     const invId = String(r['original-element-id'] || '');
     if (!invId) return;
     const amount = parseFloat(r.amount || 0);
@@ -95,7 +69,15 @@ function buildPaidMap(receipts) {
   return map;
 }
 
+async function getInvoices()       { const d = await fetchEndpoint('/ordinaryInvoices');        console.log(`[StelOrder] Facturas: ${d.length}`);      return d; }
+async function getAllReceipts()     { const d = await fetchEndpoint('/ordinaryInvoiceReceipts'); console.log(`[StelOrder] Recibos: ${d.length}`);       return d; }
+async function getClients()        { const d = await fetchEndpoint('/clients');                  console.log(`[StelOrder] Clientes: ${d.length}`);      return d; }
+async function getWorkEstimates()  { const d = await fetchEndpoint('/workEstimates');            console.log(`[StelOrder] WorkEstimates: ${d.length}`); return d; }
+async function getDocumentStates() { return fetchEndpoint('/documentStates'); }
+async function getBankAccounts()   { return fetchEndpoint('/bankAccounts'); }
+
 // ─── Facturas pendientes ──────────────────────────────────────────
+// Orden: más recientes primero (para ver las nuevas arriba)
 async function getPendingInvoices() {
   try {
     const now = new Date();
@@ -129,29 +111,47 @@ async function getPendingInvoices() {
     }
 
     console.log(`[StelOrder] Pendientes: ${pending.length}/${invoices.length}`);
-    return pending.sort((a, b) => b.daysOverdue - a.daysOverdue);
+    // Más recientes primero (mayor fecha = arriba)
+    return pending.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
   } catch (err) {
     console.error('[StelOrder] Error getPendingInvoices:', err.message);
     return [];
   }
 }
 
-// ─── Resumen de presupuestos ──────────────────────────────────────
+// ─── Resumen presupuestos SAT (workEstimates) ─────────────────────
 async function getEstimatesSummary() {
   try {
-    const [estimates, states, clients] = await Promise.all([getSalesEstimates(), getDocumentStates(), getClients()]);
+    const [estimates, states, clients] = await Promise.all([getWorkEstimates(), getDocumentStates(), getClients()]);
     const clientMap = buildClientMap(clients);
     const now = new Date();
     const avgMonthlyExpenses = 36000;
 
+    // Log estados para ver cómo se llaman en tu cuenta
     if (states.length > 0) {
-      console.log('[StelOrder] Estados doc:', states.map(s => `${s.id}:${s.name||s.description||JSON.stringify(s)}`).slice(0,10).join(' | '));
+      console.log('[StelOrder] Estados doc:', states.map(s =>
+        `${s.id}:${s.name || s.description || s['state-name'] || JSON.stringify(s)}`
+      ).slice(0, 15).join(' | '));
+    }
+
+    // Log primer presupuesto para ver estructura
+    if (estimates.length > 0) {
+      console.log('[StelOrder] Campos workEstimate:', Object.keys(estimates[0]).join(' | '));
+      console.log('[StelOrder] Estado presupuesto ejemplo:', JSON.stringify({
+        state: estimates[0]['document-state-id'],
+        stateName: estimates[0]['document-state-name'] || estimates[0]['state-name'] || estimates[0].state,
+        total: estimates[0]['total-amount'] || estimates[0].total,
+        number: estimates[0].number
+      }));
     }
 
     const result = { total: estimates.length, accepted:[], pending:[], sent:[], rejected:[], expired:[], all:[] };
 
     estimates.forEach(est => {
-      const stateName = (est['document-state-name'] || est['state-name'] || est.state || '').toLowerCase();
+      // Intentar todos los posibles campos de estado
+      const stateRaw  = est['document-state-name'] || est['state-name'] || est.state || est['status'] || '';
+      const stateId   = est['document-state-id'] || est['state-id'] || est.stateId;
+      const stateName = String(stateRaw).toLowerCase();
       const total     = parseFloat(est['total-amount'] || est.total || 0);
       const rawDate   = est.date || est['issue-date'] || est['created-at'];
       const estDate   = rawDate ? new Date(rawDate) : now;
@@ -163,17 +163,35 @@ async function getEstimatesSummary() {
         client:    resolveClientName(est, clientMap),
         date:      rawDate,
         dueDate:   est['due-date'] || est['expiry-date'],
-        total, stateName, daysOld
+        total, stateName, stateId, stateRaw, daysOld
       };
 
       result.all.push(item);
 
-      if      (stateName.includes('acept') || stateName.includes('accept') || stateName === 'approved') result.accepted.push(item);
-      else if (stateName.includes('rechaz') || stateName.includes('reject') || stateName === 'declined') result.rejected.push(item);
-      else if (stateName.includes('enviad') || stateName.includes('sent'))  result.sent.push(item);
-      else if (stateName.includes('caduc') || stateName.includes('expir'))  result.expired.push(item);
-      else result.pending.push(item);
+      // Clasificar — ampliado para cubrir más variantes de nombres
+      if (stateName.includes('acept') || stateName.includes('accept') ||
+          stateName.includes('aprob') || stateName === 'approved' ||
+          stateName.includes('confirm') || stateId === 2) {
+        result.accepted.push(item);
+      } else if (stateName.includes('rechaz') || stateName.includes('reject') ||
+                 stateName === 'declined' || stateName.includes('cancel')) {
+        result.rejected.push(item);
+      } else if (stateName.includes('enviad') || stateName.includes('sent') ||
+                 stateName.includes('present')) {
+        result.sent.push(item);
+      } else if (stateName.includes('caduc') || stateName.includes('expir') ||
+                 stateName.includes('vencid')) {
+        result.expired.push(item);
+      } else {
+        result.pending.push(item);
+      }
     });
+
+    // Si todos van a pending, mostrar los estados reales para ajustar
+    if (result.pending.length === result.all.length && result.all.length > 0) {
+      const uniqueStates = [...new Set(result.all.map(e => `"${e.stateRaw}" (id:${e.stateId})`))];
+      console.log('[StelOrder] ⚠️ Todos en pending — estados únicos encontrados:', uniqueStates.slice(0, 10).join(' | '));
+    }
 
     const totalAccepted = result.accepted.reduce((s,e) => s + e.total, 0);
     const totalPending  = result.pending.reduce((s,e) => s + e.total, 0);
@@ -181,8 +199,7 @@ async function getEstimatesSummary() {
     const totalAll      = result.all.reduce((s,e) => s + e.total, 0);
     const monthsCovered = totalAccepted > 0 ? (totalAccepted / avgMonthlyExpenses).toFixed(1) : '0';
 
-    return { ...result, totalAccepted, totalPending, totalSent, totalAll, monthsCovered,
-             statesDebug: states.slice(0,10).map(s => ({id:s.id, name:s.name||s.description})) };
+    return { ...result, totalAccepted, totalPending, totalSent, totalAll, monthsCovered };
   } catch (err) {
     console.error('[StelOrder] Error getEstimatesSummary:', err.message);
     return { total:0, accepted:[], pending:[], sent:[], rejected:[], expired:[], all:[],
@@ -231,7 +248,8 @@ async function getSummary() {
       });
     }
 
-    pending.sort((a, b) => b.daysOverdue - a.daysOverdue);
+    // Resumen: más recientes primero
+    pending.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 
     return {
       totalInvoices:       invoices.length,
@@ -253,5 +271,7 @@ async function getSummary() {
   }
 }
 
-module.exports = { getInvoices, getAllReceipts, getPendingInvoices, getClients,
-                   getSalesEstimates, getEstimatesSummary, getSummary, getAlertLevel };
+module.exports = {
+  getInvoices, getAllReceipts, getPendingInvoices, getClients,
+  getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary, getAlertLevel
+};
