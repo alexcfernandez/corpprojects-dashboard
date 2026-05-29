@@ -19,9 +19,7 @@
   --purple:#a78bfa;--purple-bg:rgba(167,139,250,0.1);
   --r:12px;--rs:8px;
 }
-html{scroll-behavior:smooth}
 body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-size:14px;line-height:1.6;min-height:100vh}
-
 /* LOGIN */
 #loginScreen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
 .login-box{background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:40px;width:100%;max-width:360px;text-align:center}
@@ -30,10 +28,9 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-
 .login-sub{font-size:12px;color:var(--text3);margin-bottom:28px}
 .login-input{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:12px 14px;color:var(--text);font-family:'Inter',sans-serif;font-size:14px;outline:none;margin-bottom:12px;transition:border-color .2s}
 .login-input:focus{border-color:var(--blue)}
-.login-btn{width:100%;background:var(--blue);border:none;border-radius:var(--rs);padding:12px;color:#fff;font-family:'Inter',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:opacity .2s}
-.login-btn:hover{opacity:.9}.login-btn:disabled{opacity:.5;cursor:not-allowed}
+.login-btn{width:100%;background:var(--blue);border:none;border-radius:var(--rs);padding:12px;color:#fff;font-family:'Inter',sans-serif;font-size:14px;font-weight:600;cursor:pointer}
+.login-btn:disabled{opacity:.5}
 .login-error{color:var(--red);font-size:12px;margin-top:8px;display:none}
-
 /* APP */
 #app{display:none}
 .header{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 28px;display:flex;align-items:center;justify-content:space-between;height:60px;position:sticky;top:0;z-index:100}
@@ -41,88 +38,85 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-
 .logo-icon{width:32px;height:32px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:7px;display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12px;color:#fff}
 .logo-text{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px}
 .logo-sub{font-size:10px;color:var(--text3);margin-top:-2px}
-.header-right{display:flex;align-items:center;gap:12px}
+.header-right{display:flex;align-items:center;gap:10px}
 .sync-btn{background:var(--bg3);border:1px solid var(--border2);border-radius:20px;padding:5px 12px;font-size:11px;color:var(--text2);cursor:pointer;font-family:'Inter',sans-serif;display:flex;align-items:center;gap:5px;transition:all .2s}
 .sync-btn:hover{border-color:var(--blue);color:var(--blue)}.sync-btn.loading{opacity:.6;pointer-events:none}
-.live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;margin-right:4px;animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-.logout-btn{background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;font-family:'Inter',sans-serif;padding:4px 8px;border-radius:6px;transition:color .2s}
+.logout-btn{background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;font-family:'Inter',sans-serif;padding:4px 8px;border-radius:6px}
 .logout-btn:hover{color:var(--red)}
-
 /* NAV */
 .nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 28px;display:flex;overflow-x:auto;scrollbar-width:none}
 .nav::-webkit-scrollbar{display:none}
 .nav-btn{background:none;border:none;color:var(--text3);padding:12px 16px;font-size:12px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;display:flex;align-items:center;gap:5px;font-family:'Inter',sans-serif;white-space:nowrap}
 .nav-btn:hover{color:var(--text)}.nav-btn.active{color:var(--blue);border-bottom-color:var(--blue)}
-
 /* MAIN */
 .main{padding:24px 28px;max-width:1400px;margin:0 auto}
 .panel{display:none}.panel.active{display:block}
-@media(max-width:768px){.main{padding:14px}.header{padding:0 14px}.nav{padding:0 8px}}
-
+@media(max-width:768px){.main{padding:14px}.header,.nav{padding:0 14px}}
 /* METRICS */
-.metrics-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:20px}
+.metrics-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:10px;margin-bottom:20px}
 .mc{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;transition:border-color .2s}
 .mc:hover{border-color:var(--border2)}
 .ml{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}
 .mv{font-size:20px;font-weight:600;font-family:'Space Grotesk',sans-serif}
-.mv.g{color:var(--green)}.mv.r{color:var(--red)}.mv.a{color:var(--amber)}.mv.b{color:var(--blue)}
+.mv.g{color:var(--green)}.mv.r{color:var(--red)}.mv.a{color:var(--amber)}.mv.b{color:var(--blue)}.mv.p{color:var(--purple)}
 .ms{font-size:10px;color:var(--text3);margin-top:3px}
-.skeleton{background:linear-gradient(90deg,var(--bg3) 25%,var(--bg4) 50%,var(--bg3) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:4px;height:24px;width:75%}
+.sk{background:linear-gradient(90deg,var(--bg3) 25%,var(--bg4) 50%,var(--bg3) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:4px;height:24px;width:70%}
 @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
-
 /* CARD */
 .card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:18px 20px;margin-bottom:14px}
 .card-title{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
-@media(max-width:768px){.grid2{grid-template-columns:1fr}}
-
-/* BADGES */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px}
+@media(max-width:900px){.g2,.g3{grid-template-columns:1fr}}
+/* BADGE */
 .badge{display:inline-block;padding:2px 9px;border-radius:10px;font-size:10px;font-weight:600}
-.badge-ok{background:var(--green-bg);color:var(--green)}
-.badge-w1{background:var(--amber-bg);color:var(--amber)}
-.badge-w2{background:rgba(249,115,22,.15);color:#f97316}
-.badge-urgent{background:var(--red-bg);color:var(--red)}
-.badge-critical{background:rgba(153,27,27,.3);color:#fca5a5}
-
+.bgo{background:var(--green-bg);color:var(--green)}
+.bw1{background:var(--amber-bg);color:var(--amber)}
+.bw2{background:rgba(249,115,22,.15);color:#f97316}
+.bur{background:var(--red-bg);color:var(--red)}
+.bcr{background:rgba(153,27,27,.3);color:#fca5a5}
+.bbl{background:var(--blue-bg);color:var(--blue)}
+.bpu{background:var(--purple-bg);color:var(--purple)}
 /* TABLE */
 table{width:100%;border-collapse:collapse;font-size:12px}
 th{color:var(--text3);text-align:left;padding:7px 9px;border-bottom:1px solid var(--border);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
-td{padding:9px 9px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle}
+td{padding:8px 9px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:rgba(255,255,255,.015)}
-
 /* ALERT */
 .alert{padding:11px 14px;border-radius:var(--rs);margin-bottom:9px;font-size:12px;display:flex;align-items:flex-start;gap:9px;border-left:3px solid}
-.alert-ok{background:var(--green-bg);border-left-color:var(--green);color:var(--green)}
-.alert-info{background:var(--blue-bg);border-left-color:var(--blue);color:var(--blue)}
-.alert-warn{background:var(--amber-bg);border-left-color:var(--amber);color:#fbbf24}
-.alert-danger{background:var(--red-bg);border-left-color:var(--red);color:var(--red)}
-
-/* BUTTONS */
-.btn{padding:7px 14px;border-radius:var(--rs);font-size:12px;font-weight:600;cursor:pointer;border:none;font-family:'Inter',sans-serif;transition:opacity .2s;display:inline-flex;align-items:center;gap:5px}
+.alert p{margin-top:2px;font-size:11px;opacity:.8}
+.aok{background:var(--green-bg);border-left-color:var(--green);color:var(--green)}
+.ain{background:var(--blue-bg);border-left-color:var(--blue);color:var(--blue)}
+.awa{background:var(--amber-bg);border-left-color:var(--amber);color:#fbbf24}
+.ada{background:var(--red-bg);border-left-color:var(--red);color:var(--red)}
+/* BTN */
+.btn{padding:7px 14px;border-radius:var(--rs);font-size:12px;font-weight:600;cursor:pointer;border:none;font-family:'Inter',sans-serif;display:inline-flex;align-items:center;gap:5px;transition:opacity .2s}
 .btn:hover{opacity:.85}.btn:disabled{opacity:.4;cursor:not-allowed}
-.btn-primary{background:var(--blue);color:#fff}
-.btn-green{background:var(--green);color:#fff}
-.btn-ghost{background:var(--bg3);color:var(--text2);border:1px solid var(--border2)}
-
+.bp{background:var(--blue);color:#fff}.bg2{background:var(--green);color:#fff}
+.bgh{background:var(--bg3);color:var(--text2);border:1px solid var(--border2)}
 /* FILTER TABS */
-.filter-tabs{display:flex;gap:6px;flex-wrap:wrap}
+.ftabs{display:flex;gap:6px;flex-wrap:wrap}
 .ftab{padding:4px 12px;border-radius:20px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid var(--border2);background:none;color:var(--text3);font-family:'Inter',sans-serif;transition:all .15s}
-.ftab:hover{color:var(--text);border-color:var(--blue)}
-.ftab.active{background:var(--blue);border-color:var(--blue);color:#fff}
-
-/* EMPTY */
-.empty-state{text-align:center;padding:40px 20px;color:var(--text3)}
-.empty-icon{font-size:40px;margin-bottom:12px}
-.empty-title{font-size:14px;font-weight:500;color:var(--text2);margin-bottom:4px}
-
-/* LAST UPDATED */
-.last-updated{font-size:10px;color:var(--text3)}
-
+.ftab:hover{color:var(--text)}.ftab.on{background:var(--blue);border-color:var(--blue);color:#fff}
 /* SEARCH */
-.search-input{background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:6px 12px;color:var(--text);font-family:'Inter',sans-serif;font-size:12px;outline:none;width:200px;transition:border-color .2s}
-.search-input:focus{border-color:var(--blue)}
+.srch{background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:6px 12px;color:var(--text);font-family:'Inter',sans-serif;font-size:12px;outline:none;width:200px}
+.srch:focus{border-color:var(--blue)}
+/* EMPTY */
+.empty{text-align:center;padding:36px 20px;color:var(--text3)}
+.empty .ei{font-size:38px;margin-bottom:10px}
+.empty .et{font-size:14px;font-weight:500;color:var(--text2);margin-bottom:4px}
+/* UPLOAD ZONE */
+.upload-zone{border:2px dashed var(--border2);border-radius:var(--r);padding:32px;text-align:center;transition:border-color .2s;cursor:pointer}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--blue);background:var(--blue-bg)}
+.upload-zone input[type=file]{display:none}
+/* PROGRESS BAR */
+.prog-track{height:6px;background:var(--bg4);border-radius:3px;overflow:hidden;margin-top:6px}
+.prog-fill{height:6px;border-radius:3px;background:var(--green);transition:width .3s}
+/* ESTIMATE STATE */
+.est-state{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:10px;font-size:10px;font-weight:600}
 </style>
 </head>
 <body>
@@ -134,7 +128,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
     <div class="login-sub">Dashboard financiero privado</div>
     <input type="password" class="login-input" id="loginPass" placeholder="Contraseña de acceso" onkeydown="if(event.key==='Enter')doLogin()">
     <button class="login-btn" onclick="doLogin()" id="loginBtn">Entrar →</button>
-    <div class="login-error" id="loginError">Contraseña incorrecta</div>
+    <div class="login-error" id="loginError"></div>
   </div>
 </div>
 
@@ -148,88 +142,137 @@ tr:hover td{background:rgba(255,255,255,.015)}
       </div>
     </div>
     <div class="header-right">
-      <div class="last-updated"><span class="live-dot" style="display:inline-block;margin-right:4px"></span><span id="lastUpdatedText">Cargando...</span></div>
+      <span style="font-size:11px;color:var(--text3)"><span class="live-dot"></span><span id="lastUpdatedText">Cargando...</span></span>
       <button class="sync-btn" onclick="refreshData()" id="syncBtn">🔄 Actualizar</button>
       <button class="logout-btn" onclick="doLogout()">Salir</button>
     </div>
   </header>
 
   <nav class="nav">
-    <button class="nav-btn active" onclick="showTab('stelorder',this)">📊 Facturación</button>
-    <button class="nav-btn" onclick="showTab('pendientes',this)">🔴 Pendientes de cobro</button>
-    <button class="nav-btn" onclick="showTab('banco',this)">🏦 Banco 2025–2026</button>
-    <button class="nav-btn" onclick="showTab('notificaciones',this)">🔔 Alertas y config</button>
+    <button class="nav-btn active" onclick="showTab('facturas',this)">📊 Facturación</button>
+    <button class="nav-btn" onclick="showTab('pendientes',this)">🔴 Pendientes cobro</button>
+    <button class="nav-btn" onclick="showTab('presupuestos',this)">📋 Presupuestos</button>
+    <button class="nav-btn" onclick="showTab('banco',this)">🏦 Análisis banco</button>
+    <button class="nav-btn" onclick="showTab('alertas',this)">🔔 Alertas</button>
   </nav>
 
   <main class="main">
 
     <!-- FACTURACIÓN -->
-    <div id="tab-stelorder" class="panel active">
+    <div id="tab-facturas" class="panel active">
       <div class="metrics-row">
-        <div class="mc"><div class="ml">Facturas este mes</div><div class="mv b skeleton" id="m-month-count"> </div><div class="ms" id="m-month-sub">Este mes</div></div>
-        <div class="mc"><div class="ml">Facturado este mes</div><div class="mv g skeleton" id="m-month-total"> </div><div class="ms">Importe bruto</div></div>
-        <div class="mc"><div class="ml">Total pendiente cobro</div><div class="mv r skeleton" id="m-pending-total"> </div><div class="ms">Sin cobrar</div></div>
-        <div class="mc"><div class="ml">Facturas pendientes</div><div class="mv a skeleton" id="m-pending-count"> </div><div class="ms">Con saldo pendiente</div></div>
-        <div class="mc"><div class="ml">En riesgo (30–60d)</div><div class="mv a skeleton" id="m-overdue"> </div><div class="ms">Requieren seguimiento</div></div>
-        <div class="mc"><div class="ml">Críticas (+60d)</div><div class="mv r skeleton" id="m-critical"> </div><div class="ms">Acción urgente</div></div>
+        <div class="mc"><div class="ml">Facturas este mes</div><div class="mv b sk" id="m1"> </div><div class="ms">Emitidas en el mes actual</div></div>
+        <div class="mc"><div class="ml">Facturado este mes</div><div class="mv g sk" id="m2"> </div><div class="ms">Importe bruto</div></div>
+        <div class="mc"><div class="ml">Total pendiente cobro</div><div class="mv r sk" id="m3"> </div><div class="ms">Sin cobrar acumulado</div></div>
+        <div class="mc"><div class="ml">Facturas pendientes</div><div class="mv a sk" id="m4"> </div><div class="ms">Con saldo abierto</div></div>
+        <div class="mc"><div class="ml">En riesgo (30–60d)</div><div class="mv a sk" id="m5"> </div><div class="ms">Seguimiento necesario</div></div>
+        <div class="mc"><div class="ml">Críticas (+60d)</div><div class="mv r sk" id="m6"> </div><div class="ms">Acción urgente</div></div>
       </div>
-
-      <div class="grid2">
+      <div class="g2">
         <div class="card">
           <div class="card-title">Pendientes por antigüedad</div>
-          <div style="height:200px"><canvas id="pendingAgeChart" role="img" aria-label="Distribución por antigüedad">Gráfico antigüedad.</canvas></div>
+          <div style="height:200px"><canvas id="ageChart" role="img" aria-label="Antigüedad de pendientes">Gráfico.</canvas></div>
         </div>
         <div class="card">
-          <div class="card-title">Resumen de cobros</div>
-          <div id="cobrosResumen" style="padding-top:4px">Cargando...</div>
+          <div class="card-title">Resumen cobros</div>
+          <div id="cobrosResumen">Cargando...</div>
         </div>
       </div>
-
       <div class="card">
-        <div class="card-title">
-          Facturas pendientes de cobro
-          <span class="last-updated" id="invoicesLastUpdated">—</span>
-        </div>
-        <div id="invoicesTable">Cargando datos de StelOrder...</div>
+        <div class="card-title">Últimas facturas pendientes <span style="font-size:10px;color:var(--text3)" id="factsLastUpd">—</span></div>
+        <div id="factsTable">Cargando...</div>
       </div>
     </div>
 
     <!-- PENDIENTES -->
     <div id="tab-pendientes" class="panel">
-      <div class="alert alert-info" id="pendingAlert" style="margin-bottom:16px">
-        <div>ℹ️</div><div>Cargando facturas pendientes...</div>
+      <div class="alert ain" id="pendAlert" style="margin-bottom:16px">
+        <div>ℹ️</div><div>Cargando...</div>
       </div>
       <div class="card">
         <div class="card-title">
-          Todas las facturas sin cobrar
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <input type="text" class="search-input" id="searchPending" placeholder="Buscar cliente o nº factura..." oninput="filterPending()">
-            <button class="btn btn-primary" onclick="triggerAlertCheck()" id="alertBtn">🔔 Enviar alertas</button>
+          Facturas sin cobrar
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <input type="text" class="srch" id="searchPend" placeholder="Buscar cliente / nº..." oninput="renderPendTable()">
+            <button class="btn bp" onclick="triggerAlertCheck()" id="alertBtn">🔔 Enviar alertas</button>
           </div>
         </div>
-        <div class="filter-tabs" style="margin-bottom:12px">
-          <button class="ftab active" onclick="setPendingFilter('all',this)">Todas</button>
-          <button class="ftab" onclick="setPendingFilter('warning1',this)">⚠️ 15d+</button>
-          <button class="ftab" onclick="setPendingFilter('warning2',this)">⚠️⚠️ 30d+</button>
-          <button class="ftab" onclick="setPendingFilter('urgent',this)">🔴 45d+</button>
-          <button class="ftab" onclick="setPendingFilter('critical',this)">🚨 60d+</button>
+        <div class="ftabs" style="margin-bottom:12px">
+          <button class="ftab on" onclick="setPendFilter('all',this)">Todas</button>
+          <button class="ftab" onclick="setPendFilter('warning1',this)">⚠️ 15d+</button>
+          <button class="ftab" onclick="setPendFilter('warning2',this)">⚠️⚠️ 30d+</button>
+          <button class="ftab" onclick="setPendFilter('urgent',this)">🔴 45d+</button>
+          <button class="ftab" onclick="setPendFilter('critical',this)">🚨 60d+</button>
         </div>
-        <div id="pendingTable">Cargando...</div>
+        <div id="pendTable">Cargando...</div>
+      </div>
+    </div>
+
+    <!-- PRESUPUESTOS -->
+    <div id="tab-presupuestos" class="panel">
+      <div class="metrics-row" id="estMetrics">
+        <div class="mc"><div class="ml">Total presupuestos</div><div class="mv b sk" id="e1"> </div></div>
+        <div class="mc"><div class="ml">Aceptados</div><div class="mv g sk" id="e2"> </div></div>
+        <div class="mc"><div class="ml">Importe aceptado</div><div class="mv g sk" id="e3"> </div></div>
+        <div class="mc"><div class="ml">Pendientes respuesta</div><div class="mv a sk" id="e4"> </div></div>
+        <div class="mc"><div class="ml">Importe pendiente</div><div class="mv a sk" id="e5"> </div></div>
+        <div class="mc"><div class="ml">Meses cubiertos</div><div class="mv p sk" id="e6"> </div></div>
+      </div>
+
+      <div class="alert ain" id="estCoverAlert" style="margin-bottom:16px">
+        <div>📋</div><div>Cargando análisis de cobertura...</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          Presupuestos
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <input type="text" class="srch" id="searchEst" placeholder="Buscar cliente / nº..." oninput="renderEstTable()">
+            <div class="ftabs">
+              <button class="ftab on" onclick="setEstFilter('all',this)">Todos</button>
+              <button class="ftab" onclick="setEstFilter('accepted',this)">✅ Aceptados</button>
+              <button class="ftab" onclick="setEstFilter('pending',this)">⏳ Pendientes</button>
+              <button class="ftab" onclick="setEstFilter('sent',this)">📤 Enviados</button>
+              <button class="ftab" onclick="setEstFilter('rejected',this)">❌ Rechazados</button>
+            </div>
+          </div>
+        </div>
+        <div id="estTable">Cargando presupuestos...</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">¿Cuánto necesitamos facturar? — análisis de cobertura</div>
+        <div id="coverageAnalysis">Cargando...</div>
       </div>
     </div>
 
     <!-- BANCO -->
     <div id="tab-banco" class="panel">
-      <div class="alert alert-info" style="margin-bottom:16px">
-        <div>ℹ️</div><div><strong>Análisis histórico 2025–2026</strong> — basado en extracto bancario Santander.</div>
+      <!-- Upload -->
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-title">📤 Actualizar datos bancarios — subir extracto Excel</div>
+        <div id="bankUploadZone" class="upload-zone" onclick="document.getElementById('bankFile').click()"
+             ondragover="event.preventDefault();this.classList.add('drag')"
+             ondragleave="this.classList.remove('drag')"
+             ondrop="handleBankDrop(event)">
+          <input type="file" id="bankFile" accept=".xlsx,.xls" onchange="handleBankUpload(this.files[0])">
+          <div style="font-size:32px;margin-bottom:8px">📂</div>
+          <div style="font-size:13px;font-weight:500;color:var(--text)">Arrastra aquí el Excel del Santander</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:4px">o haz clic para seleccionar el archivo · .xlsx · máx 10MB</div>
+        </div>
+        <div id="uploadProgress" style="display:none;margin-top:10px">
+          <div style="font-size:12px;color:var(--text2)" id="uploadMsg">Subiendo...</div>
+          <div class="prog-track"><div class="prog-fill" id="progFill" style="width:0%"></div></div>
+        </div>
+        <div id="lastUploadInfo" style="margin-top:10px;font-size:11px;color:var(--text3)">Cargando info...</div>
       </div>
 
-      <!-- Filtro de período -->
-      <div class="card" style="padding:14px 20px;margin-bottom:14px">
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <!-- Filtros período -->
+      <div class="card" style="padding:12px 20px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <span style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.06em">Período:</span>
-          <div class="filter-tabs">
-            <button class="ftab active" onclick="setBankFilter('all',this)">Todo</button>
+          <div class="ftabs">
+            <button class="ftab on" onclick="setBankFilter('all',this)">Todo</button>
             <button class="ftab" onclick="setBankFilter('2025',this)">2025</button>
             <button class="ftab" onclick="setBankFilter('2026',this)">2026</button>
             <button class="ftab" onclick="setBankFilter('q1-2025',this)">Q1 2025</button>
@@ -244,13 +287,13 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <div class="metrics-row" id="bankMetrics"></div>
 
       <div class="card">
-        <div class="card-title">Ingresos vs Gastos reales <span class="last-updated" id="bankPeriodLabel">Todo el período</span></div>
-        <div style="height:280px"><canvas id="bankChart" role="img" aria-label="Evolución mensual banco">Gráfico banco.</canvas></div>
+        <div class="card-title">Ingresos vs Gastos reales <span style="font-size:10px;color:var(--text3)" id="bankPeriodLabel"></span></div>
+        <div style="height:270px"><canvas id="bankChart" role="img" aria-label="Gráfico banco">Gráfico banco.</canvas></div>
       </div>
 
       <div class="card">
         <div class="card-title">Detalle mensual</div>
-        <table id="bankTable">
+        <table>
           <thead><tr><th>Mes</th><th style="text-align:right">Ingresos</th><th style="text-align:right">Gastos reales</th><th style="text-align:right">Ahorro 10%</th><th style="text-align:right">Balance</th><th>Estado</th></tr></thead>
           <tbody id="bankTbody"></tbody>
           <tfoot id="bankTfoot"></tfoot>
@@ -259,39 +302,39 @@ tr:hover td{background:rgba(255,255,255,.015)}
     </div>
 
     <!-- ALERTAS -->
-    <div id="tab-notificaciones" class="panel">
-      <div class="grid2">
+    <div id="tab-alertas" class="panel">
+      <div class="g2">
         <div class="card">
           <div class="card-title">Configuración de alertas</div>
           <table>
-            <tr><td style="color:var(--text2)">⚠️ Primer aviso</td><td style="text-align:right"><strong>15 días</strong></td></tr>
-            <tr><td style="color:var(--text2)">⚠️⚠️ Segundo aviso</td><td style="text-align:right"><strong>30 días</strong></td></tr>
-            <tr><td style="color:var(--text2)">🔴 Urgente</td><td style="text-align:right"><strong>45 días</strong></td></tr>
-            <tr><td style="color:var(--text2)">🚨 Crítico</td><td style="text-align:right"><strong>60 días</strong></td></tr>
-            <tr><td style="color:var(--text2)">📅 Revisión automática</td><td style="text-align:right">Cada 2 horas</td></tr>
+            <tr><td style="color:var(--text2)">⚠️ Primer aviso</td><td style="text-align:right">15 días</td></tr>
+            <tr><td style="color:var(--text2)">⚠️⚠️ Segundo aviso</td><td style="text-align:right">30 días</td></tr>
+            <tr><td style="color:var(--text2)">🔴 Urgente</td><td style="text-align:right">45 días</td></tr>
+            <tr><td style="color:var(--text2)">🚨 Crítico</td><td style="text-align:right">60 días</td></tr>
+            <tr><td style="color:var(--text2)">🔁 Revisión auto</td><td style="text-align:right">Cada 2 horas</td></tr>
             <tr><td style="color:var(--text2)">🌅 Resumen diario</td><td style="text-align:right">08:30 lun–vie</td></tr>
           </table>
         </div>
         <div class="card">
           <div class="card-title">Destinatarios</div>
           <table>
-            <tr><td style="color:var(--text2)">📧 Email alertas</td><td style="text-align:right">corpy@corpprojects.es</td></tr>
-            <tr><td style="color:var(--text2)">💬 WhatsApp</td><td style="text-align:right;color:var(--amber)">⚠️ Pendiente configurar</td></tr>
+            <tr><td style="color:var(--text2)">📧 Email</td><td style="text-align:right">corpy@corpprojects.es</td></tr>
+            <tr><td style="color:var(--text2)">💬 WhatsApp</td><td style="text-align:right;color:var(--amber)">⚠️ Pendiente Twilio</td></tr>
           </table>
-          <div style="margin-top:14px;padding:12px;background:var(--amber-bg);border-radius:8px;border:1px solid rgba(245,158,11,.2);font-size:11px;color:rgba(245,158,11,.9)">
-            Para activar WhatsApp añade las variables TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN y WHATSAPP_TO en Railway.
+          <div style="margin-top:12px;padding:10px;background:var(--amber-bg);border-radius:8px;border:1px solid rgba(245,158,11,.2);font-size:11px;color:rgba(245,158,11,.9)">
+            Para activar WhatsApp añade TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN y WHATSAPP_TO en Railway Variables.
           </div>
         </div>
       </div>
       <div class="card">
-        <div class="card-title">Envíos manuales y pruebas</div>
+        <div class="card-title">Acciones manuales</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn btn-primary" onclick="testNotification('whatsapp')">💬 Test WhatsApp</button>
-          <button class="btn btn-ghost" onclick="testNotification('email')">📧 Test Email</button>
-          <button class="btn btn-green" onclick="sendSummaryNow()">📊 Enviar resumen ahora</button>
-          <button class="btn btn-ghost" onclick="triggerAlertCheck()">🔍 Revisar alertas ahora</button>
+          <button class="btn bp" onclick="testNotif('whatsapp')">💬 Test WhatsApp</button>
+          <button class="btn bgh" onclick="testNotif('email')">📧 Test Email</button>
+          <button class="btn bg2" onclick="sendSummary()">📊 Enviar resumen</button>
+          <button class="btn bgh" onclick="triggerAlertCheck()">🔍 Revisar alertas</button>
         </div>
-        <div id="notifResult" style="margin-top:12px;font-size:12px;color:var(--green);display:none"></div>
+        <div id="notifRes" style="margin-top:10px;font-size:12px;color:var(--green);display:none"></div>
       </div>
     </div>
 
@@ -299,365 +342,324 @@ tr:hover td{background:rgba(255,255,255,.015)}
 </div>
 
 <script>
-const API_BASE = window.location.origin;
-let authToken = localStorage.getItem('cp_token');
-let allPending = [];
-let pendingFilter = 'all';
-let bankFilter = 'all';
-let bankChartInst, ageChartInst;
+const API = window.location.origin;
+let tok = localStorage.getItem('cp_token');
+let allPend = [], allEst = [], estData = {};
+let pendFilter = 'all', estFilter = 'all', bankFilter = 'all';
+let bankChartI, ageChartI;
 
-// ── DATOS BANCARIOS ───────────────────────────────────────────────
 const MONTHS = ['Ene','Feb','Mar','Apr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 const BANK = {
-  2025: {
-    ing: [42591,46049,37617,36972,36454,79906,54599,12683,60884,177818,25479,28722],
-    gas: [44321,44680,30031,38980,32041,61353,80714,29187,41084,188064,23392,29799],
-    aho: [0,0,0,0,0,0,0,0,0,0,0,0]
+  2025:{
+    ing:[42591,46049,37617,36972,36454,79906,54599,12683,60884,177818,25479,28722],
+    gas:[44321,44680,30031,38980,32041,61353,80714,29187,41084,188064,23392,29799],
+    aho:[0,0,0,0,0,0,0,0,0,0,0,0]
   },
-  2026: {
-    ing: [38466,36687,57378,25639,79000,null,null,null,null,null,null,null],
-    gas: [38343,34439,34659,41772,31250,null,null,null,null,null,null,null],
-    aho: [0,1650,6215,993,8975,null,null,null,null,null,null,null]
+  2026:{
+    ing:[38466,36687,57378,25639,79000,null,null,null,null,null,null,null],
+    gas:[38343,34439,34659,41772,31250,null,null,null,null,null,null,null],
+    aho:[0,1650,6215,993,8975,null,null,null,null,null,null,null]
   }
 };
-
-// Períodos disponibles
-const PERIODS = {
-  'all':     { label:'Todo el período 2025–2026', months:[...MONTHS.map((_,i)=>({y:2025,m:i})), ...Array.from({length:5},(_,i)=>({y:2026,m:i}))] },
-  '2025':    { label:'Año 2025', months:MONTHS.map((_,i)=>({y:2025,m:i})) },
-  '2026':    { label:'2026 (Ene–May)', months:Array.from({length:5},(_,i)=>({y:2026,m:i})) },
-  'q1-2025': { label:'Q1 2025 (Ene–Mar)', months:[{y:2025,m:0},{y:2025,m:1},{y:2025,m:2}] },
-  'q2-2025': { label:'Q2 2025 (Abr–Jun)', months:[{y:2025,m:3},{y:2025,m:4},{y:2025,m:5}] },
-  'q3-2025': { label:'Q3 2025 (Jul–Sep)', months:[{y:2025,m:6},{y:2025,m:7},{y:2025,m:8}] },
-  'q4-2025': { label:'Q4 2025 (Oct–Dic)', months:[{y:2025,m:9},{y:2025,m:10},{y:2025,m:11}] },
-  'q1-2026': { label:'Q1 2026 (Ene–Mar)', months:[{y:2026,m:0},{y:2026,m:1},{y:2026,m:2}] }
+const PERIODS={
+  'all':    {label:'Todo el período 2025–2026',months:[...MONTHS.map((_,i)=>({y:2025,m:i})),...Array.from({length:5},(_,i)=>({y:2026,m:i}))]},
+  '2025':   {label:'Año completo 2025',months:MONTHS.map((_,i)=>({y:2025,m:i}))},
+  '2026':   {label:'2026 (Ene–May)',months:Array.from({length:5},(_,i)=>({y:2026,m:i}))},
+  'q1-2025':{label:'Q1 2025',months:[{y:2025,m:0},{y:2025,m:1},{y:2025,m:2}]},
+  'q2-2025':{label:'Q2 2025',months:[{y:2025,m:3},{y:2025,m:4},{y:2025,m:5}]},
+  'q3-2025':{label:'Q3 2025',months:[{y:2025,m:6},{y:2025,m:7},{y:2025,m:8}]},
+  'q4-2025':{label:'Q4 2025',months:[{y:2025,m:9},{y:2025,m:10},{y:2025,m:11}]},
+  'q1-2026':{label:'Q1 2026',months:[{y:2026,m:0},{y:2026,m:1},{y:2026,m:2}]}
 };
 
-function eur(v) {
-  return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0);
-}
-function dateEs(d) {
-  if(!d)return'—';
-  return new Date(d).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'});
-}
-function levelBadge(lvl) {
-  return {
-    ok:       '<span class="badge badge-ok">Al día</span>',
-    warning1: '<span class="badge badge-w1">⚠️ 15d</span>',
-    warning2: '<span class="badge badge-w2">⚠️⚠️ 30d</span>',
-    urgent:   '<span class="badge badge-urgent">🔴 45d</span>',
-    critical: '<span class="badge badge-critical">🚨 60d+</span>'
-  }[lvl] || lvl;
+function eur(v){return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0)}
+function dt(d){return d?new Date(d).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'}):'—'}
+function lvlBadge(l){return{ok:'<span class="badge bgo">Al día</span>',warning1:'<span class="badge bw1">⚠️ 15d</span>',warning2:'<span class="badge bw2">⚠️⚠️ 30d</span>',urgent:'<span class="badge bur">🔴 45d</span>',critical:'<span class="badge bcr">🚨 60d+</span>'}[l]||l}
+function estBadge(s){
+  const m=s.toLowerCase();
+  if(m.includes('acept')||m.includes('accept'))return'<span class="badge bgo">✅ Aceptado</span>';
+  if(m.includes('rechaz')||m.includes('reject'))return'<span class="badge bur">❌ Rechazado</span>';
+  if(m.includes('enviad')||m.includes('sent'))return'<span class="badge bbl">📤 Enviado</span>';
+  if(m.includes('caduc')||m.includes('expir'))return'<span class="badge bcr">⌛ Caducado</span>';
+  return`<span class="badge bw1">⏳ ${s||'Pendiente'}</span>`;
 }
 
-// ── AUTH ──────────────────────────────────────────────────────────
-async function doLogin() {
-  const pass = document.getElementById('loginPass').value;
-  if (!pass) return;
-  const btn = document.getElementById('loginBtn');
-  btn.disabled = true; btn.textContent = 'Verificando...';
-  document.getElementById('loginError').style.display = 'none';
-  try {
-    const res = await fetch(`${API_BASE}/api/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pass})});
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Error');
-    authToken = data.token;
-    localStorage.setItem('cp_token', authToken);
-    showApp();
-  } catch(err) {
-    document.getElementById('loginError').textContent = err.message;
-    document.getElementById('loginError').style.display = 'block';
-    btn.disabled = false; btn.textContent = 'Entrar →';
+// AUTH
+async function doLogin(){
+  const pass=document.getElementById('loginPass').value;
+  if(!pass)return;
+  const btn=document.getElementById('loginBtn');
+  btn.disabled=true;btn.textContent='Verificando...';
+  document.getElementById('loginError').style.display='none';
+  try{
+    const r=await fetch(`${API}/api/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pass})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'Error');
+    tok=d.token;localStorage.setItem('cp_token',tok);showApp();
+  }catch(e){
+    const el=document.getElementById('loginError');
+    el.textContent=e.message;el.style.display='block';
+    btn.disabled=false;btn.textContent='Entrar →';
   }
 }
-function doLogout() {
-  localStorage.removeItem('cp_token'); authToken = null;
-  document.getElementById('app').style.display = 'none';
-  document.getElementById('loginScreen').style.display = 'flex';
-  document.getElementById('loginPass').value = '';
+function doLogout(){
+  localStorage.removeItem('cp_token');tok=null;
+  document.getElementById('app').style.display='none';
+  document.getElementById('loginScreen').style.display='flex';
+  document.getElementById('loginPass').value='';
 }
-function showApp() {
-  document.getElementById('loginScreen').style.display = 'none';
-  document.getElementById('app').style.display = 'block';
-  loadAllData();
-}
-
-// ── API ───────────────────────────────────────────────────────────
-async function apiFetch(endpoint, options={}) {
-  const res = await fetch(`${API_BASE}${endpoint}`, {
-    ...options,
-    headers: {'Authorization':`Bearer ${authToken}`,'Content-Type':'application/json',...(options.headers||{})}
-  });
-  if (res.status===401){doLogout();return null;}
-  return res.json();
+function showApp(){
+  document.getElementById('loginScreen').style.display='none';
+  document.getElementById('app').style.display='block';
+  loadAll();
 }
 
-// ── LOAD DATA ─────────────────────────────────────────────────────
-async function loadAllData() {
-  setSyncLoading(true);
-  try {
-    await Promise.all([loadSummary(), loadPending()]);
+// API
+async function api(url,opts={}){
+  const r=await fetch(`${API}${url}`,{...opts,headers:{'Authorization':`Bearer ${tok}`,'Content-Type':'application/json',...(opts.headers||{})}});
+  if(r.status===401){doLogout();return null;}
+  return r.json();
+}
+
+// LOAD
+async function loadAll(){
+  setSyncing(true);
+  try{
+    await Promise.all([loadSummary(),loadPending(),loadEstimates()]);
+    loadBankInfo();
     renderBankSection();
-    document.getElementById('lastUpdatedText').textContent =
-      'Actualizado ' + new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
-  } finally { setSyncLoading(false); }
+    document.getElementById('lastUpdatedText').textContent='Actualizado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
+  }finally{setSyncing(false);}
 }
-function refreshData(){ loadAllData(); }
-function setSyncLoading(on) {
-  const btn = document.getElementById('syncBtn');
-  btn.classList.toggle('loading', on);
-  btn.textContent = on ? '⏳ Cargando...' : '🔄 Actualizar';
-}
-
-// ── SUMMARY ───────────────────────────────────────────────────────
-async function loadSummary() {
-  const data = await apiFetch('/api/summary');
-  if (!data) return;
-  ['m-month-count','m-month-total','m-pending-total','m-pending-count','m-overdue','m-critical']
-    .forEach(id => document.getElementById(id).classList.remove('skeleton'));
-
-  document.getElementById('m-month-count').textContent  = data.totalInvoicesMonth || '0';
-  document.getElementById('m-month-total').textContent  = eur(data.totalBilledMonth);
-  document.getElementById('m-pending-total').textContent= eur(data.totalPending);
-  document.getElementById('m-pending-count').textContent= data.pendingInvoices || '0';
-  // Separar 30–60d de 60d+
-  document.getElementById('m-overdue').textContent      = data.overdueCount || '0';
-  document.getElementById('m-critical').textContent     = data.criticalCount || '0';
-
-  document.getElementById('cobrosResumen').innerHTML = `
-    <table>
-      <tr><td style="color:var(--text2);padding:8px 0;border-bottom:1px solid var(--border)">Total facturado (histórico)</td>
-          <td style="text-align:right;padding:8px 0;border-bottom:1px solid var(--border)">${eur(data.totalBilled)}</td></tr>
-      <tr><td style="color:var(--text2);padding:8px 0;border-bottom:1px solid var(--border)">Pendiente de cobrar</td>
-          <td style="text-align:right;padding:8px 0;border-bottom:1px solid var(--border);color:var(--red)">${eur(data.totalPending)}</td></tr>
-      <tr><td style="color:var(--text2);padding:8px 0;border-bottom:1px solid var(--border)">En riesgo (30–60 días)</td>
-          <td style="text-align:right;padding:8px 0;border-bottom:1px solid var(--border);color:var(--amber)">${data.overdueCount}</td></tr>
-      <tr><td style="color:var(--text2);padding:8px 0">Críticas (+60 días)</td>
-          <td style="text-align:right;padding:8px 0;color:var(--red)">${data.criticalCount}</td></tr>
-    </table>`;
-
-  document.getElementById('invoicesLastUpdated').textContent =
-    'Actualizado ' + new Date(data.lastUpdated).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
-
-  renderInvoicesList(data.pendingList || []);
-  renderAgeChart(data.pendingList || []);
+function refreshData(){loadAll();}
+function setSyncing(on){
+  const b=document.getElementById('syncBtn');
+  b.classList.toggle('loading',on);
+  b.textContent=on?'⏳ Cargando...':'🔄 Actualizar';
 }
 
-function renderInvoicesList(invoices) {
-  const el = document.getElementById('invoicesTable');
-  if (!invoices.length) {
-    el.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-title">No hay facturas pendientes</div></div>';
-    return;
-  }
-  el.innerHTML = `<table>
-    <thead><tr><th>Factura</th><th>Cliente</th><th>Fecha</th><th style="text-align:right">Total</th><th style="text-align:right">Pendiente</th><th>Días</th><th>Estado</th></tr></thead>
-    <tbody>${invoices.map(inv=>`<tr>
-      <td><strong>${inv.number}</strong></td>
-      <td>${inv.client}</td>
-      <td>${dateEs(inv.date)}</td>
-      <td style="text-align:right">${eur(inv.total)}</td>
-      <td style="text-align:right;color:var(--red);font-weight:600">${eur(inv.pending)}</td>
-      <td style="color:${inv.daysOverdue>=60?'var(--red)':inv.daysOverdue>=30?'var(--amber)':'var(--text2)'}">${inv.daysOverdue}d</td>
-      <td>${levelBadge(inv.alertLevel)}</td>
-    </tr>`).join('')}</tbody></table>`;
-}
-
-// ── PENDING TAB ───────────────────────────────────────────────────
-async function loadPending() {
-  const data = await apiFetch('/api/invoices/pending');
-  if (!data) return;
-  allPending = data;
-  renderPendingTable();
-
-  const alertEl = document.getElementById('pendingAlert');
-  if (!data.length) {
-    alertEl.className = 'alert alert-ok';
-    alertEl.innerHTML = '<div>✅</div><div><strong>¡Todo cobrado!</strong> No hay facturas pendientes.</div>';
-    return;
-  }
-  const critical = data.filter(i=>i.alertLevel==='critical').length;
-  const totalPend = data.reduce((s,i)=>s+i.pending,0);
-  alertEl.className = critical ? 'alert alert-danger' : 'alert alert-info';
-  alertEl.innerHTML = `<div>${critical?'🚨':'ℹ️'}</div>
-    <div><strong>${data.length} facturas pendientes — ${eur(totalPend)} por cobrar</strong>
-    ${critical?`<br>🚨 ${critical} facturas con más de 60 días sin cobrar.`:''}
-    </div>`;
-}
-
-function setPendingFilter(f, btn) {
-  pendingFilter = f;
-  document.querySelectorAll('#tab-pendientes .ftab').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  renderPendingTable();
-}
-
-function filterPending(){ renderPendingTable(); }
-
-function renderPendingTable() {
-  const search = (document.getElementById('searchPending')?.value||'').toLowerCase();
-  let filtered = allPending;
-  if (pendingFilter !== 'all') filtered = filtered.filter(i=>i.alertLevel===pendingFilter);
-  if (search) filtered = filtered.filter(i=>
-    i.client.toLowerCase().includes(search) || i.number.toLowerCase().includes(search)
-  );
-  const el = document.getElementById('pendingTable');
-  if (!filtered.length) {
-    el.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">No hay facturas con este filtro</div></div>';
-    return;
-  }
-  el.innerHTML = `<table>
-    <thead><tr><th>Factura</th><th>Cliente</th><th>Emitida</th><th style="text-align:right">Total</th><th style="text-align:right">Pendiente</th><th>Días</th><th>Nivel</th></tr></thead>
-    <tbody>${filtered.map(inv=>`<tr style="${inv.alertLevel==='critical'?'background:rgba(240,82,82,0.04)':''}">
-      <td><strong>${inv.number}</strong></td>
-      <td>${inv.client}</td>
-      <td>${dateEs(inv.date)}</td>
-      <td style="text-align:right">${eur(inv.total)}</td>
-      <td style="text-align:right;color:var(--red);font-weight:600">${eur(inv.pending)}</td>
-      <td style="font-weight:600;color:${inv.daysOverdue>=60?'var(--red)':inv.daysOverdue>=45?'#f97316':inv.daysOverdue>=30?'var(--amber)':'var(--text2)'}">${inv.daysOverdue}d</td>
-      <td>${levelBadge(inv.alertLevel)}</td>
-    </tr>`).join('')}</tbody>
-    <tfoot><tr style="background:rgba(255,255,255,.02)">
-      <td colspan="4" style="padding:8px 9px;font-weight:600">Total filtrado: ${filtered.length} facturas</td>
-      <td style="text-align:right;padding:8px 9px;color:var(--red);font-weight:600">${eur(filtered.reduce((s,i)=>s+i.pending,0))}</td>
-      <td colspan="2"></td>
-    </tr></tfoot>
+// SUMMARY
+async function loadSummary(){
+  const d=await api('/api/summary');
+  if(!d)return;
+  ['m1','m2','m3','m4','m5','m6'].forEach(id=>document.getElementById(id).classList.remove('sk'));
+  document.getElementById('m1').textContent=d.totalInvoicesMonth||0;
+  document.getElementById('m2').textContent=eur(d.totalBilledMonth);
+  document.getElementById('m3').textContent=eur(d.totalPending);
+  document.getElementById('m4').textContent=d.pendingInvoices||0;
+  document.getElementById('m5').textContent=d.overdueCount||0;
+  document.getElementById('m6').textContent=d.criticalCount||0;
+  document.getElementById('factsLastUpd').textContent='Actualizado '+new Date(d.lastUpdated).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
+  document.getElementById('cobrosResumen').innerHTML=`<table>
+    <tr><td style="color:var(--text2);padding:8px 0;border-bottom:1px solid var(--border)">Total facturado histórico</td><td style="text-align:right;padding:8px 0;border-bottom:1px solid var(--border)">${eur(d.totalBilled)}</td></tr>
+    <tr><td style="color:var(--text2);padding:8px 0;border-bottom:1px solid var(--border)">Pendiente de cobrar</td><td style="text-align:right;padding:8px 0;border-bottom:1px solid var(--border);color:var(--red)">${eur(d.totalPending)}</td></tr>
+    <tr><td style="color:var(--text2);padding:8px 0;border-bottom:1px solid var(--border)">En riesgo 30–60 días</td><td style="text-align:right;padding:8px 0;border-bottom:1px solid var(--border);color:var(--amber)">${d.overdueCount}</td></tr>
+    <tr><td style="color:var(--text2);padding:8px 0">Críticas +60 días</td><td style="text-align:right;padding:8px 0;color:var(--red)">${d.criticalCount}</td></tr>
   </table>`;
+  renderFactsTable(d.pendingList||[]);
+  renderAgeChart(d.pendingList||[]);
 }
 
-// ── AGE CHART ─────────────────────────────────────────────────────
-function renderAgeChart(invoices) {
-  if (ageChartInst) ageChartInst.destroy();
-  const b = {'Al día (<15d)':0,'Aviso (15–30d)':0,'En riesgo (30–45d)':0,'Urgente (45–60d)':0,'Crítico (60d+)':0};
-  invoices.forEach(i=>{
-    if(i.daysOverdue<15)b['Al día (<15d)']++;
-    else if(i.daysOverdue<30)b['Aviso (15–30d)']++;
-    else if(i.daysOverdue<45)b['En riesgo (30–45d)']++;
-    else if(i.daysOverdue<60)b['Urgente (45–60d)']++;
-    else b['Crítico (60d+)']++;
-  });
-  ageChartInst = new Chart(document.getElementById('pendingAgeChart'),{
-    type:'doughnut',
-    data:{labels:Object.keys(b),datasets:[{data:Object.values(b),backgroundColor:['#22c487','#f59e0b','#f97316','#f05252','#991b1b'],borderWidth:2,borderColor:'#13161c'}]},
-    options:{responsive:true,maintainAspectRatio:false,cutout:'60%',
-      plugins:{legend:{position:'right',labels:{color:'#8b92a8',font:{size:10},boxWidth:10,padding:8}},
-               tooltip:{callbacks:{label:ctx=>` ${ctx.label}: ${ctx.raw} facturas`}}}}
-  });
+function renderFactsTable(list){
+  const el=document.getElementById('factsTable');
+  if(!list.length){el.innerHTML='<div class="empty"><div class="ei">✅</div><div class="et">No hay facturas pendientes</div></div>';return;}
+  el.innerHTML=`<table><thead><tr><th>Factura</th><th>Cliente</th><th>Fecha</th><th style="text-align:right">Total</th><th style="text-align:right">Pendiente</th><th>Días</th><th>Estado</th></tr></thead><tbody>
+  ${list.map(i=>`<tr><td><strong>${i.number}</strong></td><td>${i.client}</td><td>${dt(i.date)}</td><td style="text-align:right">${eur(i.total)}</td><td style="text-align:right;color:var(--red);font-weight:600">${eur(i.pending)}</td><td style="color:${i.daysOverdue>=60?'var(--red)':i.daysOverdue>=30?'var(--amber)':'var(--text2)'}">${i.daysOverdue}d</td><td>${lvlBadge(i.alertLevel)}</td></tr>`).join('')}
+  </tbody></table>`;
 }
 
-// ── BANCO ─────────────────────────────────────────────────────────
-function setBankFilter(f, btn) {
-  bankFilter = f;
-  document.querySelectorAll('#tab-banco .ftab').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  renderBankSection();
+// PENDING
+async function loadPending(){
+  const d=await api('/api/invoices/pending');
+  if(!d)return;
+  allPend=d;
+  renderPendTable();
+  const al=document.getElementById('pendAlert');
+  if(!d.length){al.className='alert aok';al.innerHTML='<div>✅</div><div><strong>¡Todo cobrado!</strong> No hay facturas pendientes.</div>';return;}
+  const crit=d.filter(i=>i.alertLevel==='critical').length;
+  const tot=d.reduce((s,i)=>s+i.pending,0);
+  al.className=crit?'alert ada':'alert ain';
+  al.innerHTML=`<div>${crit?'🚨':'ℹ️'}</div><div><strong>${d.length} facturas pendientes — ${eur(tot)}</strong>${crit?`<p>${crit} facturas críticas con más de 60 días sin cobrar.</p>`:''}</div>`;
+}
+function setPendFilter(f,btn){
+  pendFilter=f;
+  document.querySelectorAll('#tab-pendientes .ftab').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');renderPendTable();
+}
+function renderPendTable(){
+  const q=(document.getElementById('searchPend')?.value||'').toLowerCase();
+  let list=allPend;
+  if(pendFilter!=='all')list=list.filter(i=>i.alertLevel===pendFilter);
+  if(q)list=list.filter(i=>i.client.toLowerCase().includes(q)||i.number.toLowerCase().includes(q));
+  const el=document.getElementById('pendTable');
+  if(!list.length){el.innerHTML='<div class="empty"><div class="ei">🔍</div><div class="et">Sin resultados</div></div>';return;}
+  el.innerHTML=`<table><thead><tr><th>Factura</th><th>Cliente</th><th>Emitida</th><th style="text-align:right">Total</th><th style="text-align:right">Pendiente</th><th>Días</th><th>Nivel</th></tr></thead>
+  <tbody>${list.map(i=>`<tr style="${i.alertLevel==='critical'?'background:rgba(240,82,82,.04)':''}"><td><strong>${i.number}</strong></td><td>${i.client}</td><td>${dt(i.date)}</td><td style="text-align:right">${eur(i.total)}</td><td style="text-align:right;color:var(--red);font-weight:600">${eur(i.pending)}</td><td style="font-weight:600;color:${i.daysOverdue>=60?'var(--red)':i.daysOverdue>=45?'#f97316':i.daysOverdue>=30?'var(--amber)':'var(--text2)'}">${i.daysOverdue}d</td><td>${lvlBadge(i.alertLevel)}</td></tr>`).join('')}</tbody>
+  <tfoot><tr style="background:rgba(255,255,255,.02)"><td colspan="4" style="padding:8px 9px;font-weight:600">${list.length} facturas</td><td style="text-align:right;padding:8px 9px;color:var(--red);font-weight:600">${eur(list.reduce((s,i)=>s+i.pending,0))}</td><td colspan="2"></td></tr></tfoot></table>`;
 }
 
-function renderBankSection() {
-  const period = PERIODS[bankFilter];
-  const months = period.months;
-  document.getElementById('bankPeriodLabel').textContent = period.label;
+// ESTIMATES
+async function loadEstimates(){
+  ['e1','e2','e3','e4','e5','e6'].forEach(id=>document.getElementById(id).classList.remove('sk'));
+  const d=await api('/api/estimates');
+  if(!d){document.getElementById('estTable').textContent='Error cargando presupuestos';return;}
+  estData=d;
+  allEst=d.all||[];
 
-  const labels=[], ing=[], gas=[], aho=[], rows=[];
+  document.getElementById('e1').textContent=d.total||0;
+  document.getElementById('e2').textContent=d.accepted?.length||0;
+  document.getElementById('e3').textContent=eur(d.totalAccepted);
+  document.getElementById('e4').textContent=(d.pending?.length||0)+(d.sent?.length||0);
+  document.getElementById('e5').textContent=eur((d.totalPending||0)+(d.totalSent||0));
+  document.getElementById('e6').textContent=d.monthsCovered+'m';
+
+  // Alerta de cobertura
+  const al=document.getElementById('estCoverAlert');
+  const months=parseFloat(d.monthsCovered||0);
+  const avgExp=36000;
+  if(months>=3){
+    al.className='alert aok';
+    al.innerHTML=`<div>✅</div><div><strong>Cobertura de ${months} meses asegurada</strong><p>Los presupuestos aceptados (${eur(d.totalAccepted)}) cubren ${months} meses de gastos. Bien posicionados.</p></div>`;
+  }else if(months>=1){
+    al.className='alert awa';
+    al.innerHTML=`<div>⚠️</div><div><strong>Cobertura de solo ${months} meses</strong><p>Los aceptados cubren ${months} meses. Necesitas cerrar más presupuestos para tener colchón. Objetivo: 3 meses = ${eur(avgExp*3)}.</p></div>`;
+  }else{
+    al.className='alert ada';
+    al.innerHTML=`<div>🚨</div><div><strong>Sin cobertura asegurada</strong><p>No hay presupuestos aceptados suficientes. Prioridad: cerrar ventas. Mínimo necesario: ${eur(avgExp*2)} para cubrir 2 meses.</p></div>`;
+  }
+
+  // Análisis de cobertura
+  document.getElementById('coverageAnalysis').innerHTML=`
+    <table>
+      <thead><tr><th>Escenario</th><th style="text-align:right">Importe</th><th style="text-align:right">Cubre (meses gastos)</th><th>Situación</th></tr></thead>
+      <tbody>
+        <tr><td style="color:var(--text2)">Presupuestos aceptados</td><td style="text-align:right;color:var(--green)">${eur(d.totalAccepted)}</td><td style="text-align:right;font-weight:600">${d.monthsCovered} meses</td><td>${months>=3?'<span class="badge bgo">✅ Bien</span>':months>=1?'<span class="badge bw1">⚠️ Justo</span>':'<span class="badge bur">🚨 Insuficiente</span>'}</td></tr>
+        <tr><td style="color:var(--text2)">Enviados pendientes respuesta</td><td style="text-align:right;color:var(--amber)">${eur(d.totalSent)}</td><td style="text-align:right">${(d.totalSent/avgExp).toFixed(1)} meses</td><td><span class="badge bw1">En espera</span></td></tr>
+        <tr><td style="color:var(--text2)">Borradores / en preparación</td><td style="text-align:right;color:var(--text3)">${eur(d.totalPending)}</td><td style="text-align:right">${(d.totalPending/avgExp).toFixed(1)} meses</td><td><span class="badge bgh" style="background:var(--bg3);color:var(--text2)">Pendiente</span></td></tr>
+        <tr style="background:rgba(255,255,255,.02)"><td><strong>Potencial total</strong></td><td style="text-align:right;font-weight:600">${eur(d.totalAll)}</td><td style="text-align:right;font-weight:600">${(d.totalAll/avgExp).toFixed(1)} meses</td><td></td></tr>
+      </tbody>
+    </table>
+    <div style="margin-top:10px;font-size:11px;color:var(--text3)">* Basado en media de gastos reales 2026: ${eur(avgExp)}/mes</div>`;
+
+  renderEstTable();
+}
+
+function setEstFilter(f,btn){
+  estFilter=f;
+  document.querySelectorAll('#tab-presupuestos .ftab').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');renderEstTable();
+}
+function renderEstTable(){
+  const q=(document.getElementById('searchEst')?.value||'').toLowerCase();
+  let list=allEst;
+  if(estFilter==='accepted')list=estData.accepted||[];
+  else if(estFilter==='pending')list=estData.pending||[];
+  else if(estFilter==='sent')list=estData.sent||[];
+  else if(estFilter==='rejected')list=estData.rejected||[];
+  if(q)list=list.filter(i=>(i.client||'').toLowerCase().includes(q)||(i.number||'').toLowerCase().includes(q));
+  const el=document.getElementById('estTable');
+  if(!list.length){el.innerHTML='<div class="empty"><div class="ei">📋</div><div class="et">No hay presupuestos con este filtro</div></div>';return;}
+  el.innerHTML=`<table><thead><tr><th>Nº Presupuesto</th><th>Cliente</th><th>Fecha</th><th style="text-align:right">Importe</th><th>Estado</th><th>Días</th></tr></thead>
+  <tbody>${list.map(e=>`<tr><td><strong>${e.number}</strong></td><td>${e.client}</td><td>${dt(e.date)}</td><td style="text-align:right;font-weight:600">${eur(e.total)}</td><td>${estBadge(e.stateName||'')}</td><td style="color:${e.daysOld>60?'var(--red)':e.daysOld>30?'var(--amber)':'var(--text2)'}">${e.daysOld}d</td></tr>`).join('')}</tbody>
+  <tfoot><tr style="background:rgba(255,255,255,.02)"><td colspan="3" style="padding:8px 9px;font-weight:600">${list.length} presupuestos</td><td style="text-align:right;padding:8px 9px;font-weight:600;color:var(--green)">${eur(list.reduce((s,e)=>s+e.total,0))}</td><td colspan="2"></td></tr></tfoot></table>`;
+}
+
+// AGE CHART
+function renderAgeChart(list){
+  if(ageChartI)ageChartI.destroy();
+  const b={'<15d':0,'15–30d':0,'30–45d':0,'45–60d':0,'60d+':0};
+  list.forEach(i=>{if(i.daysOverdue<15)b['<15d']++;else if(i.daysOverdue<30)b['15–30d']++;else if(i.daysOverdue<45)b['30–45d']++;else if(i.daysOverdue<60)b['45–60d']++;else b['60d+']++;});
+  ageChartI=new Chart(document.getElementById('ageChart'),{type:'doughnut',data:{labels:Object.keys(b),datasets:[{data:Object.values(b),backgroundColor:['#22c487','#f59e0b','#f97316','#f05252','#991b1b'],borderWidth:2,borderColor:'#13161c'}]},options:{responsive:true,maintainAspectRatio:false,cutout:'60%',plugins:{legend:{position:'right',labels:{color:'#8b92a8',font:{size:10},boxWidth:10,padding:8}},tooltip:{callbacks:{label:ctx=>` ${ctx.label}: ${ctx.raw}`}}}}});
+}
+
+// BANK
+function setBankFilter(f,btn){
+  bankFilter=f;
+  document.querySelectorAll('#tab-banco .ftabs .ftab').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');renderBankSection();
+}
+function renderBankSection(){
+  const p=PERIODS[bankFilter];
+  document.getElementById('bankPeriodLabel').textContent=p.label;
+  const labs=[],ing=[],gas=[],aho=[],rows=[];
   let tI=0,tG=0,tA=0;
-
-  months.forEach(({y,m})=>{
-    const i = BANK[y].ing[m];
-    const g = BANK[y].gas[m];
-    const a = BANK[y].aho[m];
-    if(i===null) return;
-    labels.push(MONTHS[m]+"'"+String(y).slice(2));
-    ing.push(i); gas.push(g); aho.push(a||0);
-    rows.push({label:MONTHS[m]+' '+y,i,g,a:a||0});
-    tI+=i; tG+=g; tA+=(a||0);
+  p.months.forEach(({y,m})=>{
+    const i=BANK[y].ing[m],g=BANK[y].gas[m],a=BANK[y].aho[m]||0;
+    if(i===null)return;
+    labs.push(MONTHS[m]+"'"+String(y).slice(2));
+    ing.push(i);gas.push(g);aho.push(a);
+    rows.push({label:MONTHS[m]+' '+y,i,g,a});
+    tI+=i;tG+=g;tA+=a;
   });
-
-  // Métricas del período
-  const tB = tI - tG;
-  document.getElementById('bankMetrics').innerHTML = `
-    <div class="mc"><div class="ml">Ingresos período</div><div class="mv g">${eur(tI)}</div><div class="ms">${period.label}</div></div>
+  const tB=tI-tG;
+  document.getElementById('bankMetrics').innerHTML=`
+    <div class="mc"><div class="ml">Ingresos período</div><div class="mv g">${eur(tI)}</div><div class="ms">${p.label}</div></div>
     <div class="mc"><div class="ml">Gastos reales</div><div class="mv r">${eur(tG)}</div><div class="ms">Excluido ahorro 10%</div></div>
-    <div class="mc"><div class="ml">Balance período</div><div class="mv ${tB>=0?'g':'r'}">${tB>=0?'+':''}${eur(tB)}</div><div class="ms">Resultado neto</div></div>
-    <div class="mc"><div class="ml">Ahorro 10% generado</div><div class="mv p" style="color:var(--purple)">${eur(tA)}</div><div class="ms">Fondo separado</div></div>
-    <div class="mc"><div class="ml">Media ingresos/mes</div><div class="mv g">${eur(tI/Math.max(labels.length,1))}</div><div class="ms">${labels.length} meses</div></div>
-    <div class="mc"><div class="ml">Media gastos/mes</div><div class="mv r">${eur(tG/Math.max(labels.length,1))}</div><div class="ms">${labels.length} meses</div></div>
-  `;
-
-  // Gráfico
-  if (bankChartInst) bankChartInst.destroy();
-  bankChartInst = new Chart(document.getElementById('bankChart'),{
-    data:{labels,datasets:[
-      {type:'bar',label:'Ingresos',data:ing,backgroundColor:'#22c487'},
-      {type:'bar',label:'Gastos',data:gas,backgroundColor:'#f05252'},
-      {type:'line',label:'Balance',data:ing.map((v,i)=>v-gas[i]),borderColor:'#4d9cf8',backgroundColor:'rgba(77,156,248,0.08)',fill:true,tension:.35,pointRadius:3,pointBackgroundColor:'#4d9cf8',borderWidth:2}
-    ]},
-    options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${new Intl.NumberFormat('es-ES').format(Math.round(ctx.raw))} €`}}},
-      scales:{
-        y:{ticks:{callback:v=>(v/1000).toFixed(0)+'k',color:'#5a6278',font:{size:10}},grid:{color:'rgba(255,255,255,0.05)'},border:{color:'rgba(255,255,255,0.1)'}},
-        x:{ticks:{color:'#5a6278',font:{size:10},maxRotation:45,autoSkip:false},grid:{display:false},border:{color:'rgba(255,255,255,0.1)'}}
-      }}
-  });
-
-  // Tabla
-  const tbody = document.getElementById('bankTbody');
-  const tfoot = document.getElementById('bankTfoot');
-  tbody.innerHTML = rows.map(r=>{
-    const b=r.i-r.g;
-    return `<tr>
-      <td>${r.label}</td>
-      <td style="text-align:right;color:#22c487">${eur(r.i)}</td>
-      <td style="text-align:right;color:#f05252">${eur(r.g)}</td>
-      <td style="text-align:right;color:#a78bfa">${r.a>0?eur(r.a):'—'}</td>
-      <td style="text-align:right;color:${b>=0?'#22c487':'#f05252'};font-weight:600">${b>=0?'+':''}${eur(b)}</td>
-      <td><span class="badge ${b>=0?'badge-ok':'badge-urgent'}">${b>=0?'Positivo':'Déficit'}</span></td>
-    </tr>`;
-  }).join('');
-  tfoot.innerHTML = `<tr style="background:rgba(255,255,255,.03)">
-    <td><strong>Total</strong></td>
-    <td style="text-align:right;color:#22c487;font-weight:600">${eur(tI)}</td>
-    <td style="text-align:right;color:#f05252;font-weight:600">${eur(tG)}</td>
-    <td style="text-align:right;color:#a78bfa;font-weight:600">${eur(tA)}</td>
-    <td style="text-align:right;color:${tB>=0?'#22c487':'#f05252'};font-weight:700">${tB>=0?'+':''}${eur(tB)}</td>
-    <td></td>
-  </tr>`;
+    <div class="mc"><div class="ml">Balance</div><div class="mv ${tB>=0?'g':'r'}">${tB>=0?'+':''}${eur(tB)}</div><div class="ms">Resultado neto</div></div>
+    <div class="mc"><div class="ml">Ahorro 10%</div><div class="mv p">${eur(tA)}</div><div class="ms">Fondo separado</div></div>
+    <div class="mc"><div class="ml">Media ingresos/mes</div><div class="mv g">${eur(tI/Math.max(labs.length,1))}</div></div>
+    <div class="mc"><div class="ml">Media gastos/mes</div><div class="mv r">${eur(tG/Math.max(labs.length,1))}</div></div>`;
+  if(bankChartI)bankChartI.destroy();
+  bankChartI=new Chart(document.getElementById('bankChart'),{data:{labels:labs,datasets:[{type:'bar',label:'Ingresos',data:ing,backgroundColor:'#22c487'},{type:'bar',label:'Gastos',data:gas,backgroundColor:'#f05252'},{type:'line',label:'Balance',data:ing.map((v,i2)=>v-gas[i2]),borderColor:'#4d9cf8',backgroundColor:'rgba(77,156,248,.08)',fill:true,tension:.35,pointRadius:3,pointBackgroundColor:'#4d9cf8',borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${new Intl.NumberFormat('es-ES').format(Math.round(ctx.raw))} €`}}},scales:{y:{ticks:{callback:v=>(v/1000).toFixed(0)+'k',color:'#5a6278',font:{size:10}},grid:{color:'rgba(255,255,255,.05)'},border:{color:'rgba(255,255,255,.1)'}},x:{ticks:{color:'#5a6278',font:{size:10},maxRotation:45,autoSkip:false},grid:{display:false},border:{color:'rgba(255,255,255,.1)'}}}}});
+  document.getElementById('bankTbody').innerHTML=rows.map(r=>{const b=r.i-r.g;return`<tr><td>${r.label}</td><td style="text-align:right;color:#22c487">${eur(r.i)}</td><td style="text-align:right;color:#f05252">${eur(r.g)}</td><td style="text-align:right;color:#a78bfa">${r.a>0?eur(r.a):'—'}</td><td style="text-align:right;color:${b>=0?'#22c487':'#f05252'};font-weight:600">${b>=0?'+':''}${eur(b)}</td><td><span class="badge ${b>=0?'bgo':'bur'}">${b>=0?'Positivo':'Déficit'}</span></td></tr>`;}).join('');
+  document.getElementById('bankTfoot').innerHTML=`<tr style="background:rgba(255,255,255,.03)"><td><strong>Total</strong></td><td style="text-align:right;color:#22c487;font-weight:600">${eur(tI)}</td><td style="text-align:right;color:#f05252;font-weight:600">${eur(tG)}</td><td style="text-align:right;color:#a78bfa;font-weight:600">${eur(tA)}</td><td style="text-align:right;color:${tB>=0?'#22c487':'#f05252'};font-weight:700">${tB>=0?'+':''}${eur(tB)}</td><td></td></tr>`;
 }
 
-// ── ACTIONS ───────────────────────────────────────────────────────
-async function triggerAlertCheck() {
-  const btn = document.getElementById('alertBtn');
-  if(btn){btn.disabled=true;btn.textContent='⏳ Enviando...';}
-  const data = await apiFetch('/api/check-alerts',{method:'POST'});
-  showNotifResult(data?.message||'Alertas enviadas');
-  if(btn){btn.disabled=false;btn.textContent='🔔 Enviar alertas';}
+// BANK UPLOAD
+async function loadBankInfo(){
+  const d=await api('/api/bank/info');
+  const el=document.getElementById('lastUploadInfo');
+  if(!d||!d.uploaded){el.textContent='No hay ningún extracto subido aún.';return;}
+  el.textContent=`✅ Último extracto: ${d.originalname} — subido el ${new Date(d.uploadedAt).toLocaleDateString('es-ES')} (${Math.round(d.size/1024)} KB)`;
 }
-async function sendSummaryNow() {
-  const data = await apiFetch('/api/send-summary',{method:'POST'});
-  showNotifResult(data?.message||'Resumen enviado');
+async function handleBankUpload(file){
+  if(!file)return;
+  const prog=document.getElementById('uploadProgress');
+  const msg=document.getElementById('uploadMsg');
+  const fill=document.getElementById('progFill');
+  prog.style.display='block';msg.textContent='Subiendo '+file.name+'...';fill.style.width='30%';
+  const form=new FormData();form.append('file',file);
+  try{
+    const r=await fetch(`${API}/api/bank/upload`,{method:'POST',headers:{'Authorization':`Bearer ${tok}`},body:form});
+    const d=await r.json();
+    fill.style.width='100%';
+    msg.textContent=d.message||'Subido correctamente';
+    setTimeout(()=>{prog.style.display='none';loadBankInfo();},2000);
+  }catch(e){msg.textContent='Error: '+e.message;fill.style.background='var(--red)';}
 }
-async function testNotification(type) {
-  const data = await apiFetch('/api/test-notification',{method:'POST',body:JSON.stringify({type})});
-  showNotifResult(data?.message||'Notificación enviada');
-}
-function showNotifResult(msg) {
-  const el = document.getElementById('notifResult');
-  if(!el)return;
-  el.textContent='✅ '+msg; el.style.display='block';
-  setTimeout(()=>el.style.display='none',4000);
+function handleBankDrop(e){
+  e.preventDefault();
+  document.getElementById('bankUploadZone').classList.remove('drag');
+  const file=e.dataTransfer.files[0];
+  if(file&&(file.name.endsWith('.xlsx')||file.name.endsWith('.xls')))handleBankUpload(file);
 }
 
-// ── TABS ──────────────────────────────────────────────────────────
-function showTab(id,btn) {
+// ACTIONS
+async function triggerAlertCheck(){
+  const b=document.getElementById('alertBtn');
+  if(b){b.disabled=true;b.textContent='⏳ Enviando...';}
+  const d=await api('/api/check-alerts',{method:'POST'});
+  showRes(d?.message||'Alertas revisadas');
+  if(b){b.disabled=false;b.textContent='🔔 Enviar alertas';}
+}
+async function sendSummary(){const d=await api('/api/send-summary',{method:'POST'});showRes(d?.message||'Enviado');}
+async function testNotif(t){const d=await api('/api/test-notification',{method:'POST',body:JSON.stringify({type:t})});showRes(d?.message||'Enviado');}
+function showRes(m){const el=document.getElementById('notifRes');el.textContent='✅ '+m;el.style.display='block';setTimeout(()=>el.style.display='none',4000);}
+
+// TABS
+function showTab(id,btn){
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('tab-'+id).classList.add('active');
   if(btn)btn.classList.add('active');
-  if(id==='banco')renderBankSection();
+  if(id==='banco'){renderBankSection();loadBankInfo();}
+  if(id==='presupuestos'&&allEst.length===0)loadEstimates();
 }
 
-// ── INIT ──────────────────────────────────────────────────────────
-if (authToken) { showApp(); }
-else { document.getElementById('loginScreen').style.display='flex'; }
-setInterval(()=>{ if(authToken)loadAllData(); }, 15*60*1000);
+// INIT
+if(tok){showApp();}
+else{document.getElementById('loginScreen').style.display='flex';}
+setInterval(()=>{if(tok)loadAll();},15*60*1000);
 </script>
 </body>
 </html>
