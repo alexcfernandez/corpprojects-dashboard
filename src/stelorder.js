@@ -29,7 +29,9 @@ async function fetchAllPages(endpoint, extraParams = '') {
   while (true) {
     try {
       const sep = endpoint.includes('?') ? '&' : '?';
-      const url = `${endpoint}${sep}limit=${limit}&start=${start}${extraParams}`;
+      // No añadir start=0 en la primera llamada — StelOrder no lo acepta
+      const startParam = start > 0 ? `&start=${start}` : '';
+      const url = `${endpoint}${sep}limit=${limit}${startParam}${extraParams}`;
       const res = await client.get(url);
       const page = Array.isArray(res.data) ? res.data : [];
       all.push(...page);
