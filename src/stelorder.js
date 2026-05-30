@@ -1,4 +1,4 @@
-// src/stelorder.js — v10 fetch recientes por ID desc + estados workEstimate
+// src/stelorder.js — v11 IDs de estados confirmados + facturas recientes por receipts
 const axios = require('axios');
 
 const BASE_URL = 'https://app.stelorder.com/app';
@@ -33,32 +33,51 @@ async function fetchEndpoint(endpoint) {
   }
 }
 
-// ─── Traer facturas: antiguas (por defecto) + recientes (por ID alto) ──────
-// Estrategia: hacer DOS llamadas en paralelo
-//   1. Las 500 más antiguas (el comportamiento por defecto)
-//   2. Las más recientes filtrando por utc-last-modification-date o ID alto
-// Luego combinar y deduplicar por ID
+// ─── Facturas: combinar batch antiguo + batch por receipts recientes ──────────
+// Los receipts SÍ tienen 'original-element-id' de facturas recientes
+// que no aparecen en el batch de 500 facturas.
+// Estrategia: traer IDs de facturas recientes desde los receipts y
+// buscarlas individualmente si no están en el batch.
 async function fetchAllInvoices() {
   try {
-    // Llamada 1: defecto (probablemente las más antiguas)
-    const [defaultBatch, receipts] = await Promise.all([
-      client.get('/ordinaryInvoices?limit=500').then(r => Array.isArray(r.data) ? r.data : []),
-      // Llamada 2: intentar filtrar facturas recientes por fecha de modificación
-      client.get('/ordinaryInvoices?limit=500&utc-last-modification-date>=2024-01-01T00:00:00+0000')
-        .then(r => Array.isArray(r.data) ? r.data : [])
-        .catch(() => [])
-    ]);
+    // 1. Batch normal (500 más antiguas)
+    const batchRes = await client.get('/ordinaryInvoices?limit=500');
+    const batch    = Array.isArray(batchRes.data) ? batchRes.data : [];
 
-    // Combinar y deduplicar
+    // 2. Receipts tienen las facturas más recientes referenciadas
+    const receiptsRes = await client.get('/ordinaryInvoiceReceipts?limit=500');
+    const receipts    = Array.isArray(receiptsRes.data) ? receiptsRes.data : [];
+
+    // IDs que ya tenemos
+    const knownIds = new Set(batch.map(i => String(i.id)));
+
+    // IDs de facturas referenciadas en receipts que NO están en el batch
+    const missingIds = [...new Set(
+      receipts
+        .map(r => String(r['original-element-id'] || ''))
+        .filter(id => id && !knownIds.has(id))
+    )];
+
+    console.log(`[StelOrder] Batch: ${batch.length} | Receipts refs faltantes: ${missingIds.length}`);
+
+    // 3. Traer las facturas faltantes en paralelo (máx 50 para no sobrepasar rate limit)
+    const missing = [];
+    const toFetch = missingIds.slice(0, 50);
+    if (toFetch.length > 0) {
+      const results = await Promise.allSettled(
+        toFetch.map(id => client.get(`/ordinaryInvoices/${id}`).then(r => r.data))
+      );
+      results.forEach(r => { if (r.status === 'fulfilled' && r.value?.id) missing.push(r.value); });
+      console.log(`[StelOrder] Facturas adicionales traídas: ${missing.length}`);
+    }
+
+    // Combinar todo
     const allById = new Map();
-    [...defaultBatch, ...receipts].forEach(inv => allById.set(String(inv.id), inv));
+    [...batch, ...missing].forEach(inv => allById.set(String(inv.id), inv));
     const all = Array.from(allById.values());
 
-    // Log rango de fechas para diagnóstico
-    const dates = all.map(i => i.date || i['issue-date'] || '').filter(Boolean).sort();
-    if (dates.length > 0) {
-      console.log(`[StelOrder] Facturas: ${all.length} | Rango: ${dates[0].slice(0,10)} → ${dates[dates.length-1].slice(0,10)}`);
-    }
+    const dates = all.map(i => (i.date || '').slice(0,10)).filter(Boolean).sort();
+    console.log(`[StelOrder] Total facturas: ${all.length} | Rango: ${dates[0]} → ${dates[dates.length-1]}`);
 
     return all;
   } catch (err) {
@@ -104,24 +123,33 @@ function buildPaidMap(receipts) {
 }
 
 async function getInvoices()       { return fetchAllInvoices(); }
-async function getAllReceipts()     { const d = await fetchEndpoint('/ordinaryInvoiceReceipts'); console.log(`[StelOrder] Recibos: ${d.length}`); return d; }
-async function getClients()        { const d = await fetchEndpoint('/clients'); console.log(`[StelOrder] Clientes: ${d.length}`); return d; }
+async function getClients()        { const d = await fetchEndpoint('/clients');                  console.log(`[StelOrder] Clientes: ${d.length}`);      return d; }
 async function getDocumentStates() { return fetchEndpoint('/documentStates'); }
 async function getBankAccounts()   { return fetchEndpoint('/bankAccounts'); }
+
+async function getAllReceipts() {
+  const d = await fetchEndpoint('/ordinaryInvoiceReceipts');
+  console.log(`[StelOrder] Recibos: ${d.length}`);
+  return d;
+}
 
 async function getWorkEstimates() {
   const d = await fetchEndpoint('/workEstimates');
   console.log(`[StelOrder] WorkEstimates: ${d.length}`);
-  if (d.length > 0) {
-    // Log estructura completa del primero para ver campos de estado
-    const first = d[0];
-    const stateFields = Object.entries(first)
-      .filter(([k]) => k.includes('state') || k.includes('status') || k.includes('document'))
-      .map(([k,v]) => `${k}=${JSON.stringify(v)}`);
-    console.log('[StelOrder] WorkEstimate campos estado:', stateFields.join(' | '));
-  }
   return d;
 }
+
+// ─── ESTADOS WORKESTIMATE (confirmados de los logs) ───────────────
+// 1120641 = Pendiente
+// 1120642 = Rechazado
+// 1120656 = Aceptado
+// 1120650 = Cerrado
+const WORK_ESTIMATE_STATES = {
+  1120641: 'pending',
+  1120642: 'rejected',
+  1120656: 'accepted',
+  1120650: 'closed'
+};
 
 // ─── Facturas pendientes ──────────────────────────────────────────
 async function getPendingInvoices() {
@@ -160,91 +188,59 @@ async function getPendingInvoices() {
   }
 }
 
-// ─── Presupuestos SAT ─────────────────────────────────────────────
+// ─── Presupuestos SAT con estados confirmados ─────────────────────
 async function getEstimatesSummary() {
   try {
-    const [estimates, states, clients] = await Promise.all([
-      getWorkEstimates(), getDocumentStates(), getClients()
-    ]);
+    const [estimates, clients] = await Promise.all([getWorkEstimates(), getClients()]);
     const clientMap = buildClientMap(clients);
     const now = new Date();
     const avgMonthlyExpenses = 36000;
 
-    // Log completo de estados disponibles
-    console.log('[StelOrder] DocumentStates completo:', JSON.stringify(states));
-
-    const result = { total: estimates.length, accepted:[], pending:[], sent:[], rejected:[], expired:[], all:[] };
-
-    // Crear mapa de estados por ID para clasificar correctamente
-    const stateById = {};
-    states.forEach(s => {
-      stateById[String(s.id)] = (s.name || s.description || s['state-name'] || '').toLowerCase();
-    });
+    const result = { total: estimates.length, accepted:[], pending:[], closed:[], rejected:[], all:[] };
 
     estimates.forEach(est => {
-      const stateId   = est['document-state-id'] ?? est['state-id'] ?? est.stateId ?? null;
-      // Buscar nombre del estado primero en el mapa, luego en el propio objeto
-      const stateFromMap = stateId ? (stateById[String(stateId)] || '') : '';
-      const stateRaw  = est['document-state-name'] ?? est['state-name'] ?? est.state ?? stateFromMap ?? '';
-      const stateName = String(stateRaw || stateFromMap).toLowerCase();
+      const stateId   = Number(est['document-state-id'] ?? est['state-id'] ?? 0);
+      const stateKey  = WORK_ESTIMATE_STATES[stateId] || 'pending';
+      const stateLabel = { pending:'Pendiente', accepted:'Aceptado', rejected:'Rechazado', closed:'Cerrado' }[stateKey] || 'Pendiente';
       const total     = parseFloat(est['total-amount'] ?? est.total ?? 0);
       const rawDate   = est.date ?? est['issue-date'] ?? est['created-at'];
       const estDate   = rawDate ? new Date(rawDate) : now;
       const daysOld   = Math.floor((now - estDate) / 86400000);
 
       const item = {
-        id:       String(est.id),
-        number:   est.number ?? `#${est.id}`,
-        client:   resolveClientName(est, clientMap),
-        date:     rawDate,
-        dueDate:  est['due-date'] ?? est['expiry-date'],
-        total, stateName, stateId: String(stateId), stateRaw: stateFromMap || stateRaw, daysOld
+        id:        String(est.id),
+        number:    est.number ?? `#${est.id}`,
+        client:    resolveClientName(est, clientMap),
+        date:      rawDate,
+        dueDate:   est['due-date'] ?? est['expiry-date'],
+        total, stateKey, stateLabel, stateId, daysOld
       };
 
       result.all.push(item);
-
-      // Clasificar por estado — ampliado con los IDs más comunes de StelOrder
-      const sid = Number(stateId);
-      if (stateName.includes('acept') || stateName.includes('accept') ||
-          stateName.includes('confirm') || stateName.includes('aprob') ||
-          stateName === 'approved' || sid === 2 || sid === 3) {
-        result.accepted.push(item);
-      } else if (stateName.includes('rechaz') || stateName.includes('reject') ||
-                 stateName.includes('cancel') || sid === 5 || sid === 6) {
-        result.rejected.push(item);
-      } else if (stateName.includes('enviad') || stateName.includes('sent') ||
-                 stateName.includes('present') || sid === 4) {
-        result.sent.push(item);
-      } else if (stateName.includes('caduc') || stateName.includes('expir')) {
-        result.expired.push(item);
-      } else {
-        result.pending.push(item);
-      }
+      if (stateKey === 'accepted') result.accepted.push(item);
+      else if (stateKey === 'rejected') result.rejected.push(item);
+      else if (stateKey === 'closed') result.closed.push(item);
+      else result.pending.push(item);
     });
 
-    // Siempre loguear distribución real
-    console.log(`[StelOrder] Presupuestos — aceptados:${result.accepted.length} pendientes:${result.pending.length} enviados:${result.sent.length} rechazados:${result.rejected.length}`);
-    if (result.all.length > 0) {
-      const uniqueStates = [...new Set(result.all.map(e => `id:${e.stateId}="${e.stateRaw}"`))];
-      console.log('[StelOrder] Estados únicos presupuestos:', uniqueStates.join(' | '));
-    }
-
-    // Ordenar recientes primero en todos los grupos
+    // Recientes primero en todos los grupos
     Object.keys(result).forEach(k => {
       if (Array.isArray(result[k])) result[k].sort((a,b) => new Date(b.date||0) - new Date(a.date||0));
     });
 
+    console.log(`[StelOrder] Presupuestos — aceptados:${result.accepted.length} pendientes:${result.pending.length} cerrados:${result.closed.length} rechazados:${result.rejected.length}`);
+
     const totalAccepted = result.accepted.reduce((s,e) => s + e.total, 0);
     const totalPending  = result.pending.reduce((s,e) => s + e.total, 0);
-    const totalSent     = result.sent.reduce((s,e) => s + e.total, 0);
+    const totalClosed   = result.closed.reduce((s,e) => s + e.total, 0);
     const totalAll      = result.all.reduce((s,e) => s + e.total, 0);
     const monthsCovered = totalAccepted > 0 ? (totalAccepted / avgMonthlyExpenses).toFixed(1) : '0';
 
-    return { ...result, totalAccepted, totalPending, totalSent, totalAll, monthsCovered };
+    return { ...result, totalAccepted, totalPending, totalClosed, totalAll, monthsCovered };
   } catch (err) {
     console.error('[StelOrder] Error getEstimatesSummary:', err.message);
-    return { total:0, accepted:[], pending:[], sent:[], rejected:[], expired:[], all:[],
-             totalAccepted:0, totalPending:0, totalSent:0, totalAll:0, monthsCovered:'0' };
+    return { total:0, accepted:[], pending:[], closed:[], rejected:[], all:[],
+             totalAccepted:0, totalPending:0, totalClosed:0, totalAll:0, monthsCovered:'0' };
   }
 }
 
