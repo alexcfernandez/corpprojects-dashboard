@@ -1308,7 +1308,9 @@ function goToday(){const n=new Date();calYear=n.getFullYear();calMonth=n.getMont
 let modalWorker=null,modalDate=null;
 function openEntryModal(workerId,workerName,date){
   modalWorker=workerId;modalDate=date;
+  selectedEstado=null; // reset
   const entry=calData[workerId+'_'+date];
+  if(entry) selectedEstado=entry.estado; // pre-seleccionar estado existente
   
   // Crear modal simple
   const existing=document.getElementById('entryModal');
@@ -1364,6 +1366,8 @@ function openEntryModal(workerId,workerName,date){
   
   document.body.appendChild(modal);
   modal.addEventListener('click', e=>{ if(e.target===modal)closeModal(); });
+  // Auto-seleccionar estado si existe entrada previa
+  if(selectedEstado) selectEstado(selectedEstado);
 }
 
 let selectedEstado=null;
@@ -1380,7 +1384,19 @@ function selectEstado(k){
 }
 
 async function saveEntry(){
-  if(!selectedEstado){alert('Selecciona un estado');return;}
+  // Si no se ha clicado ningún botón, tomar el que esté visualmente seleccionado
+  if(!selectedEstado){
+    const selected=document.querySelector('[id^="est-"]');
+    // Buscar el botón que tenga el color de fondo de su estado
+    const allBtns=document.querySelectorAll('[id^="est-"]');
+    for(const btn of allBtns){
+      if(btn.style.background && !btn.style.background.includes('var(--bg3)')){
+        selectedEstado=btn.id.replace('est-','');
+        break;
+      }
+    }
+  }
+  if(!selectedEstado){alert('Selecciona un estado primero');return;}
   const entry={
     workerId: modalWorker,
     workerName: WORKERS_P.find(w=>w.id===modalWorker)?.name||'',
