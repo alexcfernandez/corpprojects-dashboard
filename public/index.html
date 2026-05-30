@@ -1365,8 +1365,15 @@ function openEntryModal(workerId,workerName,date){
     </div>`;
   
   document.body.appendChild(modal);
+  // Poblar datalist con clientes de StelOrder
+  const dl=document.getElementById('clientSugg');
+  if(dl){
+    const names=new Set();
+    if(aP&&aP.length) aP.forEach(i=>{ if(i.client&&i.client!=='Sin nombre')names.add(i.client); });
+    if(eD&&eD.all) eD.all.forEach(e=>{ if(e.client&&e.client!=='Sin nombre')names.add(e.client); });
+    dl.innerHTML=[...names].sort().map(n=>`<option value="${n}">`).join('');
+  }
   modal.addEventListener('click', e=>{ if(e.target===modal)closeModal(); });
-  // Auto-seleccionar estado si existe entrada previa
   if(selectedEstado) selectEstado(selectedEstado);
 }
 
