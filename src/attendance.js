@@ -1,3 +1,4 @@
+
 // src/attendance.js — Gestión de presencia y partes de horas
 // Usa MongoDB Atlas para persistencia permanente
 
