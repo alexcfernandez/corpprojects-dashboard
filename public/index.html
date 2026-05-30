@@ -1343,7 +1343,7 @@ function openEntryModal(workerId,workerName,date){
       <div id="obraFields" style="display:${entry?.estado==='obra'?'block':'none'}">
         <div style="margin-bottom:10px">
           <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">Cliente / Obra</div>
-          <input type="text" id="mClientName" value="${entry?.clientName||''}" placeholder="Ej: Habitat Migdia - tejado" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px">
+          <input type="text" id="mClientName" value="${entry?.clientName||''}" placeholder="Buscar cliente..." list="clientSugg" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px"><datalist id="clientSugg">${getClientSuggestions()}</datalist>
         </div>
       </div>
       
@@ -1406,7 +1406,11 @@ async function saveEntry(){
     horas: parseFloat(document.getElementById('mHoras')?.value||8),
     notas: document.getElementById('mNotas')?.value||''
   };
-  await af('/api/attendance',{method:'POST',body:JSON.stringify(entry)});
+  const result = await af('/api/attendance',{method:'POST',body:JSON.stringify(entry)});
+  if(result && result.error){
+    alert('Error al guardar: '+result.error);
+    return;
+  }
   closeModal();
   renderCal();
 }
