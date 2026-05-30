@@ -1,25 +1,39 @@
-// src/attendance.js — con opciones TLS para Node.js 22 + Railway
+// src/attendance.js — MongoDB con fix TLS para Node.js 22 + Railway
 const { MongoClient } = require('mongodb');
 
 let db = null;
-let client = null;
 
 async function getDB() {
   if (db) return db;
-  if (!process.env.MONGODB_URI) {
-    throw new Error('MONGODB_URI no configurada en Railway Variables');
-  }
   
-  client = new MongoClient(process.env.MONGODB_URI, {
+  const uri = process.env.MONGODB_URI;
+  if (!uri) throw new Error('MONGODB_URI no configurada');
+
+  console.log('[MongoDB] Conectando...');
+  
+  const client = new MongoClient(uri, {
     tls: true,
-    serverSelectionTimeoutMS: 10000,
-    connectTimeoutMS: 10000,
+    tlsAllowInvalidCertificates: false,
+    tlsAllowInvalidHostnames: false,
+    serverSelectionTimeoutMS: 15000,
+    connectTimeoutMS: 15000,
+    socketTimeoutMS: 30000,
+    // Fix específico para Node.js 22 con TLS
+    ssl: true,
   });
-  
-  await client.connect();
-  db = client.db('corpprojects');
-  console.log('[MongoDB] ✅ Conectado correctamente');
-  return db;
+
+  try {
+    await client.connect();
+    db = client.db('corpprojects');
+    // Crear índice para búsquedas rápidas
+    await db.collection('attendance').createIndex({ workerId: 1, date: 1 }, { unique: true });
+    console.log('[MongoDB] ✅ Conectado a corpprojects');
+    return db;
+  } catch (err) {
+    console.error('[MongoDB] Error conexión:', err.message);
+    db = null;
+    throw err;
+  }
 }
 
 const WORKERS = [
@@ -75,15 +89,13 @@ async function getMonthlySummary(year, month) {
 
   const byWorker = {};
   WORKERS.forEach(w => {
-    byWorker[w.id] = { ...w, dias: 0, horas: 0, dias_obra: 0, dias_falta: 0, clientes: {}, entries: [] };
+    byWorker[w.id] = { ...w, dias: 0, horas: 0, dias_obra: 0, dias_falta: 0, clientes: {} };
   });
 
   entries.forEach(e => {
-    const w = byWorker[e.workerId];
-    if (!w) return;
+    const w = byWorker[e.workerId]; if (!w) return;
     w.dias++;
     w.horas += parseFloat(e.horas || 8);
-    w.entries.push(e);
     if (e.estado === 'obra') {
       w.dias_obra++;
       const k = e.clientName || 'Sin cliente';
@@ -99,12 +111,16 @@ async function getMonthlySummary(year, month) {
 
 async function getClientExtract(clientName, from, to) {
   const db = await getDB();
-  const entries = await db.collection('attendance').find({
-    clientName: { $regex: clientName, $options: 'i' },
+  const query = {
     estado: 'obra',
-    ...(from || to ? { date: { ...(from && {$gte: from}), ...(to && {$lte: to}) } } : {})
-  }).sort({ date: 1 }).toArray();
-
+    clientName: { $regex: clientName, $options: 'i' },
+  };
+  if (from || to) {
+    query.date = {};
+    if (from) query.date.$gte = from;
+    if (to)   query.date.$lte = to;
+  }
+  const entries = await db.collection('attendance').find(query).sort({ date: 1 }).toArray();
   const byWorker = {};
   entries.forEach(e => {
     if (!byWorker[e.workerId]) byWorker[e.workerId] = { name: e.workerName, dias: 0, horas: 0, dates: [] };
@@ -112,7 +128,6 @@ async function getClientExtract(clientName, from, to) {
     byWorker[e.workerId].horas += parseFloat(e.horas || 8);
     byWorker[e.workerId].dates.push(e.date);
   });
-
   return { clientName, from, to, byWorker, totalDias: entries.length };
 }
 
