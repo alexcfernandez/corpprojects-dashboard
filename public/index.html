@@ -376,7 +376,7 @@ const PERIODS={
 
 function eur(v){return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0)}
 function dt(d){return d?new Date(d).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'}):'—'}
-function lvlBadge(l){return{ok:'<span class="badge bw1">📅 <15d</span>',warning1:'<span class="badge bw1">⚠️ 15d</span>',warning2:'<span class="badge bw2">⚠️⚠️ 30d</span>',urgent:'<span class="badge bur">🔴 45d</span>',critical:'<span class="badge bcr">🚨 60d+</span>'}[l]||l}
+function lvlBadge(l){return{ok:'<span class="badge bgo">✅ <15d</span>',warning1:'<span class="badge bw1">⚠️ 15d</span>',warning2:'<span class="badge bw2">⚠️⚠️ 30d</span>',urgent:'<span class="badge bur">🔴 45d</span>',critical:'<span class="badge bcr">🚨 60d+</span>'}[l]||l}
 function estBadge(s){
   const m=s.toLowerCase();
   if(m.includes('acept')||m.includes('accept'))return'<span class="badge bgo">✅ Aceptado</span>';
@@ -466,7 +466,7 @@ function renderFactsTable(list){
   const el=document.getElementById('factsTable');
   if(!list.length){el.innerHTML='<div class="empty"><div class="ei">✅</div><div class="et">No hay facturas pendientes</div></div>';return;}
   el.innerHTML=`<table><thead><tr><th>Factura</th><th>Cliente</th><th>Fecha</th><th style="text-align:right">Total</th><th style="text-align:right">Pendiente</th><th>Días</th><th>Estado</th></tr></thead><tbody>
-  ${list.map(i=>`<tr><td><strong>${i.number}</strong></td><td>${i.client}</td><td>${dt(i.date)}</td><td style="text-align:right">${eur(i.total)}</td><td style="text-align:right;color:${i.alertLevel==='ok'?'var(--amber)':'var(--red)'};font-weight:600">${eur(i.pending)}</td><td style="color:${i.daysOverdue>=60?'var(--red)':i.daysOverdue>=30?'var(--amber)':'var(--text2)'}">${i.daysOverdue}d</td><td>${lvlBadge(i.alertLevel)}</td></tr>`).join('')}
+  ${list.map(i=>`<tr><td><strong>${i.number}</strong></td><td>${i.client}</td><td>${dt(i.date)}</td><td style="text-align:right">${eur(i.total)}</td><td style="text-align:right;color:${i.alertLevel==='ok'?'var(--green)':'var(--red)'};font-weight:600">${eur(i.pending)}</td><td style="color:${i.daysOverdue>=60?'var(--red)':i.daysOverdue>=30?'var(--amber)':'var(--text2)'}">${i.daysOverdue}d</td><td>${lvlBadge(i.alertLevel)}</td></tr>`).join('')}
   </tbody></table>`;
 }
 
@@ -500,7 +500,7 @@ function renderPendTable(){
   const el=document.getElementById('pendTable');
   if(!list.length){el.innerHTML='<div class="empty"><div class="ei">🔍</div><div class="et">Sin resultados</div></div>';return;}
   el.innerHTML=`<table><thead><tr><th>Factura</th><th>Cliente</th><th>Emitida</th><th style="text-align:right">Total</th><th style="text-align:right">Pendiente</th><th>Días</th><th>Nivel</th></tr></thead>
-  <tbody>${list.map(i=>`<tr style="${i.alertLevel==='critical'?'background:rgba(240,82,82,.04)':''}"><td><strong>${i.number}</strong></td><td>${i.client}</td><td>${dt(i.date)}</td><td style="text-align:right">${eur(i.total)}</td><td style="text-align:right;color:${i.alertLevel==='ok'?'var(--amber)':'var(--red)'};font-weight:600">${eur(i.pending)}</td><td style="font-weight:600;color:${i.daysOverdue>=60?'var(--red)':i.daysOverdue>=45?'#f97316':i.daysOverdue>=30?'var(--amber)':'var(--text2)'}">${i.daysOverdue}d</td><td>${lvlBadge(i.alertLevel)}</td></tr>`).join('')}</tbody>
+  <tbody>${list.map(i=>`<tr style="${i.alertLevel==='critical'?'background:rgba(240,82,82,.04)':''}"><td><strong>${i.number}</strong></td><td>${i.client}</td><td>${dt(i.date)}</td><td style="text-align:right">${eur(i.total)}</td><td style="text-align:right;color:${i.alertLevel==='ok'?'var(--green)':'var(--red)'};font-weight:600">${eur(i.pending)}</td><td style="font-weight:600;color:${i.daysOverdue>=60?'var(--red)':i.daysOverdue>=45?'#f97316':i.daysOverdue>=30?'var(--amber)':'var(--text2)'}">${i.daysOverdue}d</td><td>${lvlBadge(i.alertLevel)}</td></tr>`).join('')}</tbody>
   <tfoot><tr style="background:rgba(255,255,255,.02)"><td colspan="4" style="padding:8px 9px;font-weight:600">${list.length} facturas</td><td style="text-align:right;padding:8px 9px;color:var(--red);font-weight:600">${eur(list.reduce((s,i)=>s+i.pending,0))}</td><td colspan="2"></td></tr></tfoot></table>${total>(pendPage+1)*PAGE_SIZE?`<button class="btn bgh" style="width:100%;margin-top:10px" onclick="pendPage++;renderPendTable()">Ver más (${total-(pendPage+1)*PAGE_SIZE} restantes)</button>`:''}` ;
 }
 
