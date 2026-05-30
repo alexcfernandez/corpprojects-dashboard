@@ -13,21 +13,6 @@
   --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);
   --text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;
   --green:#22c487;--green-bg:rgba(34,196,135,0.1);
-  --red:#f05252;--red-bg:rgba(240,82,82,0.1);<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Corp Projects — Dashboard</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;--bg4:#212636;
-  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);
-  --text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;
-  --green:#22c487;--green-bg:rgba(34,196,135,0.1);
   --red:#f05252;--red-bg:rgba(240,82,82,0.1);
   --blue:#4d9cf8;--blue-bg:rgba(77,156,248,0.1);
   --amber:#f59e0b;--amber-bg:rgba(245,158,11,0.1);
@@ -35,6 +20,7 @@
   --r:12px;--rs:8px;
 }
 body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-size:14px;line-height:1.6;min-height:100vh}
+/* LOGIN */
 #loginScreen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
 .login-box{background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:40px;width:100%;max-width:360px;text-align:center}
 .login-logo{width:52px;height:52px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:12px;display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:18px;color:#fff;margin:0 auto 20px}
@@ -45,6 +31,7 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-
 .login-btn{width:100%;background:var(--blue);border:none;border-radius:var(--rs);padding:12px;color:#fff;font-family:'Inter',sans-serif;font-size:14px;font-weight:600;cursor:pointer}
 .login-btn:disabled{opacity:.5}
 .login-error{color:var(--red);font-size:12px;margin-top:8px;display:none}
+/* APP */
 #app{display:none}
 .header{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 28px;display:flex;align-items:center;justify-content:space-between;height:60px;position:sticky;top:0;z-index:100}
 .logo{display:flex;align-items:center;gap:10px}
@@ -58,13 +45,16 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 .logout-btn{background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;font-family:'Inter',sans-serif;padding:4px 8px;border-radius:6px}
 .logout-btn:hover{color:var(--red)}
+/* NAV */
 .nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 28px;display:flex;overflow-x:auto;scrollbar-width:none}
 .nav::-webkit-scrollbar{display:none}
 .nav-btn{background:none;border:none;color:var(--text3);padding:12px 16px;font-size:12px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;display:flex;align-items:center;gap:5px;font-family:'Inter',sans-serif;white-space:nowrap}
 .nav-btn:hover{color:var(--text)}.nav-btn.active{color:var(--blue);border-bottom-color:var(--blue)}
+/* MAIN */
 .main{padding:24px 28px;max-width:1400px;margin:0 auto}
 .panel{display:none}.panel.active{display:block}
 @media(max-width:768px){.main{padding:14px}.header,.nav{padding:0 14px}}
+/* METRICS */
 .metrics-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:10px;margin-bottom:20px}
 .mc{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;transition:border-color .2s}
 .mc:hover{border-color:var(--border2)}
@@ -74,103 +64,91 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-
 .ms{font-size:10px;color:var(--text3);margin-top:3px}
 .sk{background:linear-gradient(90deg,var(--bg3) 25%,var(--bg4) 50%,var(--bg3) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:4px;height:24px;width:70%}
 @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+/* CARD */
 .card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:18px 20px;margin-bottom:14px}
 .card-title{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
 .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px}
 @media(max-width:900px){.g2,.g3{grid-template-columns:1fr}}
+/* BADGES */
 .badge{display:inline-block;padding:2px 9px;border-radius:10px;font-size:10px;font-weight:600}
 .bgo{background:var(--green-bg);color:var(--green)}.bw1{background:var(--amber-bg);color:var(--amber)}
 .bw2{background:rgba(249,115,22,.15);color:#f97316}.bur{background:var(--red-bg);color:var(--red)}
 .bcr{background:rgba(153,27,27,.3);color:#fca5a5}.bbl{background:var(--blue-bg);color:var(--blue)}
-.bpu{background:var(--purple-bg);color:var(--purple)}
+/* TABLE */
 table{width:100%;border-collapse:collapse;font-size:12px}
 th{color:var(--text3);text-align:left;padding:7px 9px;border-bottom:1px solid var(--border);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
 td{padding:8px 9px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:rgba(255,255,255,.015)}
+/* ALERT */
 .alert{padding:11px 14px;border-radius:var(--rs);margin-bottom:9px;font-size:12px;display:flex;align-items:flex-start;gap:9px;border-left:3px solid}
 .alert p{margin-top:2px;font-size:11px;opacity:.8}
 .aok{background:var(--green-bg);border-left-color:var(--green);color:var(--green)}
 .ain{background:var(--blue-bg);border-left-color:var(--blue);color:var(--blue)}
 .awa{background:var(--amber-bg);border-left-color:var(--amber);color:#fbbf24}
 .ada{background:var(--red-bg);border-left-color:var(--red);color:var(--red)}
+.apu{background:var(--purple-bg);border-left-color:var(--purple);color:var(--purple)}
+/* BTN */
 .btn{padding:7px 14px;border-radius:var(--rs);font-size:12px;font-weight:600;cursor:pointer;border:none;font-family:'Inter',sans-serif;display:inline-flex;align-items:center;gap:5px;transition:opacity .2s}
 .btn:hover{opacity:.85}.btn:disabled{opacity:.4;cursor:not-allowed}
 .bp{background:var(--blue);color:#fff}.bg2{background:var(--green);color:#fff}
 .bgh{background:var(--bg3);color:var(--text2);border:1px solid var(--border2)}
+/* FILTER TABS */
 .ftabs{display:flex;gap:6px;flex-wrap:wrap}
 .ftab{padding:4px 12px;border-radius:20px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid var(--border2);background:none;color:var(--text3);font-family:'Inter',sans-serif;transition:all .15s}
 .ftab:hover{color:var(--text)}.ftab.on{background:var(--blue);border-color:var(--blue);color:#fff}
+/* INPUTS */
 .srch{background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:6px 12px;color:var(--text);font-family:'Inter',sans-serif;font-size:12px;outline:none;width:200px}
 .srch:focus{border-color:var(--blue)}
 select{background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:var(--rs);padding:5px 10px;font-size:12px;cursor:pointer;font-family:'Inter',sans-serif;outline:none}
 select:focus{border-color:var(--blue)}
+/* EMPTY */
 .empty{text-align:center;padding:36px 20px;color:var(--text3)}
 .empty .ei{font-size:38px;margin-bottom:10px}
 .empty .et{font-size:14px;font-weight:500;color:var(--text2)}
-.upload-zone{border:2px dashed var(--border2);border-radius:var(--r);padding:32px;text-align:center;cursor:pointer;transition:all .2s}
-.upload-zone:hover,.upload-zone.drag{border-color:var(--blue);background:var(--blue-bg)}
-.upload-zone input[type=file]{display:none}
-.prog-track{height:6px;background:var(--bg4);border-radius:3px;overflow:hidden;margin-top:6px}
-.prog-fill{height:6px;border-radius:3px;background:var(--green);transition:width .3s}
-/* Worker cards */
-.worker-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:20px}
-.worker-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:14px 16px}
-.worker-name{font-size:13px;font-weight:600;margin-bottom:4px}
-.worker-total{font-size:18px;font-weight:700;font-family:'Space Grotesk',sans-serif;color:var(--red)}
-.worker-ops{font-size:10px;color:var(--text3);margin-top:2px}
-/* Expense category bars */
-.cat-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-.cat-label{font-size:12px;color:var(--text2);width:140px;flex-shrink:0}
-.cat-track{flex:1;height:8px;background:var(--bg4);border-radius:4px;overflow:hidden}
-.cat-fill{height:8px;border-radius:4px}
-.cat-amount{font-size:12px;font-weight:500;min-width:80px;text-align:right}
-
-.family-pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:10px;background:var(--purple-bg);color:var(--purple);font-weight:500}
-
-/* Banco sub-tabs */
+/* BANCO SUB-TABS */
 .btab{background:none;border:none;color:var(--text3);padding:10px 16px;font-size:12px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;font-family:'Inter',sans-serif;white-space:nowrap;transition:all .2s}
 .btab:hover{color:var(--text)}.btab.active{color:var(--green);border-bottom-color:var(--green)}
 .bpanel{display:none}.bpanel.active{display:block}
-/* Worker cards */
-.worker-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:20px}
-.worker-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:14px 16px}
-.worker-name{font-size:12px;font-weight:600;margin-bottom:4px}
-.worker-total{font-size:18px;font-weight:700;font-family:'Space Grotesk',sans-serif;color:var(--red)}
-.worker-ops{font-size:10px;color:var(--text3);margin-top:2px}
-/* Cat bars */
-.cat-row{display:flex;align-items:center;gap:10px;margin-bottom:9px}
-.cat-label{font-size:11px;color:var(--text2);width:160px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cat-track{flex:1;height:6px;background:var(--bg4);border-radius:3px;overflow:hidden}
-.cat-fill{height:6px;border-radius:3px}
-.cat-amount{font-size:11px;font-weight:500;min-width:72px;text-align:right}
-/* Legend */
+/* WORKER CARDS */
+.wgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px;margin-bottom:20px}
+.wcard{background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:14px 16px}
+.wname{font-size:12px;font-weight:600;margin-bottom:4px}
+.wtotal{font-size:17px;font-weight:700;font-family:'Space Grotesk',sans-serif;color:var(--red)}
+.wsub{font-size:10px;color:var(--text3);margin-top:2px}
+/* CAT BARS */
+.cbar{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.clab{font-size:11px;color:var(--text2);width:165px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctrack{flex:1;height:6px;background:var(--bg4);border-radius:3px;overflow:hidden}
+.cfill{height:6px;border-radius:3px}
+.camt{font-size:11px;font-weight:500;min-width:72px;text-align:right}
+/* LEGEND */
 .legend{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:10px}
 .li{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2)}
 .ld{width:10px;height:10px;border-radius:3px;flex-shrink:0}
-/* Section head */
-.sh{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-.st{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.08em}
-/* Month cells */
-.month-cell{background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:9px 7px;text-align:center;transition:transform .15s;cursor:default}
-.month-cell:hover{transform:translateY(-2px)}
-.month-cell.pos{border-color:rgba(34,196,135,.25)}.month-cell.neg{border-color:rgba(240,82,82,.25)}
-.mc-mn{font-size:9px;color:var(--text3);margin-bottom:3px;text-transform:uppercase}
-.mc-mb{font-size:14px;font-weight:600;font-family:'Space Grotesk',sans-serif}
-.mc-mb.pos{color:var(--green)}.mc-mb.neg{color:var(--red)}
-.mc-ms{font-size:9px;color:var(--text3);margin-top:2px}
-/* Family pill */
-.family-pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:10px;background:var(--purple-bg);color:var(--purple);font-weight:500}
-/* Upload zone */
-.upload-zone{border:2px dashed var(--border2);border-radius:var(--r);padding:32px;text-align:center;cursor:pointer;transition:all .2s}
-.upload-zone:hover,.upload-zone.drag{border-color:var(--blue);background:var(--blue-bg)}
-.upload-zone input[type=file]{display:none}
-.prog-track{height:6px;background:var(--bg4);border-radius:3px;overflow:hidden;margin-top:6px}
-.prog-fill{height:6px;border-radius:3px;background:var(--green);transition:width .3s}
+/* MONTH CELLS */
+.mgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:20px}
+.mcell{background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:9px 7px;text-align:center;transition:transform .15s}
+.mcell:hover{transform:translateY(-2px)}
+.mcell.pos{border-color:rgba(34,196,135,.25)}.mcell.neg{border-color:rgba(240,82,82,.25)}
+.mn{font-size:9px;color:var(--text3);margin-bottom:3px;text-transform:uppercase}
+.mb{font-size:13px;font-weight:600;font-family:'Space Grotesk',sans-serif}
+.mb.pos{color:var(--green)}.mb.neg{color:var(--red)}
+.msb{font-size:9px;color:var(--text3);margin-top:2px}
+/* FAMILY PILL */
+.fpill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:10px;background:var(--purple-bg);color:var(--purple);font-weight:500}
+/* UPLOAD */
+.uzn{border:2px dashed var(--border2);border-radius:var(--r);padding:32px;text-align:center;cursor:pointer;transition:all .2s}
+.uzn:hover,.uzn.drag{border-color:var(--blue);background:var(--blue-bg)}
+.uzn input{display:none}
+.prog{height:6px;background:var(--bg4);border-radius:3px;overflow:hidden;margin-top:6px}
+.progf{height:6px;border-radius:3px;background:var(--green);transition:width .3s}
 </style>
 </head>
 <body>
+
+<!-- LOGIN -->
 <div id="loginScreen">
   <div class="login-box">
     <div class="login-logo">CP</div>
@@ -182,510 +160,430 @@ select:focus{border-color:var(--blue)}
   </div>
 </div>
 
+<!-- APP -->
 <div id="app">
-  <header class="header">
-    <div class="logo">
-      <div class="logo-icon">CP</div>
-      <div>
-        <div class="logo-text">Corp Projects Holding SL</div>
-        <div class="logo-sub">Dashboard en tiempo real</div>
+<header class="header">
+  <div class="logo">
+    <div class="logo-icon">CP</div>
+    <div><div class="logo-text">Corp Projects Holding SL</div><div class="logo-sub">Dashboard en tiempo real</div></div>
+  </div>
+  <div class="header-right">
+    <span style="font-size:11px;color:var(--text3)"><span class="live-dot"></span><span id="lastUpd">Cargando...</span></span>
+    <button class="sync-btn" onclick="loadAll()" id="syncBtn">🔄 Actualizar</button>
+    <button class="logout-btn" onclick="doLogout()">Salir</button>
+  </div>
+</header>
+<nav class="nav">
+  <button class="nav-btn active" onclick="showTab('facturas',this)">📊 Facturación</button>
+  <button class="nav-btn" onclick="showTab('pendientes',this)">🔴 Pendientes cobro</button>
+  <button class="nav-btn" onclick="showTab('familias',this)">👥 Familias</button>
+  <button class="nav-btn" onclick="showTab('presupuestos',this)">📋 Presupuestos</button>
+  <button class="nav-btn" onclick="showTab('banco',this)">🏦 Banco y gastos</button>
+  <button class="nav-btn" onclick="showTab('alertas',this)">🔔 Alertas</button>
+</nav>
+<main class="main">
+
+<!-- FACTURACIÓN -->
+<div id="tab-facturas" class="panel active">
+  <div class="metrics-row">
+    <div class="mc"><div class="ml">Facturas este mes</div><div class="mv b sk" id="m1"> </div><div class="ms">Emitidas mes actual</div></div>
+    <div class="mc"><div class="ml">Facturado este mes</div><div class="mv g sk" id="m2"> </div><div class="ms">Importe bruto</div></div>
+    <div class="mc"><div class="ml">Total pendiente cobro</div><div class="mv r sk" id="m3"> </div><div class="ms">Sin cobrar acumulado</div></div>
+    <div class="mc"><div class="ml">Facturas pendientes</div><div class="mv a sk" id="m4"> </div><div class="ms">Con saldo abierto</div></div>
+    <div class="mc"><div class="ml">En riesgo (30–60d)</div><div class="mv a sk" id="m5"> </div><div class="ms">Seguimiento necesario</div></div>
+    <div class="mc"><div class="ml">Críticas (+60d)</div><div class="mv r sk" id="m6"> </div><div class="ms">Acción urgente</div></div>
+  </div>
+  <div class="g2">
+    <div class="card"><div class="card-title">Pendientes por antigüedad</div><div style="height:200px"><canvas id="ageChart"></canvas></div></div>
+    <div class="card"><div class="card-title">Resumen cobros</div><div id="cobrosRes">Cargando...</div></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Últimas facturas pendientes <span style="font-size:10px;color:var(--text3)" id="factsUpd">—</span></div>
+    <div id="factsTable">Cargando...</div>
+  </div>
+</div>
+
+<!-- PENDIENTES -->
+<div id="tab-pendientes" class="panel">
+  <div class="alert ain" id="pendAlert" style="margin-bottom:16px"><div>ℹ️</div><div>Cargando...</div></div>
+  <div class="card">
+    <div class="card-title">
+      Facturas sin cobrar
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input type="text" class="srch" id="sPend" placeholder="Buscar cliente / nº / familia..." oninput="pp=0;rPend()">
+        <select id="fFamPend" onchange="pp=0;rPend()"><option value="">Todas las familias</option></select>
+        <button class="btn bp" onclick="checkAlerts()" id="alertBtn">🔔 Enviar alertas</button>
       </div>
     </div>
-    <div class="header-right">
-      <span style="font-size:11px;color:var(--text3)"><span class="live-dot"></span><span id="lastUpdatedText">Cargando...</span></span>
-      <button class="sync-btn" onclick="refreshData()" id="syncBtn">🔄 Actualizar</button>
-      <button class="logout-btn" onclick="doLogout()">Salir</button>
+    <div class="ftabs" style="margin-bottom:12px">
+      <button class="ftab on" onclick="setPF('all',this)">Todas</button>
+      <button class="ftab" onclick="setPF('warning1',this)">⚠️ 15d+</button>
+      <button class="ftab" onclick="setPF('warning2',this)">⚠️⚠️ 30d+</button>
+      <button class="ftab" onclick="setPF('urgent',this)">🔴 45d+</button>
+      <button class="ftab" onclick="setPF('critical',this)">🚨 60d+</button>
     </div>
-  </header>
-  <nav class="nav">
-    <button class="nav-btn active" onclick="showTab('facturas',this)">📊 Facturación</button>
-    <button class="nav-btn" onclick="showTab('pendientes',this)">🔴 Pendientes cobro</button>
-    <button class="nav-btn" onclick="showTab('familias',this)">👥 Familias</button>
-    <button class="nav-btn" onclick="showTab('presupuestos',this)">📋 Presupuestos</button>
-    <button class="nav-btn" onclick="showTab('banco',this)">🏦 Banco y gastos</button>
-    <button class="nav-btn" onclick="showTab('alertas',this)">🔔 Alertas</button>
-  </nav>
+    <div id="pendTable">Cargando...</div>
+  </div>
+</div>
 
-  <main class="main">
+<!-- FAMILIAS -->
+<div id="tab-familias" class="panel">
+  <div class="alert ain" style="margin-bottom:16px"><div>ℹ️</div><div><strong>Familias de clientes</strong> — facturación y cobros por categoría asignada en StelOrder.</div></div>
+  <div class="metrics-row">
+    <div class="mc"><div class="ml">Familias activas</div><div class="mv b sk" id="fm1"> </div></div>
+    <div class="mc"><div class="ml">Mayor facturadora</div><div class="mv g sk" id="fm2"> </div></div>
+    <div class="mc"><div class="ml">Mayor pendiente</div><div class="mv r sk" id="fm3"> </div></div>
+  </div>
+  <div class="card"><div class="card-title">Por familia de cliente</div><div id="famTable">Cargando...</div></div>
+  <div class="card" id="famDetail" style="display:none">
+    <div class="card-title" id="famDetailTitle">Detalle</div>
+    <div id="famDetailTable"></div>
+  </div>
+</div>
 
-    <!-- FACTURACIÓN -->
-    <div id="tab-facturas" class="panel active">
-      <div class="metrics-row">
-        <div class="mc"><div class="ml">Facturas este mes</div><div class="mv b sk" id="m1"> </div><div class="ms">Emitidas en el mes actual</div></div>
-        <div class="mc"><div class="ml">Facturado este mes</div><div class="mv g sk" id="m2"> </div><div class="ms">Importe bruto</div></div>
-        <div class="mc"><div class="ml">Total pendiente cobro</div><div class="mv r sk" id="m3"> </div><div class="ms">Sin cobrar acumulado</div></div>
-        <div class="mc"><div class="ml">Facturas pendientes</div><div class="mv a sk" id="m4"> </div><div class="ms">Con saldo abierto</div></div>
-        <div class="mc"><div class="ml">En riesgo (30–60d)</div><div class="mv a sk" id="m5"> </div><div class="ms">Seguimiento necesario</div></div>
-        <div class="mc"><div class="ml">Críticas (+60d)</div><div class="mv r sk" id="m6"> </div><div class="ms">Acción urgente</div></div>
+<!-- PRESUPUESTOS -->
+<div id="tab-presupuestos" class="panel">
+  <div class="metrics-row">
+    <div class="mc"><div class="ml">Total presupuestos</div><div class="mv b sk" id="e1"> </div></div>
+    <div class="mc"><div class="ml">Aceptados</div><div class="mv g sk" id="e2"> </div></div>
+    <div class="mc"><div class="ml">Importe aceptado</div><div class="mv g sk" id="e3"> </div></div>
+    <div class="mc"><div class="ml">Pendientes respuesta</div><div class="mv a sk" id="e4"> </div></div>
+    <div class="mc"><div class="ml">Importe pendiente</div><div class="mv a sk" id="e5"> </div></div>
+    <div class="mc"><div class="ml">Meses cubiertos</div><div class="mv p sk" id="e6"> </div></div>
+  </div>
+  <div class="alert ain" id="estAlert" style="margin-bottom:16px"><div>📋</div><div>Cargando...</div></div>
+  <div class="card">
+    <div class="card-title">
+      Presupuestos SAT
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input type="text" class="srch" id="sEst" placeholder="Buscar cliente / nº..." oninput="ep=0;rEst()">
+        <select id="fFamEst" onchange="ep=0;rEst()"><option value="">Todas las familias</option></select>
       </div>
-      <div class="g2">
-        <div class="card">
-          <div class="card-title">Pendientes por antigüedad</div>
-          <div style="height:200px"><canvas id="ageChart" role="img" aria-label="Antigüedad">Gráfico.</canvas></div>
-        </div>
-        <div class="card">
-          <div class="card-title">Resumen cobros</div>
-          <div id="cobrosResumen">Cargando...</div>
-        </div>
+    </div>
+    <div class="ftabs" style="margin-bottom:12px">
+      <button class="ftab on" onclick="setEF('all',this)">Todos</button>
+      <button class="ftab" onclick="setEF('accepted',this)">✅ Aceptados</button>
+      <button class="ftab" onclick="setEF('pending',this)">⏳ Pendientes</button>
+      <button class="ftab" onclick="setEF('closed',this)">🔒 Cerrados</button>
+      <button class="ftab" onclick="setEF('rejected',this)">❌ Rechazados</button>
+    </div>
+    <div id="estTable">Cargando...</div>
+  </div>
+</div>
+
+<!-- BANCO Y GASTOS -->
+<div id="tab-banco" class="panel">
+  <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:20px;overflow-x:auto">
+    <button class="btab active" onclick="showBTab('resumen',this)">📊 Resumen</button>
+    <button class="btab" onclick="showBTab('mensual',this)">📅 Mensual</button>
+    <button class="btab" onclick="showBTab('categorias',this)">🗂️ Categorías</button>
+    <button class="btab" onclick="showBTab('personal',this)">👥 Personal</button>
+    <button class="btab" onclick="showBTab('prevision',this)">📈 Previsión</button>
+    <button class="btab" onclick="showBTab('ahorro',this)">💜 Fondo ahorro</button>
+    <button class="btab" onclick="showBTab('subir',this)">📤 Actualizar datos</button>
+  </div>
+
+  <!-- RESUMEN -->
+  <div id="btab-resumen" class="bpanel active">
+    <div class="alert apu" style="margin-bottom:16px"><div>💜</div><div><strong>Gastos reales corregidos</strong> — traspasos "Com. 10%" excluidos (son ahorro propio). Balance real 2026: <strong>+56.706 €</strong> en 5 meses.</div></div>
+    <div class="metrics-row">
+      <div class="mc"><div class="ml">Ingresos 2025</div><div class="mv g">639.776 €</div><div class="ms">12 meses completos</div></div>
+      <div class="mc"><div class="ml">Gastos reales 2025</div><div class="mv r">643.645 €</div><div class="ms">Sin ahorro 10%</div></div>
+      <div class="mc"><div class="ml">Balance 2025</div><div class="mv r">−3.870 €</div><div class="ms">Año muy ajustado</div></div>
+      <div class="mc"><div class="ml">Ingresos 2026</div><div class="mv g">237.169 €</div><div class="ms">Ene–May (5 meses)</div></div>
+      <div class="mc"><div class="ml">Gastos reales 2026</div><div class="mv r">180.463 €</div><div class="ms">Sin ahorro 10%</div></div>
+      <div class="mc"><div class="ml">Balance real 2026</div><div class="mv g">+56.706 €</div><div class="ms">+11.341 €/mes</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Ingresos vs Gastos reales 2025–2026</div>
+      <div class="legend"><div class="li"><div class="ld" style="background:#22c487"></div>Ingresos</div><div class="li"><div class="ld" style="background:#f05252"></div>Gastos reales</div><div class="li"><div class="ld" style="background:#4d9cf8;opacity:.7"></div>Balance</div></div>
+      <div style="height:260px"><canvas id="ovChart"></canvas></div>
+    </div>
+    <div class="g2">
+      <div class="card">
+        <div class="card-title">Medias mensuales comparadas</div>
+        <table>
+          <tr><th>Concepto</th><th style="text-align:right">2025</th><th style="text-align:right">2026</th></tr>
+          <tr><td style="color:var(--text2)">Ingresos/mes</td><td style="text-align:right;color:var(--green)">53.315 €</td><td style="text-align:right;color:var(--green)">47.434 €</td></tr>
+          <tr><td style="color:var(--text2)">Gastos reales/mes</td><td style="text-align:right;color:var(--red)">53.637 €</td><td style="text-align:right;color:var(--red)">36.093 €</td></tr>
+          <tr><td style="color:var(--text2)">Ahorro 10%/mes</td><td style="text-align:right;color:var(--purple)">0 €</td><td style="text-align:right;color:var(--purple)">3.567 €</td></tr>
+          <tr style="background:rgba(77,156,248,.05)"><td><strong>Balance neto/mes</strong></td><td style="text-align:right;color:var(--red)"><strong>−322 €</strong></td><td style="text-align:right;color:var(--green)"><strong>+11.341 €</strong></td></tr>
+        </table>
       </div>
       <div class="card">
-        <div class="card-title">Últimas facturas pendientes <span style="font-size:10px;color:var(--text3)" id="factsLastUpd">—</span></div>
-        <div id="factsTable">Cargando...</div>
+        <div class="card-title">Mínimo mensual a facturar</div>
+        <table>
+          <tr><td style="color:var(--text2)">Seguros, gestión y admin</td><td style="text-align:right">~8.000 €</td></tr>
+          <tr><td style="color:var(--text2)">Nóminas y personal</td><td style="text-align:right">~7.000 €</td></tr>
+          <tr><td style="color:var(--text2)">Proveedores y materiales</td><td style="text-align:right">~13.000 €</td></tr>
+          <tr><td style="color:var(--text2)">TGSS e impuestos</td><td style="text-align:right">~5.000 €</td></tr>
+          <tr style="background:rgba(240,82,82,.05)"><td><strong>Mínimo a facturar</strong></td><td style="text-align:right;color:var(--red)"><strong>~33.000 €</strong></td></tr>
+          <tr style="background:rgba(34,196,135,.05)"><td><strong>Objetivo +30%</strong></td><td style="text-align:right;color:var(--green)"><strong>~43.000 €</strong></td></tr>
+        </table>
       </div>
     </div>
+    <div style="font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Resultado real por mes — 2025</div>
+    <div class="mgrid" id="mCells2025"></div>
+  </div>
 
-    <!-- PENDIENTES -->
-    <div id="tab-pendientes" class="panel">
-      <div class="alert ain" id="pendAlert" style="margin-bottom:16px">
-        <div>ℹ️</div><div>Cargando...</div>
+  <!-- MENSUAL -->
+  <div id="btab-mensual" class="bpanel">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <div class="ftabs">
+        <button class="ftab on" id="yb2025" onclick="toggleY(2025)">2025</button>
+        <button class="ftab on" id="yb2026" onclick="toggleY(2026)">2026</button>
+      </div>
+      <span style="font-size:11px;color:var(--text3)">Gastos reales — sin ahorro 10%</span>
+    </div>
+    <div class="card">
+      <div class="legend"><div class="li"><div class="ld" style="background:#22c487"></div>Ingresos</div><div class="li"><div class="ld" style="background:#f05252"></div>Gastos reales</div></div>
+      <div style="height:280px"><canvas id="moChart"></canvas></div>
+    </div>
+    <div class="card">
+      <table><thead><tr><th>Mes</th><th style="text-align:right">Ingresos</th><th style="text-align:right">Gastos reales</th><th style="text-align:right">Ahorro 10%</th><th style="text-align:right">Balance</th><th style="text-align:right">Margen</th><th>Estado</th></tr></thead>
+      <tbody id="moTb"></tbody><tfoot id="moTf"></tfoot></table>
+    </div>
+  </div>
+
+  <!-- CATEGORÍAS -->
+  <div id="btab-categorias" class="bpanel">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <span style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase">Año:</span>
+      <div class="ftabs">
+        <button class="ftab on" onclick="setCY('all',this)">Todo</button>
+        <button class="ftab" onclick="setCY('2025',this)">2025</button>
+        <button class="ftab" onclick="setCY('2026',this)">2026</button>
+      </div>
+    </div>
+    <div class="g2">
+      <div class="card"><div class="card-title">Gastos por categoría</div><div id="expBars"></div></div>
+      <div class="card"><div class="card-title">Fuentes de ingreso</div><div id="incBars"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Detalle de categorías</div>
+      <table><thead><tr><th>Categoría</th><th style="text-align:right">2025</th><th style="text-align:right">2026 (5m)</th><th style="text-align:right">Total</th><th style="text-align:right">Media/mes</th><th>Tipo</th></tr></thead>
+      <tbody id="catTb"></tbody></table>
+    </div>
+  </div>
+
+  <!-- PERSONAL -->
+  <div id="btab-personal" class="bpanel">
+    <div class="alert ain" style="margin-bottom:16px"><div>👥</div><div><strong>Coste real por trabajador</strong> — del extracto bancario. Incluye adelantos, nóminas y pagos directos. La TGSS se muestra aparte.</div></div>
+    <div class="metrics-row">
+      <div class="mc"><div class="ml">Total personal 2025</div><div class="mv r">62.462 €</div><div class="ms">Pagos directos</div></div>
+      <div class="mc"><div class="ml">Total personal 2026</div><div class="mv r">34.715 €</div><div class="ms">Ene–May 2026</div></div>
+      <div class="mc"><div class="ml">TGSS 2025</div><div class="mv a">64.121 €</div><div class="ms">Seguridad Social</div></div>
+      <div class="mc"><div class="ml">TGSS 2026</div><div class="mv a">16.319 €</div><div class="ms">Ene–May 2026</div></div>
+      <div class="mc"><div class="ml">Coste total personal 2025</div><div class="mv r">126.583 €</div><div class="ms">Directo + SS</div></div>
+      <div class="mc"><div class="ml">Media/mes personal</div><div class="mv r">~9.700 €</div><div class="ms">Personal + SS</div></div>
+    </div>
+    <div class="wgrid" id="wCards"></div>
+    <div class="card">
+      <div class="card-title">Detalle por trabajador</div>
+      <table><thead><tr><th>Trabajador</th><th style="text-align:right">2025</th><th style="text-align:right">2026 (5m)</th><th style="text-align:right">Total</th><th style="text-align:right">Media/mes activo</th><th style="text-align:right">Operaciones</th></tr></thead>
+      <tbody id="wTb"></tbody>
+      <tfoot><tr style="background:rgba(255,255,255,.03)"><td><strong>TGSS (SS empresa)</strong></td><td style="text-align:right;color:var(--amber)">64.121 €</td><td style="text-align:right;color:var(--amber)">16.319 €</td><td style="text-align:right;color:var(--amber)">80.440 €</td><td style="text-align:right;color:var(--amber)">~4.750 €</td><td style="text-align:right;color:var(--text2)">17 pagos</td></tr></tfoot>
+      </table>
+    </div>
+    <div class="g2">
+      <div class="card">
+        <div class="card-title" style="color:var(--green)">✅ Gastos fijos reales/mes</div>
+        <table>
+          <tr><td style="color:var(--text2)">VidaCaixa Seguros</td><td style="text-align:right">~100 €</td></tr>
+          <tr><td style="color:var(--text2)">Masmovil/Xfera</td><td style="text-align:right">~12 €</td></tr>
+          <tr><td style="color:var(--text2)">La Burocracia SL</td><td style="text-align:right">~550 €</td></tr>
+          <tr><td style="color:var(--text2)">PayPymes SL (trimestral/3)</td><td style="text-align:right">~180 €</td></tr>
+          <tr><td style="color:var(--text2)">Gerard Codina (trimestral/3)</td><td style="text-align:right">~30 €</td></tr>
+          <tr><td style="color:var(--text2)">OpenAI + Apple</td><td style="text-align:right">~46 €</td></tr>
+          <tr style="background:rgba(34,196,135,.05)"><td><strong>Total fijos</strong></td><td style="text-align:right;color:var(--green)"><strong>~918 €/mes</strong></td></tr>
+        </table>
       </div>
       <div class="card">
-        <div class="card-title">
-          Facturas sin cobrar
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <input type="text" class="srch" id="searchPend" placeholder="Buscar cliente / nº / familia..." oninput="pendPage=0;renderPendTable()">
-            <select id="familyFilterPend" onchange="pendPage=0;renderPendTable()"><option value="">Todas las familias</option></select>
-            <button class="btn bp" onclick="triggerAlertCheck()" id="alertBtn">🔔 Enviar alertas</button>
-          </div>
-        </div>
-        <div class="ftabs" style="margin-bottom:12px">
-          <button class="ftab on" onclick="setPendFilter('all',this)">Todas</button>
-          <button class="ftab" onclick="setPendFilter('warning1',this)">⚠️ 15d+</button>
-          <button class="ftab" onclick="setPendFilter('warning2',this)">⚠️⚠️ 30d+</button>
-          <button class="ftab" onclick="setPendFilter('urgent',this)">🔴 45d+</button>
-          <button class="ftab" onclick="setPendFilter('critical',this)">🚨 60d+</button>
-        </div>
-        <div id="pendTable">Cargando...</div>
+        <div class="card-title" style="color:var(--amber)">⚠️ Gastos variables por obra</div>
+        <table>
+          <tr><td style="color:var(--text2)">Cinc Gestió (~10% obra)</td><td style="text-align:right">Variable</td></tr>
+          <tr><td style="color:var(--text2)">Proveedores y materiales</td><td style="text-align:right">Variable</td></tr>
+          <tr><td style="color:var(--text2)">Subcontratas</td><td style="text-align:right">Variable</td></tr>
+          <tr><td style="color:var(--text2)">TGSS (varía plantilla)</td><td style="text-align:right">3.300–6.200 €</td></tr>
+          <tr><td style="color:var(--text2)">AEAT (trimestral)</td><td style="text-align:right">~4.500 €/trim.</td></tr>
+          <tr><td style="color:var(--text2)">Seguros (trimestrales)</td><td style="text-align:right">~590 €/trim.</td></tr>
+          <tr style="background:rgba(245,158,11,.05)"><td><strong>Mínimo variable/mes</strong></td><td style="text-align:right;color:var(--amber)"><strong>~5.000 €</strong></td></tr>
+        </table>
       </div>
     </div>
+  </div>
 
-    <!-- FAMILIAS -->
-    <div id="tab-familias" class="panel">
-      <div class="alert ain" style="margin-bottom:16px">
-        <div>ℹ️</div>
-        <div><strong>Resumen por familia de cliente</strong><p>Facturación y cobros pendientes agrupados por la categoría asignada en StelOrder.</p></div>
-      </div>
-      <div class="metrics-row" id="familyMetrics">
-        <div class="mc"><div class="ml">Familias activas</div><div class="mv b sk" id="fm1"> </div></div>
-        <div class="mc"><div class="ml">Mayor facturadora</div><div class="mv g sk" id="fm2"> </div></div>
-        <div class="mc"><div class="ml">Mayor pendiente</div><div class="mv r sk" id="fm3"> </div></div>
-      </div>
+  <!-- PREVISIÓN -->
+  <div id="btab-prevision" class="bpanel">
+    <div class="metrics-row">
+      <div class="mc"><div class="ml">Ingresos proy. 2026</div><div class="mv g">~568.000 €</div><div class="ms">Extrapolando 5 meses</div></div>
+      <div class="mc"><div class="ml">Gastos reales proy.</div><div class="mv r">~433.000 €</div><div class="ms">Sin ahorro 10%</div></div>
+      <div class="mc"><div class="ml">Balance proy. 2026</div><div class="mv g">~+135.000 €</div><div class="ms">Primer año positivo</div></div>
+      <div class="mc"><div class="ml">Fondo ahorro proy.</div><div class="mv p">~42.800 €</div><div class="ms">A fin de año</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Proyección Jun–Dic 2026</div>
+      <div class="legend"><div class="li"><div class="ld" style="background:#22c487"></div>Real</div><div class="li"><div class="ld" style="background:rgba(34,196,135,.4)"></div>Proyectado</div><div class="li"><div class="ld" style="background:#f05252"></div>Real gastos</div><div class="li"><div class="ld" style="background:rgba(240,82,82,.4)"></div>Proy. gastos</div></div>
+      <div style="height:260px"><canvas id="fcChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Cuánto facturar cada mes</div>
+      <table><thead><tr><th>Mes</th><th style="text-align:right">Gastos est.</th><th style="text-align:right">Mínimo</th><th style="text-align:right">Objetivo +30%</th><th>Nota</th></tr></thead>
+      <tbody>
+        <tr><td>Junio 2026</td><td style="text-align:right">33.000 €</td><td style="text-align:right;color:var(--red)">33.000 €</td><td style="text-align:right;color:var(--green)">43.000 €</td><td><span class="badge bw1">Normal</span></td></tr>
+        <tr style="background:rgba(240,82,82,.04)"><td><strong>Julio 2026</strong></td><td style="text-align:right">35.000 €</td><td style="text-align:right;color:var(--red)">35.000 €</td><td style="text-align:right;color:var(--green)">45.500 €</td><td><span class="badge bur">⚠ Seguros trim.</span></td></tr>
+        <tr><td>Agosto 2026</td><td style="text-align:right">25.000 €</td><td style="text-align:right;color:var(--red)">25.000 €</td><td style="text-align:right;color:var(--green)">32.500 €</td><td><span class="badge bgo">Bajo</span></td></tr>
+        <tr><td>Septiembre 2026</td><td style="text-align:right">33.000 €</td><td style="text-align:right;color:var(--red)">33.000 €</td><td style="text-align:right;color:var(--green)">43.000 €</td><td><span class="badge bw1">Normal</span></td></tr>
+        <tr style="background:rgba(240,82,82,.04)"><td><strong>Octubre 2026</strong></td><td style="text-align:right">35.000 €</td><td style="text-align:right;color:var(--red)">35.000 €</td><td style="text-align:right;color:var(--green)">45.500 €</td><td><span class="badge bur">⚠ Seguros trim.</span></td></tr>
+        <tr><td>Nov–Dic 2026</td><td style="text-align:right">33.000 €</td><td style="text-align:right;color:var(--red)">33.000 €</td><td style="text-align:right;color:var(--green)">43.000 €</td><td><span class="badge bw1">Normal</span></td></tr>
+      </tbody></table>
+    </div>
+  </div>
+
+  <!-- FONDO AHORRO -->
+  <div id="btab-ahorro" class="bpanel">
+    <div class="alert apu" style="margin-bottom:16px"><div>💜</div><div><strong>Fondo de ahorro 10%</strong> — Cada factura cobrada traspasa el 10% a otra cuenta. No es gasto, es capital propio acumulado.</div></div>
+    <div class="metrics-row">
+      <div class="mc"><div class="ml">Acumulado mayo 2026</div><div class="mv p">17.834 €</div><div class="ms">En cuenta separada</div></div>
+      <div class="mc"><div class="ml">Media mensual</div><div class="mv p">3.567 €</div><div class="ms">Basado en 5 meses</div></div>
+      <div class="mc"><div class="ml">Proyección fin 2026</div><div class="mv p">~42.800 €</div><div class="ms">Escenario base</div></div>
+      <div class="mc"><div class="ml">Saldo total disponible</div><div class="mv g">~57.000 €</div><div class="ms">Cuenta + fondo ahorro</div></div>
+    </div>
+    <div class="g2">
+      <div class="card"><div class="card-title">Ahorro mensual acumulado</div><div style="height:200px"><canvas id="svChart"></canvas></div></div>
       <div class="card">
-        <div class="card-title">Facturación y cobros por familia</div>
-        <div id="familyTable">Cargando...</div>
-      </div>
-      <div class="card" id="familyDetailCard" style="display:none">
-        <div class="card-title" id="familyDetailTitle">Detalle familia</div>
-        <div id="familyDetailTable"></div>
+        <div class="card-title">Simulador — según facturación</div>
+        <div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:5px"><label style="font-size:11px;color:var(--text2)">Facturación mensual estimada</label><span style="font-size:12px;font-weight:600;color:var(--green)" id="simV">47.000 €</span></div>
+          <input type="range" min="20000" max="120000" step="1000" value="47000" id="simR" oninput="upSim()" style="width:100%">
+        </div>
+        <div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:5px"><label style="font-size:11px;color:var(--text2)">Meses restantes 2026</label><span style="font-size:12px;font-weight:600" id="simM">7</span></div>
+          <input type="range" min="1" max="7" step="1" value="7" id="simMR" oninput="upSim()" style="width:100%">
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:10px">
+          <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)"><span style="font-size:11px;color:var(--text2)">Ahorro 10%/mes</span><span style="font-weight:600;color:var(--purple)" id="s1">4.700 €</span></div>
+          <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)"><span style="font-size:11px;color:var(--text2)">Ahorro Jun–Dic</span><span style="font-weight:600;color:var(--purple)" id="s2">32.900 €</span></div>
+          <div style="display:flex;justify-content:space-between;padding:7px 0"><span style="font-size:11px;color:var(--text2)">Total acumulado</span><span style="font-size:16px;font-weight:700;color:var(--purple);font-family:'Space Grotesk',sans-serif" id="s3">50.734 €</span></div>
+        </div>
       </div>
     </div>
+  </div>
 
-    <!-- PRESUPUESTOS -->
-    <div id="tab-presupuestos" class="panel">
-      <div class="metrics-row">
-        <div class="mc"><div class="ml">Total presupuestos</div><div class="mv b sk" id="e1"> </div></div>
-        <div class="mc"><div class="ml">Aceptados</div><div class="mv g sk" id="e2"> </div></div>
-        <div class="mc"><div class="ml">Importe aceptado</div><div class="mv g sk" id="e3"> </div></div>
-        <div class="mc"><div class="ml">Pendientes respuesta</div><div class="mv a sk" id="e4"> </div></div>
-        <div class="mc"><div class="ml">Importe pendiente</div><div class="mv a sk" id="e5"> </div></div>
-        <div class="mc"><div class="ml">Meses cubiertos</div><div class="mv p sk" id="e6"> </div></div>
+  <!-- SUBIR DATOS -->
+  <div id="btab-subir" class="bpanel">
+    <div class="card">
+      <div class="card-title">📤 Actualizar extracto bancario Santander</div>
+      <div class="uzn" onclick="document.getElementById('bFile').click()"
+           ondragover="event.preventDefault();this.classList.add('drag')"
+           ondragleave="this.classList.remove('drag')"
+           ondrop="bDrop(event)">
+        <input type="file" id="bFile" accept=".xlsx,.xls" onchange="bUpload(this.files[0])">
+        <div style="font-size:40px;margin-bottom:10px">📂</div>
+        <div style="font-size:14px;font-weight:500">Arrastra aquí el Excel del Santander</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:6px">o haz clic · .xlsx · máx 10MB</div>
       </div>
-      <div class="alert ain" id="estCoverAlert" style="margin-bottom:16px">
-        <div>📋</div><div>Cargando análisis...</div>
+      <div id="bUpProg" style="display:none;margin-top:12px">
+        <div style="font-size:12px;color:var(--text2)" id="bUpMsg">Subiendo...</div>
+        <div class="prog"><div class="progf" id="bProgF" style="width:0%"></div></div>
       </div>
-      <div class="card">
-        <div class="card-title">
-          Presupuestos SAT
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <input type="text" class="srch" id="searchEst" placeholder="Buscar cliente / nº..." oninput="estPage=0;renderEstTable()">
-            <select id="familyFilterEst" onchange="estPage=0;renderEstTable()"><option value="">Todas las familias</option></select>
-          </div>
-        </div>
-        <div class="ftabs" style="margin-bottom:12px">
-          <button class="ftab on" onclick="setEstFilter('all',this)">Todos</button>
-          <button class="ftab" onclick="setEstFilter('accepted',this)">✅ Aceptados</button>
-          <button class="ftab" onclick="setEstFilter('pending',this)">⏳ Pendientes</button>
-          <button class="ftab" onclick="setEstFilter('closed',this)">🔒 Cerrados</button>
-          <button class="ftab" onclick="setEstFilter('rejected',this)">❌ Rechazados</button>
-        </div>
-        <div id="estTable">Cargando presupuestos...</div>
+      <div id="bUpInfo" style="margin-top:10px;font-size:11px;color:var(--text3)">—</div>
+    </div>
+    <div class="alert ain"><div>ℹ️</div><div><strong>Próximamente: conexión bancaria automática</strong><p>Fase 3: conexión directa via Nordigen/GoCardless para eliminar la carga manual mensual.</p></div></div>
+  </div>
+</div>
+
+<!-- ALERTAS -->
+<div id="tab-alertas" class="panel">
+  <div class="g2">
+    <div class="card">
+      <div class="card-title">Configuración alertas</div>
+      <table>
+        <tr><td style="color:var(--text2)">✅ Verde</td><td style="text-align:right">Menos de 15 días</td></tr>
+        <tr><td style="color:var(--text2)">⚠️ Primer aviso</td><td style="text-align:right">15 días</td></tr>
+        <tr><td style="color:var(--text2)">⚠️⚠️ Segundo aviso</td><td style="text-align:right">30 días</td></tr>
+        <tr><td style="color:var(--text2)">🔴 Urgente</td><td style="text-align:right">45 días</td></tr>
+        <tr><td style="color:var(--text2)">🚨 Crítico</td><td style="text-align:right">60 días</td></tr>
+        <tr><td style="color:var(--text2)">🔁 Revisión auto</td><td style="text-align:right">Cada 2 horas</td></tr>
+        <tr><td style="color:var(--text2)">🌅 Resumen diario</td><td style="text-align:right">08:30 lun–vie</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-title">Destinatarios</div>
+      <table>
+        <tr><td style="color:var(--text2)">📧 Email</td><td style="text-align:right">corpy@corpprojects.es</td></tr>
+        <tr><td style="color:var(--text2)">💬 WhatsApp</td><td style="text-align:right;color:var(--amber)">⚠️ Pendiente Twilio</td></tr>
+      </table>
+      <div style="margin-top:12px;padding:10px;background:var(--amber-bg);border-radius:8px;border:1px solid rgba(245,158,11,.2);font-size:11px;color:rgba(245,158,11,.9)">
+        Añade TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN y WHATSAPP_TO en Railway Variables.
       </div>
     </div>
-
-    <!-- BANCO Y GASTOS -->
-    <div id="tab-banco" class="panel">
-
-      <!-- Sub-pestañas internas del banco -->
-      <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:20px">
-        <button class="btab active" onclick="showBancoTab('resumen',this)">📊 Resumen</button>
-        <button class="btab" onclick="showBancoTab('mensual',this)">📅 Mensual</button>
-        <button class="btab" onclick="showBancoTab('categorias',this)">🗂️ Categorías</button>
-        <button class="btab" onclick="showBancoTab('personal',this)">👥 Personal</button>
-        <button class="btab" onclick="showBancoTab('prevision',this)">📈 Previsión</button>
-        <button class="btab" onclick="showBancoTab('ahorro',this)">💜 Fondo ahorro</button>
-        <button class="btab" onclick="showBancoTab('upload',this)">📤 Actualizar datos</button>
-      </div>
-
-      <!-- RESUMEN -->
-      <div id="btab-resumen" class="bpanel active">
-        <div class="alert ain" style="margin-bottom:16px">
-          <div>💜</div><div><strong>Gastos reales corregidos</strong> — traspasos "Com. 10%" excluidos (son ahorro propio). Balance real 2026: <strong>+56.706 €</strong> en 5 meses.</div>
-        </div>
-        <div class="metrics-row">
-          <div class="mc"><div class="ml">Ingresos 2025</div><div class="mv g">639.776 €</div><div class="ms">12 meses completos</div></div>
-          <div class="mc"><div class="ml">Gastos reales 2025</div><div class="mv r">643.645 €</div><div class="ms">Sin ahorro 10%</div></div>
-          <div class="mc"><div class="ml">Balance 2025</div><div class="mv r">−3.870 €</div><div class="ms">Año muy ajustado</div></div>
-          <div class="mc"><div class="ml">Ingresos 2026</div><div class="mv g">237.169 €</div><div class="ms">Ene–May (5 meses)</div></div>
-          <div class="mc"><div class="ml">Gastos reales 2026</div><div class="mv r">180.463 €</div><div class="ms">Excluido ahorro 10%</div></div>
-          <div class="mc"><div class="ml">Balance real 2026</div><div class="mv g">+56.706 €</div><div class="ms">+11.341 €/mes</div></div>
-        </div>
-        <div class="card">
-          <div class="card-title">Ingresos vs Gastos reales 2025–2026</div>
-          <div class="legend" id="resLegend">
-            <div class="li"><div class="ld" style="background:#22c487"></div>Ingresos</div>
-            <div class="li"><div class="ld" style="background:#f05252"></div>Gastos reales</div>
-            <div class="li"><div class="ld" style="background:#4d9cf8;opacity:.7"></div>Balance neto</div>
-          </div>
-          <div style="height:260px"><canvas id="overviewChart" role="img" aria-label="Resumen banco">Resumen.</canvas></div>
-        </div>
-        <div class="g2">
-          <div class="card">
-            <div class="card-title">Medias mensuales</div>
-            <table>
-              <tr><th>Concepto</th><th style="text-align:right">2025</th><th style="text-align:right">2026</th></tr>
-              <tr><td style="color:var(--text2)">Ingresos/mes</td><td style="text-align:right;color:var(--green)">53.315 €</td><td style="text-align:right;color:var(--green)">47.434 €</td></tr>
-              <tr><td style="color:var(--text2)">Gastos reales/mes</td><td style="text-align:right;color:var(--red)">53.637 €</td><td style="text-align:right;color:var(--red)">36.093 €</td></tr>
-              <tr><td style="color:var(--text2)">Ahorro 10%/mes</td><td style="text-align:right;color:var(--purple)">0 €</td><td style="text-align:right;color:var(--purple)">3.567 €</td></tr>
-              <tr style="background:rgba(77,156,248,.05)"><td><strong>Balance neto/mes</strong></td><td style="text-align:right;color:var(--red)"><strong>−322 €</strong></td><td style="text-align:right;color:var(--green)"><strong>+11.341 €</strong></td></tr>
-            </table>
-          </div>
-          <div class="card">
-            <div class="card-title">Mínimo mensual a facturar</div>
-            <table>
-              <tr><td style="color:var(--text2)">Seguros, gestión y admin</td><td style="text-align:right">~8.000 €</td></tr>
-              <tr><td style="color:var(--text2)">Nóminas y personal</td><td style="text-align:right">~7.000 €</td></tr>
-              <tr><td style="color:var(--text2)">Proveedores y materiales</td><td style="text-align:right">~13.000 €</td></tr>
-              <tr><td style="color:var(--text2)">TGSS e impuestos</td><td style="text-align:right">~5.000 €</td></tr>
-              <tr style="background:rgba(240,82,82,.05)"><td><strong>Mínimo a facturar</strong></td><td style="text-align:right;color:var(--red)"><strong>~33.000 €</strong></td></tr>
-              <tr style="background:rgba(34,196,135,.05)"><td><strong>Objetivo +30%</strong></td><td style="text-align:right;color:var(--green)"><strong>~43.000 €</strong></td></tr>
-            </table>
-          </div>
-        </div>
-        <div class="sh" style="margin-bottom:10px"><div class="st">Resultado real por mes — 2025</div></div>
-        <div id="monthCells2025" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:20px"></div>
-      </div>
-
-      <!-- MENSUAL -->
-      <div id="btab-mensual" class="bpanel">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
-          <div class="ftabs">
-            <button class="ftab on" id="ybtn2025" onclick="toggleYear(2025)">2025</button>
-            <button class="ftab on" id="ybtn2026" onclick="toggleYear(2026)">2026</button>
-          </div>
-          <div style="font-size:11px;color:var(--text3)">Gastos reales — excluido ahorro 10%</div>
-        </div>
-        <div class="card">
-          <div class="legend">
-            <div class="li"><div class="ld" style="background:#22c487"></div>Ingresos</div>
-            <div class="li"><div class="ld" style="background:#f05252"></div>Gastos reales</div>
-          </div>
-          <div style="height:280px"><canvas id="monthlyChart" role="img" aria-label="Mensual">Mensual.</canvas></div>
-        </div>
-        <div class="card">
-          <table>
-            <thead><tr><th>Mes</th><th style="text-align:right">Ingresos</th><th style="text-align:right">Gastos reales</th><th style="text-align:right">Ahorro 10%</th><th style="text-align:right">Balance</th><th style="text-align:right">Margen</th><th>Estado</th></tr></thead>
-            <tbody id="monthlyTbody"></tbody>
-            <tfoot id="monthlyTfoot"></tfoot>
-          </table>
-        </div>
-      </div>
-
-      <!-- CATEGORÍAS -->
-      <div id="btab-categorias" class="bpanel">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-          <span style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase">Año:</span>
-          <div class="ftabs">
-            <button class="ftab on" onclick="setCatYear('all',this)">Todo</button>
-            <button class="ftab" onclick="setCatYear('2025',this)">2025</button>
-            <button class="ftab" onclick="setCatYear('2026',this)">2026</button>
-          </div>
-        </div>
-        <div class="g2">
-          <div class="card">
-            <div class="card-title">Gastos por categoría</div>
-            <div id="expenseCatBars"></div>
-          </div>
-          <div class="card">
-            <div class="card-title">Fuentes de ingreso</div>
-            <div id="incomeCatBars"></div>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-title">Detalle de categorías de gasto</div>
-          <table id="catDetailTable">
-            <thead><tr><th>Categoría</th><th style="text-align:right">2025</th><th style="text-align:right">2026 (5m)</th><th style="text-align:right">Total</th><th style="text-align:right">Media/mes</th><th>Tipo</th></tr></thead>
-            <tbody id="catDetailTbody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- PERSONAL -->
-      <div id="btab-personal" class="bpanel">
-        <div class="alert ain" style="margin-bottom:16px">
-          <div>👥</div><div><strong>Coste real por trabajador</strong> — extraído del extracto bancario. Incluye adelantos, nóminas y pagos directos. La TGSS se muestra aparte.</div>
-        </div>
-        <div class="metrics-row">
-          <div class="mc"><div class="ml">Total personal 2025</div><div class="mv r">62.462 €</div><div class="ms">Pagos directos a trabajadores</div></div>
-          <div class="mc"><div class="ml">Total personal 2026</div><div class="mv r">34.715 €</div><div class="ms">Ene–May 2026</div></div>
-          <div class="mc"><div class="ml">TGSS 2025</div><div class="mv a">64.121 €</div><div class="ms">Seguridad Social</div></div>
-          <div class="mc"><div class="ml">TGSS 2026</div><div class="mv a">16.319 €</div><div class="ms">Ene–May 2026</div></div>
-          <div class="mc"><div class="ml">Coste total personal 2025</div><div class="mv r">126.583 €</div><div class="ms">Directo + SS</div></div>
-          <div class="mc"><div class="ml">Media/mes personal</div><div class="mv r">~9.700 €</div><div class="ms">Total personal + SS</div></div>
-        </div>
-        <div class="worker-grid" id="workerCards"></div>
-        <div class="card">
-          <div class="card-title">Detalle por trabajador</div>
-          <table>
-            <thead><tr><th>Trabajador</th><th style="text-align:right">2025</th><th style="text-align:right">2026 (5m)</th><th style="text-align:right">Total</th><th style="text-align:right">Media/mes activo</th><th style="text-align:right">Operaciones</th></tr></thead>
-            <tbody id="workerTableBody"></tbody>
-            <tfoot><tr style="background:rgba(255,255,255,.03)">
-              <td><strong>TGSS (SS empresa)</strong></td>
-              <td style="text-align:right;color:var(--amber)">64.121 €</td>
-              <td style="text-align:right;color:var(--amber)">16.319 €</td>
-              <td style="text-align:right;color:var(--amber)">80.440 €</td>
-              <td style="text-align:right;color:var(--amber)">~4.750 €</td>
-              <td style="text-align:right;color:var(--text2)">17 pagos</td>
-            </tr></tfoot>
-          </table>
-        </div>
-        <div class="card">
-          <div class="card-title">Gastos fijos vs variables — clasificación real</div>
-          <div class="g2" style="margin-bottom:0">
-            <div>
-              <div style="font-size:11px;font-weight:600;color:var(--green);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Gastos fijos reales</div>
-              <table>
-                <tr><td style="color:var(--text2)">VidaCaixa Seguros</td><td style="text-align:right">~100 €/mes</td></tr>
-                <tr><td style="color:var(--text2)">Masmovil/Xfera</td><td style="text-align:right">~12 €/mes</td></tr>
-                <tr><td style="color:var(--text2)">La Burocracia SL</td><td style="text-align:right">~550 €/mes</td></tr>
-                <tr><td style="color:var(--text2)">PayPymes SL</td><td style="text-align:right">~180 €/mes</td></tr>
-                <tr><td style="color:var(--text2)">Gerard Codina</td><td style="text-align:right">~30 €/mes</td></tr>
-                <tr><td style="color:var(--text2)">OpenAI / Apple</td><td style="text-align:right">~46 €/mes</td></tr>
-                <tr style="background:rgba(34,196,135,.05)"><td><strong>Total fijos</strong></td><td style="text-align:right;color:var(--green)"><strong>~918 €/mes</strong></td></tr>
-              </table>
-            </div>
-            <div>
-              <div style="font-size:11px;font-weight:600;color:var(--amber);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Gastos variables por obra</div>
-              <table>
-                <tr><td style="color:var(--text2)">Cinc Gestió (comisión ~10%)</td><td style="text-align:right">Variable</td></tr>
-                <tr><td style="color:var(--text2)">Proveedores materiales</td><td style="text-align:right">Variable</td></tr>
-                <tr><td style="color:var(--text2)">Subcontratas obra</td><td style="text-align:right">Variable</td></tr>
-                <tr><td style="color:var(--text2)">TGSS (varía plantilla)</td><td style="text-align:right">~3.300–6.200 €</td></tr>
-                <tr><td style="color:var(--text2)">AEAT trimestral</td><td style="text-align:right">~4.500 €/trim.</td></tr>
-                <tr><td style="color:var(--text2)">Seguros (trimestrales)</td><td style="text-align:right">~590 €/trim.</td></tr>
-                <tr style="background:rgba(245,158,11,.05)"><td><strong>Mínimo variable/mes</strong></td><td style="text-align:right;color:var(--amber)"><strong>~5.000 €</strong></td></tr>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- PREVISIÓN -->
-      <div id="btab-prevision" class="bpanel">
-        <div class="metrics-row">
-          <div class="mc"><div class="ml">Ingresos proy. 2026</div><div class="mv g">~568.000 €</div><div class="ms">Extrapolando 5 meses</div></div>
-          <div class="mc"><div class="ml">Gastos reales proy.</div><div class="mv r">~433.000 €</div><div class="ms">Sin ahorro 10%</div></div>
-          <div class="mc"><div class="ml">Balance proy. 2026</div><div class="mv g">~+135.000 €</div><div class="ms">Primer año positivo</div></div>
-          <div class="mc"><div class="ml">Fondo ahorro proy.</div><div class="mv p">~42.800 €</div><div class="ms">Acumulado a fin de año</div></div>
-        </div>
-        <div class="card">
-          <div class="card-title">Proyección Jun–Dic 2026</div>
-          <div style="height:260px"><canvas id="forecastChart" role="img" aria-label="Previsión">Previsión.</canvas></div>
-        </div>
-        <div class="card">
-          <div class="card-title">Cuánto facturar cada mes</div>
-          <table>
-            <thead><tr><th>Mes</th><th style="text-align:right">Gastos est.</th><th style="text-align:right">Mínimo</th><th style="text-align:right">Objetivo +30%</th><th>Nota</th></tr></thead>
-            <tbody>
-              <tr><td>Junio 2026</td><td style="text-align:right">33.000 €</td><td style="text-align:right;color:var(--red)">33.000 €</td><td style="text-align:right;color:var(--green)">43.000 €</td><td><span class="badge bw1">Normal</span></td></tr>
-              <tr style="background:rgba(240,82,82,.04)"><td><strong>Julio 2026</strong></td><td style="text-align:right"><strong>35.000 €</strong></td><td style="text-align:right;color:var(--red)"><strong>35.000 €</strong></td><td style="text-align:right;color:var(--green)"><strong>45.500 €</strong></td><td><span class="badge bur">⚠ Seguros trim.</span></td></tr>
-              <tr><td>Agosto 2026</td><td style="text-align:right">25.000 €</td><td style="text-align:right;color:var(--red)">25.000 €</td><td style="text-align:right;color:var(--green)">32.500 €</td><td><span class="badge bgo">Bajo</span></td></tr>
-              <tr><td>Septiembre 2026</td><td style="text-align:right">33.000 €</td><td style="text-align:right;color:var(--red)">33.000 €</td><td style="text-align:right;color:var(--green)">43.000 €</td><td><span class="badge bw1">Normal</span></td></tr>
-              <tr style="background:rgba(240,82,82,.04)"><td><strong>Octubre 2026</strong></td><td style="text-align:right"><strong>35.000 €</strong></td><td style="text-align:right;color:var(--red)"><strong>35.000 €</strong></td><td style="text-align:right;color:var(--green)"><strong>45.500 €</strong></td><td><span class="badge bur">⚠ Seguros trim.</span></td></tr>
-              <tr><td>Nov–Dic 2026</td><td style="text-align:right">33.000 €</td><td style="text-align:right;color:var(--red)">33.000 €</td><td style="text-align:right;color:var(--green)">43.000 €</td><td><span class="badge bw1">Normal</span></td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- FONDO AHORRO -->
-      <div id="btab-ahorro" class="bpanel">
-        <div class="alert" style="background:var(--purple-bg);border-left:3px solid var(--purple);color:var(--purple);padding:11px 14px;border-radius:var(--rs);margin-bottom:16px;display:flex;gap:9px">
-          <div>💜</div><div><strong>Fondo de ahorro del 10%</strong> — Cada factura cobrada genera un traspaso del 10% a otra cuenta. No es gasto, es vuestro capital acumulado.</div>
-        </div>
-        <div class="metrics-row">
-          <div class="mc"><div class="ml">Acumulado a mayo 2026</div><div class="mv p">17.834 €</div><div class="ms">En cuenta separada</div></div>
-          <div class="mc"><div class="ml">Media mensual</div><div class="mv p">3.567 €</div><div class="ms">Basado en 5 meses</div></div>
-          <div class="mc"><div class="ml">Proyección fin 2026</div><div class="mv p">~42.800 €</div><div class="ms">Escenario base</div></div>
-          <div class="mc"><div class="ml">Saldo total disponible</div><div class="mv g">~57.000 €</div><div class="ms">Cuenta + fondo ahorro</div></div>
-        </div>
-        <div class="g2">
-          <div class="card">
-            <div class="card-title">Ahorro generado por mes</div>
-            <div style="height:200px"><canvas id="savingsChart" role="img" aria-label="Ahorro">Ahorro.</canvas></div>
-          </div>
-          <div class="card">
-            <div class="card-title">Simulador — proyección según facturación</div>
-            <div style="margin-bottom:12px">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-                <label style="font-size:11px;color:var(--text2)">Facturación mensual estimada</label>
-                <span style="font-size:13px;font-weight:600;color:var(--green)" id="simVal">47.000 €</span>
-              </div>
-              <input type="range" min="20000" max="120000" step="1000" value="47000" id="simRange" oninput="updateSim()" style="width:100%">
-            </div>
-            <div style="margin-bottom:10px">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-                <label style="font-size:11px;color:var(--text2)">Meses restantes 2026</label>
-                <span style="font-size:13px;font-weight:600" id="simMesesVal">7</span>
-              </div>
-              <input type="range" min="1" max="7" step="1" value="7" id="simMeses" oninput="updateSim()" style="width:100%">
-            </div>
-            <div style="border-top:1px solid var(--border);padding-top:12px">
-              <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)"><span style="font-size:12px;color:var(--text2)">Ahorro 10%/mes</span><span style="font-weight:600;color:var(--purple)" id="sim1">4.700 €</span></div>
-              <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)"><span style="font-size:12px;color:var(--text2)">Ahorro generado Jun–Dic</span><span style="font-weight:600;color:var(--purple)" id="sim2">32.900 €</span></div>
-              <div style="display:flex;justify-content:space-between;padding:8px 0"><span style="font-size:12px;color:var(--text2)">Total acumulado</span><span style="font-size:16px;font-weight:700;color:var(--purple);font-family:'Space Grotesk',sans-serif" id="sim3">50.734 €</span></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- UPLOAD -->
-      <div id="btab-upload" class="bpanel">
-        <div class="card">
-          <div class="card-title">📤 Actualizar extracto bancario Santander</div>
-          <div id="bankUploadZone" class="upload-zone" onclick="document.getElementById('bankFile').click()"
-               ondragover="event.preventDefault();this.classList.add('drag')"
-               ondragleave="this.classList.remove('drag')"
-               ondrop="handleBankDrop(event)">
-            <input type="file" id="bankFile" accept=".xlsx,.xls" onchange="handleBankUpload(this.files[0])">
-            <div style="font-size:40px;margin-bottom:10px">📂</div>
-            <div style="font-size:14px;font-weight:500;color:var(--text)">Arrastra aquí el Excel del Santander</div>
-            <div style="font-size:12px;color:var(--text3);margin-top:6px">o haz clic para seleccionar · .xlsx · máx 10MB</div>
-          </div>
-          <div id="uploadProgress" style="display:none;margin-top:12px">
-            <div style="font-size:12px;color:var(--text2)" id="uploadMsg">Subiendo...</div>
-            <div class="prog-track"><div class="prog-fill" id="progFill" style="width:0%"></div></div>
-          </div>
-          <div id="lastUploadInfo" style="margin-top:10px;font-size:11px;color:var(--text3)">—</div>
-        </div>
-        <div class="alert ain">
-          <div>ℹ️</div>
-          <div><strong>Próximamente: conexión bancaria automática</strong><p>En Fase 3 conectaremos el banco directamente via Nordigen/GoCardless para eliminar la carga manual mensual.</p></div>
-        </div>
-      </div>
-
+  </div>
+  <div class="card">
+    <div class="card-title">Acciones manuales</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn bp" onclick="testN('whatsapp')">💬 Test WhatsApp</button>
+      <button class="btn bgh" onclick="testN('email')">📧 Test Email</button>
+      <button class="btn bg2" onclick="sendSum()">📊 Enviar resumen</button>
+      <button class="btn bgh" onclick="checkAlerts()">🔍 Revisar alertas</button>
     </div>
-        <!-- ALERTAS -->
-    <div id="tab-alertas" class="panel">
-      <div class="g2">
-        <div class="card">
-          <div class="card-title">Configuración alertas</div>
-          <table>
-            <tr><td style="color:var(--text2)">✅ Verde</td><td style="text-align:right">Menos de 15 días</td></tr>
-            <tr><td style="color:var(--text2)">⚠️ Primer aviso</td><td style="text-align:right">15 días</td></tr>
-            <tr><td style="color:var(--text2)">⚠️⚠️ Segundo aviso</td><td style="text-align:right">30 días</td></tr>
-            <tr><td style="color:var(--text2)">🔴 Urgente</td><td style="text-align:right">45 días</td></tr>
-            <tr><td style="color:var(--text2)">🚨 Crítico</td><td style="text-align:right">60 días</td></tr>
-            <tr><td style="color:var(--text2)">🔁 Revisión auto</td><td style="text-align:right">Cada 2 horas</td></tr>
-            <tr><td style="color:var(--text2)">🌅 Resumen diario</td><td style="text-align:right">08:30 lun–vie</td></tr>
-          </table>
-        </div>
-        <div class="card">
-          <div class="card-title">Destinatarios</div>
-          <table>
-            <tr><td style="color:var(--text2)">📧 Email</td><td style="text-align:right">corpy@corpprojects.es</td></tr>
-            <tr><td style="color:var(--text2)">💬 WhatsApp</td><td style="text-align:right;color:var(--amber)">⚠️ Pendiente Twilio</td></tr>
-          </table>
-          <div style="margin-top:12px;padding:10px;background:var(--amber-bg);border-radius:8px;border:1px solid rgba(245,158,11,.2);font-size:11px;color:rgba(245,158,11,.9)">
-            Para activar WhatsApp añade TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN y WHATSAPP_TO en Railway Variables.
-          </div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-title">Acciones manuales</div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn bp" onclick="testNotif('whatsapp')">💬 Test WhatsApp</button>
-          <button class="btn bgh" onclick="testNotif('email')">📧 Test Email</button>
-          <button class="btn bg2" onclick="sendSummary()">📊 Enviar resumen</button>
-          <button class="btn bgh" onclick="triggerAlertCheck()">🔍 Revisar alertas</button>
-        </div>
-        <div id="notifRes" style="margin-top:10px;font-size:12px;color:var(--green);display:none"></div>
-      </div>
-    </div>
+    <div id="nRes" style="margin-top:10px;font-size:12px;color:var(--green);display:none"></div>
+  </div>
+</div>
 
-  </main>
+</main>
 </div>
 
 <script>
-const API = window.location.origin;
-let tok = localStorage.getItem('cp_token');
-let allPend=[], allEst=[], estData={}, allFamilies=[];
-let pendFilter='all', estFilter='all', bankFilter='all';
-let pendPage=0, estPage=0;
-const PAGE_SIZE=20;
+const API=window.location.origin;
+let tok=localStorage.getItem('cp_token');
+let aP=[],aE=[],eD={},aF=[];
+let pf='all',ef='all',pp=0,ep=0;
+const PS=20;
+const MN=['Ene','Feb','Mar','Apr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
-const MONTHS=['Ene','Feb','Mar','Apr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-const BANK={
-  2025:{ing:[42591,46049,37617,36972,36454,79906,54599,12683,60884,177818,25479,28722],gas:[44321,44680,30031,38980,32041,61353,80714,29187,41084,188064,23392,29799],aho:[0,0,0,0,0,0,0,0,0,0,0,0]},
-  2026:{ing:[38466,36687,57378,25639,79000,null,null,null,null,null,null,null],gas:[38343,34439,34659,41772,31250,null,null,null,null,null,null,null],aho:[0,1650,6215,993,8975,null,null,null,null,null,null,null]}
+const BD={
+  2025:{i:[42591,46049,37617,36972,36454,79906,54599,12683,60884,177818,25479,28722],g:[44321,44680,30031,38980,32041,61353,80714,29187,41084,188064,23392,29799],a:[0,0,0,0,0,0,0,0,0,0,0,0]},
+  2026:{i:[38466,36687,57378,25639,79000,null,null,null,null,null,null,null],g:[38343,34439,34659,41772,31250,null,null,null,null,null,null,null],a:[0,1650,6215,993,8975,null,null,null,null,null,null,null]}
 };
 
-// Gastos por trabajador extraídos del extracto bancario 2025-2026
-const WORKERS=[
-  {name:'Jose Beliard',total2025:21830,total2026:10000,ops2025:15,ops2026:6,cat:'Personal/obra'},
-  {name:'Diego Campillo',total2025:15975,total2026:12655,ops2025:24,ops2026:8,cat:'Personal/obra'},
-  {name:'Abdellah Souiri',total2025:12745,total2026:7530,ops2025:11,ops2026:5,cat:'Personal/obra'},
-  {name:'Paula Morales',total2025:7112,total2026:4600,ops2025:9,ops2026:4,cat:'Personal/obra'},
-  {name:'Mamadou Barry',total2025:4800,total2026:0,ops2025:4,ops2026:0,cat:'Personal/obra'},
+const EC=[
+  {n:'Proveedores materiales',  y5:89420,y6:38200,c:'#f05252',t:'Variable obra'},
+  {n:'TGSS Seg. Social',        y5:64121,y6:16319,c:'#f59e0b',t:'Variable personal'},
+  {n:'Personal (pagos directos)',y5:62462,y6:34715,c:'#f97316',t:'Variable personal'},
+  {n:'AEAT / Hacienda',         y5:51485,y6:8449, c:'#f59e0b',t:'Obligatorio'},
+  {n:'Cinc Gestió (comisión)',   y5:23499,y6:13390,c:'#a78bfa',t:'Variable obra'},
+  {n:'Subcontratas obra',        y5:26705,y6:0,    c:'#e879a1',t:'Variable obra'},
+  {n:'Seguros',                  y5:11930,y6:4890, c:'#4d9cf8',t:'Fijo/trimestral'},
+  {n:'Gestión y admin',          y5:8415, y6:4228, c:'#22c487',t:'Fijo mensual'},
+  {n:'Digital y software',       y5:2800, y6:1200, c:'#22c487',t:'Fijo mensual'},
+  {n:'Combustible/consumibles',  y5:4200, y6:1800, c:'#6b7280',t:'Variable'},
+];
+const IC=[
+  {n:'Cobro clientes (facturas)',y5:330000,y6:180000,c:'#22c487'},
+  {n:'Cobro comunidades',        y5:83359, y6:40000, c:'#4d9cf8'},
+  {n:'Ingresos varios',          y5:180000,y6:17000, c:'#a78bfa'},
+  {n:'Devoluciones AEAT',        y5:19000, y6:0,     c:'#f59e0b'},
+];
+const WD=[
+  {n:'Jose Beliard',    y5:21830,y6:10000,o5:15,o6:6},
+  {n:'Diego Campillo',  y5:15975,y6:12655,o5:24,o6:8},
+  {n:'Abdellah Souiri', y5:12745,y6:7530, o5:11,o6:5},
+  {n:'Paula Morales',   y5:7112, y6:4600, o5:9, o6:4},
+  {n:'Mamadou Barry',   y5:4800, y6:0,    o5:4, o6:0},
 ];
 
-// Gastos por categoría real (del extracto bancario)
-const EXPENSE_CATS_2025=[
-  {name:'Proveedores materiales',amount:89420,color:'#f05252'},
-  {name:'TGSS Seg. Social',amount:64121,color:'#f59e0b'},
-  {name:'Personal y obra',amount:62462,color:'#f97316'},
-  {name:'AEAT / Hacienda',amount:51485,color:'#f59e0b'},
-  {name:'Cinc Gestió',amount:23499,color:'#a78bfa'},
-  {name:'Seguros',amount:11930,color:'#4d9cf8'},
-  {name:'Gestión admin',amount:8415,color:'#22c487'},
-  {name:'Digital / Software',amount:2800,color:'#22c487'},
-];
-const EXPENSE_CATS_2026=[
-  {name:'Proveedores materiales',amount:38200,color:'#f05252'},
-  {name:'Personal y obra',amount:34715,color:'#f97316'},
-  {name:'TGSS Seg. Social',amount:16319,color:'#f59e0b'},
-  {name:'Cinc Gestió',amount:13390,color:'#a78bfa'},
-  {name:'AEAT / Hacienda',amount:8449,color:'#f59e0b'},
-  {name:'Seguros',amount:4890,color:'#4d9cf8'},
-  {name:'Gestión admin',amount:4228,color:'#22c487'},
-  {name:'Digital / Software',amount:1200,color:'#22c487'},
-];
+let showY={2025:true,2026:true},cy='all';
+let CH={};
 
-const PERIODS={
-  'all':    {label:'Todo 2025–2026',months:[...MONTHS.map((_,i)=>({y:2025,m:i})),...Array.from({length:5},(_,i)=>({y:2026,m:i}))]},
-  '2025':   {label:'Año 2025',months:MONTHS.map((_,i)=>({y:2025,m:i}))},
-  '2026':   {label:'2026 (Ene–May)',months:Array.from({length:5},(_,i)=>({y:2026,m:i}))},
-  'q1-2025':{label:'Q1 2025',months:[{y:2025,m:0},{y:2025,m:1},{y:2025,m:2}]},
-  'q2-2025':{label:'Q2 2025',months:[{y:2025,m:3},{y:2025,m:4},{y:2025,m:5}]},
-  'q3-2025':{label:'Q3 2025',months:[{y:2025,m:6},{y:2025,m:7},{y:2025,m:8}]},
-  'q4-2025':{label:'Q4 2025',months:[{y:2025,m:9},{y:2025,m:10},{y:2025,m:11}]},
-  'q1-2026':{label:'Q1 2026',months:[{y:2026,m:0},{y:2026,m:1},{y:2026,m:2}]}
-};
+function dc(id){if(CH[id]){CH[id].destroy();delete CH[id];}}
+const CSC={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${new Intl.NumberFormat('es-ES').format(Math.round(ctx.raw))} €`}}},scales:{y:{ticks:{callback:v=>(v/1000).toFixed(0)+'k',color:'#5a6278',font:{size:10}},grid:{color:'rgba(255,255,255,.05)'},border:{color:'rgba(255,255,255,.1)'}},x:{ticks:{color:'#5a6278',font:{size:10},maxRotation:45,autoSkip:false},grid:{display:false},border:{color:'rgba(255,255,255,.1)'}}}};
 
 function eur(v){return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0)}
 function dt(d){return d?new Date(d).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'}):'—'}
-function lvlBadge(l){return{ok:'<span class="badge bgo">✅ <15d</span>',warning1:'<span class="badge bw1">⚠️ 15d</span>',warning2:'<span class="badge bw2">⚠️⚠️ 30d</span>',urgent:'<span class="badge bur">🔴 45d</span>',critical:'<span class="badge bcr">🚨 60d+</span>'}[l]||l}
-function estBadge(k){return{accepted:'<span class="badge bgo">✅ Aceptado</span>',pending:'<span class="badge bw1">⏳ Pendiente</span>',closed:'<span class="badge bbl">🔒 Cerrado</span>',rejected:'<span class="badge bur">❌ Rechazado</span>'}[k]||k}
-function famPill(f){return f&&f!=='Sin familia'?`<span class="family-pill">${f}</span>`:''}
+function lB(l){return{ok:'<span class="badge bgo">✅ <15d</span>',warning1:'<span class="badge bw1">⚠️ 15d</span>',warning2:'<span class="badge bw2">⚠️⚠️ 30d</span>',urgent:'<span class="badge bur">🔴 45d</span>',critical:'<span class="badge bcr">🚨 60d+</span>'}[l]||l}
+function eB(k){return{accepted:'<span class="badge bgo">✅ Aceptado</span>',pending:'<span class="badge bw1">⏳ Pendiente</span>',closed:'<span class="badge bbl">🔒 Cerrado</span>',rejected:'<span class="badge bur">❌ Rechazado</span>'}[k]||k}
+function fP(f){return f&&f!=='Sin familia'?`<span class="fpill">${f}</span>`:''}
 
 // AUTH
 async function doLogin(){
@@ -704,26 +602,24 @@ async function doLogin(){
 function doLogout(){localStorage.removeItem('cp_token');tok=null;document.getElementById('app').style.display='none';document.getElementById('loginScreen').style.display='flex';document.getElementById('loginPass').value='';}
 function showApp(){document.getElementById('loginScreen').style.display='none';document.getElementById('app').style.display='block';loadAll();}
 
-async function apiFetch(url,opts={}){
-  const r=await fetch(`${API}${url}`,{...opts,headers:{'Authorization':`Bearer ${tok}`,'Content-Type':'application/json',...(opts.headers||{})}});
+async function af(url,o={}){
+  const r=await fetch(`${API}${url}`,{...o,headers:{'Authorization':`Bearer ${tok}`,'Content-Type':'application/json',...(o.headers||{})}});
   if(r.status===401){doLogout();return null;}
   return r.json();
 }
 
 async function loadAll(){
-  setSyncing(true);
+  const b=document.getElementById('syncBtn');b.classList.add('loading');b.textContent='⏳ Cargando...';
   try{
-    await Promise.all([loadSummary(),loadPending(),loadEstimates(),loadFamilies()]);
-    loadBankInfo();renderBankSection();
-    document.getElementById('lastUpdatedText').textContent='Actualizado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
-  }finally{setSyncing(false);}
+    await Promise.all([loadSum(),loadPend(),loadEst(),loadFam()]);
+    loadBInfo();
+    document.getElementById('lastUpd').textContent='Actualizado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
+  }finally{b.classList.remove('loading');b.textContent='🔄 Actualizar';}
 }
-function refreshData(){loadAll();}
-function setSyncing(on){const b=document.getElementById('syncBtn');b.classList.toggle('loading',on);b.textContent=on?'⏳ Cargando...':'🔄 Actualizar';}
 
 // SUMMARY
-async function loadSummary(){
-  const d=await apiFetch('/api/summary');if(!d)return;
+async function loadSum(){
+  const d=await af('/api/summary');if(!d)return;
   ['m1','m2','m3','m4','m5','m6'].forEach(id=>document.getElementById(id).classList.remove('sk'));
   document.getElementById('m1').textContent=d.totalInvoicesMonth||0;
   document.getElementById('m2').textContent=eur(d.totalBilledMonth);
@@ -731,36 +627,34 @@ async function loadSummary(){
   document.getElementById('m4').textContent=d.pendingInvoices||0;
   document.getElementById('m5').textContent=d.overdueCount||0;
   document.getElementById('m6').textContent=d.criticalCount||0;
-  document.getElementById('factsLastUpd').textContent='Actualizado '+new Date(d.lastUpdated).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
-  document.getElementById('cobrosResumen').innerHTML=`<table>
+  document.getElementById('factsUpd').textContent='Actualizado '+new Date(d.lastUpdated).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
+  document.getElementById('cobrosRes').innerHTML=`<table>
     <tr><td style="color:var(--text2);padding:8px 0;border-bottom:1px solid var(--border)">Total facturado histórico</td><td style="text-align:right;padding:8px 0;border-bottom:1px solid var(--border)">${eur(d.totalBilled)}</td></tr>
     <tr><td style="color:var(--text2);padding:8px 0;border-bottom:1px solid var(--border)">Pendiente de cobrar</td><td style="text-align:right;padding:8px 0;border-bottom:1px solid var(--border);color:var(--red)">${eur(d.totalPending)}</td></tr>
     <tr><td style="color:var(--text2);padding:8px 0;border-bottom:1px solid var(--border)">En riesgo 30–60 días</td><td style="text-align:right;padding:8px 0;border-bottom:1px solid var(--border);color:var(--amber)">${d.overdueCount}</td></tr>
     <tr><td style="color:var(--text2);padding:8px 0">Críticas +60 días</td><td style="text-align:right;padding:8px 0;color:var(--red)">${d.criticalCount}</td></tr>
   </table>`;
-  renderFactsTable(d.pendingList||[]);
-  renderAgeChart(d.pendingList||[]);
+  rFT(d.pendingList||[]);rAge(d.pendingList||[]);
 }
 
-function renderFactsTable(list){
+function rFT(list){
   const el=document.getElementById('factsTable');
   if(!list.length){el.innerHTML='<div class="empty"><div class="ei">✅</div><div class="et">No hay facturas pendientes</div></div>';return;}
   el.innerHTML=`<table><thead><tr><th>Factura</th><th>Cliente</th><th>Familia</th><th>Fecha</th><th style="text-align:right">Total</th><th style="text-align:right">Pendiente</th><th>Días</th><th>Estado</th></tr></thead>
-  <tbody>${list.map(i=>`<tr><td><strong>${i.number}</strong></td><td>${i.client}</td><td>${famPill(i.family)}</td><td>${dt(i.date)}</td><td style="text-align:right">${eur(i.total)}</td>
+  <tbody>${list.map(i=>`<tr><td><strong>${i.number}</strong></td><td>${i.client}</td><td>${fP(i.family)}</td><td>${dt(i.date)}</td><td style="text-align:right">${eur(i.total)}</td>
   <td style="text-align:right;color:${i.alertLevel==='ok'?'var(--green)':'var(--red)'};font-weight:600">${eur(i.pending)}</td>
   <td style="color:${i.daysOverdue>=60?'var(--red)':i.daysOverdue>=30?'var(--amber)':'var(--text2)'}">${i.daysOverdue}d</td>
-  <td>${lvlBadge(i.alertLevel)}</td></tr>`).join('')}</tbody></table>`;
+  <td>${lB(i.alertLevel)}</td></tr>`).join('')}</tbody></table>`;
 }
 
 // PENDING
-async function loadPending(){
-  const d=await apiFetch('/api/invoices/pending');if(!d)return;
-  allPend=d;
-  // Poblar selector de familias
-  const families=[...new Set(d.map(i=>i.family||'Sin familia').filter(Boolean))].sort();
-  const sel=document.getElementById('familyFilterPend');
-  sel.innerHTML='<option value="">Todas las familias</option>'+families.map(f=>`<option value="${f}">${f}</option>`).join('');
-  renderPendTable();
+async function loadPend(){
+  const d=await af('/api/invoices/pending');if(!d)return;
+  aP=d;
+  const fams=[...new Set(d.map(i=>i.family||'Sin familia'))].sort();
+  const sel=document.getElementById('fFamPend');
+  sel.innerHTML='<option value="">Todas las familias</option>'+fams.map(f=>`<option>${f}</option>`).join('');
+  rPend();
   const al=document.getElementById('pendAlert');
   if(!d.length){al.className='alert aok';al.innerHTML='<div>✅</div><div><strong>¡Todo cobrado!</strong></div>';return;}
   const crit=d.filter(i=>i.alertLevel==='critical').length;
@@ -769,44 +663,44 @@ async function loadPending(){
   al.innerHTML=`<div>${crit?'🚨':'ℹ️'}</div><div><strong>${d.length} facturas pendientes — ${eur(tot)}</strong>${crit?`<p>${crit} facturas críticas con más de 60 días sin cobrar.</p>`:''}</div>`;
 }
 
-function setPendFilter(f,btn){pendFilter=f;pendPage=0;document.querySelectorAll('#tab-pendientes .ftab').forEach(b=>b.classList.remove('on'));btn.classList.add('on');renderPendTable();}
+function setPF(f,btn){pf=f;pp=0;document.querySelectorAll('#tab-pendientes .ftab').forEach(b=>b.classList.remove('on'));btn.classList.add('on');rPend();}
 
-function renderPendTable(){
-  const q=(document.getElementById('searchPend')?.value||'').toLowerCase();
-  const fam=document.getElementById('familyFilterPend')?.value||'';
-  let list=allPend;
-  if(pendFilter==='warning1')list=list.filter(i=>['warning1','warning2','urgent','critical'].includes(i.alertLevel));
-  else if(pendFilter==='warning2')list=list.filter(i=>['warning2','urgent','critical'].includes(i.alertLevel));
-  else if(pendFilter==='urgent')list=list.filter(i=>['urgent','critical'].includes(i.alertLevel));
-  else if(pendFilter==='critical')list=list.filter(i=>i.alertLevel==='critical');
+function rPend(){
+  const q=(document.getElementById('sPend')?.value||'').toLowerCase();
+  const fam=document.getElementById('fFamPend')?.value||'';
+  let list=aP;
+  if(pf==='warning1')list=list.filter(i=>['warning1','warning2','urgent','critical'].includes(i.alertLevel));
+  else if(pf==='warning2')list=list.filter(i=>['warning2','urgent','critical'].includes(i.alertLevel));
+  else if(pf==='urgent')list=list.filter(i=>['urgent','critical'].includes(i.alertLevel));
+  else if(pf==='critical')list=list.filter(i=>i.alertLevel==='critical');
   if(fam)list=list.filter(i=>(i.family||'Sin familia')===fam);
   if(q)list=list.filter(i=>i.client.toLowerCase().includes(q)||i.number.toLowerCase().includes(q)||(i.family||'').toLowerCase().includes(q));
-  const total=list.length;list=list.slice(0,(pendPage+1)*PAGE_SIZE);
+  const tot=list.length;list=list.slice(0,(pp+1)*PS);
   const el=document.getElementById('pendTable');
   if(!list.length){el.innerHTML='<div class="empty"><div class="ei">🔍</div><div class="et">Sin resultados</div></div>';return;}
   el.innerHTML=`<table><thead><tr><th>Factura</th><th>Cliente</th><th>Familia</th><th>Emitida</th><th style="text-align:right">Total</th><th style="text-align:right">Pendiente</th><th>Días</th><th>Nivel</th></tr></thead>
   <tbody>${list.map(i=>`<tr style="${i.alertLevel==='critical'?'background:rgba(240,82,82,.04)':''}">
-    <td><strong>${i.number}</strong></td><td>${i.client}</td><td>${famPill(i.family)}</td><td>${dt(i.date)}</td>
+    <td><strong>${i.number}</strong></td><td>${i.client}</td><td>${fP(i.family)}</td><td>${dt(i.date)}</td>
     <td style="text-align:right">${eur(i.total)}</td>
     <td style="text-align:right;color:${i.alertLevel==='ok'?'var(--green)':'var(--red)'};font-weight:600">${eur(i.pending)}</td>
     <td style="font-weight:600;color:${i.daysOverdue>=60?'var(--red)':i.daysOverdue>=45?'#f97316':i.daysOverdue>=30?'var(--amber)':'var(--text2)'}">${i.daysOverdue}d</td>
-    <td>${lvlBadge(i.alertLevel)}</td></tr>`).join('')}</tbody>
-  <tfoot><tr style="background:rgba(255,255,255,.02)"><td colspan="5" style="padding:8px 9px;font-weight:600">${total} facturas</td>
+    <td>${lB(i.alertLevel)}</td></tr>`).join('')}</tbody>
+  <tfoot><tr style="background:rgba(255,255,255,.02)"><td colspan="5" style="padding:8px 9px;font-weight:600">${tot} facturas</td>
   <td style="text-align:right;padding:8px 9px;color:var(--red);font-weight:600">${eur(list.reduce((s,i)=>s+i.pending,0))}</td><td colspan="2"></td></tr></tfoot></table>
-  ${total>(pendPage+1)*PAGE_SIZE?`<button class="btn bgh" style="width:100%;margin-top:10px" onclick="pendPage++;renderPendTable()">Ver más (${total-(pendPage+1)*PAGE_SIZE} restantes)</button>`:''}`;
+  ${tot>(pp+1)*PS?`<button class="btn bgh" style="width:100%;margin-top:10px" onclick="pp++;rPend()">Ver más (${tot-(pp+1)*PS} restantes)</button>`:''}`;
 }
 
 // FAMILIES
-async function loadFamilies(){
-  const d=await apiFetch('/api/families');if(!d)return;
-  allFamilies=d;
+async function loadFam(){
+  const d=await af('/api/families');if(!d)return;
+  aF=d;
   ['fm1','fm2','fm3'].forEach(id=>document.getElementById(id).classList.remove('sk'));
   document.getElementById('fm1').textContent=d.length;
-  const topBill=d[0];
-  const topPend=[...d].sort((a,b)=>b.totalPending-a.totalPending)[0];
-  document.getElementById('fm2').textContent=topBill?.name||'—';
-  document.getElementById('fm3').textContent=topPend?.name||'—';
-  const el=document.getElementById('familyTable');
+  const top=[...d].sort((a,b)=>b.totalBilled-a.totalBilled)[0];
+  const topP=[...d].sort((a,b)=>b.totalPending-a.totalPending)[0];
+  document.getElementById('fm2').textContent=top?.name||'—';
+  document.getElementById('fm3').textContent=topP?.name||'—';
+  const el=document.getElementById('famTable');
   if(!d.length){el.innerHTML='<div class="empty"><div class="ei">👥</div><div class="et">No hay familias configuradas en StelOrder</div></div>';return;}
   el.innerHTML=`<table><thead><tr><th>Familia</th><th style="text-align:right">Facturas</th><th style="text-align:right">Total facturado</th><th style="text-align:right">Pendiente</th><th style="text-align:right">Pendientes</th><th></th></tr></thead>
   <tbody>${d.map(f=>`<tr>
@@ -815,1136 +709,235 @@ async function loadFamilies(){
     <td style="text-align:right;color:var(--green)">${eur(f.totalBilled)}</td>
     <td style="text-align:right;color:${f.totalPending>0?'var(--red)':'var(--text2)'}">${eur(f.totalPending)}</td>
     <td style="text-align:right;color:${f.pendingCount>0?'var(--amber)':'var(--text2)'}">${f.pendingCount}</td>
-    <td><button class="btn bgh" style="padding:3px 10px;font-size:11px" onclick="showFamilyDetail('${f.name}')">Ver →</button></td>
+    <td><button class="btn bgh" style="padding:3px 10px;font-size:11px" onclick="showFamD('${f.name}')">Ver →</button></td>
   </tr>`).join('')}</tbody></table>`;
 }
 
-async function showFamilyDetail(family){
-  const d=await apiFetch(`/api/invoices/by-family/${encodeURIComponent(family)}`);
-  if(!d)return;
-  const card=document.getElementById('familyDetailCard');
-  document.getElementById('familyDetailTitle').textContent=`📋 ${family} — ${d.pending.length} facturas pendientes`;
+async function showFamD(family){
+  const d=await af(`/api/invoices/by-family/${encodeURIComponent(family)}`);if(!d)return;
+  const card=document.getElementById('famDetail');
+  document.getElementById('famDetailTitle').textContent=`📋 ${family} — ${d.pending.length} facturas pendientes`;
   card.style.display='block';
-  const el=document.getElementById('familyDetailTable');
-  if(!d.pending.length){el.innerHTML='<div class="empty"><div class="ei">✅</div><div class="et">Sin facturas pendientes en esta familia</div></div>';card.scrollIntoView({behavior:'smooth'});return;}
+  const el=document.getElementById('famDetailTable');
+  if(!d.pending.length){el.innerHTML='<div class="empty"><div class="ei">✅</div><div class="et">Sin facturas pendientes</div></div>';card.scrollIntoView({behavior:'smooth'});return;}
   el.innerHTML=`<table><thead><tr><th>Factura</th><th>Cliente</th><th>Fecha</th><th style="text-align:right">Pendiente</th><th>Días</th><th>Estado</th></tr></thead>
-  <tbody>${d.pending.map(i=>`<tr>
-    <td><strong>${i.number}</strong></td><td>${i.client}</td><td>${dt(i.date)}</td>
+  <tbody>${d.pending.map(i=>`<tr><td><strong>${i.number}</strong></td><td>${i.client}</td><td>${dt(i.date)}</td>
     <td style="text-align:right;color:${i.alertLevel==='ok'?'var(--green)':'var(--red)'};font-weight:600">${eur(i.pending)}</td>
     <td style="color:${i.daysOverdue>=60?'var(--red)':i.daysOverdue>=30?'var(--amber)':'var(--text2)'}">${i.daysOverdue}d</td>
-    <td>${lvlBadge(i.alertLevel)}</td></tr>`).join('')}</tbody>
+    <td>${lB(i.alertLevel)}</td></tr>`).join('')}</tbody>
   <tfoot><tr style="background:rgba(255,255,255,.02)"><td colspan="3" style="padding:8px 9px;font-weight:600">${d.pending.length} facturas</td>
   <td style="text-align:right;padding:8px 9px;color:var(--red);font-weight:600">${eur(d.pending.reduce((s,i)=>s+i.pending,0))}</td><td colspan="2"></td></tr></tfoot></table>`;
   card.scrollIntoView({behavior:'smooth'});
 }
 
 // ESTIMATES
-async function loadEstimates(){
+async function loadEst(){
   ['e1','e2','e3','e4','e5','e6'].forEach(id=>document.getElementById(id).classList.remove('sk'));
-  const d=await apiFetch('/api/estimates');if(!d)return;
-  estData=d;allEst=d.all||[];
+  const d=await af('/api/estimates');if(!d)return;
+  eD=d;
+  const all=d.all||[];
   document.getElementById('e1').textContent=d.total||0;
   document.getElementById('e2').textContent=d.accepted?.length||0;
   document.getElementById('e3').textContent=eur(d.totalAccepted);
-  document.getElementById('e4').textContent=(d.pending?.length||0);
+  document.getElementById('e4').textContent=d.pending?.length||0;
   document.getElementById('e5').textContent=eur(d.totalPending||0);
   document.getElementById('e6').textContent=d.monthsCovered+'m';
-
-  // Poblar selector familias
-  const families=[...new Set(allEst.map(e=>e.family||'Sin familia'))].sort();
-  const sel=document.getElementById('familyFilterEst');
-  sel.innerHTML='<option value="">Todas las familias</option>'+families.map(f=>`<option value="${f}">${f}</option>`).join('');
-
-  const al=document.getElementById('estCoverAlert');
+  const fams=[...new Set(all.map(e=>e.family||'Sin familia'))].sort();
+  const sel=document.getElementById('fFamEst');
+  sel.innerHTML='<option value="">Todas las familias</option>'+fams.map(f=>`<option>${f}</option>`).join('');
+  const al=document.getElementById('estAlert');
   const months=parseFloat(d.monthsCovered||0);
-  const avgExp=36000;
   if(months>=3){al.className='alert aok';al.innerHTML=`<div>✅</div><div><strong>Cobertura de ${months} meses asegurada</strong><p>Los aceptados (${eur(d.totalAccepted)}) cubren ${months} meses de gastos.</p></div>`;}
-  else if(months>=1){al.className='alert awa';al.innerHTML=`<div>⚠️</div><div><strong>Solo ${months} meses cubiertos</strong><p>Objetivo: 3 meses = ${eur(avgExp*3)}. Cerrar más presupuestos.</p></div>`;}
-  else{al.className='alert ada';al.innerHTML=`<div>🚨</div><div><strong>Sin cobertura asegurada</strong><p>Prioridad: cerrar ventas. Mínimo ${eur(avgExp*2)} para cubrir 2 meses.</p></div>`;}
-  renderEstTable();
+  else if(months>=1){al.className='alert awa';al.innerHTML=`<div>⚠️</div><div><strong>Solo ${months} meses cubiertos</strong><p>Objetivo: 3 meses = ${eur(36000*3)}. Cerrar más presupuestos.</p></div>`;}
+  else{al.className='alert ada';al.innerHTML=`<div>🚨</div><div><strong>Sin cobertura asegurada</strong><p>Prioridad: cerrar ventas. Mínimo ${eur(36000*2)} para 2 meses.</p></div>`;}
+  rEst();
 }
 
-function setEstFilter(f,btn){estFilter=f;estPage=0;document.querySelectorAll('#tab-presupuestos .ftab').forEach(b=>b.classList.remove('on'));btn.classList.add('on');renderEstTable();}
+function setEF(f,btn){ef=f;ep=0;document.querySelectorAll('#tab-presupuestos .ftab').forEach(b=>b.classList.remove('on'));btn.classList.add('on');rEst();}
 
-function renderEstTable(){
-  const q=(document.getElementById('searchEst')?.value||'').toLowerCase();
-  const fam=document.getElementById('familyFilterEst')?.value||'';
-  let list=allEst;
-  if(estFilter==='accepted')list=estData.accepted||[];
-  else if(estFilter==='pending')list=estData.pending||[];
-  else if(estFilter==='closed')list=estData.closed||[];
-  else if(estFilter==='rejected')list=estData.rejected||[];
+function rEst(){
+  const q=(document.getElementById('sEst')?.value||'').toLowerCase();
+  const fam=document.getElementById('fFamEst')?.value||'';
+  let list=eD.all||[];
+  if(ef==='accepted')list=eD.accepted||[];
+  else if(ef==='pending')list=eD.pending||[];
+  else if(ef==='closed')list=eD.closed||[];
+  else if(ef==='rejected')list=eD.rejected||[];
   if(fam)list=list.filter(i=>(i.family||'Sin familia')===fam);
   if(q)list=list.filter(i=>(i.client||'').toLowerCase().includes(q)||(i.number||'').toLowerCase().includes(q));
-  const total=list.length;list=list.slice(0,(estPage+1)*PAGE_SIZE);
+  const tot=list.length;list=list.slice(0,(ep+1)*PS);
   const el=document.getElementById('estTable');
   if(!list.length){el.innerHTML='<div class="empty"><div class="ei">📋</div><div class="et">Sin resultados</div></div>';return;}
   el.innerHTML=`<table><thead><tr><th>Nº</th><th>Cliente</th><th>Familia</th><th>Fecha</th><th style="text-align:right">Importe</th><th>Estado</th><th>Días</th></tr></thead>
-  <tbody>${list.map(e=>`<tr><td><strong>${e.number}</strong></td><td>${e.client}</td><td>${famPill(e.family)}</td><td>${dt(e.date)}</td>
-  <td style="text-align:right;font-weight:600">${eur(e.total)}</td><td>${estBadge(e.stateKey)}</td>
+  <tbody>${list.map(e=>`<tr><td><strong>${e.number}</strong></td><td>${e.client}</td><td>${fP(e.family)}</td><td>${dt(e.date)}</td>
+  <td style="text-align:right;font-weight:600">${eur(e.total)}</td><td>${eB(e.stateKey)}</td>
   <td style="color:${e.daysOld>60?'var(--red)':e.daysOld>30?'var(--amber)':'var(--text2)'}">${e.daysOld}d</td></tr>`).join('')}</tbody>
-  <tfoot><tr style="background:rgba(255,255,255,.02)"><td colspan="4" style="padding:8px 9px;font-weight:600">${total} presupuestos</td>
+  <tfoot><tr style="background:rgba(255,255,255,.02)"><td colspan="4" style="padding:8px 9px;font-weight:600">${tot} presupuestos</td>
   <td style="text-align:right;padding:8px 9px;font-weight:600;color:var(--green)">${eur(list.reduce((s,e)=>s+e.total,0))}</td><td colspan="2"></td></tr></tfoot></table>
-  ${total>(estPage+1)*PAGE_SIZE?`<button class="btn bgh" style="width:100%;margin-top:10px" onclick="estPage++;renderEstTable()">Ver más (${total-(estPage+1)*PAGE_SIZE} restantes)</button>`:''}`;
+  ${tot>(ep+1)*PS?`<button class="btn bgh" style="width:100%;margin-top:10px" onclick="ep++;rEst()">Ver más (${tot-(ep+1)*PS} restantes)</button>`:''}`;
 }
 
 // AGE CHART
-let ageChartI;
-function renderAgeChart(list){
-  if(ageChartI)ageChartI.destroy();
+let ageC;
+function rAge(list){
+  if(ageC)ageC.destroy();
   const b={'<15d':0,'15–30d':0,'30–45d':0,'45–60d':0,'60d+':0};
   list.forEach(i=>{if(i.daysOverdue<15)b['<15d']++;else if(i.daysOverdue<30)b['15–30d']++;else if(i.daysOverdue<45)b['30–45d']++;else if(i.daysOverdue<60)b['45–60d']++;else b['60d+']++;});
-  ageChartI=new Chart(document.getElementById('ageChart'),{type:'doughnut',data:{labels:Object.keys(b),datasets:[{data:Object.values(b),backgroundColor:['#22c487','#f59e0b','#f97316','#f05252','#991b1b'],borderWidth:2,borderColor:'#13161c'}]},options:{responsive:true,maintainAspectRatio:false,cutout:'60%',plugins:{legend:{position:'right',labels:{color:'#8b92a8',font:{size:10},boxWidth:10,padding:8}},tooltip:{callbacks:{label:ctx=>` ${ctx.label}: ${ctx.raw}`}}}}});
+  ageC=new Chart(document.getElementById('ageChart'),{type:'doughnut',data:{labels:Object.keys(b),datasets:[{data:Object.values(b),backgroundColor:['#22c487','#f59e0b','#f97316','#f05252','#991b1b'],borderWidth:2,borderColor:'#13161c'}]},options:{responsive:true,maintainAspectRatio:false,cutout:'60%',plugins:{legend:{position:'right',labels:{color:'#8b92a8',font:{size:10},boxWidth:10,padding:8}},tooltip:{callbacks:{label:ctx=>` ${ctx.label}: ${ctx.raw}`}}}}});
 }
 
-// BANCO
-let bankChartI;
-function setBankFilter(f,btn){bankFilter=f;document.querySelectorAll('#tab-banco .ftabs .ftab').forEach(b=>b.classList.remove('on'));btn.classList.add('on');renderBankSection();}
-
-function renderBankSection(){
-  const p=PERIODS[bankFilter];
-  document.getElementById('bankPeriodLabel').textContent=p.label;
-  const labs=[],ing=[],gas=[],aho=[],rows=[];
-  let tI=0,tG=0,tA=0;
-  p.months.forEach(({y,m})=>{
-    const i=BANK[y].ing[m],g=BANK[y].gas[m],a=BANK[y].aho[m]||0;
-    if(i===null)return;
-    labs.push(MONTHS[m]+"'"+String(y).slice(2));
-    ing.push(i);gas.push(g);aho.push(a);
-    rows.push({label:MONTHS[m]+' '+y,i,g,a});
-    tI+=i;tG+=g;tA+=a;
-  });
-  const tB=tI-tG;
-
-  document.getElementById('bankMetrics').innerHTML=`
-    <div class="mc"><div class="ml">Ingresos período</div><div class="mv g">${eur(tI)}</div><div class="ms">${p.label}</div></div>
-    <div class="mc"><div class="ml">Gastos reales</div><div class="mv r">${eur(tG)}</div><div class="ms">Sin ahorro 10%</div></div>
-    <div class="mc"><div class="ml">Balance</div><div class="mv ${tB>=0?'g':'r'}">${tB>=0?'+':''}${eur(tB)}</div><div class="ms">Resultado neto</div></div>
-    <div class="mc"><div class="ml">Ahorro 10%</div><div class="mv p">${eur(tA)}</div><div class="ms">Fondo separado</div></div>
-    <div class="mc"><div class="ml">Media ingresos/mes</div><div class="mv g">${eur(tI/Math.max(labs.length,1))}</div></div>
-    <div class="mc"><div class="ml">Media gastos/mes</div><div class="mv r">${eur(tG/Math.max(labs.length,1))}</div></div>`;
-
-  if(bankChartI)bankChartI.destroy();
-  bankChartI=new Chart(document.getElementById('bankChart'),{data:{labels:labs,datasets:[
-    {type:'bar',label:'Ingresos',data:ing,backgroundColor:'#22c487'},
-    {type:'bar',label:'Gastos',data:gas,backgroundColor:'#f05252'},
-    {type:'line',label:'Balance',data:ing.map((v,i2)=>v-gas[i2]),borderColor:'#4d9cf8',backgroundColor:'rgba(77,156,248,.08)',fill:true,tension:.35,pointRadius:3,pointBackgroundColor:'#4d9cf8',borderWidth:2}
-  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${new Intl.NumberFormat('es-ES').format(Math.round(ctx.raw))} €`}}},
-    scales:{y:{ticks:{callback:v=>(v/1000).toFixed(0)+'k',color:'#5a6278',font:{size:10}},grid:{color:'rgba(255,255,255,.05)'},border:{color:'rgba(255,255,255,.1)'}},x:{ticks:{color:'#5a6278',font:{size:10},maxRotation:45,autoSkip:false},grid:{display:false},border:{color:'rgba(255,255,255,.1)'}}}}});
-
-  // Categorías de gasto según período
-  const cats = (bankFilter==='2026'||bankFilter==='q1-2026') ? EXPENSE_CATS_2026 :
-               (bankFilter==='2025'||bankFilter.includes('2025')) ? EXPENSE_CATS_2025 :
-               EXPENSE_CATS_2025.map((c,i)=>({...c,amount:c.amount+(EXPENSE_CATS_2026[i]?.amount||0)}));
-  const maxCat=Math.max(...cats.map(c=>c.amount));
-  document.getElementById('expenseCats').innerHTML=cats.map(c=>`
-    <div class="cat-row">
-      <div class="cat-label" title="${c.name}">${c.name}</div>
-      <div class="cat-track"><div class="cat-fill" style="width:${(c.amount/maxCat*100).toFixed(0)}%;background:${c.color}"></div></div>
-      <div class="cat-amount" style="color:${c.color}">${eur(c.amount)}</div>
-    </div>`).join('');
-
-  // Trabajadores
-  const showWorkers = bankFilter==='2026'||bankFilter==='q1-2026' ? 
-    WORKERS.map(w=>({...w,total:w.total2026,ops:w.ops2026})) :
-    bankFilter==='2025'||bankFilter.includes('2025') ?
-    WORKERS.map(w=>({...w,total:w.total2025,ops:w.ops2025})) :
-    WORKERS.map(w=>({...w,total:w.total2025+w.total2026,ops:w.ops2025+w.ops2026}));
-
-  document.getElementById('workerGrid').innerHTML=showWorkers.filter(w=>w.total>0).map(w=>`
-    <div class="worker-card">
-      <div class="worker-name">👤 ${w.name}</div>
-      <div class="worker-total">${eur(w.total)}</div>
-      <div class="worker-ops">${w.ops} operaciones · ${eur(w.total/Math.max(w.ops,1))}/op</div>
-    </div>`).join('');
-
-  document.getElementById('workerTable').innerHTML=WORKERS.map(w=>`<tr>
-    <td>${w.name}</td>
-    <td style="text-align:right">${eur(w.total2025)}</td>
-    <td style="text-align:right">${w.total2026>0?eur(w.total2026):'—'}</td>
-    <td style="text-align:right;color:var(--red)">${eur((w.total2025+w.total2026)/(12+(w.total2026>0?5:0)))}</td>
-    <td style="text-align:right;color:var(--text2)">${w.ops2025+w.ops2026}</td>
-  </tr>`).join('');
-
-  // Tabla mensual
-  document.getElementById('bankTbody').innerHTML=rows.map(r=>{const b=r.i-r.g;return`<tr>
-    <td>${r.label}</td><td style="text-align:right;color:#22c487">${eur(r.i)}</td>
-    <td style="text-align:right;color:#f05252">${eur(r.g)}</td>
-    <td style="text-align:right;color:#a78bfa">${r.a>0?eur(r.a):'—'}</td>
-    <td style="text-align:right;color:${b>=0?'#22c487':'#f05252'};font-weight:600">${b>=0?'+':''}${eur(b)}</td>
-    <td><span class="badge ${b>=0?'bgo':'bur'}">${b>=0?'Positivo':'Déficit'}</span></td></tr>`;}).join('');
-  document.getElementById('bankTfoot').innerHTML=`<tr style="background:rgba(255,255,255,.03)">
-    <td><strong>Total</strong></td><td style="text-align:right;color:#22c487;font-weight:600">${eur(tI)}</td>
-    <td style="text-align:right;color:#f05252;font-weight:600">${eur(tG)}</td>
-    <td style="text-align:right;color:#a78bfa;font-weight:600">${eur(tA)}</td>
-    <td style="text-align:right;color:${tB>=0?'#22c487':'#f05252'};font-weight:700">${tB>=0?'+':''}${eur(tB)}</td><td></td></tr>`;
-}
-
-// BANK UPLOAD
-async function loadBankInfo(){
-  const d=await apiFetch('/api/bank/info');
-  const el=document.getElementById('lastUploadInfo');
-  if(!d||!d.uploaded){el.textContent='No hay ningún extracto subido aún.';return;}
-  el.textContent=`✅ Último extracto: ${d.originalname} — subido el ${new Date(d.uploadedAt).toLocaleDateString('es-ES')} (${Math.round(d.size/1024)} KB)`;
-}
-async function handleBankUpload(file){
-  if(!file)return;
-  const prog=document.getElementById('uploadProgress'),msg=document.getElementById('uploadMsg'),fill=document.getElementById('progFill');
-  prog.style.display='block';msg.textContent='Subiendo '+file.name+'...';fill.style.width='30%';
-  const form=new FormData();form.append('file',file);
-  try{
-    const r=await fetch(`${API}/api/bank/upload`,{method:'POST',headers:{'Authorization':`Bearer ${tok}`},body:form});
-    const d=await r.json();fill.style.width='100%';msg.textContent=d.message||'Subido';
-    setTimeout(()=>{prog.style.display='none';loadBankInfo();},2000);
-  }catch(e){msg.textContent='Error: '+e.message;fill.style.background='var(--red)';}
-}
-function handleBankDrop(e){e.preventDefault();document.getElementById('bankUploadZone').classList.remove('drag');const file=e.dataTransfer.files[0];if(file&&(file.name.endsWith('.xlsx')||file.name.endsWith('.xls')))handleBankUpload(file);}
-
-// ACTIONS
-async function triggerAlertCheck(){const b=document.getElementById('alertBtn');if(b){b.disabled=true;b.textContent='⏳ Enviando...';}const d=await apiFetch('/api/check-alerts',{method:'POST'});showRes(d?.message||'Revisadas');if(b){b.disabled=false;b.textContent='🔔 Enviar alertas';}}
-async function sendSummary(){const d=await apiFetch('/api/send-summary',{method:'POST'});showRes(d?.message||'Enviado');}
-async function testNotif(t){const d=await apiFetch('/api/test-notification',{method:'POST',body:JSON.stringify({type:t})});showRes(d?.message||'Enviado');}
-function showRes(m){const el=document.getElementById('notifRes');el.textContent='✅ '+m;el.style.display='block';setTimeout(()=>el.style.display='none',4000);}
-
-// TABS
-function showTab(id,btn){
-  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
-  document.getElementById('tab-'+id).classList.add('active');
+// BANCO SUB-TABS
+function showBTab(id,btn){
+  document.querySelectorAll('.bpanel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.btab').forEach(b=>b.classList.remove('active'));
+  document.getElementById('btab-'+id).classList.add('active');
   if(btn)btn.classList.add('active');
-  if(id==='banco'){showBancoTab('resumen',document.querySelector('.btab'));}
+  if(id==='resumen'){rOv();rMCells();}
+  if(id==='mensual')rMo();
+  if(id==='categorias')rCats(cy);
+  if(id==='personal')rWorkers();
+  if(id==='prevision')rFc();
+  if(id==='ahorro'){rSv();upSim();}
+  if(id==='subir')loadBInfo();
 }
 
-
-// ── BANCO SUB-TABS ────────────────────────────────────────────────
-function showBancoTab(id, btn) {
-  document.querySelectorAll('.bpanel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.btab').forEach(b => b.classList.remove('active'));
-  document.getElementById('btab-' + id).classList.add('active');
-  if (btn) btn.classList.add('active');
-  // Render charts on demand
-  if (id === 'resumen')   { renderOverviewChart(); renderMonthCells(); }
-  if (id === 'mensual')   renderMonthlyChart();
-  if (id === 'categorias') renderCatSection('all');
-  if (id === 'personal')  renderWorkers();
-  if (id === 'prevision') renderForecastChart();
-  if (id === 'ahorro')    { renderSavingsChart(); updateSim(); }
-  if (id === 'upload')    loadBankInfo();
-}
-
-const BANK_DATA = {
-  2025:{ing:[42591,46049,37617,36972,36454,79906,54599,12683,60884,177818,25479,28722],gas:[44321,44680,30031,38980,32041,61353,80714,29187,41084,188064,23392,29799],aho:[0,0,0,0,0,0,0,0,0,0,0,0]},
-  2026:{ing:[38466,36687,57378,25639,79000,null,null,null,null,null,null,null],gas:[38343,34439,34659,41772,31250,null,null,null,null,null,null,null],aho:[0,1650,6215,993,8975,null,null,null,null,null,null,null]}
-};
-
-const EXPENSE_CATS = [
-  {name:'Proveedores materiales',  y25:89420, y26:38200, color:'#f05252', tipo:'Variable obra'},
-  {name:'TGSS Seg. Social',        y25:64121, y26:16319, color:'#f59e0b', tipo:'Variable personal'},
-  {name:'Personal (pagos directos)',y25:62462, y26:34715, color:'#f97316', tipo:'Variable personal'},
-  {name:'AEAT / Hacienda',         y25:51485, y26:8449,  color:'#f59e0b', tipo:'Obligatorio'},
-  {name:'Cinc Gestió (comisión)',   y25:23499, y26:13390, color:'#a78bfa', tipo:'Variable obra'},
-  {name:'Seguros',                  y25:11930, y26:4890,  color:'#4d9cf8', tipo:'Fijo/trimestral'},
-  {name:'Gestión y admin',          y25:8415,  y26:4228,  color:'#22c487', tipo:'Fijo mensual'},
-  {name:'Digital y software',       y25:2800,  y26:1200,  color:'#22c487', tipo:'Fijo mensual'},
-  {name:'Subcontratas obra',        y25:26705, y26:0,     color:'#e879a1', tipo:'Variable obra'},
-  {name:'Combustible y consumibles',y25:4200,  y26:1800,  color:'#6b7280', tipo:'Variable'},
-];
-
-const INCOME_CATS = [
-  {name:'Cobro clientes (facturas)', y25:330000, y26:180000, color:'#22c487'},
-  {name:'Cobro comunidades',         y25:83359,  y26:40000,  color:'#4d9cf8'},
-  {name:'Ingresos varios',           y25:180000, y26:17000,  color:'#a78bfa'},
-  {name:'Devoluciones AEAT',         y25:19000,  y26:0,      color:'#f59e0b'},
-];
-
-const WORKERS_DATA = [
-  {name:'Jose Beliard',    y25:21830, y26:10000, ops25:15, ops26:6},
-  {name:'Diego Campillo',  y25:15975, y26:12655, ops25:24, ops26:8},
-  {name:'Abdellah Souiri', y25:12745, y26:7530,  ops25:11, ops26:5},
-  {name:'Paula Morales',   y25:7112,  y26:4600,  ops25:9,  ops26:4},
-  {name:'Mamadou Barry',   y25:4800,  y26:0,     ops25:4,  ops26:0},
-];
-
-let showYears = {2025:true, 2026:true};
-let catYear = 'all';
-let charts_banco = {};
-
-function dcB(id){if(charts_banco[id]){charts_banco[id].destroy();delete charts_banco[id];}}
-
-const CS_BANCO = {
-  responsive:true, maintainAspectRatio:false,
-  plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${new Intl.NumberFormat('es-ES').format(Math.round(ctx.raw))} €`}}},
-  scales:{
-    y:{ticks:{callback:v=>(v/1000).toFixed(0)+'k',color:'#5a6278',font:{size:10}},grid:{color:'rgba(255,255,255,.05)'},border:{color:'rgba(255,255,255,.1)'}},
-    x:{ticks:{color:'#5a6278',font:{size:10},maxRotation:45,autoSkip:false},grid:{display:false},border:{color:'rgba(255,255,255,.1)'}}
-  }
-};
-
-function renderOverviewChart(){
-  dcB('ov');
-  const l25=MONTHS.map(m=>m+"'25"), l26=MONTHS.slice(0,5).map(m=>m+"'26");
+function rOv(){
+  dc('ov');
+  const l25=MN.map(m=>m+"'25"),l26=MN.slice(0,5).map(m=>m+"'26");
   const labels=[...l25,...l26];
-  const ing=[...BANK_DATA[2025].ing,...BANK_DATA[2026].ing.slice(0,5)];
-  const gas=[...BANK_DATA[2025].gas,...BANK_DATA[2026].gas.slice(0,5)];
+  const ing=[...BD[2025].i,...BD[2026].i.slice(0,5)];
+  const gas=[...BD[2025].g,...BD[2026].g.slice(0,5)];
   const bal=ing.map((v,i)=>v-gas[i]);
-  charts_banco['ov']=new Chart(document.getElementById('overviewChart'),{
-    data:{labels,datasets:[
-      {type:'bar',label:'Ingresos',data:ing,backgroundColor:'#22c487',yAxisID:'y'},
-      {type:'bar',label:'Gastos',data:gas,backgroundColor:'#f05252',yAxisID:'y'},
-      {type:'line',label:'Balance',data:bal,borderColor:'#4d9cf8',backgroundColor:'rgba(77,156,248,.08)',fill:true,tension:.35,yAxisID:'y',pointRadius:3,pointBackgroundColor:'#4d9cf8',borderWidth:2}
-    ]},options:{...CS_BANCO}
-  });
+  CH['ov']=new Chart(document.getElementById('ovChart'),{data:{labels,datasets:[
+    {type:'bar',label:'Ingresos',data:ing,backgroundColor:'#22c487',yAxisID:'y'},
+    {type:'bar',label:'Gastos',data:gas,backgroundColor:'#f05252',yAxisID:'y'},
+    {type:'line',label:'Balance',data:bal,borderColor:'#4d9cf8',backgroundColor:'rgba(77,156,248,.08)',fill:true,tension:.35,yAxisID:'y',pointRadius:3,pointBackgroundColor:'#4d9cf8',borderWidth:2}
+  ]},options:{...CSC}});
 }
 
-function renderMonthCells(){
-  const c=document.getElementById('monthCells2025');
-  if(!c)return;
+function rMCells(){
+  const c=document.getElementById('mCells2025');if(!c)return;
   c.innerHTML='';
-  MONTHS.forEach((m,i)=>{
-    const bal=BANK_DATA[2025].ing[i]-BANK_DATA[2025].gas[i];
-    const d=document.createElement('div');
-    d.className='month-cell '+(bal>=0?'pos':'neg');
-    d.innerHTML=`<div class="mc-mn">${m}</div><div class="mc-mb ${bal>=0?'pos':'neg'}">${bal>=0?'+':''}${Math.round(bal/1000)}k</div><div class="mc-ms">${eur(BANK_DATA[2025].ing[i])}</div>`;
+  MN.forEach((m,i)=>{
+    const bal=BD[2025].i[i]-BD[2025].g[i];
+    const d=document.createElement('div');d.className='mcell '+(bal>=0?'pos':'neg');
+    d.innerHTML=`<div class="mn">${m}</div><div class="mb ${bal>=0?'pos':'neg'}">${bal>=0?'+':''}${Math.round(bal/1000)}k</div><div class="msb">${eur(BD[2025].i[i])}</div>`;
     c.appendChild(d);
   });
 }
 
-function toggleYear(y){
-  showYears[y]=!showYears[y];
-  document.getElementById('ybtn'+y).classList.toggle('on',showYears[y]);
-  renderMonthlyChart();
-}
+let sY={2025:true,2026:true};
+function toggleY(y){sY[y]=!sY[y];document.getElementById('yb'+y).classList.toggle('on',sY[y]);rMo();}
 
-function renderMonthlyChart(){
-  dcB('mo');
+function rMo(){
+  dc('mo');
   const labels=[],ing=[],gas=[],rows=[];
   [2025,2026].forEach(yr=>{
-    if(!showYears[yr])return;
-    BANK_DATA[yr].ing.forEach((v,i)=>{
+    if(!sY[yr])return;
+    BD[yr].i.forEach((v,i)=>{
       if(v===null)return;
-      labels.push(MONTHS[i]+"'"+String(yr).slice(2));
-      ing.push(v);gas.push(BANK_DATA[yr].gas[i]);
-      rows.push({label:MONTHS[i]+' '+yr,i:v,g:BANK_DATA[yr].gas[i],a:BANK_DATA[yr].aho[i]||0});
+      labels.push(MN[i]+"'"+String(yr).slice(2));
+      ing.push(v);gas.push(BD[yr].g[i]);
+      rows.push({label:MN[i]+' '+yr,i:v,g:BD[yr].g[i],a:BD[yr].a[i]||0});
     });
   });
-  charts_banco['mo']=new Chart(document.getElementById('monthlyChart'),{type:'bar',data:{labels,datasets:[{label:'Ingresos',data:ing,backgroundColor:'#22c487'},{label:'Gastos',data:gas,backgroundColor:'#f05252'}]},options:{...CS_BANCO}});
-  const tb=document.getElementById('monthlyTbody'),tf=document.getElementById('monthlyTfoot');
-  if(!tb||!tf)return;
+  CH['mo']=new Chart(document.getElementById('moChart'),{type:'bar',data:{labels,datasets:[{label:'Ingresos',data:ing,backgroundColor:'#22c487'},{label:'Gastos',data:gas,backgroundColor:'#f05252'}]},options:{...CSC}});
+  const tb=document.getElementById('moTb'),tf=document.getElementById('moTf');if(!tb||!tf)return;
   let tI=0,tG=0,tA=0;
-  tb.innerHTML=rows.map(r=>{const b=r.i-r.g;tI+=r.i;tG+=r.g;tA+=r.a;const mg=(r.i>0?((r.i-r.g)/r.i*100):0);
+  tb.innerHTML=rows.map(r=>{const b=r.i-r.g;tI+=r.i;tG+=r.g;tA+=r.a;const mg=r.i>0?((r.i-r.g)/r.i*100):0;
     return`<tr><td>${r.label}</td><td style="text-align:right;color:#22c487">${eur(r.i)}</td><td style="text-align:right;color:#f05252">${eur(r.g)}</td><td style="text-align:right;color:#a78bfa">${r.a>0?eur(r.a):'—'}</td><td style="text-align:right;color:${b>=0?'#22c487':'#f05252'};font-weight:600">${b>=0?'+':''}${eur(b)}</td><td style="text-align:right;color:${mg>=0?'#22c487':'#f05252'}">${mg.toFixed(1)}%</td><td><span class="badge ${b>=0?'bgo':'bur'}">${b>=0?'Positivo':'Déficit'}</span></td></tr>`;
   }).join('');
-  const tb2=tI-tG;
-  tf.innerHTML=`<tr style="background:rgba(255,255,255,.03)"><td><strong>Total</strong></td><td style="text-align:right;color:#22c487;font-weight:600">${eur(tI)}</td><td style="text-align:right;color:#f05252;font-weight:600">${eur(tG)}</td><td style="text-align:right;color:#a78bfa;font-weight:600">${eur(tA)}</td><td style="text-align:right;color:${tb2>=0?'#22c487':'#f05252'};font-weight:700">${tb2>=0?'+':''}${eur(tb2)}</td><td style="text-align:right;color:${tb2>=0?'#22c487':'#f05252'}">${(tb2/tI*100).toFixed(1)}%</td><td></td></tr>`;
+  const tB=tI-tG;
+  tf.innerHTML=`<tr style="background:rgba(255,255,255,.03)"><td><strong>Total</strong></td><td style="text-align:right;color:#22c487;font-weight:600">${eur(tI)}</td><td style="text-align:right;color:#f05252;font-weight:600">${eur(tG)}</td><td style="text-align:right;color:#a78bfa;font-weight:600">${eur(tA)}</td><td style="text-align:right;color:${tB>=0?'#22c487':'#f05252'};font-weight:700">${tB>=0?'+':''}${eur(tB)}</td><td style="text-align:right;color:${tB>=0?'#22c487':'#f05252'}">${(tB/tI*100).toFixed(1)}%</td><td></td></tr>`;
 }
 
-function setCatYear(y,btn){catYear=y;document.querySelectorAll('#btab-categorias .ftab').forEach(b=>b.classList.remove('on'));btn.classList.add('on');renderCatSection(y);}
+let catY='all';
+function setCY(y,btn){catY=y;document.querySelectorAll('#btab-categorias .ftab').forEach(b=>b.classList.remove('on'));btn.classList.add('on');rCats(y);}
 
-function renderCatSection(y){
-  catYear=y||catYear;
-  const cats=EXPENSE_CATS.map(c=>({...c,amount:catYear==='2025'?c.y25:catYear==='2026'?c.y26:c.y25+c.y26})).filter(c=>c.amount>0).sort((a,b)=>b.amount-a.amount);
-  const incs=INCOME_CATS.map(c=>({...c,amount:catYear==='2025'?c.y25:catYear==='2026'?c.y26:c.y25+c.y26})).filter(c=>c.amount>0).sort((a,b)=>b.amount-a.amount);
-  const maxCat=Math.max(...cats.map(c=>c.amount));
-  const maxInc=Math.max(...incs.map(c=>c.amount));
-  const eEl=document.getElementById('expenseCatBars');
-  const iEl=document.getElementById('incomeCatBars');
-  if(eEl)eEl.innerHTML=cats.map(c=>`<div class="cat-row"><div class="cat-label" title="${c.name}">${c.name}</div><div class="cat-track"><div class="cat-fill" style="width:${(c.amount/maxCat*100).toFixed(0)}%;background:${c.color}"></div></div><div class="cat-amount" style="color:${c.color}">${eur(c.amount)}</div></div>`).join('');
-  if(iEl)iEl.innerHTML=incs.map(c=>`<div class="cat-row"><div class="cat-label" title="${c.name}">${c.name}</div><div class="cat-track"><div class="cat-fill" style="width:${(c.amount/maxInc*100).toFixed(0)}%;background:${c.color}"></div></div><div class="cat-amount" style="color:${c.color}">${eur(c.amount)}</div></div>`).join('');
-  const tb=document.getElementById('catDetailTbody');
-  if(tb)tb.innerHTML=cats.map(c=>`<tr><td>${c.name}</td><td style="text-align:right">${eur(c.y25)}</td><td style="text-align:right">${eur(c.y26)}</td><td style="text-align:right;font-weight:600;color:${c.color}">${eur(c.y25+c.y26)}</td><td style="text-align:right;color:var(--text2)">${eur((c.y25+c.y26)/17)}</td><td><span class="badge" style="background:var(--bg3);color:var(--text2)">${c.tipo}</span></td></tr>`).join('');
+function rCats(y){
+  catY=y||catY;
+  const cats=EC.map(c=>({...c,amt:catY==='2025'?c.y5:catY==='2026'?c.y6:c.y5+c.y6})).filter(c=>c.amt>0).sort((a,b)=>b.amt-a.amt);
+  const incs=IC.map(c=>({...c,amt:catY==='2025'?c.y5:catY==='2026'?c.y6:c.y5+c.y6})).filter(c=>c.amt>0).sort((a,b)=>b.amt-a.amt);
+  const mxE=Math.max(...cats.map(c=>c.amt)),mxI=Math.max(...incs.map(c=>c.amt));
+  const eEl=document.getElementById('expBars'),iEl=document.getElementById('incBars');
+  if(eEl)eEl.innerHTML=cats.map(c=>`<div class="cbar"><div class="clab" title="${c.n}">${c.n}</div><div class="ctrack"><div class="cfill" style="width:${(c.amt/mxE*100).toFixed(0)}%;background:${c.c}"></div></div><div class="camt" style="color:${c.c}">${eur(c.amt)}</div></div>`).join('');
+  if(iEl)iEl.innerHTML=incs.map(c=>`<div class="cbar"><div class="clab" title="${c.n}">${c.n}</div><div class="ctrack"><div class="cfill" style="width:${(c.amt/mxI*100).toFixed(0)}%;background:${c.c}"></div></div><div class="camt" style="color:${c.c}">${eur(c.amt)}</div></div>`).join('');
+  const tb=document.getElementById('catTb');
+  if(tb)tb.innerHTML=cats.map(c=>`<tr><td>${c.n}</td><td style="text-align:right">${eur(c.y5)}</td><td style="text-align:right">${eur(c.y6)}</td><td style="text-align:right;font-weight:600;color:${c.c}">${eur(c.y5+c.y6)}</td><td style="text-align:right;color:var(--text2)">${eur((c.y5+c.y6)/17)}</td><td><span class="badge" style="background:var(--bg3);color:var(--text2);font-size:9px">${c.t}</span></td></tr>`).join('');
 }
 
-function renderWorkers(){
-  const wg=document.getElementById('workerCards');
-  const wt=document.getElementById('workerTableBody');
-  if(!wg||!wt)return;
-  wg.innerHTML=WORKERS_DATA.filter(w=>w.y25+w.y26>0).map(w=>`<div class="worker-card"><div class="worker-name">👤 ${w.name}</div><div class="worker-total">${eur(w.y25+w.y26)}</div><div class="worker-ops">2025: ${eur(w.y25)} · 2026: ${w.y26>0?eur(w.y26):'—'}</div><div class="worker-ops">${w.ops25+w.ops26} operaciones totales</div></div>`).join('');
-  wt.innerHTML=WORKERS_DATA.map(w=>{const tot=w.y25+w.y26,ops=w.ops25+w.ops26,months=(w.y25>0?12:0)+(w.y26>0?5:0);return`<tr><td>${w.name}</td><td style="text-align:right">${eur(w.y25)}</td><td style="text-align:right">${w.y26>0?eur(w.y26):'—'}</td><td style="text-align:right;color:var(--red);font-weight:600">${eur(tot)}</td><td style="text-align:right;color:var(--text2)">${months>0?eur(tot/months):'-'}</td><td style="text-align:right;color:var(--text2)">${ops}</td></tr>`;}).join('');
+function rWorkers(){
+  const wg=document.getElementById('wCards'),wt=document.getElementById('wTb');if(!wg||!wt)return;
+  wg.innerHTML=WD.filter(w=>w.y5+w.y6>0).map(w=>`<div class="wcard"><div class="wname">👤 ${w.n}</div><div class="wtotal">${eur(w.y5+w.y6)}</div><div class="wsub">2025: ${eur(w.y5)}${w.y6>0?' · 2026: '+eur(w.y6):''}</div><div class="wsub">${w.o5+w.o6} operaciones totales</div></div>`).join('');
+  wt.innerHTML=WD.map(w=>{const tot=w.y5+w.y6,ops=w.o5+w.o6,m=(w.y5>0?12:0)+(w.y6>0?5:0);return`<tr><td>${w.n}</td><td style="text-align:right">${eur(w.y5)}</td><td style="text-align:right">${w.y6>0?eur(w.y6):'—'}</td><td style="text-align:right;color:var(--red);font-weight:600">${eur(tot)}</td><td style="text-align:right;color:var(--text2)">${m>0?eur(tot/m):'-'}</td><td style="text-align:right;color:var(--text2)">${ops}</td></tr>`;}).join('');
 }
 
-function renderForecastChart(){
-  dcB('fc');
-  const aI=Math.round(BANK_DATA[2026].ing.slice(0,5).reduce((a,b)=>a+b,0)/5);
-  const aG=Math.round(BANK_DATA[2026].gas.slice(0,5).reduce((a,b)=>a+b,0)/5);
+function rFc(){
+  dc('fc');
+  const aI=Math.round(BD[2026].i.slice(0,5).reduce((a,b)=>a+b,0)/5);
+  const aG=Math.round(BD[2026].g.slice(0,5).reduce((a,b)=>a+b,0)/5);
   const sf=[1.0,1.2,0.7,1.1,1.1,1.05,1.0];
   const pI=sf.map(f=>Math.round(aI*f)),pG=sf.map(f=>Math.round(aG*f));
-  const labels=[...MONTHS.slice(0,5).map(m=>m+"'26"),...MONTHS.slice(5).map(m=>m+"'26")];
-  charts_banco['fc']=new Chart(document.getElementById('forecastChart'),{data:{labels,datasets:[
-    {type:'bar',label:'Real ing',data:[...BANK_DATA[2026].ing.slice(0,5),...new Array(7).fill(null)],backgroundColor:'#22c487'},
-    {type:'bar',label:'Real gas',data:[...BANK_DATA[2026].gas.slice(0,5),...new Array(7).fill(null)],backgroundColor:'#f05252'},
+  const labels=[...MN.slice(0,5).map(m=>m+"'26"),...MN.slice(5).map(m=>m+"'26")];
+  CH['fc']=new Chart(document.getElementById('fcChart'),{data:{labels,datasets:[
+    {type:'bar',label:'Real ing',data:[...BD[2026].i.slice(0,5),...new Array(7).fill(null)],backgroundColor:'#22c487'},
+    {type:'bar',label:'Real gas',data:[...BD[2026].g.slice(0,5),...new Array(7).fill(null)],backgroundColor:'#f05252'},
     {type:'bar',label:'Proy ing',data:[...new Array(5).fill(null),...pI],backgroundColor:'rgba(34,196,135,.35)',borderColor:'#22c487',borderWidth:1},
     {type:'bar',label:'Proy gas',data:[...new Array(5).fill(null),...pG],backgroundColor:'rgba(240,82,82,.35)',borderColor:'#f05252',borderWidth:1}
-  ]},options:{...CS_BANCO}});
+  ]},options:{...CSC}});
 }
 
-function renderSavingsChart(){
-  dcB('sv');
-  const monthly=[0,1650,6215,993,8975];
-  const cumul=monthly.reduce((acc,v,i)=>{acc.push((acc[i-1]||0)+v);return acc;},[]);
-  charts_banco['sv']=new Chart(document.getElementById('savingsChart'),{data:{labels:MONTHS.slice(0,5).map(m=>m+"'26"),datasets:[
-    {type:'bar',label:'Mensual',data:monthly,backgroundColor:'rgba(167,139,250,.4)',borderColor:'#a78bfa',borderWidth:1},
-    {type:'line',label:'Acumulado',data:cumul,borderColor:'#a78bfa',backgroundColor:'rgba(167,139,250,.05)',fill:true,tension:.35,pointRadius:4,pointBackgroundColor:'#a78bfa',borderWidth:2}
+let svC;
+function rSv(){
+  if(svC)svC.destroy();
+  const mo=[0,1650,6215,993,8975];
+  const cu=mo.reduce((acc,v,i)=>{acc.push((acc[i-1]||0)+v);return acc;},[]);
+  svC=new Chart(document.getElementById('svChart'),{data:{labels:MN.slice(0,5).map(m=>m+"'26"),datasets:[
+    {type:'bar',data:mo,backgroundColor:'rgba(167,139,250,.4)',borderColor:'#a78bfa',borderWidth:1},
+    {type:'line',data:cu,borderColor:'#a78bfa',backgroundColor:'rgba(167,139,250,.05)',fill:true,tension:.35,pointRadius:4,pointBackgroundColor:'#a78bfa',borderWidth:2}
   ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${eur(ctx.raw)}`}}},scales:{y:{ticks:{callback:v=>(v/1000).toFixed(1)+'k',color:'#5a6278',font:{size:10}},grid:{color:'rgba(255,255,255,.05)'},border:{color:'rgba(255,255,255,.1)'}},x:{ticks:{color:'#5a6278',font:{size:11}},grid:{display:false},border:{color:'rgba(255,255,255,.1)'}}}}});
 }
 
-function updateSim(){
-  const fact=parseInt(document.getElementById('simRange').value);
-  const meses=parseInt(document.getElementById('simMeses').value);
-  document.getElementById('simVal').textContent=eur(fact);
-  document.getElementById('simMesesVal').textContent=meses;
-  const mensual=Math.round(fact*0.1);
-  const total7=mensual*meses;
-  const acum=17834+total7;
-  document.getElementById('sim1').textContent=eur(mensual);
-  document.getElementById('sim2').textContent=eur(total7);
-  document.getElementById('sim3').textContent=eur(acum);
-}
-
-// Init banco when tab opens
-// INIT
-if(tok){showApp();}else{document.getElementById('loginScreen').style.display='flex';}
-setInterval(()=>{if(tok)loadAll();},15*60*1000);
-</script>
-</body>
-</html>
-  --blue:#4d9cf8;--blue-bg:rgba(77,156,248,0.1);
-  --amber:#f59e0b;--amber-bg:rgba(245,158,11,0.1);
-  --purple:#a78bfa;--purple-bg:rgba(167,139,250,0.1);
-  --r:12px;--rs:8px;
-}
-body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-size:14px;line-height:1.6;min-height:100vh}
-#loginScreen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
-.login-box{background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:40px;width:100%;max-width:360px;text-align:center}
-.login-logo{width:52px;height:52px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:12px;display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:18px;color:#fff;margin:0 auto 20px}
-.login-title{font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:600;margin-bottom:4px}
-.login-sub{font-size:12px;color:var(--text3);margin-bottom:28px}
-.login-input{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:12px 14px;color:var(--text);font-family:'Inter',sans-serif;font-size:14px;outline:none;margin-bottom:12px;transition:border-color .2s}
-.login-input:focus{border-color:var(--blue)}
-.login-btn{width:100%;background:var(--blue);border:none;border-radius:var(--rs);padding:12px;color:#fff;font-family:'Inter',sans-serif;font-size:14px;font-weight:600;cursor:pointer}
-.login-btn:disabled{opacity:.5}
-.login-error{color:var(--red);font-size:12px;margin-top:8px;display:none}
-#app{display:none}
-.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 28px;display:flex;align-items:center;justify-content:space-between;height:60px;position:sticky;top:0;z-index:100}
-.logo{display:flex;align-items:center;gap:10px}
-.logo-icon{width:32px;height:32px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:7px;display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12px;color:#fff}
-.logo-text{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px}
-.logo-sub{font-size:10px;color:var(--text3);margin-top:-2px}
-.header-right{display:flex;align-items:center;gap:10px}
-.sync-btn{background:var(--bg3);border:1px solid var(--border2);border-radius:20px;padding:5px 12px;font-size:11px;color:var(--text2);cursor:pointer;font-family:'Inter',sans-serif;display:flex;align-items:center;gap:5px}
-.sync-btn:hover{border-color:var(--blue);color:var(--blue)}.sync-btn.loading{opacity:.6;pointer-events:none}
-.live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;margin-right:4px;animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-.logout-btn{background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;font-family:'Inter',sans-serif;padding:4px 8px;border-radius:6px}
-.logout-btn:hover{color:var(--red)}
-.nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 28px;display:flex;overflow-x:auto;scrollbar-width:none}
-.nav::-webkit-scrollbar{display:none}
-.nav-btn{background:none;border:none;color:var(--text3);padding:12px 16px;font-size:12px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;display:flex;align-items:center;gap:5px;font-family:'Inter',sans-serif;white-space:nowrap}
-.nav-btn:hover{color:var(--text)}.nav-btn.active{color:var(--blue);border-bottom-color:var(--blue)}
-.main{padding:24px 28px;max-width:1400px;margin:0 auto}
-.panel{display:none}.panel.active{display:block}
-@media(max-width:768px){.main{padding:14px}.header,.nav{padding:0 14px}}
-.metrics-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:10px;margin-bottom:20px}
-.mc{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;transition:border-color .2s}
-.mc:hover{border-color:var(--border2)}
-.ml{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}
-.mv{font-size:20px;font-weight:600;font-family:'Space Grotesk',sans-serif}
-.mv.g{color:var(--green)}.mv.r{color:var(--red)}.mv.a{color:var(--amber)}.mv.b{color:var(--blue)}.mv.p{color:var(--purple)}
-.ms{font-size:10px;color:var(--text3);margin-top:3px}
-.sk{background:linear-gradient(90deg,var(--bg3) 25%,var(--bg4) 50%,var(--bg3) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:4px;height:24px;width:70%}
-@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
-.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:18px 20px;margin-bottom:14px}
-.card-title{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
-.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
-.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px}
-@media(max-width:900px){.g2,.g3{grid-template-columns:1fr}}
-.badge{display:inline-block;padding:2px 9px;border-radius:10px;font-size:10px;font-weight:600}
-.bgo{background:var(--green-bg);color:var(--green)}.bw1{background:var(--amber-bg);color:var(--amber)}
-.bw2{background:rgba(249,115,22,.15);color:#f97316}.bur{background:var(--red-bg);color:var(--red)}
-.bcr{background:rgba(153,27,27,.3);color:#fca5a5}.bbl{background:var(--blue-bg);color:var(--blue)}
-.bpu{background:var(--purple-bg);color:var(--purple)}
-table{width:100%;border-collapse:collapse;font-size:12px}
-th{color:var(--text3);text-align:left;padding:7px 9px;border-bottom:1px solid var(--border);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
-td{padding:8px 9px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle}
-tr:last-child td{border-bottom:none}
-tr:hover td{background:rgba(255,255,255,.015)}
-.alert{padding:11px 14px;border-radius:var(--rs);margin-bottom:9px;font-size:12px;display:flex;align-items:flex-start;gap:9px;border-left:3px solid}
-.alert p{margin-top:2px;font-size:11px;opacity:.8}
-.aok{background:var(--green-bg);border-left-color:var(--green);color:var(--green)}
-.ain{background:var(--blue-bg);border-left-color:var(--blue);color:var(--blue)}
-.awa{background:var(--amber-bg);border-left-color:var(--amber);color:#fbbf24}
-.ada{background:var(--red-bg);border-left-color:var(--red);color:var(--red)}
-.btn{padding:7px 14px;border-radius:var(--rs);font-size:12px;font-weight:600;cursor:pointer;border:none;font-family:'Inter',sans-serif;display:inline-flex;align-items:center;gap:5px;transition:opacity .2s}
-.btn:hover{opacity:.85}.btn:disabled{opacity:.4;cursor:not-allowed}
-.bp{background:var(--blue);color:#fff}.bg2{background:var(--green);color:#fff}
-.bgh{background:var(--bg3);color:var(--text2);border:1px solid var(--border2)}
-.ftabs{display:flex;gap:6px;flex-wrap:wrap}
-.ftab{padding:4px 12px;border-radius:20px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid var(--border2);background:none;color:var(--text3);font-family:'Inter',sans-serif;transition:all .15s}
-.ftab:hover{color:var(--text)}.ftab.on{background:var(--blue);border-color:var(--blue);color:#fff}
-.srch{background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:6px 12px;color:var(--text);font-family:'Inter',sans-serif;font-size:12px;outline:none;width:200px}
-.srch:focus{border-color:var(--blue)}
-select{background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:var(--rs);padding:5px 10px;font-size:12px;cursor:pointer;font-family:'Inter',sans-serif;outline:none}
-select:focus{border-color:var(--blue)}
-.empty{text-align:center;padding:36px 20px;color:var(--text3)}
-.empty .ei{font-size:38px;margin-bottom:10px}
-.empty .et{font-size:14px;font-weight:500;color:var(--text2)}
-.upload-zone{border:2px dashed var(--border2);border-radius:var(--r);padding:32px;text-align:center;cursor:pointer;transition:all .2s}
-.upload-zone:hover,.upload-zone.drag{border-color:var(--blue);background:var(--blue-bg)}
-.upload-zone input[type=file]{display:none}
-.prog-track{height:6px;background:var(--bg4);border-radius:3px;overflow:hidden;margin-top:6px}
-.prog-fill{height:6px;border-radius:3px;background:var(--green);transition:width .3s}
-/* Worker cards */
-.worker-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:20px}
-.worker-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:14px 16px}
-.worker-name{font-size:13px;font-weight:600;margin-bottom:4px}
-.worker-total{font-size:18px;font-weight:700;font-family:'Space Grotesk',sans-serif;color:var(--red)}
-.worker-ops{font-size:10px;color:var(--text3);margin-top:2px}
-/* Expense category bars */
-.cat-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-.cat-label{font-size:12px;color:var(--text2);width:140px;flex-shrink:0}
-.cat-track{flex:1;height:8px;background:var(--bg4);border-radius:4px;overflow:hidden}
-.cat-fill{height:8px;border-radius:4px}
-.cat-amount{font-size:12px;font-weight:500;min-width:80px;text-align:right}
-/* Family pill */
-.family-pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:10px;background:var(--purple-bg);color:var(--purple);font-weight:500}
-</style>
-</head>
-<body>
-<div id="loginScreen">
-  <div class="login-box">
-    <div class="login-logo">CP</div>
-    <div class="login-title">Corp Projects</div>
-    <div class="login-sub">Dashboard financiero privado</div>
-    <input type="password" class="login-input" id="loginPass" placeholder="Contraseña de acceso" onkeydown="if(event.key==='Enter')doLogin()">
-    <button class="login-btn" onclick="doLogin()" id="loginBtn">Entrar →</button>
-    <div class="login-error" id="loginError"></div>
-  </div>
-</div>
-
-<div id="app">
-  <header class="header">
-    <div class="logo">
-      <div class="logo-icon">CP</div>
-      <div>
-        <div class="logo-text">Corp Projects Holding SL</div>
-        <div class="logo-sub">Dashboard en tiempo real</div>
-      </div>
-    </div>
-    <div class="header-right">
-      <span style="font-size:11px;color:var(--text3)"><span class="live-dot"></span><span id="lastUpdatedText">Cargando...</span></span>
-      <button class="sync-btn" onclick="refreshData()" id="syncBtn">🔄 Actualizar</button>
-      <button class="logout-btn" onclick="doLogout()">Salir</button>
-    </div>
-  </header>
-  <nav class="nav">
-    <button class="nav-btn active" onclick="showTab('facturas',this)">📊 Facturación</button>
-    <button class="nav-btn" onclick="showTab('pendientes',this)">🔴 Pendientes cobro</button>
-    <button class="nav-btn" onclick="showTab('familias',this)">👥 Familias</button>
-    <button class="nav-btn" onclick="showTab('presupuestos',this)">📋 Presupuestos</button>
-    <button class="nav-btn" onclick="showTab('banco',this)">🏦 Banco y gastos</button>
-    <button class="nav-btn" onclick="showTab('alertas',this)">🔔 Alertas</button>
-  </nav>
-
-  <main class="main">
-
-    <!-- FACTURACIÓN -->
-    <div id="tab-facturas" class="panel active">
-      <div class="metrics-row">
-        <div class="mc"><div class="ml">Facturas este mes</div><div class="mv b sk" id="m1"> </div><div class="ms">Emitidas en el mes actual</div></div>
-        <div class="mc"><div class="ml">Facturado este mes</div><div class="mv g sk" id="m2"> </div><div class="ms">Importe bruto</div></div>
-        <div class="mc"><div class="ml">Total pendiente cobro</div><div class="mv r sk" id="m3"> </div><div class="ms">Sin cobrar acumulado</div></div>
-        <div class="mc"><div class="ml">Facturas pendientes</div><div class="mv a sk" id="m4"> </div><div class="ms">Con saldo abierto</div></div>
-        <div class="mc"><div class="ml">En riesgo (30–60d)</div><div class="mv a sk" id="m5"> </div><div class="ms">Seguimiento necesario</div></div>
-        <div class="mc"><div class="ml">Críticas (+60d)</div><div class="mv r sk" id="m6"> </div><div class="ms">Acción urgente</div></div>
-      </div>
-      <div class="g2">
-        <div class="card">
-          <div class="card-title">Pendientes por antigüedad</div>
-          <div style="height:200px"><canvas id="ageChart" role="img" aria-label="Antigüedad">Gráfico.</canvas></div>
-        </div>
-        <div class="card">
-          <div class="card-title">Resumen cobros</div>
-          <div id="cobrosResumen">Cargando...</div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-title">Últimas facturas pendientes <span style="font-size:10px;color:var(--text3)" id="factsLastUpd">—</span></div>
-        <div id="factsTable">Cargando...</div>
-      </div>
-    </div>
-
-    <!-- PENDIENTES -->
-    <div id="tab-pendientes" class="panel">
-      <div class="alert ain" id="pendAlert" style="margin-bottom:16px">
-        <div>ℹ️</div><div>Cargando...</div>
-      </div>
-      <div class="card">
-        <div class="card-title">
-          Facturas sin cobrar
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <input type="text" class="srch" id="searchPend" placeholder="Buscar cliente / nº / familia..." oninput="pendPage=0;renderPendTable()">
-            <select id="familyFilterPend" onchange="pendPage=0;renderPendTable()"><option value="">Todas las familias</option></select>
-            <button class="btn bp" onclick="triggerAlertCheck()" id="alertBtn">🔔 Enviar alertas</button>
-          </div>
-        </div>
-        <div class="ftabs" style="margin-bottom:12px">
-          <button class="ftab on" onclick="setPendFilter('all',this)">Todas</button>
-          <button class="ftab" onclick="setPendFilter('warning1',this)">⚠️ 15d+</button>
-          <button class="ftab" onclick="setPendFilter('warning2',this)">⚠️⚠️ 30d+</button>
-          <button class="ftab" onclick="setPendFilter('urgent',this)">🔴 45d+</button>
-          <button class="ftab" onclick="setPendFilter('critical',this)">🚨 60d+</button>
-        </div>
-        <div id="pendTable">Cargando...</div>
-      </div>
-    </div>
-
-    <!-- FAMILIAS -->
-    <div id="tab-familias" class="panel">
-      <div class="alert ain" style="margin-bottom:16px">
-        <div>ℹ️</div>
-        <div><strong>Resumen por familia de cliente</strong><p>Facturación y cobros pendientes agrupados por la categoría asignada en StelOrder.</p></div>
-      </div>
-      <div class="metrics-row" id="familyMetrics">
-        <div class="mc"><div class="ml">Familias activas</div><div class="mv b sk" id="fm1"> </div></div>
-        <div class="mc"><div class="ml">Mayor facturadora</div><div class="mv g sk" id="fm2"> </div></div>
-        <div class="mc"><div class="ml">Mayor pendiente</div><div class="mv r sk" id="fm3"> </div></div>
-      </div>
-      <div class="card">
-        <div class="card-title">Facturación y cobros por familia</div>
-        <div id="familyTable">Cargando...</div>
-      </div>
-      <div class="card" id="familyDetailCard" style="display:none">
-        <div class="card-title" id="familyDetailTitle">Detalle familia</div>
-        <div id="familyDetailTable"></div>
-      </div>
-    </div>
-
-    <!-- PRESUPUESTOS -->
-    <div id="tab-presupuestos" class="panel">
-      <div class="metrics-row">
-        <div class="mc"><div class="ml">Total presupuestos</div><div class="mv b sk" id="e1"> </div></div>
-        <div class="mc"><div class="ml">Aceptados</div><div class="mv g sk" id="e2"> </div></div>
-        <div class="mc"><div class="ml">Importe aceptado</div><div class="mv g sk" id="e3"> </div></div>
-        <div class="mc"><div class="ml">Pendientes respuesta</div><div class="mv a sk" id="e4"> </div></div>
-        <div class="mc"><div class="ml">Importe pendiente</div><div class="mv a sk" id="e5"> </div></div>
-        <div class="mc"><div class="ml">Meses cubiertos</div><div class="mv p sk" id="e6"> </div></div>
-      </div>
-      <div class="alert ain" id="estCoverAlert" style="margin-bottom:16px">
-        <div>📋</div><div>Cargando análisis...</div>
-      </div>
-      <div class="card">
-        <div class="card-title">
-          Presupuestos SAT
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <input type="text" class="srch" id="searchEst" placeholder="Buscar cliente / nº..." oninput="estPage=0;renderEstTable()">
-            <select id="familyFilterEst" onchange="estPage=0;renderEstTable()"><option value="">Todas las familias</option></select>
-          </div>
-        </div>
-        <div class="ftabs" style="margin-bottom:12px">
-          <button class="ftab on" onclick="setEstFilter('all',this)">Todos</button>
-          <button class="ftab" onclick="setEstFilter('accepted',this)">✅ Aceptados</button>
-          <button class="ftab" onclick="setEstFilter('pending',this)">⏳ Pendientes</button>
-          <button class="ftab" onclick="setEstFilter('closed',this)">🔒 Cerrados</button>
-          <button class="ftab" onclick="setEstFilter('rejected',this)">❌ Rechazados</button>
-        </div>
-        <div id="estTable">Cargando presupuestos...</div>
-      </div>
-    </div>
-
-    <!-- BANCO Y GASTOS -->
-    <div id="tab-banco" class="panel">
-      <!-- Upload -->
-      <div class="card" style="margin-bottom:14px">
-        <div class="card-title">📤 Actualizar extracto bancario</div>
-        <div id="bankUploadZone" class="upload-zone" onclick="document.getElementById('bankFile').click()"
-             ondragover="event.preventDefault();this.classList.add('drag')"
-             ondragleave="this.classList.remove('drag')"
-             ondrop="handleBankDrop(event)">
-          <input type="file" id="bankFile" accept=".xlsx,.xls" onchange="handleBankUpload(this.files[0])">
-          <div style="font-size:32px;margin-bottom:8px">📂</div>
-          <div style="font-size:13px;font-weight:500;color:var(--text)">Arrastra aquí el Excel del Santander</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:4px">o haz clic · .xlsx · máx 10MB</div>
-        </div>
-        <div id="uploadProgress" style="display:none;margin-top:10px">
-          <div style="font-size:12px;color:var(--text2)" id="uploadMsg">Subiendo...</div>
-          <div class="prog-track"><div class="prog-fill" id="progFill" style="width:0%"></div></div>
-        </div>
-        <div id="lastUploadInfo" style="margin-top:8px;font-size:11px;color:var(--text3)">—</div>
-      </div>
-
-      <!-- Filtro período -->
-      <div class="card" style="padding:12px 20px;margin-bottom:14px">
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <span style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.06em">Período:</span>
-          <div class="ftabs">
-            <button class="ftab on" onclick="setBankFilter('all',this)">Todo</button>
-            <button class="ftab" onclick="setBankFilter('2025',this)">2025</button>
-            <button class="ftab" onclick="setBankFilter('2026',this)">2026</button>
-            <button class="ftab" onclick="setBankFilter('q1-2025',this)">Q1 2025</button>
-            <button class="ftab" onclick="setBankFilter('q2-2025',this)">Q2 2025</button>
-            <button class="ftab" onclick="setBankFilter('q3-2025',this)">Q3 2025</button>
-            <button class="ftab" onclick="setBankFilter('q4-2025',this)">Q4 2025</button>
-            <button class="ftab" onclick="setBankFilter('q1-2026',this)">Q1 2026</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="metrics-row" id="bankMetrics"></div>
-
-      <div class="g2">
-        <div class="card">
-          <div class="card-title">Ingresos vs Gastos <span style="font-size:10px;color:var(--text3)" id="bankPeriodLabel"></span></div>
-          <div style="height:240px"><canvas id="bankChart" role="img" aria-label="Banco">Banco.</canvas></div>
-        </div>
-        <div class="card">
-          <div class="card-title">Gastos por categoría</div>
-          <div id="expenseCats"></div>
-        </div>
-      </div>
-
-      <!-- Gastos por trabajador -->
-      <div class="card">
-        <div class="card-title">Coste por trabajador / mes</div>
-        <div class="worker-grid" id="workerGrid"></div>
-        <div style="margin-top:4px">
-          <table>
-            <thead><tr><th>Trabajador</th><th style="text-align:right">2025</th><th style="text-align:right">2026 (5m)</th><th style="text-align:right">Media/mes</th><th style="text-align:right">Operaciones</th></tr></thead>
-            <tbody id="workerTable"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Detalle mensual -->
-      <div class="card">
-        <div class="card-title">Detalle mensual</div>
-        <table>
-          <thead><tr><th>Mes</th><th style="text-align:right">Ingresos</th><th style="text-align:right">Gastos reales</th><th style="text-align:right">Ahorro 10%</th><th style="text-align:right">Balance</th><th>Estado</th></tr></thead>
-          <tbody id="bankTbody"></tbody>
-          <tfoot id="bankTfoot"></tfoot>
-        </table>
-      </div>
-    </div>
-
-    <!-- ALERTAS -->
-    <div id="tab-alertas" class="panel">
-      <div class="g2">
-        <div class="card">
-          <div class="card-title">Configuración alertas</div>
-          <table>
-            <tr><td style="color:var(--text2)">✅ Verde</td><td style="text-align:right">Menos de 15 días</td></tr>
-            <tr><td style="color:var(--text2)">⚠️ Primer aviso</td><td style="text-align:right">15 días</td></tr>
-            <tr><td style="color:var(--text2)">⚠️⚠️ Segundo aviso</td><td style="text-align:right">30 días</td></tr>
-            <tr><td style="color:var(--text2)">🔴 Urgente</td><td style="text-align:right">45 días</td></tr>
-            <tr><td style="color:var(--text2)">🚨 Crítico</td><td style="text-align:right">60 días</td></tr>
-            <tr><td style="color:var(--text2)">🔁 Revisión auto</td><td style="text-align:right">Cada 2 horas</td></tr>
-            <tr><td style="color:var(--text2)">🌅 Resumen diario</td><td style="text-align:right">08:30 lun–vie</td></tr>
-          </table>
-        </div>
-        <div class="card">
-          <div class="card-title">Destinatarios</div>
-          <table>
-            <tr><td style="color:var(--text2)">📧 Email</td><td style="text-align:right">corpy@corpprojects.es</td></tr>
-            <tr><td style="color:var(--text2)">💬 WhatsApp</td><td style="text-align:right;color:var(--amber)">⚠️ Pendiente Twilio</td></tr>
-          </table>
-          <div style="margin-top:12px;padding:10px;background:var(--amber-bg);border-radius:8px;border:1px solid rgba(245,158,11,.2);font-size:11px;color:rgba(245,158,11,.9)">
-            Para activar WhatsApp añade TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN y WHATSAPP_TO en Railway Variables.
-          </div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-title">Acciones manuales</div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn bp" onclick="testNotif('whatsapp')">💬 Test WhatsApp</button>
-          <button class="btn bgh" onclick="testNotif('email')">📧 Test Email</button>
-          <button class="btn bg2" onclick="sendSummary()">📊 Enviar resumen</button>
-          <button class="btn bgh" onclick="triggerAlertCheck()">🔍 Revisar alertas</button>
-        </div>
-        <div id="notifRes" style="margin-top:10px;font-size:12px;color:var(--green);display:none"></div>
-      </div>
-    </div>
-
-  </main>
-</div>
-
-<script>
-const API = window.location.origin;
-let tok = localStorage.getItem('cp_token');
-let allPend=[], allEst=[], estData={}, allFamilies=[];
-let pendFilter='all', estFilter='all', bankFilter='all';
-let pendPage=0, estPage=0;
-const PAGE_SIZE=20;
-
-const MONTHS=['Ene','Feb','Mar','Apr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-const BANK={
-  2025:{ing:[42591,46049,37617,36972,36454,79906,54599,12683,60884,177818,25479,28722],gas:[44321,44680,30031,38980,32041,61353,80714,29187,41084,188064,23392,29799],aho:[0,0,0,0,0,0,0,0,0,0,0,0]},
-  2026:{ing:[38466,36687,57378,25639,79000,null,null,null,null,null,null,null],gas:[38343,34439,34659,41772,31250,null,null,null,null,null,null,null],aho:[0,1650,6215,993,8975,null,null,null,null,null,null,null]}
-};
-
-// Gastos por trabajador extraídos del extracto bancario 2025-2026
-const WORKERS=[
-  {name:'Jose Beliard',total2025:21830,total2026:10000,ops2025:15,ops2026:6,cat:'Personal/obra'},
-  {name:'Diego Campillo',total2025:15975,total2026:12655,ops2025:24,ops2026:8,cat:'Personal/obra'},
-  {name:'Abdellah Souiri',total2025:12745,total2026:7530,ops2025:11,ops2026:5,cat:'Personal/obra'},
-  {name:'Paula Morales',total2025:7112,total2026:4600,ops2025:9,ops2026:4,cat:'Personal/obra'},
-  {name:'Mamadou Barry',total2025:4800,total2026:0,ops2025:4,ops2026:0,cat:'Personal/obra'},
-];
-
-// Gastos por categoría real (del extracto bancario)
-const EXPENSE_CATS_2025=[
-  {name:'Proveedores materiales',amount:89420,color:'#f05252'},
-  {name:'TGSS Seg. Social',amount:64121,color:'#f59e0b'},
-  {name:'Personal y obra',amount:62462,color:'#f97316'},
-  {name:'AEAT / Hacienda',amount:51485,color:'#f59e0b'},
-  {name:'Cinc Gestió',amount:23499,color:'#a78bfa'},
-  {name:'Seguros',amount:11930,color:'#4d9cf8'},
-  {name:'Gestión admin',amount:8415,color:'#22c487'},
-  {name:'Digital / Software',amount:2800,color:'#22c487'},
-];
-const EXPENSE_CATS_2026=[
-  {name:'Proveedores materiales',amount:38200,color:'#f05252'},
-  {name:'Personal y obra',amount:34715,color:'#f97316'},
-  {name:'TGSS Seg. Social',amount:16319,color:'#f59e0b'},
-  {name:'Cinc Gestió',amount:13390,color:'#a78bfa'},
-  {name:'AEAT / Hacienda',amount:8449,color:'#f59e0b'},
-  {name:'Seguros',amount:4890,color:'#4d9cf8'},
-  {name:'Gestión admin',amount:4228,color:'#22c487'},
-  {name:'Digital / Software',amount:1200,color:'#22c487'},
-];
-
-const PERIODS={
-  'all':    {label:'Todo 2025–2026',months:[...MONTHS.map((_,i)=>({y:2025,m:i})),...Array.from({length:5},(_,i)=>({y:2026,m:i}))]},
-  '2025':   {label:'Año 2025',months:MONTHS.map((_,i)=>({y:2025,m:i}))},
-  '2026':   {label:'2026 (Ene–May)',months:Array.from({length:5},(_,i)=>({y:2026,m:i}))},
-  'q1-2025':{label:'Q1 2025',months:[{y:2025,m:0},{y:2025,m:1},{y:2025,m:2}]},
-  'q2-2025':{label:'Q2 2025',months:[{y:2025,m:3},{y:2025,m:4},{y:2025,m:5}]},
-  'q3-2025':{label:'Q3 2025',months:[{y:2025,m:6},{y:2025,m:7},{y:2025,m:8}]},
-  'q4-2025':{label:'Q4 2025',months:[{y:2025,m:9},{y:2025,m:10},{y:2025,m:11}]},
-  'q1-2026':{label:'Q1 2026',months:[{y:2026,m:0},{y:2026,m:1},{y:2026,m:2}]}
-};
-
-function eur(v){return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0)}
-function dt(d){return d?new Date(d).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'}):'—'}
-function lvlBadge(l){return{ok:'<span class="badge bgo">✅ <15d</span>',warning1:'<span class="badge bw1">⚠️ 15d</span>',warning2:'<span class="badge bw2">⚠️⚠️ 30d</span>',urgent:'<span class="badge bur">🔴 45d</span>',critical:'<span class="badge bcr">🚨 60d+</span>'}[l]||l}
-function estBadge(k){return{accepted:'<span class="badge bgo">✅ Aceptado</span>',pending:'<span class="badge bw1">⏳ Pendiente</span>',closed:'<span class="badge bbl">🔒 Cerrado</span>',rejected:'<span class="badge bur">❌ Rechazado</span>'}[k]||k}
-function famPill(f){return f&&f!=='Sin familia'?`<span class="family-pill">${f}</span>`:''}
-
-// AUTH
-async function doLogin(){
-  const pass=document.getElementById('loginPass').value;if(!pass)return;
-  const btn=document.getElementById('loginBtn');btn.disabled=true;btn.textContent='Verificando...';
-  document.getElementById('loginError').style.display='none';
-  try{
-    const r=await fetch(`${API}/api/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pass})});
-    const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');
-    tok=d.token;localStorage.setItem('cp_token',tok);showApp();
-  }catch(e){
-    const el=document.getElementById('loginError');el.textContent=e.message;el.style.display='block';
-    btn.disabled=false;btn.textContent='Entrar →';
-  }
-}
-function doLogout(){localStorage.removeItem('cp_token');tok=null;document.getElementById('app').style.display='none';document.getElementById('loginScreen').style.display='flex';document.getElementById('loginPass').value='';}
-function showApp(){document.getElementById('loginScreen').style.display='none';document.getElementById('app').style.display='block';loadAll();}
-
-async function apiFetch(url,opts={}){
-  const r=await fetch(`${API}${url}`,{...opts,headers:{'Authorization':`Bearer ${tok}`,'Content-Type':'application/json',...(opts.headers||{})}});
-  if(r.status===401){doLogout();return null;}
-  return r.json();
-}
-
-async function loadAll(){
-  setSyncing(true);
-  try{
-    await Promise.all([loadSummary(),loadPending(),loadEstimates(),loadFamilies()]);
-    loadBankInfo();renderBankSection();
-    document.getElementById('lastUpdatedText').textContent='Actualizado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
-  }finally{setSyncing(false);}
-}
-function refreshData(){loadAll();}
-function setSyncing(on){const b=document.getElementById('syncBtn');b.classList.toggle('loading',on);b.textContent=on?'⏳ Cargando...':'🔄 Actualizar';}
-
-// SUMMARY
-async function loadSummary(){
-  const d=await apiFetch('/api/summary');if(!d)return;
-  ['m1','m2','m3','m4','m5','m6'].forEach(id=>document.getElementById(id).classList.remove('sk'));
-  document.getElementById('m1').textContent=d.totalInvoicesMonth||0;
-  document.getElementById('m2').textContent=eur(d.totalBilledMonth);
-  document.getElementById('m3').textContent=eur(d.totalPending);
-  document.getElementById('m4').textContent=d.pendingInvoices||0;
-  document.getElementById('m5').textContent=d.overdueCount||0;
-  document.getElementById('m6').textContent=d.criticalCount||0;
-  document.getElementById('factsLastUpd').textContent='Actualizado '+new Date(d.lastUpdated).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
-  document.getElementById('cobrosResumen').innerHTML=`<table>
-    <tr><td style="color:var(--text2);padding:8px 0;border-bottom:1px solid var(--border)">Total facturado histórico</td><td style="text-align:right;padding:8px 0;border-bottom:1px solid var(--border)">${eur(d.totalBilled)}</td></tr>
-    <tr><td style="color:var(--text2);padding:8px 0;border-bottom:1px solid var(--border)">Pendiente de cobrar</td><td style="text-align:right;padding:8px 0;border-bottom:1px solid var(--border);color:var(--red)">${eur(d.totalPending)}</td></tr>
-    <tr><td style="color:var(--text2);padding:8px 0;border-bottom:1px solid var(--border)">En riesgo 30–60 días</td><td style="text-align:right;padding:8px 0;border-bottom:1px solid var(--border);color:var(--amber)">${d.overdueCount}</td></tr>
-    <tr><td style="color:var(--text2);padding:8px 0">Críticas +60 días</td><td style="text-align:right;padding:8px 0;color:var(--red)">${d.criticalCount}</td></tr>
-  </table>`;
-  renderFactsTable(d.pendingList||[]);
-  renderAgeChart(d.pendingList||[]);
-}
-
-function renderFactsTable(list){
-  const el=document.getElementById('factsTable');
-  if(!list.length){el.innerHTML='<div class="empty"><div class="ei">✅</div><div class="et">No hay facturas pendientes</div></div>';return;}
-  el.innerHTML=`<table><thead><tr><th>Factura</th><th>Cliente</th><th>Familia</th><th>Fecha</th><th style="text-align:right">Total</th><th style="text-align:right">Pendiente</th><th>Días</th><th>Estado</th></tr></thead>
-  <tbody>${list.map(i=>`<tr><td><strong>${i.number}</strong></td><td>${i.client}</td><td>${famPill(i.family)}</td><td>${dt(i.date)}</td><td style="text-align:right">${eur(i.total)}</td>
-  <td style="text-align:right;color:${i.alertLevel==='ok'?'var(--green)':'var(--red)'};font-weight:600">${eur(i.pending)}</td>
-  <td style="color:${i.daysOverdue>=60?'var(--red)':i.daysOverdue>=30?'var(--amber)':'var(--text2)'}">${i.daysOverdue}d</td>
-  <td>${lvlBadge(i.alertLevel)}</td></tr>`).join('')}</tbody></table>`;
-}
-
-// PENDING
-async function loadPending(){
-  const d=await apiFetch('/api/invoices/pending');if(!d)return;
-  allPend=d;
-  // Poblar selector de familias
-  const families=[...new Set(d.map(i=>i.family||'Sin familia').filter(Boolean))].sort();
-  const sel=document.getElementById('familyFilterPend');
-  sel.innerHTML='<option value="">Todas las familias</option>'+families.map(f=>`<option value="${f}">${f}</option>`).join('');
-  renderPendTable();
-  const al=document.getElementById('pendAlert');
-  if(!d.length){al.className='alert aok';al.innerHTML='<div>✅</div><div><strong>¡Todo cobrado!</strong></div>';return;}
-  const crit=d.filter(i=>i.alertLevel==='critical').length;
-  const tot=d.reduce((s,i)=>s+i.pending,0);
-  al.className=crit?'alert ada':'alert ain';
-  al.innerHTML=`<div>${crit?'🚨':'ℹ️'}</div><div><strong>${d.length} facturas pendientes — ${eur(tot)}</strong>${crit?`<p>${crit} facturas críticas con más de 60 días sin cobrar.</p>`:''}</div>`;
-}
-
-function setPendFilter(f,btn){pendFilter=f;pendPage=0;document.querySelectorAll('#tab-pendientes .ftab').forEach(b=>b.classList.remove('on'));btn.classList.add('on');renderPendTable();}
-
-function renderPendTable(){
-  const q=(document.getElementById('searchPend')?.value||'').toLowerCase();
-  const fam=document.getElementById('familyFilterPend')?.value||'';
-  let list=allPend;
-  if(pendFilter==='warning1')list=list.filter(i=>['warning1','warning2','urgent','critical'].includes(i.alertLevel));
-  else if(pendFilter==='warning2')list=list.filter(i=>['warning2','urgent','critical'].includes(i.alertLevel));
-  else if(pendFilter==='urgent')list=list.filter(i=>['urgent','critical'].includes(i.alertLevel));
-  else if(pendFilter==='critical')list=list.filter(i=>i.alertLevel==='critical');
-  if(fam)list=list.filter(i=>(i.family||'Sin familia')===fam);
-  if(q)list=list.filter(i=>i.client.toLowerCase().includes(q)||i.number.toLowerCase().includes(q)||(i.family||'').toLowerCase().includes(q));
-  const total=list.length;list=list.slice(0,(pendPage+1)*PAGE_SIZE);
-  const el=document.getElementById('pendTable');
-  if(!list.length){el.innerHTML='<div class="empty"><div class="ei">🔍</div><div class="et">Sin resultados</div></div>';return;}
-  el.innerHTML=`<table><thead><tr><th>Factura</th><th>Cliente</th><th>Familia</th><th>Emitida</th><th style="text-align:right">Total</th><th style="text-align:right">Pendiente</th><th>Días</th><th>Nivel</th></tr></thead>
-  <tbody>${list.map(i=>`<tr style="${i.alertLevel==='critical'?'background:rgba(240,82,82,.04)':''}">
-    <td><strong>${i.number}</strong></td><td>${i.client}</td><td>${famPill(i.family)}</td><td>${dt(i.date)}</td>
-    <td style="text-align:right">${eur(i.total)}</td>
-    <td style="text-align:right;color:${i.alertLevel==='ok'?'var(--green)':'var(--red)'};font-weight:600">${eur(i.pending)}</td>
-    <td style="font-weight:600;color:${i.daysOverdue>=60?'var(--red)':i.daysOverdue>=45?'#f97316':i.daysOverdue>=30?'var(--amber)':'var(--text2)'}">${i.daysOverdue}d</td>
-    <td>${lvlBadge(i.alertLevel)}</td></tr>`).join('')}</tbody>
-  <tfoot><tr style="background:rgba(255,255,255,.02)"><td colspan="5" style="padding:8px 9px;font-weight:600">${total} facturas</td>
-  <td style="text-align:right;padding:8px 9px;color:var(--red);font-weight:600">${eur(list.reduce((s,i)=>s+i.pending,0))}</td><td colspan="2"></td></tr></tfoot></table>
-  ${total>(pendPage+1)*PAGE_SIZE?`<button class="btn bgh" style="width:100%;margin-top:10px" onclick="pendPage++;renderPendTable()">Ver más (${total-(pendPage+1)*PAGE_SIZE} restantes)</button>`:''}`;
-}
-
-// FAMILIES
-async function loadFamilies(){
-  const d=await apiFetch('/api/families');if(!d)return;
-  allFamilies=d;
-  ['fm1','fm2','fm3'].forEach(id=>document.getElementById(id).classList.remove('sk'));
-  document.getElementById('fm1').textContent=d.length;
-  const topBill=d[0];
-  const topPend=[...d].sort((a,b)=>b.totalPending-a.totalPending)[0];
-  document.getElementById('fm2').textContent=topBill?.name||'—';
-  document.getElementById('fm3').textContent=topPend?.name||'—';
-  const el=document.getElementById('familyTable');
-  if(!d.length){el.innerHTML='<div class="empty"><div class="ei">👥</div><div class="et">No hay familias configuradas en StelOrder</div></div>';return;}
-  el.innerHTML=`<table><thead><tr><th>Familia</th><th style="text-align:right">Facturas</th><th style="text-align:right">Total facturado</th><th style="text-align:right">Pendiente</th><th style="text-align:right">Pendientes</th><th></th></tr></thead>
-  <tbody>${d.map(f=>`<tr>
-    <td><strong>${f.name}</strong></td>
-    <td style="text-align:right">${f.invoiceCount}</td>
-    <td style="text-align:right;color:var(--green)">${eur(f.totalBilled)}</td>
-    <td style="text-align:right;color:${f.totalPending>0?'var(--red)':'var(--text2)'}">${eur(f.totalPending)}</td>
-    <td style="text-align:right;color:${f.pendingCount>0?'var(--amber)':'var(--text2)'}">${f.pendingCount}</td>
-    <td><button class="btn bgh" style="padding:3px 10px;font-size:11px" onclick="showFamilyDetail('${f.name}')">Ver →</button></td>
-  </tr>`).join('')}</tbody></table>`;
-}
-
-async function showFamilyDetail(family){
-  const d=await apiFetch(`/api/invoices/by-family/${encodeURIComponent(family)}`);
-  if(!d)return;
-  const card=document.getElementById('familyDetailCard');
-  document.getElementById('familyDetailTitle').textContent=`📋 ${family} — ${d.pending.length} facturas pendientes`;
-  card.style.display='block';
-  const el=document.getElementById('familyDetailTable');
-  if(!d.pending.length){el.innerHTML='<div class="empty"><div class="ei">✅</div><div class="et">Sin facturas pendientes en esta familia</div></div>';card.scrollIntoView({behavior:'smooth'});return;}
-  el.innerHTML=`<table><thead><tr><th>Factura</th><th>Cliente</th><th>Fecha</th><th style="text-align:right">Pendiente</th><th>Días</th><th>Estado</th></tr></thead>
-  <tbody>${d.pending.map(i=>`<tr>
-    <td><strong>${i.number}</strong></td><td>${i.client}</td><td>${dt(i.date)}</td>
-    <td style="text-align:right;color:${i.alertLevel==='ok'?'var(--green)':'var(--red)'};font-weight:600">${eur(i.pending)}</td>
-    <td style="color:${i.daysOverdue>=60?'var(--red)':i.daysOverdue>=30?'var(--amber)':'var(--text2)'}">${i.daysOverdue}d</td>
-    <td>${lvlBadge(i.alertLevel)}</td></tr>`).join('')}</tbody>
-  <tfoot><tr style="background:rgba(255,255,255,.02)"><td colspan="3" style="padding:8px 9px;font-weight:600">${d.pending.length} facturas</td>
-  <td style="text-align:right;padding:8px 9px;color:var(--red);font-weight:600">${eur(d.pending.reduce((s,i)=>s+i.pending,0))}</td><td colspan="2"></td></tr></tfoot></table>`;
-  card.scrollIntoView({behavior:'smooth'});
-}
-
-// ESTIMATES
-async function loadEstimates(){
-  ['e1','e2','e3','e4','e5','e6'].forEach(id=>document.getElementById(id).classList.remove('sk'));
-  const d=await apiFetch('/api/estimates');if(!d)return;
-  estData=d;allEst=d.all||[];
-  document.getElementById('e1').textContent=d.total||0;
-  document.getElementById('e2').textContent=d.accepted?.length||0;
-  document.getElementById('e3').textContent=eur(d.totalAccepted);
-  document.getElementById('e4').textContent=(d.pending?.length||0);
-  document.getElementById('e5').textContent=eur(d.totalPending||0);
-  document.getElementById('e6').textContent=d.monthsCovered+'m';
-
-  // Poblar selector familias
-  const families=[...new Set(allEst.map(e=>e.family||'Sin familia'))].sort();
-  const sel=document.getElementById('familyFilterEst');
-  sel.innerHTML='<option value="">Todas las familias</option>'+families.map(f=>`<option value="${f}">${f}</option>`).join('');
-
-  const al=document.getElementById('estCoverAlert');
-  const months=parseFloat(d.monthsCovered||0);
-  const avgExp=36000;
-  if(months>=3){al.className='alert aok';al.innerHTML=`<div>✅</div><div><strong>Cobertura de ${months} meses asegurada</strong><p>Los aceptados (${eur(d.totalAccepted)}) cubren ${months} meses de gastos.</p></div>`;}
-  else if(months>=1){al.className='alert awa';al.innerHTML=`<div>⚠️</div><div><strong>Solo ${months} meses cubiertos</strong><p>Objetivo: 3 meses = ${eur(avgExp*3)}. Cerrar más presupuestos.</p></div>`;}
-  else{al.className='alert ada';al.innerHTML=`<div>🚨</div><div><strong>Sin cobertura asegurada</strong><p>Prioridad: cerrar ventas. Mínimo ${eur(avgExp*2)} para cubrir 2 meses.</p></div>`;}
-  renderEstTable();
-}
-
-function setEstFilter(f,btn){estFilter=f;estPage=0;document.querySelectorAll('#tab-presupuestos .ftab').forEach(b=>b.classList.remove('on'));btn.classList.add('on');renderEstTable();}
-
-function renderEstTable(){
-  const q=(document.getElementById('searchEst')?.value||'').toLowerCase();
-  const fam=document.getElementById('familyFilterEst')?.value||'';
-  let list=allEst;
-  if(estFilter==='accepted')list=estData.accepted||[];
-  else if(estFilter==='pending')list=estData.pending||[];
-  else if(estFilter==='closed')list=estData.closed||[];
-  else if(estFilter==='rejected')list=estData.rejected||[];
-  if(fam)list=list.filter(i=>(i.family||'Sin familia')===fam);
-  if(q)list=list.filter(i=>(i.client||'').toLowerCase().includes(q)||(i.number||'').toLowerCase().includes(q));
-  const total=list.length;list=list.slice(0,(estPage+1)*PAGE_SIZE);
-  const el=document.getElementById('estTable');
-  if(!list.length){el.innerHTML='<div class="empty"><div class="ei">📋</div><div class="et">Sin resultados</div></div>';return;}
-  el.innerHTML=`<table><thead><tr><th>Nº</th><th>Cliente</th><th>Familia</th><th>Fecha</th><th style="text-align:right">Importe</th><th>Estado</th><th>Días</th></tr></thead>
-  <tbody>${list.map(e=>`<tr><td><strong>${e.number}</strong></td><td>${e.client}</td><td>${famPill(e.family)}</td><td>${dt(e.date)}</td>
-  <td style="text-align:right;font-weight:600">${eur(e.total)}</td><td>${estBadge(e.stateKey)}</td>
-  <td style="color:${e.daysOld>60?'var(--red)':e.daysOld>30?'var(--amber)':'var(--text2)'}">${e.daysOld}d</td></tr>`).join('')}</tbody>
-  <tfoot><tr style="background:rgba(255,255,255,.02)"><td colspan="4" style="padding:8px 9px;font-weight:600">${total} presupuestos</td>
-  <td style="text-align:right;padding:8px 9px;font-weight:600;color:var(--green)">${eur(list.reduce((s,e)=>s+e.total,0))}</td><td colspan="2"></td></tr></tfoot></table>
-  ${total>(estPage+1)*PAGE_SIZE?`<button class="btn bgh" style="width:100%;margin-top:10px" onclick="estPage++;renderEstTable()">Ver más (${total-(estPage+1)*PAGE_SIZE} restantes)</button>`:''}`;
-}
-
-// AGE CHART
-let ageChartI;
-function renderAgeChart(list){
-  if(ageChartI)ageChartI.destroy();
-  const b={'<15d':0,'15–30d':0,'30–45d':0,'45–60d':0,'60d+':0};
-  list.forEach(i=>{if(i.daysOverdue<15)b['<15d']++;else if(i.daysOverdue<30)b['15–30d']++;else if(i.daysOverdue<45)b['30–45d']++;else if(i.daysOverdue<60)b['45–60d']++;else b['60d+']++;});
-  ageChartI=new Chart(document.getElementById('ageChart'),{type:'doughnut',data:{labels:Object.keys(b),datasets:[{data:Object.values(b),backgroundColor:['#22c487','#f59e0b','#f97316','#f05252','#991b1b'],borderWidth:2,borderColor:'#13161c'}]},options:{responsive:true,maintainAspectRatio:false,cutout:'60%',plugins:{legend:{position:'right',labels:{color:'#8b92a8',font:{size:10},boxWidth:10,padding:8}},tooltip:{callbacks:{label:ctx=>` ${ctx.label}: ${ctx.raw}`}}}}});
-}
-
-// BANCO
-let bankChartI;
-function setBankFilter(f,btn){bankFilter=f;document.querySelectorAll('#tab-banco .ftabs .ftab').forEach(b=>b.classList.remove('on'));btn.classList.add('on');renderBankSection();}
-
-function renderBankSection(){
-  const p=PERIODS[bankFilter];
-  document.getElementById('bankPeriodLabel').textContent=p.label;
-  const labs=[],ing=[],gas=[],aho=[],rows=[];
-  let tI=0,tG=0,tA=0;
-  p.months.forEach(({y,m})=>{
-    const i=BANK[y].ing[m],g=BANK[y].gas[m],a=BANK[y].aho[m]||0;
-    if(i===null)return;
-    labs.push(MONTHS[m]+"'"+String(y).slice(2));
-    ing.push(i);gas.push(g);aho.push(a);
-    rows.push({label:MONTHS[m]+' '+y,i,g,a});
-    tI+=i;tG+=g;tA+=a;
-  });
-  const tB=tI-tG;
-
-  document.getElementById('bankMetrics').innerHTML=`
-    <div class="mc"><div class="ml">Ingresos período</div><div class="mv g">${eur(tI)}</div><div class="ms">${p.label}</div></div>
-    <div class="mc"><div class="ml">Gastos reales</div><div class="mv r">${eur(tG)}</div><div class="ms">Sin ahorro 10%</div></div>
-    <div class="mc"><div class="ml">Balance</div><div class="mv ${tB>=0?'g':'r'}">${tB>=0?'+':''}${eur(tB)}</div><div class="ms">Resultado neto</div></div>
-    <div class="mc"><div class="ml">Ahorro 10%</div><div class="mv p">${eur(tA)}</div><div class="ms">Fondo separado</div></div>
-    <div class="mc"><div class="ml">Media ingresos/mes</div><div class="mv g">${eur(tI/Math.max(labs.length,1))}</div></div>
-    <div class="mc"><div class="ml">Media gastos/mes</div><div class="mv r">${eur(tG/Math.max(labs.length,1))}</div></div>`;
-
-  if(bankChartI)bankChartI.destroy();
-  bankChartI=new Chart(document.getElementById('bankChart'),{data:{labels:labs,datasets:[
-    {type:'bar',label:'Ingresos',data:ing,backgroundColor:'#22c487'},
-    {type:'bar',label:'Gastos',data:gas,backgroundColor:'#f05252'},
-    {type:'line',label:'Balance',data:ing.map((v,i2)=>v-gas[i2]),borderColor:'#4d9cf8',backgroundColor:'rgba(77,156,248,.08)',fill:true,tension:.35,pointRadius:3,pointBackgroundColor:'#4d9cf8',borderWidth:2}
-  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${new Intl.NumberFormat('es-ES').format(Math.round(ctx.raw))} €`}}},
-    scales:{y:{ticks:{callback:v=>(v/1000).toFixed(0)+'k',color:'#5a6278',font:{size:10}},grid:{color:'rgba(255,255,255,.05)'},border:{color:'rgba(255,255,255,.1)'}},x:{ticks:{color:'#5a6278',font:{size:10},maxRotation:45,autoSkip:false},grid:{display:false},border:{color:'rgba(255,255,255,.1)'}}}}});
-
-  // Categorías de gasto según período
-  const cats = (bankFilter==='2026'||bankFilter==='q1-2026') ? EXPENSE_CATS_2026 :
-               (bankFilter==='2025'||bankFilter.includes('2025')) ? EXPENSE_CATS_2025 :
-               EXPENSE_CATS_2025.map((c,i)=>({...c,amount:c.amount+(EXPENSE_CATS_2026[i]?.amount||0)}));
-  const maxCat=Math.max(...cats.map(c=>c.amount));
-  document.getElementById('expenseCats').innerHTML=cats.map(c=>`
-    <div class="cat-row">
-      <div class="cat-label" title="${c.name}">${c.name}</div>
-      <div class="cat-track"><div class="cat-fill" style="width:${(c.amount/maxCat*100).toFixed(0)}%;background:${c.color}"></div></div>
-      <div class="cat-amount" style="color:${c.color}">${eur(c.amount)}</div>
-    </div>`).join('');
-
-  // Trabajadores
-  const showWorkers = bankFilter==='2026'||bankFilter==='q1-2026' ? 
-    WORKERS.map(w=>({...w,total:w.total2026,ops:w.ops2026})) :
-    bankFilter==='2025'||bankFilter.includes('2025') ?
-    WORKERS.map(w=>({...w,total:w.total2025,ops:w.ops2025})) :
-    WORKERS.map(w=>({...w,total:w.total2025+w.total2026,ops:w.ops2025+w.ops2026}));
-
-  document.getElementById('workerGrid').innerHTML=showWorkers.filter(w=>w.total>0).map(w=>`
-    <div class="worker-card">
-      <div class="worker-name">👤 ${w.name}</div>
-      <div class="worker-total">${eur(w.total)}</div>
-      <div class="worker-ops">${w.ops} operaciones · ${eur(w.total/Math.max(w.ops,1))}/op</div>
-    </div>`).join('');
-
-  document.getElementById('workerTable').innerHTML=WORKERS.map(w=>`<tr>
-    <td>${w.name}</td>
-    <td style="text-align:right">${eur(w.total2025)}</td>
-    <td style="text-align:right">${w.total2026>0?eur(w.total2026):'—'}</td>
-    <td style="text-align:right;color:var(--red)">${eur((w.total2025+w.total2026)/(12+(w.total2026>0?5:0)))}</td>
-    <td style="text-align:right;color:var(--text2)">${w.ops2025+w.ops2026}</td>
-  </tr>`).join('');
-
-  // Tabla mensual
-  document.getElementById('bankTbody').innerHTML=rows.map(r=>{const b=r.i-r.g;return`<tr>
-    <td>${r.label}</td><td style="text-align:right;color:#22c487">${eur(r.i)}</td>
-    <td style="text-align:right;color:#f05252">${eur(r.g)}</td>
-    <td style="text-align:right;color:#a78bfa">${r.a>0?eur(r.a):'—'}</td>
-    <td style="text-align:right;color:${b>=0?'#22c487':'#f05252'};font-weight:600">${b>=0?'+':''}${eur(b)}</td>
-    <td><span class="badge ${b>=0?'bgo':'bur'}">${b>=0?'Positivo':'Déficit'}</span></td></tr>`;}).join('');
-  document.getElementById('bankTfoot').innerHTML=`<tr style="background:rgba(255,255,255,.03)">
-    <td><strong>Total</strong></td><td style="text-align:right;color:#22c487;font-weight:600">${eur(tI)}</td>
-    <td style="text-align:right;color:#f05252;font-weight:600">${eur(tG)}</td>
-    <td style="text-align:right;color:#a78bfa;font-weight:600">${eur(tA)}</td>
-    <td style="text-align:right;color:${tB>=0?'#22c487':'#f05252'};font-weight:700">${tB>=0?'+':''}${eur(tB)}</td><td></td></tr>`;
+function upSim(){
+  const f=parseInt(document.getElementById('simR').value);
+  const m=parseInt(document.getElementById('simMR').value);
+  document.getElementById('simV').textContent=eur(f);
+  document.getElementById('simM').textContent=m;
+  const men=Math.round(f*.1),tot=men*m,acu=17834+tot;
+  document.getElementById('s1').textContent=eur(men);
+  document.getElementById('s2').textContent=eur(tot);
+  document.getElementById('s3').textContent=eur(acu);
 }
 
 // BANK UPLOAD
-async function loadBankInfo(){
-  const d=await apiFetch('/api/bank/info');
-  const el=document.getElementById('lastUploadInfo');
+async function loadBInfo(){
+  const d=await af('/api/bank/info');
+  const el=document.getElementById('bUpInfo');if(!el)return;
   if(!d||!d.uploaded){el.textContent='No hay ningún extracto subido aún.';return;}
-  el.textContent=`✅ Último extracto: ${d.originalname} — subido el ${new Date(d.uploadedAt).toLocaleDateString('es-ES')} (${Math.round(d.size/1024)} KB)`;
+  el.textContent=`✅ Último: ${d.originalname} — ${new Date(d.uploadedAt).toLocaleDateString('es-ES')} (${Math.round(d.size/1024)} KB)`;
 }
-async function handleBankUpload(file){
+async function bUpload(file){
   if(!file)return;
-  const prog=document.getElementById('uploadProgress'),msg=document.getElementById('uploadMsg'),fill=document.getElementById('progFill');
+  const prog=document.getElementById('bUpProg'),msg=document.getElementById('bUpMsg'),fill=document.getElementById('bProgF');
   prog.style.display='block';msg.textContent='Subiendo '+file.name+'...';fill.style.width='30%';
   const form=new FormData();form.append('file',file);
   try{
     const r=await fetch(`${API}/api/bank/upload`,{method:'POST',headers:{'Authorization':`Bearer ${tok}`},body:form});
     const d=await r.json();fill.style.width='100%';msg.textContent=d.message||'Subido';
-    setTimeout(()=>{prog.style.display='none';loadBankInfo();},2000);
+    setTimeout(()=>{prog.style.display='none';loadBInfo();},2000);
   }catch(e){msg.textContent='Error: '+e.message;fill.style.background='var(--red)';}
 }
-function handleBankDrop(e){e.preventDefault();document.getElementById('bankUploadZone').classList.remove('drag');const file=e.dataTransfer.files[0];if(file&&(file.name.endsWith('.xlsx')||file.name.endsWith('.xls')))handleBankUpload(file);}
+function bDrop(e){e.preventDefault();document.querySelector('.uzn').classList.remove('drag');const f=e.dataTransfer.files[0];if(f&&(f.name.endsWith('.xlsx')||f.name.endsWith('.xls')))bUpload(f);}
 
 // ACTIONS
-async function triggerAlertCheck(){const b=document.getElementById('alertBtn');if(b){b.disabled=true;b.textContent='⏳ Enviando...';}const d=await apiFetch('/api/check-alerts',{method:'POST'});showRes(d?.message||'Revisadas');if(b){b.disabled=false;b.textContent='🔔 Enviar alertas';}}
-async function sendSummary(){const d=await apiFetch('/api/send-summary',{method:'POST'});showRes(d?.message||'Enviado');}
-async function testNotif(t){const d=await apiFetch('/api/test-notification',{method:'POST',body:JSON.stringify({type:t})});showRes(d?.message||'Enviado');}
-function showRes(m){const el=document.getElementById('notifRes');el.textContent='✅ '+m;el.style.display='block';setTimeout(()=>el.style.display='none',4000);}
+async function checkAlerts(){
+  const b=document.getElementById('alertBtn');if(b){b.disabled=true;b.textContent='⏳ Enviando...';}
+  const d=await af('/api/check-alerts',{method:'POST'});showNR(d?.message||'Revisadas');
+  if(b){b.disabled=false;b.textContent='🔔 Enviar alertas';}
+}
+async function sendSum(){const d=await af('/api/send-summary',{method:'POST'});showNR(d?.message||'Enviado');}
+async function testN(t){const d=await af('/api/test-notification',{method:'POST',body:JSON.stringify({type:t})});showNR(d?.message||'Enviado');}
+function showNR(m){const el=document.getElementById('nRes');if(el){el.textContent='✅ '+m;el.style.display='block';setTimeout(()=>el.style.display='none',4000);}}
 
 // TABS
 function showTab(id,btn){
@@ -1952,7 +945,7 @@ function showTab(id,btn){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('tab-'+id).classList.add('active');
   if(btn)btn.classList.add('active');
-  if(id==='banco'){renderBankSection();loadBankInfo();}
+  if(id==='banco')showBTab('resumen',document.querySelector('.btab'));
 }
 
 // INIT
