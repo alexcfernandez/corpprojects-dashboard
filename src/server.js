@@ -1,4 +1,4 @@
-// src/server.js v2
+// src/server.js v3
 require('dotenv').config();
 const express   = require('express');
 const cors      = require('cors');
@@ -10,8 +10,8 @@ const multer    = require('multer');
 const fs        = require('fs');
 
 const {
-  getSummary, getPendingInvoices, getInvoices,
-  getClients, getEstimatesSummary
+  getSummary, getPendingInvoices, getInvoices, getClients,
+  getEstimatesSummary, getFamiliesSummary, getAccountCategories
 } = require('./stelorder');
 const { sendWhatsApp, sendEmail } = require('./notifications');
 const { startScheduler, checkPendingInvoices, runDailySummary } = require('./scheduler');
@@ -27,7 +27,6 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Carpeta de uploads para el Excel del banco
 const UPLOADS_DIR = path.join(__dirname, '../uploads');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 const storage = multer.diskStorage({
@@ -65,43 +64,46 @@ app.post('/api/login', loginLimiter, async (req, res) => {
 });
 
 // ── Protegidas ────────────────────────────────────────────────────
-app.get('/api/summary',           requireAuth, async (req,res) => res.json(await getSummary()));
-app.get('/api/invoices/pending',  requireAuth, async (req,res) => res.json(await getPendingInvoices()));
-app.get('/api/invoices',          requireAuth, async (req,res) => res.json(await getInvoices()));
-app.get('/api/clients',           requireAuth, async (req,res) => res.json(await getClients()));
+app.get('/api/summary',            requireAuth, async (req,res) => res.json(await getSummary()));
+app.get('/api/invoices/pending',   requireAuth, async (req,res) => res.json(await getPendingInvoices()));
+app.get('/api/invoices',           requireAuth, async (req,res) => res.json(await getInvoices()));
+app.get('/api/clients',            requireAuth, async (req,res) => { const {clients} = await getClients(); res.json(clients); });
+app.get('/api/estimates',          requireAuth, async (req,res) => res.json(await getEstimatesSummary()));
+app.get('/api/families',           requireAuth, async (req,res) => res.json(await getFamiliesSummary()));
+app.get('/api/families/list',      requireAuth, async (req,res) => { const {list} = await getAccountCategories(); res.json(list); });
 
-// Presupuestos
-app.get('/api/estimates', requireAuth, async (req, res) => {
-  const data = await getEstimatesSummary();
-  res.json(data);
+// Facturas filtradas por familia
+app.get('/api/invoices/by-family/:family', requireAuth, async (req, res) => {
+  const pending = await getPendingInvoices();
+  const all     = await getInvoices();
+  const fam     = decodeURIComponent(req.params.family);
+  res.json({
+    pending: pending.filter(i => i.family === fam),
+    all:     all.filter(i => i.family === fam)
+  });
 });
 
-// Upload fichero Excel banco
+// Upload Excel banco
 app.post('/api/bank/upload', requireAuth, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
-  // Guardar referencia al último fichero
   const metaPath = path.join(UPLOADS_DIR, 'latest.json');
   fs.writeFileSync(metaPath, JSON.stringify({
-    filename: req.file.filename,
-    originalname: req.file.originalname,
-    uploadedAt: new Date().toISOString(),
-    size: req.file.size
+    filename: req.file.filename, originalname: req.file.originalname,
+    uploadedAt: new Date().toISOString(), size: req.file.size
   }));
-  console.log(`[Upload] Nuevo fichero bancario: ${req.file.originalname}`);
-  res.json({ message: 'Fichero subido correctamente. Procesando...', filename: req.file.filename });
+  console.log(`[Upload] Nuevo extracto bancario: ${req.file.originalname}`);
+  res.json({ message: 'Fichero subido correctamente.', filename: req.file.filename });
 });
 
-// Info del último fichero subido
 app.get('/api/bank/info', requireAuth, (req, res) => {
   const metaPath = path.join(UPLOADS_DIR, 'latest.json');
   if (!fs.existsSync(metaPath)) return res.json({ uploaded: false });
-  const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
-  res.json({ uploaded: true, ...meta });
+  res.json({ uploaded: true, ...JSON.parse(fs.readFileSync(metaPath, 'utf8')) });
 });
 
-app.post('/api/check-alerts',      requireAuth, (req,res) => { checkPendingInvoices().catch(console.error); res.json({message:'Revisión iniciada.'}); });
-app.post('/api/send-summary',      requireAuth, (req,res) => { runDailySummary().catch(console.error); res.json({message:'Resumen enviado.'}); });
-app.post('/api/test-notification', requireAuth, async (req,res) => {
+app.post('/api/check-alerts',       requireAuth, (req,res) => { checkPendingInvoices().catch(console.error); res.json({message:'Revisión iniciada.'}); });
+app.post('/api/send-summary',       requireAuth, (req,res) => { runDailySummary().catch(console.error); res.json({message:'Resumen enviado.'}); });
+app.post('/api/test-notification',  requireAuth, async (req,res) => {
   const { type } = req.body;
   const msg = `✅ *Test Corp Projects*\nSistema OK.\n📅 ${new Date().toLocaleString('es-ES')}`;
   if (type==='whatsapp'||!type) await sendWhatsApp(msg);
@@ -113,7 +115,7 @@ app.get('*', (req, res) => res.sendFile(path.join(__dirname, '../public/index.ht
 
 app.listen(PORT, () => {
   console.log(`\n╔════════════════════════════════════════╗`);
-  console.log(`║   Corp Projects Dashboard — Servidor   ║`);
+  console.log(`║   Corp Projects Dashboard v3           ║`);
   console.log(`╚════════════════════════════════════════╝`);
   console.log(`🚀 Puerto: ${PORT}`);
   console.log(`📊 StelOrder: ${process.env.STELORDER_API_KEY ? '✅' : '❌'}`);
