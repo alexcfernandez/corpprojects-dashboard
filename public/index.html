@@ -1266,10 +1266,9 @@ function buildCalGrid(){
       const client=entry?.clientName?entry.clientName.slice(0,7):'';
       const clickable=!isWeekend;
       html+=`<div
-        ${clickable?`onclick="openEntryModal('${w.id}','${w.name}','${date}')"`:'' }
-        style="padding:1px;text-align:center;background:${bg};${clickable?'cursor:pointer;':'cursor:default;'}min-height:38px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;border-radius:3px;border:1px solid ${est?est.color+'55':isWeekend?'transparent':'var(--border)'};transition:opacity .15s"
-        ${clickable?'onmouseover="this.style.opacity='.75'" onmouseout="this.style.opacity='1'"':''}
-        title="${est?(est.label+(client?' — '+client:'')):(isWeekend?'Fin de semana':'')}">
+        style="padding:1px;text-align:center;background:${bg};${clickable?'cursor:pointer;':'cursor:default;'}min-height:38px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;border-radius:3px;border:1px solid ${est?est.color+'55':isWeekend?'transparent':'var(--border)'};transition:opacity .15s;opacity:1"
+        data-wid="${w.id}" data-wname="${w.name.replace(/'/g,'')}" data-date="${date}" data-clickable="${clickable}"
+        title="${est?est.label:isWeekend?'Fin de semana':'Sin registrar'}">
         <div style="font-size:13px;line-height:1">${emoji}</div>
         <div style="font-size:8px;color:var(--text3);overflow:hidden;max-width:100%;white-space:nowrap;text-overflow:ellipsis;padding:0 2px">${client}</div>
       </div>`;
@@ -1277,6 +1276,21 @@ function buildCalGrid(){
   });
   html+='</div>';
   grid.innerHTML=html;
+
+  // Event delegation — mucho más limpio que onclick inline
+  grid.addEventListener('click', e=>{
+    const cell=e.target.closest('[data-date]');
+    if(!cell||cell.dataset.clickable!=='true')return;
+    openEntryModal(cell.dataset.wid, cell.dataset.wname, cell.dataset.date);
+  });
+  grid.addEventListener('mouseover', e=>{
+    const cell=e.target.closest('[data-date]');
+    if(cell&&cell.dataset.clickable==='true')cell.style.opacity='.7';
+  });
+  grid.addEventListener('mouseout', e=>{
+    const cell=e.target.closest('[data-date]');
+    if(cell)cell.style.opacity='1';
+  });
 }
 
 function prevMonth(){if(calMonth===1){calMonth=12;calYear--;}else calMonth--;renderCal();}
