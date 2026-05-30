@@ -1,24 +1,27 @@
-
-// src/attendance.js — Gestión de presencia y partes de horas
-// Usa MongoDB Atlas para persistencia permanente
-
-const { MongoClient, ObjectId } = require('mongodb');
+// src/attendance.js — con opciones TLS para Node.js 22 + Railway
+const { MongoClient } = require('mongodb');
 
 let db = null;
+let client = null;
 
 async function getDB() {
   if (db) return db;
   if (!process.env.MONGODB_URI) {
     throw new Error('MONGODB_URI no configurada en Railway Variables');
   }
-  const client = new MongoClient(process.env.MONGODB_URI);
+  
+  client = new MongoClient(process.env.MONGODB_URI, {
+    tls: true,
+    serverSelectionTimeoutMS: 10000,
+    connectTimeoutMS: 10000,
+  });
+  
   await client.connect();
   db = client.db('corpprojects');
-  console.log('[MongoDB] Conectado correctamente');
+  console.log('[MongoDB] ✅ Conectado correctamente');
   return db;
 }
 
-// ── TRABAJADORES ──────────────────────────────────────────────────
 const WORKERS = [
   { id: 'jose',     name: 'Jose Beliard',    color: '#4d9cf8' },
   { id: 'diego',    name: 'Diego Campillo',  color: '#22c487' },
@@ -28,41 +31,31 @@ const WORKERS = [
 ];
 
 const ESTADOS = {
-  obra:       { label: 'En obra',          color: '#22c487', emoji: '🏗️' },
-  oficina:    { label: 'Oficina/almacén',  color: '#4d9cf8', emoji: '🏢' },
-  vacaciones: { label: 'Vacaciones',       color: '#a78bfa', emoji: '🌴' },
-  baja:       { label: 'Baja médica',      color: '#f59e0b', emoji: '🏥' },
-  falta_j:    { label: 'Falta justificada',color: '#f59e0b', emoji: '📋' },
-  falta_i:    { label: 'Falta injustificada',color:'#f05252',emoji: '❌' },
-  libre:      { label: 'Libre/descanso',   color: '#5a6278', emoji: '⏸️' },
+  obra:       { label: 'En obra',            color: '#22c487', emoji: '🏗️' },
+  oficina:    { label: 'Oficina/almacén',    color: '#4d9cf8', emoji: '🏢' },
+  vacaciones: { label: 'Vacaciones',         color: '#a78bfa', emoji: '🌴' },
+  baja:       { label: 'Baja médica',        color: '#f59e0b', emoji: '🏥' },
+  falta_j:    { label: 'Falta justificada',  color: '#f59e0b', emoji: '📋' },
+  falta_i:    { label: 'Falta injustificada',color: '#f05252', emoji: '❌' },
+  libre:      { label: 'Libre/descanso',     color: '#5a6278', emoji: '⏸️' },
 };
 
-// ── CRUD ENTRADAS DE PRESENCIA ────────────────────────────────────
-
-// Guardar/actualizar entrada
-// entry = { workerId, date (YYYY-MM-DD), estado, clientId, clientName, horas, notas }
 async function saveAttendance(entry) {
   const db = await getDB();
-  const col = db.collection('attendance');
-  
-  // Clave única: trabajador + fecha
   const filter = { workerId: entry.workerId, date: entry.date };
-  const update  = { $set: { ...entry, updatedAt: new Date() } };
-  const result  = await col.updateOne(filter, update, { upsert: true });
-  return result;
+  const update = { $set: { ...entry, updatedAt: new Date() } };
+  return db.collection('attendance').updateOne(filter, update, { upsert: true });
 }
 
-// Borrar entrada
 async function deleteAttendance(workerId, date) {
   const db = await getDB();
   return db.collection('attendance').deleteOne({ workerId, date });
 }
 
-// Obtener entradas por rango de fechas
-async function getAttendance({ workerId, from, to, clientName }) {
-  const db    = await getDB();
+async function getAttendance({ workerId, from, to, clientName } = {}) {
+  const db = await getDB();
   const query = {};
-  if (workerId)   query.workerId   = workerId;
+  if (workerId)   query.workerId = workerId;
   if (clientName) query.clientName = { $regex: clientName, $options: 'i' };
   if (from || to) {
     query.date = {};
@@ -72,24 +65,17 @@ async function getAttendance({ workerId, from, to, clientName }) {
   return db.collection('attendance').find(query).sort({ date: -1 }).toArray();
 }
 
-// Resumen mensual: horas por trabajador + cliente
 async function getMonthlySummary(year, month) {
   const db   = await getDB();
   const from = `${year}-${String(month).padStart(2,'0')}-01`;
   const to   = `${year}-${String(month).padStart(2,'0')}-31`;
-  
   const entries = await db.collection('attendance')
     .find({ date: { $gte: from, $lte: to } })
-    .sort({ date: 1 })
-    .toArray();
+    .sort({ date: 1 }).toArray();
 
-  // Agrupar por trabajador
   const byWorker = {};
   WORKERS.forEach(w => {
-    byWorker[w.id] = {
-      ...w, dias: 0, horas: 0, dias_obra: 0, dias_falta: 0,
-      clientes: {}, entries: []
-    };
+    byWorker[w.id] = { ...w, dias: 0, horas: 0, dias_obra: 0, dias_falta: 0, clientes: {}, entries: [] };
   });
 
   entries.forEach(e => {
@@ -98,7 +84,6 @@ async function getMonthlySummary(year, month) {
     w.dias++;
     w.horas += parseFloat(e.horas || 8);
     w.entries.push(e);
-    
     if (e.estado === 'obra') {
       w.dias_obra++;
       const k = e.clientName || 'Sin cliente';
@@ -106,19 +91,18 @@ async function getMonthlySummary(year, month) {
       w.clientes[k].dias++;
       w.clientes[k].horas += parseFloat(e.horas || 8);
     }
-    if (['falta_i', 'falta_j', 'baja'].includes(e.estado)) w.dias_falta++;
+    if (['falta_i','falta_j','baja'].includes(e.estado)) w.dias_falta++;
   });
 
   return { year, month, byWorker: Object.values(byWorker), entries };
 }
 
-// Extracto por cliente: qué trabajadores y cuántos días
 async function getClientExtract(clientName, from, to) {
   const db = await getDB();
   const entries = await db.collection('attendance').find({
     clientName: { $regex: clientName, $options: 'i' },
     estado: 'obra',
-    date: { $gte: from, $lte: to }
+    ...(from || to ? { date: { ...(from && {$gte: from}), ...(to && {$lte: to}) } } : {})
   }).sort({ date: 1 }).toArray();
 
   const byWorker = {};
