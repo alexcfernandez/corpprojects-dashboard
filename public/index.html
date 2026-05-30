@@ -368,23 +368,115 @@ select:focus{border-color:var(--blue)}
 
   <!-- PERSONAL -->
   <div id="btab-personal" class="bpanel">
-    <div class="alert ain" style="margin-bottom:16px"><div>👥</div><div><strong>Coste real por trabajador</strong> — del extracto bancario. Incluye adelantos, nóminas y pagos directos. La TGSS se muestra aparte.</div></div>
+    <div class="alert ain" style="margin-bottom:16px"><div>👥</div><div><strong>Coste real por trabajador</strong> — calculado con el recibo de SS real (marzo 2026: 4.040,47 €, base 9.214,28 €). SS empresa = 43,9% sobre base. 218 días laborables reales/año (descontando fines de semana, festivos y vacaciones).</div></div>
+
     <div class="metrics-row">
-      <div class="mc"><div class="ml">Total personal 2025</div><div class="mv r">62.462 €</div><div class="ms">Pagos directos</div></div>
-      <div class="mc"><div class="ml">Total personal 2026</div><div class="mv r">34.715 €</div><div class="ms">Ene–May 2026</div></div>
-      <div class="mc"><div class="ml">TGSS 2025</div><div class="mv a">64.121 €</div><div class="ms">Seguridad Social</div></div>
-      <div class="mc"><div class="ml">TGSS 2026</div><div class="mv a">16.319 €</div><div class="ms">Ene–May 2026</div></div>
-      <div class="mc"><div class="ml">Coste total personal 2025</div><div class="mv r">126.583 €</div><div class="ms">Directo + SS</div></div>
-      <div class="mc"><div class="ml">Media/mes personal</div><div class="mv r">~9.700 €</div><div class="ms">Personal + SS</div></div>
+      <div class="mc"><div class="ml">Nóminas brutas/mes</div><div class="mv r">7.100 €</div><div class="ms">Suma 5 trabajadores</div></div>
+      <div class="mc"><div class="ml">SS empresa/mes</div><div class="mv a">4.040 €</div><div class="ms">Real recibo 03/2026</div></div>
+      <div class="mc"><div class="ml">Autónomos/mes</div><div class="mv a">410 €</div><div class="ms">315 + 94,50 €</div></div>
+      <div class="mc"><div class="ml">TOTAL personal/mes</div><div class="mv r">11.550 €</div><div class="ms">Nóminas + SS + autónomos</div></div>
+      <div class="mc"><div class="ml">Días laborables/año</div><div class="mv b">218</div><div class="ms">L–V sin festivos ni vacaciones</div></div>
+      <div class="mc"><div class="ml">Horas facturables/año</div><div class="mv b">1.744 h</div><div class="ms">Por trabajador</div></div>
     </div>
+
+    <!-- Tarjetas por trabajador -->
     <div class="wgrid" id="wCards"></div>
+
+    <!-- Tabla detalle coste hora -->
     <div class="card">
-      <div class="card-title">Detalle por trabajador</div>
-      <table><thead><tr><th>Trabajador</th><th style="text-align:right">2025</th><th style="text-align:right">2026 (5m)</th><th style="text-align:right">Total</th><th style="text-align:right">Media/mes activo</th><th style="text-align:right">Operaciones</th></tr></thead>
-      <tbody id="wTb"></tbody>
-      <tfoot><tr style="background:rgba(255,255,255,.03)"><td><strong>TGSS (SS empresa)</strong></td><td style="text-align:right;color:var(--amber)">64.121 €</td><td style="text-align:right;color:var(--amber)">16.319 €</td><td style="text-align:right;color:var(--amber)">80.440 €</td><td style="text-align:right;color:var(--amber)">~4.750 €</td><td style="text-align:right;color:var(--text2)">17 pagos</td></tr></tfoot>
+      <div class="card-title">Coste real y precio mínimo de venta por hora</div>
+      <table>
+        <thead><tr>
+          <th>Trabajador</th>
+          <th style="text-align:right">Salario</th>
+          <th style="text-align:right">SS empresa</th>
+          <th style="text-align:right">Coste/mes</th>
+          <th style="text-align:right">Coste/hora</th>
+          <th style="text-align:right">Coste/día</th>
+          <th style="text-align:right">PVP mín +30%</th>
+          <th style="text-align:right">PVP rec. +50%</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>Jose Beliard</strong><br><span style="font-size:10px;color:var(--text3)">1.800 + 600 plus fijo</span></td>
+            <td style="text-align:right">2.400 €</td>
+            <td style="text-align:right;color:var(--amber)">1.184 €</td>
+            <td style="text-align:right;color:var(--red);font-weight:600">3.584 €</td>
+            <td style="text-align:right">26,72 €</td>
+            <td style="text-align:right">213,80 €</td>
+            <td style="text-align:right;color:var(--amber)">34,74 €</td>
+            <td style="text-align:right;color:var(--green)">40,09 €</td>
+          </tr>
+          <tr>
+            <td><strong>Diego Campillo</strong><br><span style="font-size:10px;color:var(--text3)">1.650 € base</span></td>
+            <td style="text-align:right">1.650 €</td>
+            <td style="text-align:right;color:var(--amber)">844 €</td>
+            <td style="text-align:right;color:var(--red);font-weight:600">2.494 €</td>
+            <td style="text-align:right">19,05 €</td>
+            <td style="text-align:right">152,43 €</td>
+            <td style="text-align:right;color:var(--amber)">24,77 €</td>
+            <td style="text-align:right;color:var(--green)">28,58 €</td>
+          </tr>
+          <tr>
+            <td><strong>Abdellah Souiri</strong><br><span style="font-size:10px;color:var(--text3)">1.150 € base</span></td>
+            <td style="text-align:right">1.150 €</td>
+            <td style="text-align:right;color:var(--amber)">588 €</td>
+            <td style="text-align:right;color:var(--red);font-weight:600">1.738 €</td>
+            <td style="text-align:right">13,28 €</td>
+            <td style="text-align:right">106,24 €</td>
+            <td style="text-align:right;color:var(--amber)">17,26 €</td>
+            <td style="text-align:right;color:var(--green)">19,92 €</td>
+          </tr>
+          <tr>
+            <td><strong>Mamadou Barry</strong><br><span style="font-size:10px;color:var(--text3)">1.150 € base</span></td>
+            <td style="text-align:right">1.150 €</td>
+            <td style="text-align:right;color:var(--amber)">588 €</td>
+            <td style="text-align:right;color:var(--red);font-weight:600">1.738 €</td>
+            <td style="text-align:right">13,28 €</td>
+            <td style="text-align:right">106,24 €</td>
+            <td style="text-align:right;color:var(--amber)">17,26 €</td>
+            <td style="text-align:right;color:var(--green)">19,92 €</td>
+          </tr>
+          <tr>
+            <td><strong>Paula Morales</strong><br><span style="font-size:10px;color:var(--text3)">750 € base</span></td>
+            <td style="text-align:right">750 €</td>
+            <td style="text-align:right;color:var(--amber)">384 €</td>
+            <td style="text-align:right;color:var(--red);font-weight:600">1.134 €</td>
+            <td style="text-align:right">8,66 €</td>
+            <td style="text-align:right">69,29 €</td>
+            <td style="text-align:right;color:var(--amber)">11,26 €</td>
+            <td style="text-align:right;color:var(--green)">12,99 €</td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr style="background:rgba(255,255,255,.03)">
+            <td><strong>TOTAL equipo</strong></td>
+            <td style="text-align:right;font-weight:600">7.100 €</td>
+            <td style="text-align:right;color:var(--amber);font-weight:600">4.040 €</td>
+            <td style="text-align:right;color:var(--red);font-weight:700">11.140 €</td>
+            <td style="text-align:right;color:var(--text2)">—</td>
+            <td style="text-align:right;color:var(--text2)">—</td>
+            <td colspan="2"></td>
+          </tr>
+          <tr style="background:rgba(245,158,11,.05)">
+            <td style="color:var(--text2)">+ Autónomos (tú)</td>
+            <td colspan="2"></td>
+            <td style="text-align:right;color:var(--amber);font-weight:600">410 €</td>
+            <td colspan="4"></td>
+          </tr>
+          <tr style="background:rgba(240,82,82,.05)">
+            <td><strong>TOTAL REAL PERSONAL</strong></td>
+            <td colspan="2"></td>
+            <td style="text-align:right;color:var(--red);font-weight:700;font-size:14px">11.550 €</td>
+            <td colspan="4"></td>
+          </tr>
+        </tfoot>
       </table>
+      <div style="margin-top:12px;padding:10px;background:var(--bg3);border-radius:8px;font-size:11px;color:var(--text3)">
+        📌 Cálculo: salario bruto anual (12 pagas + 2 extras + plus×12) ÷ 1.744 horas laborables reales/año = coste/hora empresa. SS empresa: 43,9% real del recibo 03/2026. Los PVP son el precio mínimo que debería cobrar en factura para cubrir el coste del trabajador más el margen indicado, sin contar materiales ni desplazamientos.
+      </div>
     </div>
+
     <div class="g2">
       <div class="card">
         <div class="card-title" style="color:var(--green)">✅ Gastos fijos reales/mes</div>
@@ -399,15 +491,16 @@ select:focus{border-color:var(--blue)}
         </table>
       </div>
       <div class="card">
-        <div class="card-title" style="color:var(--amber)">⚠️ Gastos variables por obra</div>
+        <div class="card-title">📊 Resumen coste total mínimo empresa/mes</div>
         <table>
-          <tr><td style="color:var(--text2)">Cinc Gestió (~10% obra)</td><td style="text-align:right">Variable</td></tr>
-          <tr><td style="color:var(--text2)">Proveedores y materiales</td><td style="text-align:right">Variable</td></tr>
-          <tr><td style="color:var(--text2)">Subcontratas</td><td style="text-align:right">Variable</td></tr>
-          <tr><td style="color:var(--text2)">TGSS (varía plantilla)</td><td style="text-align:right">3.300–6.200 €</td></tr>
-          <tr><td style="color:var(--text2)">AEAT (trimestral)</td><td style="text-align:right">~4.500 €/trim.</td></tr>
-          <tr><td style="color:var(--text2)">Seguros (trimestrales)</td><td style="text-align:right">~590 €/trim.</td></tr>
-          <tr style="background:rgba(245,158,11,.05)"><td><strong>Mínimo variable/mes</strong></td><td style="text-align:right;color:var(--amber)"><strong>~5.000 €</strong></td></tr>
+          <tr><td style="color:var(--text2)">Personal total (nóminas + SS + autónomos)</td><td style="text-align:right;color:var(--red)">11.550 €</td></tr>
+          <tr><td style="color:var(--text2)">Gastos fijos (seguros, admin, digital)</td><td style="text-align:right">~918 €</td></tr>
+          <tr><td style="color:var(--text2)">AEAT trimestral prorrateado</td><td style="text-align:right">~1.500 €</td></tr>
+          <tr><td style="color:var(--text2)">Seguros trimestrales prorrateados</td><td style="text-align:right">~590 €</td></tr>
+          <tr style="background:rgba(240,82,82,.05)"><td><strong>Mínimo fijo/mes (sin materiales)</strong></td><td style="text-align:right;color:var(--red)"><strong>~14.558 €</strong></td></tr>
+          <tr><td style="color:var(--text2)">+ Proveedores, materiales, Cinc...</td><td style="text-align:right;color:var(--amber)">Variable</td></tr>
+          <tr style="background:rgba(245,158,11,.05)"><td><strong>Para facturar al mes mínimo</strong></td><td style="text-align:right;color:var(--amber)"><strong>~20.000–25.000 €</strong></td></tr>
+          <tr style="background:rgba(34,196,135,.05)"><td><strong>Objetivo recomendado (+margen)</strong></td><td style="text-align:right;color:var(--green)"><strong>~43.000 €</strong></td></tr>
         </table>
       </div>
     </div>
