@@ -1217,13 +1217,20 @@ function renderCal(){
   const monthNames=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   if(label) label.textContent=monthNames[calMonth-1]+' '+calYear;
 
-  // Cargar datos del mes
+    // Cargar datos del mes y construir grid (siempre, aunque falle la API)
   const from=`${calYear}-${String(calMonth).padStart(2,'0')}-01`;
   const to=`${calYear}-${String(calMonth).padStart(2,'0')}-31`;
+  calData={};
+  buildCalGrid(); // Mostrar grid vacío inmediatamente
   af(`/api/attendance?from=${from}&to=${to}`).then(data=>{
-    calData={};
-    if(data) data.forEach(e=>{ calData[e.workerId+'_'+e.date]=e; });
-    buildCalGrid();
+    if(data && Array.isArray(data)) {
+      calData={};
+      data.forEach(e=>{ calData[e.workerId+'_'+e.date]=e; });
+      buildCalGrid(); // Redibujar con datos
+    }
+  }).catch(err=>{
+    console.warn('Attendance API error:', err);
+    // Grid ya está visible vacío, no hacer nada
   });
 }
 
