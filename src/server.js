@@ -179,6 +179,104 @@ app.get('/api/attendance/client', requireAuth, async (req, res) => {
 });
 
 
+
+// ── GESTIÓN DE USUARIOS ───────────────────────────────────────────
+const users = require('./users');
+
+// Inicializar usuarios por defecto al arrancar
+users.initDefaultUsers().catch(err => console.error('[Users] Error init:', err.message));
+
+// Login con PIN (público)
+app.post('/api/users/login', async (req, res) => {
+  try {
+    const { pin } = req.body;
+    if (!pin) return res.status(400).json({ error: 'PIN requerido' });
+    const result = await users.loginWithPin(pin);
+    res.json(result);
+  } catch (err) {
+    res.status(401).json({ error: err.message });
+  }
+});
+
+// Logout
+app.post('/api/users/logout', async (req, res) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (token) await users.logout(token).catch(() => {});
+  res.json({ ok: true });
+});
+
+// Verificar token de usuario (para el dashboard de oficina)
+app.get('/api/users/me', async (req, res) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'No autorizado' });
+  try {
+    // Token de admin (JWT)
+    if (!token.startsWith('u_')) {
+      const jwt = require('jsonwebtoken');
+      jwt.verify(token, process.env.JWT_SECRET || 'fallback');
+      return res.json({ role: 'admin', userName: 'Admin' });
+    }
+    // Token de usuario (PIN)
+    const session = await users.verifyUserToken(token);
+    if (!session) return res.status(401).json({ error: 'Sesión expirada' });
+    res.json({ role: session.userRole, userName: session.userName, userId: session.userId });
+  } catch (err) {
+    res.status(401).json({ error: 'Token inválido' });
+  }
+});
+
+// CRUD usuarios (solo admin)
+app.get('/api/users', requireAuth, async (req, res) => {
+  try {
+    const list = await users.getUsers(true);
+    // No devolver PINs en la lista general
+    res.json(list.map(u => ({ ...u, pin: '••••' })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/users/:id', requireAuth, async (req, res) => {
+  try {
+    const u = await users.getUser(req.params.id);
+    if (!u) return res.status(404).json({ error: 'Usuario no encontrado' });
+    res.json(u); // Admin ve el PIN
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/users', requireAuth, async (req, res) => {
+  try {
+    const user = await users.createUser(req.body);
+    res.json({ ok: true, user });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.put('/api/users/:id', requireAuth, async (req, res) => {
+  try {
+    await users.updateUser(req.params.id, req.body);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/users/:id', requireAuth, async (req, res) => {
+  try {
+    await users.deactivateUser(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/roles', requireAuth, (req, res) => {
+  res.json(users.ROLES);
+});
+
 // ── PARTES DE TRABAJO ─────────────────────────────────────────────
 const partes = require('./partes');
 
