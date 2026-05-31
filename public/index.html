@@ -179,6 +179,7 @@ select:focus{border-color:var(--blue)}
   <button class="nav-btn" onclick="showTab('familias',this)">👥 Familias</button>
   <button class="nav-btn" onclick="showTab('presupuestos',this)">📋 Presupuestos</button>
   <button class="nav-btn" onclick="showTab('banco',this)">🏦 Banco y gastos</button>
+  <button class="nav-btn" onclick="showTab('presencia',this)">📅 Presencia</button>
   <button class="nav-btn" onclick="showTab('alertas',this)">🔔 Alertas</button>
 </nav>
 <main class="main">
@@ -583,6 +584,131 @@ select:focus{border-color:var(--blue)}
       <div id="bUpInfo" style="margin-top:10px;font-size:11px;color:var(--text3)">—</div>
     </div>
     <div class="alert ain"><div>ℹ️</div><div><strong>Próximamente: conexión bancaria automática</strong><p>Fase 3: conexión directa via Nordigen/GoCardless para eliminar la carga manual mensual.</p></div></div>
+  </div>
+</div>
+
+
+<!-- PRESENCIA Y PARTES -->
+<div id="tab-presencia" class="panel">
+  <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:20px;overflow-x:auto">
+    <button class="btab active" onclick="showPTab('calendario',this)">📅 Calendario</button>
+    <button class="btab" onclick="showPTab('resumen',this)">📊 Resumen mensual</button>
+    <button class="btab" onclick="showPTab('clientes',this)">👷 Por cliente/obra</button>
+    <button class="btab" onclick="showPTab('calculadora',this)">🧮 Calculadora obra</button>
+  </div>
+
+  <!-- CALENDARIO -->
+  <div id="ptab-calendario" class="bpanel active">
+    <div class="alert ain" style="margin-bottom:16px">
+      <div>📅</div>
+      <div><strong>Control de presencia diario</strong> — haz clic en cualquier celda para registrar dónde estuvo cada trabajador. Los datos se guardan en la base de datos permanentemente.</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+      <button class="btn bgh" onclick="prevMonth()">← Anterior</button>
+      <span style="font-size:16px;font-weight:600;font-family:'Space Grotesk',sans-serif" id="calMonthLabel">—</span>
+      <button class="btn bgh" onclick="nextMonth()">Siguiente →</button>
+      <button class="btn bgh" onclick="goToday()">Hoy</button>
+      <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap" id="estadoLegend"></div>
+    </div>
+    <div class="card" style="overflow-x:auto;padding:12px">
+      <div id="calGrid" style="min-width:700px"></div>
+    </div>
+  </div>
+
+  <!-- RESUMEN MENSUAL -->
+  <div id="ptab-resumen" class="bpanel">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+      <button class="btn bgh" onclick="prevSumMonth()">← Anterior</button>
+      <span style="font-size:16px;font-weight:600;font-family:'Space Grotesk',sans-serif" id="sumMonthLabel">—</span>
+      <button class="btn bgh" onclick="nextSumMonth()">Siguiente →</button>
+      <button class="btn bp" onclick="exportCSV()">📥 Exportar CSV</button>
+    </div>
+    <div id="sumMetrics" class="metrics-row" style="margin-bottom:16px"></div>
+    <div class="card">
+      <div class="card-title">Días por trabajador</div>
+      <div id="sumTable">Cargando...</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Horas en obra por trabajador y cliente</div>
+      <div id="sumClientTable">Cargando...</div>
+    </div>
+  </div>
+
+  <!-- POR CLIENTE -->
+  <div id="ptab-clientes" class="bpanel">
+    <div class="card" style="padding:16px 20px;margin-bottom:14px">
+      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase">Cliente / Obra</div>
+          <input type="text" class="srch" id="clientSearch" placeholder="Ej: Habitat Migdia..." style="width:220px">
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase">Desde</div>
+          <input type="date" class="srch" id="clientFrom" style="width:140px">
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase">Hasta</div>
+          <input type="date" class="srch" id="clientTo" style="width:140px">
+        </div>
+        <button class="btn bp" onclick="searchClient()">Buscar</button>
+      </div>
+    </div>
+    <div class="card"><div id="clientResult">Introduce un cliente para ver el extracto.</div></div>
+  </div>
+
+  <!-- CALCULADORA OBRA -->
+  <div id="ptab-calculadora" class="bpanel">
+    <div class="alert ain" style="margin-bottom:16px">
+      <div>🧮</div>
+      <div><strong>Calculadora de rentabilidad de obra</strong> — introduce los días de cada trabajador, materiales y precio presupuestado para saber si la obra sale rentable.</div>
+    </div>
+    <div class="g2">
+      <div class="card">
+        <div class="card-title">Personal en esta obra</div>
+        <table id="calcWorkerTable">
+          <thead><tr><th>Trabajador</th><th style="text-align:center">Días</th><th style="text-align:center">Horas extra</th><th style="text-align:right">Coste</th></tr></thead>
+          <tbody>
+            <tr><td>Jose Beliard <span style="font-size:9px;color:var(--text3)">26,72€/h</span></td><td><input type="number" class="calc-days" data-worker="jose" data-rate="26.72" min="0" max="30" value="0" oninput="calcObra()" style="width:55px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px;color:var(--text)"></td><td><input type="number" class="calc-extra" data-worker="jose" min="0" max="50" value="0" oninput="calcObra()" style="width:55px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px;color:var(--text)"></td><td style="text-align:right;font-weight:600" id="cost-jose">0 €</td></tr>
+            <tr><td>Diego Campillo <span style="font-size:9px;color:var(--text3)">19,05€/h</span></td><td><input type="number" class="calc-days" data-worker="diego" data-rate="19.05" min="0" max="30" value="0" oninput="calcObra()" style="width:55px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px;color:var(--text)"></td><td><input type="number" class="calc-extra" data-worker="diego" min="0" max="50" value="0" oninput="calcObra()" style="width:55px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px;color:var(--text)"></td><td style="text-align:right;font-weight:600" id="cost-diego">0 €</td></tr>
+            <tr><td>Abdellah Souiri <span style="font-size:9px;color:var(--text3)">13,28€/h</span></td><td><input type="number" class="calc-days" data-worker="abdellah" data-rate="13.28" min="0" max="30" value="0" oninput="calcObra()" style="width:55px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px;color:var(--text)"></td><td><input type="number" class="calc-extra" data-worker="abdellah" min="0" max="50" value="0" oninput="calcObra()" style="width:55px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px;color:var(--text)"></td><td style="text-align:right;font-weight:600" id="cost-abdellah">0 €</td></tr>
+            <tr><td>Mamadou Barry <span style="font-size:9px;color:var(--text3)">13,28€/h</span></td><td><input type="number" class="calc-days" data-worker="mamadou" data-rate="13.28" min="0" max="30" value="0" oninput="calcObra()" style="width:55px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px;color:var(--text)"></td><td><input type="number" class="calc-extra" data-worker="mamadou" min="0" max="50" value="0" oninput="calcObra()" style="width:55px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px;color:var(--text)"></td><td style="text-align:right;font-weight:600" id="cost-mamadou">0 €</td></tr>
+            <tr><td>Paula Morales <span style="font-size:9px;color:var(--text3)">8,66€/h</span></td><td><input type="number" class="calc-days" data-worker="paula" data-rate="8.66" min="0" max="30" value="0" oninput="calcObra()" style="width:55px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px;color:var(--text)"></td><td><input type="number" class="calc-extra" data-worker="paula" min="0" max="50" value="0" oninput="calcObra()" style="width:55px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px;color:var(--text)"></td><td style="text-align:right;font-weight:600" id="cost-paula">0 €</td></tr>
+          </tbody>
+          <tfoot><tr style="background:rgba(255,255,255,.03)"><td colspan="3"><strong>Total personal</strong></td><td style="text-align:right;color:var(--red);font-weight:700" id="calc-personal-total">0 €</td></tr></tfoot>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title">Materiales y otros costes</div>
+        <div id="matRows">
+          <div class="mat-row" style="display:flex;gap:8px;margin-bottom:8px">
+            <input type="text" placeholder="Concepto" style="flex:1;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px">
+            <input type="number" placeholder="€" min="0" oninput="calcObra()" style="width:90px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px;text-align:right">
+          </div>
+        </div>
+        <button class="btn bgh" style="width:100%;margin-bottom:16px" onclick="addMatRow()">+ Añadir material/coste</button>
+        <table>
+          <tr><td style="color:var(--text2)">Total materiales</td><td style="text-align:right;font-weight:600" id="calc-mat-total">0 €</td></tr>
+          <tr><td style="color:var(--text2)">Total personal</td><td style="text-align:right;color:var(--red);font-weight:600" id="calc-personal-total2">0 €</td></tr>
+          <tr style="background:rgba(240,82,82,.05)"><td><strong>Coste total obra</strong></td><td style="text-align:right;color:var(--red);font-weight:700;font-size:15px" id="calc-total">0 €</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Precio presupuestado y resultado</div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:10px;color:var(--text3);margin-bottom:4px">Precio presupuestado (sin IVA)</div>
+          <input type="number" id="calcPrecio" placeholder="0" min="0" oninput="calcObra()" style="font-size:18px;font-weight:700;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px 14px;color:var(--text);width:180px">
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--text3);margin-bottom:4px">Nombre de la obra</div>
+          <input type="text" id="calcNombre" placeholder="Ej: Habitat Migdia - tejado" style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px 14px;color:var(--text);width:250px;font-size:13px">
+        </div>
+      </div>
+      <div id="calcResult" style="padding:16px;background:var(--bg3);border-radius:var(--rs);border:1px solid var(--border)">
+        <div style="font-size:12px;color:var(--text3)">Introduce el precio presupuestado para ver el resultado</div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1039,6 +1165,439 @@ function showTab(id,btn){
   document.getElementById('tab-'+id).classList.add('active');
   if(btn)btn.classList.add('active');
   if(id==='banco')showBTab('resumen',document.querySelector('.btab'));
+  if(id==='presencia'){renderCal();renderEstadoLegend();}
+}
+
+
+// ── PRESENCIA ─────────────────────────────────────────────────────
+const WORKERS_P = [
+  {id:'jose',    name:'Jose Beliard',    color:'#4d9cf8', rate:26.72},
+  {id:'diego',   name:'Diego Campillo',  color:'#22c487', rate:19.05},
+  {id:'abdellah',name:'Abdellah Souiri', color:'#f59e0b', rate:13.28},
+  {id:'mamadou', name:'Mamadou Barry',   color:'#a78bfa', rate:13.28},
+  {id:'paula',   name:'Paula Morales',   color:'#f05252', rate:8.66},
+];
+const ESTADOS_P = {
+  obra:       {label:'En obra',           color:'#22c487', emoji:'🏗️'},
+  oficina:    {label:'Oficina/almacén',   color:'#4d9cf8', emoji:'🏢'},
+  vacaciones: {label:'Vacaciones',        color:'#a78bfa', emoji:'🌴'},
+  baja:       {label:'Baja médica',       color:'#f59e0b', emoji:'🏥'},
+  falta_j:    {label:'Falta justificada', color:'#f59e0b', emoji:'📋'},
+  falta_i:    {label:'Falta injustificada',color:'#f05252',emoji:'❌'},
+  libre:      {label:'Libre',             color:'#5a6278', emoji:'⏸️'},
+};
+
+let calYear=new Date().getFullYear(), calMonth=new Date().getMonth()+1;
+let sumYear=new Date().getFullYear(), sumMonth=new Date().getMonth()+1;
+let calData={};  // {workerId_date: entry}
+let pTabActive='calendario';
+
+function showPTab(id,btn){
+  document.querySelectorAll('#tab-presencia .bpanel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('#tab-presencia .btab').forEach(b=>b.classList.remove('active'));
+  document.getElementById('ptab-'+id).classList.add('active');
+  if(btn)btn.classList.add('active');
+  pTabActive=id;
+  if(id==='calendario')renderCal();
+  if(id==='resumen')loadSummary();
+}
+
+// Leyenda de estados
+function renderEstadoLegend(){
+  const el=document.getElementById('estadoLegend');if(!el)return;
+  el.innerHTML=Object.entries(ESTADOS_P).map(([k,v])=>
+    `<span style="font-size:10px;display:flex;align-items:center;gap:3px"><span style="width:10px;height:10px;border-radius:3px;background:${v.color};display:inline-block"></span>${v.emoji} ${v.label}</span>`
+  ).join('');
+}
+
+// CALENDARIO
+function renderCal(){
+  renderEstadoLegend();
+  const label=document.getElementById('calMonthLabel');
+  const monthNames=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  if(label) label.textContent=monthNames[calMonth-1]+' '+calYear;
+
+    // Cargar datos del mes y construir grid (siempre, aunque falle la API)
+  const from=`${calYear}-${String(calMonth).padStart(2,'0')}-01`;
+  const to=`${calYear}-${String(calMonth).padStart(2,'0')}-31`;
+  calData={};
+  buildCalGrid(); // Mostrar grid vacío inmediatamente
+  af(`/api/attendance?from=${from}&to=${to}`).then(data=>{
+    if(data && Array.isArray(data)) {
+      calData={};
+      data.forEach(e=>{ calData[e.workerId+'_'+e.date]=e; });
+      buildCalGrid(); // Redibujar con datos
+    }
+  }).catch(err=>{
+    console.warn('Attendance API error:', err);
+    // Grid ya está visible vacío, no hacer nada
+  });
+}
+
+function buildCalGrid(){
+  const grid=document.getElementById('calGrid');if(!grid)return;
+  const daysInMonth=new Date(calYear,calMonth,0).getDate();
+  const days=[];
+  for(let d=1;d<=daysInMonth;d++){
+    const date=new Date(calYear,calMonth-1,d);
+    const dow=date.getDay();
+    days.push({day:d,date:`${calYear}-${String(calMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`,dow,isWeekend:dow===0||dow===6});
+  }
+
+  const today=new Date().toISOString().slice(0,10);
+  const dayNames=['D','L','M','X','J','V','S'];
+
+  let html=`<div style="display:grid;grid-template-columns:110px repeat(${days.length},minmax(28px,1fr));gap:1px;font-size:10px">`;
+
+  // Header días
+  html+=`<div style="padding:6px 8px;color:var(--text3);font-weight:600;font-size:10px">Trabajador</div>`;
+  days.forEach(({day,date,dow,isWeekend})=>{
+    const isToday=date===today;
+    html+=`<div style="padding:3px 1px;text-align:center;background:${isWeekend?'rgba(255,255,255,.02)':''};border-bottom:1px solid var(--border)">
+      <div style="font-size:8px;color:${isWeekend?'var(--text3)':isToday?'var(--blue)':'var(--text3)'}">${dayNames[dow]}</div>
+      <div style="font-size:11px;font-weight:${isToday?'700':'400'};color:${isToday?'var(--blue)':'var(--text2)'}">${day}</div>
+    </div>`;
+  });
+
+  // Filas por trabajador
+  WORKERS_P.forEach(w=>{
+    html+=`<div style="padding:5px 8px;color:var(--text2);font-size:11px;font-weight:500;border-right:1px solid var(--border);display:flex;align-items:center;gap:5px;white-space:nowrap">
+      <div style="width:7px;height:7px;border-radius:50%;background:${w.color};flex-shrink:0"></div>
+      ${w.name.split(' ')[0]}
+    </div>`;
+    days.forEach(({date,isWeekend})=>{
+      const entry=calData[w.id+'_'+date];
+      const est=entry?ESTADOS_P[entry.estado]:null;
+      const bg=isWeekend?'rgba(255,255,255,.015)':(est?est.color+'25':'var(--bg3)');
+      const emoji=est?est.emoji:(isWeekend?'':'');
+      const client=entry?.clientName?entry.clientName.slice(0,7):'';
+      const clickable=!isWeekend;
+      html+=`<div
+        style="padding:1px;text-align:center;background:${bg};${clickable?'cursor:pointer;':'cursor:default;'}min-height:38px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;border-radius:3px;border:1px solid ${est?est.color+'55':isWeekend?'transparent':'var(--border)'};transition:opacity .15s;opacity:1"
+        data-wid="${w.id}" data-wname="${w.name.replace(/'/g,'')}" data-date="${date}" data-clickable="${clickable}"
+        title="${est?est.label:isWeekend?'Fin de semana':'Sin registrar'}">
+        <div style="font-size:13px;line-height:1">${emoji}</div>
+        <div style="font-size:8px;color:var(--text3);overflow:hidden;max-width:100%;white-space:nowrap;text-overflow:ellipsis;padding:0 2px">${client}</div>
+      </div>`;
+    });
+  });
+  html+='</div>';
+  grid.innerHTML=html;
+
+  // Event delegation — mucho más limpio que onclick inline
+  grid.addEventListener('click', e=>{
+    const cell=e.target.closest('[data-date]');
+    if(!cell||cell.dataset.clickable!=='true')return;
+    openEntryModal(cell.dataset.wid, cell.dataset.wname, cell.dataset.date);
+  });
+  grid.addEventListener('mouseover', e=>{
+    const cell=e.target.closest('[data-date]');
+    if(cell&&cell.dataset.clickable==='true')cell.style.opacity='.7';
+  });
+  grid.addEventListener('mouseout', e=>{
+    const cell=e.target.closest('[data-date]');
+    if(cell)cell.style.opacity='1';
+  });
+}
+
+function prevMonth(){if(calMonth===1){calMonth=12;calYear--;}else calMonth--;renderCal();}
+function nextMonth(){if(calMonth===12){calMonth=1;calYear++;}else calMonth++;renderCal();}
+function goToday(){const n=new Date();calYear=n.getFullYear();calMonth=n.getMonth()+1;renderCal();}
+
+// MODAL para editar entrada
+let modalWorker=null,modalDate=null;
+function openEntryModal(workerId,workerName,date){
+  modalWorker=workerId;modalDate=date;
+  selectedEstado=null; // reset
+  const entry=calData[workerId+'_'+date];
+  if(entry) selectedEstado=entry.estado; // pre-seleccionar estado existente
+  
+  // Crear modal simple
+  const existing=document.getElementById('entryModal');
+  if(existing)existing.remove();
+
+  const modal=document.createElement('div');
+  modal.id='entryModal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML=`
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:24px;width:100%;max-width:420px;max-height:90vh;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div>
+          <div style="font-weight:600;font-size:14px">${workerName}</div>
+          <div style="font-size:11px;color:var(--text3)">${new Date(date+'T12:00:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'})}</div>
+        </div>
+        <button onclick="closeModal()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer">✕</button>
+      </div>
+      
+      <div style="margin-bottom:14px">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:8px">Estado</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          ${Object.entries(ESTADOS_P).map(([k,v])=>`
+            <button onclick="selectEstado('${k}')" id="est-${k}" style="background:${entry?.estado===k?v.color+'33':'var(--bg3)'};border:1px solid ${entry?.estado===k?v.color:'var(--border2)'};border-radius:8px;padding:8px;cursor:pointer;color:var(--text);text-align:left;transition:all .15s;font-family:'Inter',sans-serif">
+              <span style="font-size:16px">${v.emoji}</span>
+              <div style="font-size:11px;margin-top:3px">${v.label}</div>
+            </button>`).join('')}
+        </div>
+      </div>
+      
+      <div id="obraFields" style="display:${entry?.estado==='obra'?'block':'none'}">
+        <div style="margin-bottom:10px">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">Cliente / Obra</div>
+          <input type="text" id="mClientName" value="${entry?.clientName||''}" placeholder="Buscar cliente..." list="clientSugg" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px"><datalist id="clientSugg">${getClientSuggestions()}</datalist>
+        </div>
+      </div>
+      
+      <div style="margin-bottom:10px">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">Horas (por defecto 8)</div>
+        <input type="number" id="mHoras" value="${entry?.horas||8}" min="1" max="16" style="width:80px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px">
+      </div>
+      
+      <div style="margin-bottom:16px">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">Notas</div>
+        <textarea id="mNotas" placeholder="Observaciones..." style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-size:12px;resize:vertical;min-height:60px;font-family:'Inter',sans-serif">${entry?.notas||''}</textarea>
+      </div>
+      
+      <div style="display:flex;gap:8px">
+        <button class="btn bp" style="flex:1" onclick="saveEntry()">Guardar</button>
+        ${entry?`<button class="btn bgh" onclick="deleteEntry()">Borrar</button>`:''}
+        <button class="btn bgh" onclick="closeModal()">Cancelar</button>
+      </div>
+    </div>`;
+  
+  document.body.appendChild(modal);
+  // Poblar datalist con clientes de StelOrder
+  const dl=document.getElementById('clientSugg');
+  if(dl){
+    const names=new Set();
+    if(aP&&aP.length) aP.forEach(i=>{ if(i.client&&i.client!=='Sin nombre')names.add(i.client); });
+    if(eD&&eD.all) eD.all.forEach(e=>{ if(e.client&&e.client!=='Sin nombre')names.add(e.client); });
+    dl.innerHTML=[...names].sort().map(n=>`<option value="${n}">`).join('');
+  }
+  modal.addEventListener('click', e=>{ if(e.target===modal)closeModal(); });
+  if(selectedEstado) selectEstado(selectedEstado);
+}
+
+let selectedEstado=null;
+function selectEstado(k){
+  selectedEstado=k;
+  Object.keys(ESTADOS_P).forEach(s=>{
+    const btn=document.getElementById('est-'+s);if(!btn)return;
+    const v=ESTADOS_P[s];
+    btn.style.background=s===k?v.color+'33':'var(--bg3)';
+    btn.style.borderColor=s===k?v.color:'var(--border2)';
+  });
+  const obraFields=document.getElementById('obraFields');
+  if(obraFields) obraFields.style.display=k==='obra'?'block':'none';
+}
+
+async function saveEntry(){
+  // Si no se ha clicado ningún botón, tomar el que esté visualmente seleccionado
+  if(!selectedEstado){
+    const selected=document.querySelector('[id^="est-"]');
+    // Buscar el botón que tenga el color de fondo de su estado
+    const allBtns=document.querySelectorAll('[id^="est-"]');
+    for(const btn of allBtns){
+      if(btn.style.background && !btn.style.background.includes('var(--bg3)')){
+        selectedEstado=btn.id.replace('est-','');
+        break;
+      }
+    }
+  }
+  if(!selectedEstado){alert('Selecciona un estado primero');return;}
+  const entry={
+    workerId: modalWorker,
+    workerName: WORKERS_P.find(w=>w.id===modalWorker)?.name||'',
+    date: modalDate,
+    estado: selectedEstado,
+    clientName: selectedEstado==='obra'?(document.getElementById('mClientName')?.value||''):'',
+    horas: parseFloat(document.getElementById('mHoras')?.value||8),
+    notas: document.getElementById('mNotas')?.value||''
+  };
+  const result = await af('/api/attendance',{method:'POST',body:JSON.stringify(entry)});
+  if(result && result.error){
+    alert('Error al guardar: '+result.error);
+    return;
+  }
+  closeModal();
+  renderCal();
+}
+
+async function deleteEntry(){
+  await af(`/api/attendance/${modalWorker}/${modalDate}`,{method:'DELETE'});
+  closeModal();
+  renderCal();
+}
+
+function closeModal(){
+  selectedEstado=null;
+  const m=document.getElementById('entryModal');if(m)m.remove();
+}
+
+// RESUMEN MENSUAL
+function prevSumMonth(){if(sumMonth===1){sumMonth=12;sumYear--;}else sumMonth--;loadSummary();}
+function nextSumMonth(){if(sumMonth===12){sumMonth=1;sumYear++;}else sumMonth++;loadSummary();}
+
+async function loadSummary(){
+  const monthNames=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const lbl=document.getElementById('sumMonthLabel');
+  if(lbl)lbl.textContent=monthNames[sumMonth-1]+' '+sumYear;
+  const data=await af(`/api/attendance/summary/${sumYear}/${sumMonth}`);
+  if(!data)return;
+
+  // Métricas globales
+  const totalDias=data.byWorker.reduce((s,w)=>s+w.dias,0);
+  const totalObra=data.byWorker.reduce((s,w)=>s+w.dias_obra,0);
+  const totalFaltas=data.byWorker.reduce((s,w)=>s+w.dias_falta,0);
+  const el=document.getElementById('sumMetrics');
+  if(el)el.innerHTML=`
+    <div class="mc"><div class="ml">Días registrados</div><div class="mv b">${totalDias}</div></div>
+    <div class="mc"><div class="ml">Días en obra</div><div class="mv g">${totalObra}</div></div>
+    <div class="mc"><div class="ml">Faltas/bajas</div><div class="mv r">${totalFaltas}</div></div>
+    <div class="mc"><div class="ml">Horas en obra</div><div class="mv g">${data.byWorker.reduce((s,w)=>s+w.horas,0).toFixed(0)} h</div></div>`;
+
+  // Tabla resumen por trabajador
+  const tEl=document.getElementById('sumTable');
+  if(tEl)tEl.innerHTML=`<table>
+    <thead><tr><th>Trabajador</th><th style="text-align:right">Días reg.</th><th style="text-align:right">En obra</th><th style="text-align:right">Faltas</th><th style="text-align:right">Horas</th><th style="text-align:right">Coste estimado</th></tr></thead>
+    <tbody>${data.byWorker.map(w=>{
+      const wData=WORKERS_P.find(x=>x.id===w.id);
+      const coste=w.horas*(wData?.rate||0);
+      return`<tr>
+        <td><div style="display:flex;align-items:center;gap:6px"><div style="width:8px;height:8px;border-radius:50%;background:${w.color}"></div><strong>${w.name}</strong></div></td>
+        <td style="text-align:right">${w.dias}</td>
+        <td style="text-align:right;color:var(--green)">${w.dias_obra}</td>
+        <td style="text-align:right;color:${w.dias_falta>0?'var(--red)':'var(--text2)'}">${w.dias_falta}</td>
+        <td style="text-align:right">${w.horas.toFixed(0)} h</td>
+        <td style="text-align:right;color:var(--red)">${eur(coste)}</td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+
+  // Tabla por clientes
+  const cEl=document.getElementById('sumClientTable');
+  if(!cEl)return;
+  const clientMap={};
+  data.byWorker.forEach(w=>{
+    Object.entries(w.clientes||{}).forEach(([client,v])=>{
+      if(!clientMap[client])clientMap[client]={dias:0,horas:0,workers:{}};
+      clientMap[client].dias+=v.dias;
+      clientMap[client].horas+=v.horas;
+      clientMap[client].workers[w.name]=(clientMap[client].workers[w.name]||0)+v.dias;
+    });
+  });
+  const clients=Object.entries(clientMap).sort((a,b)=>b[1].dias-a[1].dias);
+  if(!clients.length){cEl.innerHTML='<div class="empty"><div class="ei">🏗️</div><div class="et">No hay días en obra registrados este mes</div></div>';return;}
+  cEl.innerHTML=`<table>
+    <thead><tr><th>Cliente / Obra</th><th style="text-align:right">Días</th><th style="text-align:right">Horas</th><th>Trabajadores</th></tr></thead>
+    <tbody>${clients.map(([client,v])=>`<tr>
+      <td><strong>${client}</strong></td>
+      <td style="text-align:right">${v.dias}</td>
+      <td style="text-align:right">${v.horas.toFixed(0)} h</td>
+      <td style="font-size:11px;color:var(--text2)">${Object.entries(v.workers).map(([n,d])=>`${n.split(' ')[0]}:${d}d`).join(' · ')}</td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+// BÚSQUEDA POR CLIENTE
+async function searchClient(){
+  const name=document.getElementById('clientSearch')?.value||'';
+  const from=document.getElementById('clientFrom')?.value||'';
+  const to=document.getElementById('clientTo')?.value||'';
+  if(!name){alert('Introduce un nombre de cliente');return;}
+  const data=await af(`/api/attendance/client?clientName=${encodeURIComponent(name)}&from=${from}&to=${to}`);
+  if(!data)return;
+  const el=document.getElementById('clientResult');
+  if(!data.totalDias){
+    el.innerHTML='<div class="empty"><div class="ei">🔍</div><div class="et">Sin registros para este cliente en el período</div></div>';return;
+  }
+  const workers=Object.values(data.byWorker);
+  el.innerHTML=`
+    <div class="metrics-row" style="margin-bottom:14px">
+      <div class="mc"><div class="ml">Total días en obra</div><div class="mv g">${data.totalDias}</div></div>
+      <div class="mc"><div class="ml">Total horas</div><div class="mv g">${workers.reduce((s,w)=>s+w.horas,0).toFixed(0)} h</div></div>
+      <div class="mc"><div class="ml">Coste personal</div><div class="mv r">${eur(workers.reduce((s,w)=>{const wd=WORKERS_P.find(x=>x.name===w.name);return s+(wd?w.horas*wd.rate:0);},0))}</div></div>
+    </div>
+    <table><thead><tr><th>Trabajador</th><th style="text-align:right">Días</th><th style="text-align:right">Horas</th><th style="text-align:right">Coste</th><th>Fechas</th></tr></thead>
+    <tbody>${workers.map(w=>{
+      const wd=WORKERS_P.find(x=>x.name===w.name);
+      return`<tr>
+        <td><strong>${w.name}</strong></td>
+        <td style="text-align:right">${w.dias}</td>
+        <td style="text-align:right">${w.horas.toFixed(0)} h</td>
+        <td style="text-align:right;color:var(--red)">${eur(wd?w.horas*wd.rate:0)}</td>
+        <td style="font-size:10px;color:var(--text3)">${w.dates.slice(0,5).map(d=>new Date(d+'T12:00:00').toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'})).join(', ')}${w.dates.length>5?` +${w.dates.length-5} más`:''}</td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+}
+
+// CALCULADORA OBRA
+function addMatRow(){
+  const container=document.getElementById('matRows');
+  const row=document.createElement('div');
+  row.className='mat-row';
+  row.style.cssText='display:flex;gap:8px;margin-bottom:8px';
+  row.innerHTML=`<input type="text" placeholder="Concepto" style="flex:1;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px">
+    <input type="number" placeholder="€" min="0" oninput="calcObra()" style="width:90px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px;text-align:right">
+    <button onclick="this.parentElement.remove();calcObra()" style="background:var(--red-bg);border:1px solid var(--red);border-radius:6px;padding:4px 8px;color:var(--red);cursor:pointer;font-size:11px">✕</button>`;
+  container.appendChild(row);
+}
+
+function calcObra(){
+  let totalPersonal=0;
+  document.querySelectorAll('.calc-days').forEach(inp=>{
+    const days=parseFloat(inp.value||0);
+    const rate=parseFloat(inp.dataset.rate||0);
+    const worker=inp.dataset.worker;
+    const extra=parseFloat(document.querySelector(`.calc-extra[data-worker="${worker}"]`)?.value||0);
+    const cost=(days*8+extra)*rate;
+    totalPersonal+=cost;
+    const el=document.getElementById('cost-'+worker);
+    if(el)el.textContent=eur(cost);
+  });
+
+  let totalMat=0;
+  document.querySelectorAll('.mat-row input[type="number"]').forEach(inp=>{totalMat+=parseFloat(inp.value||0);});
+
+  const total=totalPersonal+totalMat;
+  const precio=parseFloat(document.getElementById('calcPrecio')?.value||0);
+  const nombre=document.getElementById('calcNombre')?.value||'Obra';
+
+  ['calc-personal-total','calc-personal-total2'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=eur(totalPersonal);});
+  const mtEl=document.getElementById('calc-mat-total');if(mtEl)mtEl.textContent=eur(totalMat);
+  const totEl=document.getElementById('calc-total');if(totEl)totEl.textContent=eur(total);
+
+  const res=document.getElementById('calcResult');
+  if(!res)return;
+  if(!precio){res.innerHTML='<div style="font-size:12px;color:var(--text3)">Introduce el precio presupuestado para ver el resultado</div>';return;}
+
+  const beneficio=precio-total;
+  const margen=precio>0?(beneficio/precio*100):0;
+  const isOk=beneficio>0;
+  res.innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:12px">
+      <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">Precio</div><div style="font-size:17px;font-weight:700;color:var(--green);font-family:'Space Grotesk',sans-serif">${eur(precio)}</div></div>
+      <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">Coste total</div><div style="font-size:17px;font-weight:700;color:var(--red);font-family:'Space Grotesk',sans-serif">${eur(total)}</div></div>
+      <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">Beneficio</div><div style="font-size:17px;font-weight:700;color:${isOk?'var(--green)':'var(--red)'};font-family:'Space Grotesk',sans-serif">${isOk?'+':''}${eur(beneficio)}</div></div>
+      <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">Margen</div><div style="font-size:17px;font-weight:700;color:${margen>20?'var(--green)':margen>0?'var(--amber)':'var(--red)'};font-family:'Space Grotesk',sans-serif">${margen.toFixed(1)}%</div></div>
+    </div>
+    <div style="padding:12px;background:${isOk?'var(--green-bg)':'var(--red-bg)'};border-radius:8px;border:1px solid ${isOk?'rgba(34,196,135,.3)':'rgba(240,82,82,.3)'};font-size:12px;color:${isOk?'var(--green)':'var(--red)'}">
+      ${isOk
+        ? `✅ <strong>${nombre}</strong> — Esta obra es rentable. Beneficio de ${eur(beneficio)} con un margen del ${margen.toFixed(1)}%.${margen<20?' Margen algo justo, considera revisar el precio.':' Buen margen.'}`
+        : `🚨 <strong>${nombre}</strong> — Esta obra genera pérdidas de ${eur(Math.abs(beneficio))}. Necesitas subir el precio al menos a ${eur(total*1.2)} para tener un 20% de margen.`
+      }
+    </div>`;
+}
+
+// EXPORTAR CSV
+function exportCSV(){
+  af(`/api/attendance?from=${sumYear}-${String(sumMonth).padStart(2,'0')}-01&to=${sumYear}-${String(sumMonth).padStart(2,'0')}-31`).then(data=>{
+    if(!data||!data.length)return;
+    const rows=[['Fecha','Trabajador','Estado','Cliente/Obra','Horas','Notas']];
+    data.forEach(e=>rows.push([e.date,e.workerName,ESTADOS_P[e.estado]?.label||e.estado,e.clientName||'',e.horas||8,e.notas||'']));
+    const csv=rows.map(r=>r.map(v=>`"${v}"`).join(',')).join('\n');
+    const a=document.createElement('a');
+    a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
+    a.download=`presencia_${sumYear}_${String(sumMonth).padStart(2,'0')}.csv`;
+    a.click();
+  });
 }
 
 // INIT

@@ -111,6 +111,73 @@ app.post('/api/test-notification',  requireAuth, async (req,res) => {
   res.json({ message:'Notificación enviada.' });
 });
 
+
+// ── PRESENCIA Y PARTES DE HORAS ───────────────────────────────────
+const attendance = require('./attendance');
+
+app.get('/api/workers', requireAuth, (req, res) => {
+  res.json(attendance.WORKERS);
+});
+
+app.get('/api/estados', requireAuth, (req, res) => {
+  res.json(attendance.ESTADOS);
+});
+
+// Guardar entrada de presencia
+app.post('/api/attendance', requireAuth, async (req, res) => {
+  try {
+    const result = await attendance.saveAttendance(req.body);
+    res.json({ ok: true, result });
+  } catch (err) {
+    console.error('[Attendance] Error save:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Borrar entrada
+app.delete('/api/attendance/:workerId/:date', requireAuth, async (req, res) => {
+  try {
+    await attendance.deleteAttendance(req.params.workerId, req.params.date);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Listar entradas con filtros
+app.get('/api/attendance', requireAuth, async (req, res) => {
+  try {
+    const { workerId, from, to, clientName } = req.query;
+    const data = await attendance.getAttendance({ workerId, from, to, clientName });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Resumen mensual
+app.get('/api/attendance/summary/:year/:month', requireAuth, async (req, res) => {
+  try {
+    const data = await attendance.getMonthlySummary(
+      parseInt(req.params.year), parseInt(req.params.month)
+    );
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Extracto por cliente
+app.get('/api/attendance/client', requireAuth, async (req, res) => {
+  try {
+    const { clientName, from, to } = req.query;
+    const data = await attendance.getClientExtract(clientName, from, to);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
 
 app.listen(PORT, () => {
