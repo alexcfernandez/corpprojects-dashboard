@@ -323,8 +323,10 @@
 
         <div id="p-obra-fields" style="display:${selectedEstado === 'obra' ? 'block' : 'none'};margin-bottom:10px">
           <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">Cliente / Obra</div>
-          <input type="text" id="p-client-name" value="${entry?.clientName || ''}" placeholder="Ej: Habitat Migdia..."
+          <input type="text" id="p-client-name" value="${entry?.clientName || ''}" placeholder="Buscar cliente..." 
+            list="p-clients-datalist" autocomplete="off"
             style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px">
+          <datalist id="p-clients-datalist"></datalist>
         </div>
 
         <div style="display:flex;gap:10px;margin-bottom:14px">
@@ -350,6 +352,24 @@
 
     document.body.appendChild(modal);
     modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+
+    // Cargar clientes de StelOrder para autocompletado
+    loadClientSuggestions();
+  }
+
+  async function loadClientSuggestions() {
+    const dl = document.getElementById('p-clients-datalist');
+    if (!dl) return;
+    try {
+      // Caché global para no repetir llamadas
+      if (!window._cpClients) {
+        const names = await api('/api/clients/list');
+        window._cpClients = Array.isArray(names) ? names : [];
+      }
+      dl.innerHTML = window._cpClients.map(n => `<option value="${n}">`).join('');
+    } catch (err) {
+      console.warn('[Presencia] No se pudieron cargar clientes:', err.message);
+    }
   }
 
   function _selectEstado(k) {
