@@ -1,0 +1,176 @@
+// src/users.js — Gestión de usuarios, roles y accesos
+const { MongoClient, ObjectId } = require('mongodb');
+const crypto = require('crypto');
+
+let db = null;
+
+async function getDB() {
+  if (db) return db;
+  const uri = process.env.MONGODB_URI;
+  if (!uri) throw new Error('MONGODB_URI no configurada');
+  const client = new MongoClient(uri);
+  await client.connect();
+  db = client.db('corpprojects');
+  await db.collection('users').createIndex({ pin: 1 });
+  await db.collection('users').createIndex({ role: 1 });
+  await db.collection('user_sessions').createIndex({ token: 1 }, { unique: true });
+  await db.collection('user_sessions').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+  console.log('[Users] MongoDB conectado');
+  return db;
+}
+
+// ── ROLES ────────────────────────────────────────────────────────
+const ROLES = {
+  admin:   { label: 'Administrador', color: '#f05252', permissions: ['all'] },
+  office:  { label: 'Oficina',       color: '#4d9cf8', permissions: ['dashboard', 'partes', 'presencia', 'facturas', 'presupuestos'] },
+  tech:    { label: 'Técnico',       color: '#22c487', permissions: ['partes_create'] },
+  client:  { label: 'Cliente',       color: '#a78bfa', permissions: ['invoices_read'] },
+};
+
+// ── INIT — crear admin por defecto si no hay usuarios ────────────
+async function initDefaultUsers() {
+  const db = await getDB();
+  const count = await db.collection('users').countDocuments();
+  if (count > 0) return;
+
+  // Usuarios iniciales migrados desde partes.js
+  const defaultUsers = [
+    { name: 'Jose Beliard',    role: 'tech',   pin: '1234', color: '#4d9cf8', active: true },
+    { name: 'Diego Campillo',  role: 'tech',   pin: '2345', color: '#22c487', active: true },
+    { name: 'Abdellah Souiri', role: 'tech',   pin: '3456', color: '#f59e0b', active: true },
+    { name: 'Mamadou Barry',   role: 'tech',   pin: '4567', color: '#a78bfa', active: true },
+    { name: 'Paula Morales',   role: 'office', pin: '5678', color: '#f05252', active: true },
+  ];
+
+  for (const u of defaultUsers) {
+    await db.collection('users').insertOne({
+      ...u,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lastLogin: null,
+      notes: '',
+      // Documentación personal (cifrada en el futuro)
+      docs: { dni: '', carnet: '', nif: '', emergency: '' },
+    });
+  }
+  console.log('[Users] Usuarios iniciales creados');
+}
+
+// ── CRUD USUARIOS ────────────────────────────────────────────────
+async function getUsers(includeInactive = true) {
+  const db = await getDB();
+  const query = includeInactive ? {} : { active: true };
+  return db.collection('users').find(query).sort({ role: 1, name: 1 }).toArray();
+}
+
+async function getUser(id) {
+  const db = await getDB();
+  return db.collection('users').findOne({ _id: new ObjectId(id) });
+}
+
+async function createUser(data) {
+  const db = await getDB();
+  // Verificar PIN único
+  const existing = await db.collection('users').findOne({ pin: data.pin, active: true });
+  if (existing) throw new Error(`El PIN ${data.pin} ya está en uso por ${existing.name}`);
+
+  const user = {
+    name:      data.name?.trim(),
+    role:      data.role || 'tech',
+    pin:       data.pin,
+    color:     data.color || '#4d9cf8',
+    active:    true,
+    notes:     data.notes || '',
+    docs:      { dni: data.dni||'', carnet: data.carnet||'', nif: data.nif||'', emergency: data.emergency||'' },
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    lastLogin: null,
+  };
+
+  if (!user.name) throw new Error('El nombre es obligatorio');
+  if (!user.pin || user.pin.length < 4) throw new Error('El PIN debe tener al menos 4 dígitos');
+
+  const result = await db.collection('users').insertOne(user);
+  console.log(`[Users] Nuevo usuario: ${user.name} (${user.role})`);
+  return { id: result.insertedId, ...user };
+}
+
+async function updateUser(id, data) {
+  const db = await getDB();
+  const allowed = ['name','role','pin','color','active','notes','docs'];
+  const set = { updatedAt: new Date() };
+  allowed.forEach(k => { if (data[k] !== undefined) set[k] = data[k]; });
+
+  // Si cambia PIN, verificar que no esté en uso
+  if (data.pin) {
+    const existing = await db.collection('users').findOne({
+      pin: data.pin, active: true, _id: { $ne: new ObjectId(id) }
+    });
+    if (existing) throw new Error(`El PIN ${data.pin} ya está en uso por ${existing.name}`);
+  }
+
+  return db.collection('users').updateOne({ _id: new ObjectId(id) }, { $set: set });
+}
+
+async function deactivateUser(id) {
+  const db = await getDB();
+  // Revocar sesiones activas
+  await db.collection('user_sessions').deleteMany({ userId: id });
+  return db.collection('users').updateOne(
+    { _id: new ObjectId(id) },
+    { $set: { active: false, updatedAt: new Date() } }
+  );
+}
+
+// ── AUTENTICACIÓN ─────────────────────────────────────────────────
+async function loginWithPin(pin) {
+  const db = await getDB();
+  const user = await db.collection('users').findOne({ pin, active: true });
+  if (!user) throw new Error('PIN incorrecto o usuario inactivo');
+
+  // Generar token de sesión
+  const token = `u_${crypto.randomBytes(24).toString('hex')}`;
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+
+  await db.collection('user_sessions').insertOne({
+    token, userId: String(user._id), userRole: user.role,
+    userName: user.name, createdAt: new Date(), expiresAt
+  });
+
+  // Actualizar último login
+  await db.collection('users').updateOne(
+    { _id: user._id },
+    { $set: { lastLogin: new Date() } }
+  );
+
+  console.log(`[Users] Login: ${user.name} (${user.role})`);
+  return { token, userId: String(user._id), userName: user.name, role: user.role, color: user.color };
+}
+
+async function verifyUserToken(token) {
+  if (!token || !token.startsWith('u_')) return null;
+  const db = await getDB();
+  const session = await db.collection('user_sessions').findOne({
+    token, expiresAt: { $gt: new Date() }
+  });
+  return session || null;
+}
+
+async function logout(token) {
+  const db = await getDB();
+  return db.collection('user_sessions').deleteOne({ token });
+}
+
+// ── PERMISOS ──────────────────────────────────────────────────────
+function hasPermission(role, permission) {
+  const roleData = ROLES[role];
+  if (!roleData) return false;
+  if (roleData.permissions.includes('all')) return true;
+  return roleData.permissions.includes(permission);
+}
+
+module.exports = {
+  ROLES, initDefaultUsers,
+  getUsers, getUser, createUser, updateUser, deactivateUser,
+  loginWithPin, verifyUserToken, logout, hasPermission
+};
