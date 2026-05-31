@@ -277,6 +277,53 @@ app.get('/api/roles', requireAuth, (req, res) => {
   res.json(users.ROLES);
 });
 
+
+// ── OBRAS Y RENTABILIDAD ──────────────────────────────────────────
+const obras = require('./obras');
+
+app.get('/api/obras', requireAuth, async (req, res) => {
+  try {
+    const { clientName, status, search } = req.query;
+    const data = await obras.getObras({ clientName, status, search });
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/obras/resumen', requireAuth, async (req, res) => {
+  try {
+    const data = await obras.getResumenGeneral();
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/obras/:id', requireAuth, async (req, res) => {
+  try {
+    const data = await obras.getObra(req.params.id);
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/obras/:id/rentabilidad', requireAuth, async (req, res) => {
+  try {
+    const data = await obras.getRentabilidad(req.params.id);
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/obras', requireAuth, async (req, res) => {
+  try {
+    const obra = await obras.createObra(req.body);
+    res.json({ ok: true, obra });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.put('/api/obras/:id', requireAuth, async (req, res) => {
+  try {
+    await obras.updateObra(req.params.id, req.body);
+    res.json({ ok: true });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 // ── PARTES DE TRABAJO ─────────────────────────────────────────────
 const partes = require('./partes');
 
