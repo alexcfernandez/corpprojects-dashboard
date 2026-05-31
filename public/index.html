@@ -180,6 +180,7 @@ select:focus{border-color:var(--blue)}
   <button class="nav-btn" onclick="showTab('presupuestos',this)">📋 Presupuestos</button>
   <button class="nav-btn" onclick="showTab('banco',this)">🏦 Banco y gastos</button>
   <button class="nav-btn" onclick="showTab('presencia',this)">📅 Presencia</button>
+  <button class="nav-btn" onclick="showTab('partes',this)">📋 Partes</button>
   <button class="nav-btn" onclick="showTab('alertas',this)">🔔 Alertas</button>
 </nav>
 <main class="main">
@@ -594,6 +595,16 @@ select:focus{border-color:var(--blue)}
     <div style="text-align:center;padding:40px;color:var(--text3)">
       <div style="font-size:32px;margin-bottom:10px">📅</div>
       <div>Cargando módulo de presencia...</div>
+    </div>
+  </div>
+</div>
+
+<!-- PARTES DE TRABAJO — cargado por /modules/partes-admin.js -->
+<div id="tab-partes" class="panel">
+  <div id="partes-container">
+    <div style="text-align:center;padding:40px;color:var(--text3)">
+      <div style="font-size:32px;margin-bottom:10px">📋</div>
+      <div>Cargando módulo de partes...</div>
     </div>
   </div>
 </div>
@@ -1054,6 +1065,9 @@ function showTab(id,btn){
   if(id==='presencia' && window.CP && CP.Presencia){
     CP.Presencia.render('presencia-container');
   }
+  if(id==='partes' && window.CP && CP.PartesAdmin){
+    CP.PartesAdmin.render('partes-container');
+  }
   if(id==='presencia'){renderCal();renderEstadoLegend();}
 }
 
@@ -1495,5 +1509,6 @@ setInterval(()=>{if(tok)loadAll();},15*60*1000);
 </script>
   <!-- MÓDULOS INDEPENDIENTES — cada uno en su propio archivo -->
   <script src="/modules/presencia.js"></script>
+  <script src="/modules/partes-admin.js"></script>
 </body>
 </html>
