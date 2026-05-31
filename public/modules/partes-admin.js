@@ -220,14 +220,14 @@
     const dl = document.getElementById('pa-clients-list');
     if (!dl) return;
     try {
-      const names = new Set();
-      if (window.aP) window.aP.forEach(i => { if (i.client && i.client !== 'Sin nombre') names.add(i.client); });
-      if (names.size === 0) {
-        const data = await api('/api/invoices/pending');
-        if (Array.isArray(data)) data.forEach(i => { if (i.client && i.client !== 'Sin nombre') names.add(i.client); });
+      if (!window._cpClients) {
+        const names = await api('/api/clients/list');
+        window._cpClients = Array.isArray(names) ? names : [];
       }
-      dl.innerHTML = [...names].sort().map(n => `<option value="${n}">`).join('');
-    } catch(e) {}
+      dl.innerHTML = window._cpClients.map(n => `<option value="${n}">`).join('');
+    } catch(e) {
+      console.warn('[PartesAdmin] No se pudieron cargar clientes:', e.message);
+    }
   }
 
   function applyFilters() {
