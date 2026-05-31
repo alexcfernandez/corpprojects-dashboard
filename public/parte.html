@@ -160,23 +160,31 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
     </div>
 
     <div class="field">
-      <label>Fotos del trabajo <span style="color:var(--text3);font-weight:400">(máx. 10)</span></label>
-      <div class="foto-zone" onclick="document.getElementById('f-fotos').click()">
-        <input type="file" id="f-fotos" accept="image/*" multiple onchange="previewFotos(this,'f-fotos-preview',10)">
-        <div style="font-size:28px;margin-bottom:6px">📸</div>
-        <div style="font-size:14px;color:var(--text2)">Fotos del trabajo realizado</div>
-        <div style="font-size:12px;color:var(--text3);margin-top:2px">Hasta 10 fotos · toca para abrir cámara o galería</div>
+      <label>Fotos del trabajo <span style="color:var(--text3);font-weight:400" id="work-count">(0/10)</span></label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <button type="button" onclick="openCamera('work')" style="background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:13px;color:var(--text2);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+          📷 Cámara
+          <input type="file" id="f-camera-work" accept="image/*" capture="environment" style="display:none" onchange="addPhoto(this,'work')">
+        </button>
+        <button type="button" onclick="document.getElementById('f-gallery-work').click()" style="background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:13px;color:var(--text2);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+          🖼️ Galería
+          <input type="file" id="f-gallery-work" accept="image/*" multiple style="display:none" onchange="addPhotos(this,'work')">
+        </button>
       </div>
       <div class="foto-preview" id="f-fotos-preview"></div>
     </div>
 
     <div class="field">
-      <label>Fotos de albaranes <span style="color:var(--text3);font-weight:400">(máx. 5)</span></label>
-      <div class="foto-zone" onclick="document.getElementById('f-albaranes').click()">
-        <input type="file" id="f-albaranes" accept="image/*" multiple onchange="previewFotos(this,'f-albaranes-preview',5)">
-        <div style="font-size:28px;margin-bottom:6px">🧾</div>
-        <div style="font-size:14px;color:var(--text2)">Fotos de albaranes de compra</div>
-        <div style="font-size:12px;color:var(--text3);margin-top:2px">Hasta 5 fotos · fotografía los tickets y albaranes</div>
+      <label>Fotos de albaranes <span style="color:var(--text3);font-weight:400" id="albaran-count">(0/5)</span></label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <button type="button" onclick="openCamera('albaran')" style="background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:13px;color:var(--text2);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+          📷 Cámara
+          <input type="file" id="f-camera-albaran" accept="image/*" capture="environment" style="display:none" onchange="addPhoto(this,'albaran')">
+        </button>
+        <button type="button" onclick="document.getElementById('f-gallery-albaran').click()" style="background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:13px;color:var(--text2);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+          🖼️ Galería
+          <input type="file" id="f-gallery-albaran" accept="image/*" multiple style="display:none" onchange="addPhotos(this,'albaran')">
+        </button>
       </div>
       <div class="foto-preview" id="f-albaranes-preview"></div>
     </div>
@@ -361,28 +369,97 @@ function addMat() {
 }
 
 // FOTOS
-function previewFotos(input, previewId, maxFiles) {
-  const preview = document.getElementById(previewId || 'f-fotos-preview');
-  if (!preview) return;
-  const files = [...input.files].slice(0, maxFiles || 10);
-  if (input.files.length > maxFiles) {
-    alert(`Máximo ${maxFiles} fotos. Se han seleccionado las primeras ${maxFiles}.`);
-  }
-  preview.innerHTML = '';
-  files.forEach((file, i) => {
+// Almacenes de fotos (File objects comprimidos)
+const photoStore = { work: [], albaran: [] };
+const LIMITS = { work: 10, albaran: 5 };
+
+function openCamera(type) {
+  document.getElementById(`f-camera-${type}`).click();
+}
+
+// Comprime una imagen usando Canvas
+function compressImage(file, maxPx, quality) {
+  return new Promise(resolve => {
+    const img = new Image();
     const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.width, h = img.height;
+      if (w > maxPx || h > maxPx) {
+        if (w > h) { h = Math.round(h * maxPx / w); w = maxPx; }
+        else       { w = Math.round(w * maxPx / h); h = maxPx; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob(blob => resolve(new File([blob], file.name, { type: 'image/jpeg' })), 'image/jpeg', quality);
+    };
+    img.src = url;
+  });
+}
+
+// Añadir foto desde cámara (1 a la vez, acumulativa)
+async function addPhoto(input, type) {
+  if (!input.files[0]) return;
+  const limit = LIMITS[type];
+  if (photoStore[type].length >= limit) {
+    alert(`Máximo ${limit} fotos para este campo.`);
+    input.value = '';
+    return;
+  }
+  const compressed = await compressImage(input.files[0], 1200, 0.8);
+  photoStore[type].push(compressed);
+  renderPreviews(type);
+  input.value = ''; // Reset para poder volver a abrir la cámara
+}
+
+// Añadir fotos desde galería (múltiples)
+async function addPhotos(input, type) {
+  if (!input.files.length) return;
+  const limit = LIMITS[type];
+  const available = limit - photoStore[type].length;
+  if (available <= 0) { alert(`Ya tienes ${limit} fotos. Borra alguna para añadir más.`); input.value=''; return; }
+  const files = [...input.files].slice(0, available);
+  if (input.files.length > available) alert(`Solo se añaden ${available} fotos más (máximo ${limit}).`);
+  
+  const btn = input.previousElementSibling;
+  if (btn) { btn.textContent = '⏳ Comprimiendo...'; btn.disabled = true; }
+  
+  for (const file of files) {
+    const compressed = await compressImage(file, 1200, 0.8);
+    photoStore[type].push(compressed);
+  }
+  renderPreviews(type);
+  input.value = '';
+  if (btn) { btn.textContent = '🖼️ Galería'; btn.disabled = false; }
+}
+
+function renderPreviews(type) {
+  const previewId = type === 'work' ? 'f-fotos-preview' : 'f-albaranes-preview';
+  const countId   = type === 'work' ? 'work-count' : 'albaran-count';
+  const preview   = document.getElementById(previewId);
+  const countEl   = document.getElementById(countId);
+  if (!preview) return;
+
+  preview.innerHTML = '';
+  photoStore[type].forEach((file, i) => {
+    const url = URL.createObjectURL(file);
+    const sizeMB = (file.size / 1024 / 1024).toFixed(1);
     const wrap = document.createElement('div');
     wrap.style.cssText = 'position:relative';
-    const img = document.createElement('img');
-    img.src = url;
-    const del = document.createElement('button');
-    del.textContent = '✕';
-    del.style.cssText = 'position:absolute;top:3px;right:3px;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:11px;line-height:1';
-    del.onclick = () => { wrap.remove(); };
-    wrap.appendChild(img);
-    wrap.appendChild(del);
+    wrap.innerHTML = `
+      <img src="${url}" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
+      <div style="position:absolute;bottom:3px;left:3px;background:rgba(0,0,0,.6);color:#fff;font-size:9px;padding:1px 5px;border-radius:4px">${sizeMB}MB</div>
+      <button onclick="removePhoto('${type}',${i})" style="position:absolute;top:3px;right:3px;background:rgba(0,0,0,.7);border:none;color:#fff;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:12px;line-height:1">✕</button>`;
     preview.appendChild(wrap);
   });
+
+  if (countEl) countEl.textContent = `(${photoStore[type].length}/${LIMITS[type]})`;
+}
+
+function removePhoto(type, index) {
+  photoStore[type].splice(index, 1);
+  renderPreviews(type);
 }
 
 // SUBMIT
@@ -439,8 +516,10 @@ function resetForm() {
   ['f-client','f-desc','f-notas'].forEach(id => { const e = document.getElementById(id); if(e) e.value=''; });
   document.getElementById('f-horas').value = '8';
   document.getElementById('f-mat-rows').innerHTML = '';
-  ['f-fotos-preview','f-albaranes-preview'].forEach(id => { const e = document.getElementById(id); if(e) e.innerHTML=''; });
-  ['f-fotos','f-albaranes'].forEach(id => { const e = document.getElementById(id); if(e) e.value=''; });
+  // Limpiar fotos
+  photoStore.work = []; photoStore.albaran = [];
+  ['f-fotos-preview','f-albaranes-preview'].forEach(id => { const e=document.getElementById(id); if(e) e.innerHTML=''; });
+  ['work-count','albaran-count'].forEach(id => { const e=document.getElementById(id); if(e) e.textContent=`(0/${id==='work-count'?10:5})`; });
 }
 </script>
 </body>
