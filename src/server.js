@@ -368,6 +368,38 @@ app.get('/api/partes/resumen/facturacion', requireAuth, async (req, res) => {
   }
 });
 
+// Endpoint de clientes para autocompletado (accesible con cualquier token válido)
+app.get('/api/clients/list', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.replace('Bearer ', '');
+    
+    // Verificar token (admin JWT o worker token)
+    let valid = false;
+    if (token.startsWith('w_') || token.startsWith('u_')) {
+      // Token de trabajador o usuario — verificar en DB
+      const { verifyWorkerToken } = require('./partes');
+      const { verifyUserToken } = require('./users');
+      const w = token.startsWith('w_') ? await verifyWorkerToken(token) : await verifyUserToken(token);
+      valid = !!w;
+    } else {
+      // Token admin JWT
+      try { const jwt = require('jsonwebtoken'); jwt.verify(token, process.env.JWT_SECRET||'fallback'); valid = true; } catch(e) {}
+    }
+    
+    if (!valid) return res.status(401).json({ error: 'No autorizado' });
+    
+    // Obtener clientes de StelOrder (ya cacheados en memoria)
+    const { getClients } = require('./stelorder');
+    const clients = await getClients();
+    const names = [...new Set(clients.map(c => c['legal-name']||c['fiscal-name']||'').filter(n=>n))].sort();
+    res.json(names);
+  } catch (err) {
+    console.error('[Clients] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Ruta específica para el formulario de trabajadores
 app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
 
