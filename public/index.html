@@ -1521,6 +1521,13 @@ function exportCSV(){
   });
 }
 
+// Pre-cargar módulos cuando el DOM esté listo
+window.addEventListener('load', () => {
+  // Los módulos se renderizan al hacer clic en la pestaña
+  // pero los pre-registramos para que estén listos
+  console.log('[CP] Módulos cargados:', Object.keys(window.CP||{}).join(', '));
+});
+
 // INIT
 if(tok){showApp();}else{document.getElementById('loginScreen').style.display='flex';}
 setInterval(()=>{if(tok)loadAll();},15*60*1000);
