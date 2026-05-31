@@ -181,6 +181,7 @@ select:focus{border-color:var(--blue)}
   <button class="nav-btn" onclick="showTab('banco',this)">🏦 Banco y gastos</button>
   <button class="nav-btn" onclick="showTab('presencia',this)">📅 Presencia</button>
   <button class="nav-btn" onclick="showTab('partes',this)">📋 Partes</button>
+  <button class="nav-btn" onclick="showTab('obras',this)">📊 Obras</button>
   <button class="nav-btn" onclick="showTab('usuarios',this)">⚙️ Usuarios</button>
   <button class="nav-btn" onclick="showTab('alertas',this)">🔔 Alertas</button>
 </nav>
@@ -616,6 +617,16 @@ select:focus{border-color:var(--blue)}
     <div style="text-align:center;padding:40px;color:var(--text3)">
       <div style="font-size:32px;margin-bottom:10px">⚙️</div>
       <div>Cargando módulo de usuarios...</div>
+    </div>
+  </div>
+</div>
+
+<!-- OBRAS Y RENTABILIDAD — cargado por /modules/obras.js -->
+<div id="tab-obras" class="panel">
+  <div id="obras-container">
+    <div style="text-align:center;padding:40px;color:var(--text3)">
+      <div style="font-size:32px;margin-bottom:10px">📊</div>
+      <div>Cargando módulo de obras...</div>
     </div>
   </div>
 </div>
@@ -1518,5 +1529,6 @@ setInterval(()=>{if(tok)loadAll();},15*60*1000);
   <script src="/modules/presencia.js"></script>
   <script src="/modules/partes-admin.js"></script>
   <script src="/modules/usuarios.js"></script>
+  <script src="/modules/obras.js"></script>
 </body>
 </html>
