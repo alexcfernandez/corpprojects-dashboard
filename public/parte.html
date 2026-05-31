@@ -347,12 +347,17 @@ async function loadClientSuggestions() {
   const dl = document.getElementById('f-clients-list');
   if (!dl) return;
   try {
-    const r = await fetch('/api/invoices/pending', { headers: { 'Authorization': `Bearer ${workerToken}` } });
+    const r = await fetch('/api/clients/list', {
+      headers: { 'Authorization': `Bearer ${workerToken}` }
+    });
     if (!r.ok) return;
-    const data = await r.json();
-    const names = [...new Set(data.map(i => i.client).filter(n => n && n !== 'Sin nombre'))].sort();
-    dl.innerHTML = names.map(n => `<option value="${n}">`).join('');
-  } catch(e) {}
+    const names = await r.json();
+    if (Array.isArray(names)) {
+      dl.innerHTML = names.map(n => `<option value="${n}">`).join('');
+    }
+  } catch(e) {
+    console.warn('No se pudieron cargar clientes:', e.message);
+  }
 }
 
 // MATERIALES
