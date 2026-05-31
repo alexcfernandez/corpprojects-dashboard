@@ -66,7 +66,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .foto-zone{border:2px dashed var(--border2);border-radius:var(--r);padding:24px;text-align:center;cursor:pointer;transition:all .2s}
 .foto-zone:hover{border-color:var(--blue);background:rgba(77,156,248,.05)}
 .foto-zone input{display:none}
-.foto-preview{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.foto-preview{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}
 .foto-preview img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid var(--border)}
 
 /* BOTONES */
@@ -160,14 +160,25 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
     </div>
 
     <div class="field">
-      <label>Fotos del trabajo</label>
+      <label>Fotos del trabajo <span style="color:var(--text3);font-weight:400">(máx. 10)</span></label>
       <div class="foto-zone" onclick="document.getElementById('f-fotos').click()">
-        <input type="file" id="f-fotos" accept="image/*" multiple onchange="previewFotos(this)">
+        <input type="file" id="f-fotos" accept="image/*" multiple onchange="previewFotos(this,'f-fotos-preview',10)">
         <div style="font-size:28px;margin-bottom:6px">📸</div>
-        <div style="font-size:14px;color:var(--text2)">Añadir fotos</div>
-        <div style="font-size:12px;color:var(--text3);margin-top:2px">Toca para abrir la cámara o galería</div>
+        <div style="font-size:14px;color:var(--text2)">Fotos del trabajo realizado</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:2px">Hasta 10 fotos · toca para abrir cámara o galería</div>
       </div>
       <div class="foto-preview" id="f-fotos-preview"></div>
+    </div>
+
+    <div class="field">
+      <label>Fotos de albaranes <span style="color:var(--text3);font-weight:400">(máx. 5)</span></label>
+      <div class="foto-zone" onclick="document.getElementById('f-albaranes').click()">
+        <input type="file" id="f-albaranes" accept="image/*" multiple onchange="previewFotos(this,'f-albaranes-preview',5)">
+        <div style="font-size:28px;margin-bottom:6px">🧾</div>
+        <div style="font-size:14px;color:var(--text2)">Fotos de albaranes de compra</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:2px">Hasta 5 fotos · fotografía los tickets y albaranes</div>
+      </div>
+      <div class="foto-preview" id="f-albaranes-preview"></div>
     </div>
 
     <div class="field">
@@ -350,14 +361,27 @@ function addMat() {
 }
 
 // FOTOS
-function previewFotos(input) {
-  const preview = document.getElementById('f-fotos-preview');
+function previewFotos(input, previewId, maxFiles) {
+  const preview = document.getElementById(previewId || 'f-fotos-preview');
+  if (!preview) return;
+  const files = [...input.files].slice(0, maxFiles || 10);
+  if (input.files.length > maxFiles) {
+    alert(`Máximo ${maxFiles} fotos. Se han seleccionado las primeras ${maxFiles}.`);
+  }
   preview.innerHTML = '';
-  [...input.files].forEach(file => {
+  files.forEach((file, i) => {
     const url = URL.createObjectURL(file);
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative';
     const img = document.createElement('img');
     img.src = url;
-    preview.appendChild(img);
+    const del = document.createElement('button');
+    del.textContent = '✕';
+    del.style.cssText = 'position:absolute;top:3px;right:3px;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:11px;line-height:1';
+    del.onclick = () => { wrap.remove(); };
+    wrap.appendChild(img);
+    wrap.appendChild(del);
+    preview.appendChild(wrap);
   });
 }
 
@@ -415,8 +439,8 @@ function resetForm() {
   ['f-client','f-desc','f-notas'].forEach(id => { const e = document.getElementById(id); if(e) e.value=''; });
   document.getElementById('f-horas').value = '8';
   document.getElementById('f-mat-rows').innerHTML = '';
-  document.getElementById('f-fotos-preview').innerHTML = '';
-  document.getElementById('f-fotos').value = '';
+  ['f-fotos-preview','f-albaranes-preview'].forEach(id => { const e = document.getElementById(id); if(e) e.innerHTML=''; });
+  ['f-fotos','f-albaranes'].forEach(id => { const e = document.getElementById(id); if(e) e.value=''; });
 }
 </script>
 </body>
