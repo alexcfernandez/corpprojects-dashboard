@@ -1084,9 +1084,23 @@ function showTab(id,btn){
   document.getElementById('tab-'+id).classList.add('active');
   if(btn)btn.classList.add('active');
   if(id==='banco')showBTab('resumen',document.querySelector('.btab'));
-  if(id==='presencia'){ if(window.CP&&CP.Presencia)CP.Presencia.render('presencia-container'); }
-  if(id==='partes'){ if(window.CP&&CP.PartesAdmin)CP.PartesAdmin.render('partes-container'); }
-  if(id==='presencia'){renderCal();renderEstadoLegend();}
+  startAutoRefresh(id);
+  // Módulos independientes — render con reintento automático
+  const moduleMap = {
+    presencia: ['Presencia',   'presencia-container'],
+    partes:    ['PartesAdmin', 'partes-container'],
+    usuarios:  ['Usuarios',    'usuarios-container'],
+    obras:     ['Obras',       'obras-container'],
+  };
+  if (moduleMap[id]) {
+    const [modName, containerId] = moduleMap[id];
+    const tryRender = (n) => {
+      const mod = window.CP?.[modName];
+      if (mod) mod.render(containerId);
+      else if (n > 0) setTimeout(() => tryRender(n-1), 300);
+    };
+    tryRender(5);
+  }
 }
 
 
@@ -1521,10 +1535,26 @@ function exportCSV(){
   });
 }
 
-// Pre-cargar módulos cuando el DOM esté listo
+// Auto-refresco de módulos activos cada 60 segundos
+let activeTab = '';
+let autoRefreshTimer = null;
+
+function startAutoRefresh(tabId) {
+  activeTab = tabId;
+  clearInterval(autoRefreshTimer);
+  const refreshable = ['partes','presencia','obras'];
+  if (!refreshable.includes(tabId)) return;
+  autoRefreshTimer = setInterval(() => {
+    const mod = {partes: window.CP?.PartesAdmin, presencia: window.CP?.Presencia, obras: window.CP?.Obras}[tabId];
+    if (!mod) return;
+    // Recargar datos silenciosamente sin re-renderizar el DOM completo
+    if (tabId === 'partes'    && mod.loadLista)   mod.loadLista();
+    if (tabId === 'presencia' && mod.loadCalendar) mod.loadCalendar();
+    if (tabId === 'obras'     && mod.loadResumen)  mod.loadResumen();
+  }, 60000); // cada 60 segundos
+}
+
 window.addEventListener('load', () => {
-  // Los módulos se renderizan al hacer clic en la pestaña
-  // pero los pre-registramos para que estén listos
   console.log('[CP] Módulos cargados:', Object.keys(window.CP||{}).join(', '));
 });
 
