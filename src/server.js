@@ -391,7 +391,7 @@ app.get('/api/clients/list', async (req, res) => {
     
     // Obtener clientes de StelOrder (ya cacheados en memoria)
     const { getClients } = require('./stelorder');
-    const clients = await getClients();
+    const { clients } = await getClients();
     const names = [...new Set(clients.map(c => c['legal-name']||c['fiscal-name']||'').filter(n=>n))].sort();
     res.json(names);
   } catch (err) {
