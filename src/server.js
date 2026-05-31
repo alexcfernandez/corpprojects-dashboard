@@ -178,6 +178,98 @@ app.get('/api/attendance/client', requireAuth, async (req, res) => {
   }
 });
 
+
+// ── PARTES DE TRABAJO ─────────────────────────────────────────────
+const partes = require('./partes');
+
+// Login trabajador (público — solo necesita workerId + PIN)
+app.post('/api/partes/worker-login', async (req, res) => {
+  try {
+    const { workerId, pin } = req.body;
+    const result = await partes.workerLogin(workerId, pin);
+    res.json(result);
+  } catch (err) {
+    res.status(401).json({ error: err.message });
+  }
+});
+
+// Lista de workers para el formulario de login
+app.get('/api/partes/workers', (req, res) => {
+  res.json(partes.WORKERS.map(w => ({ id: w.id, name: w.name })));
+});
+
+// Crear parte — worker autenticado o admin
+app.post('/api/partes', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    let workerInfo;
+
+    if (authHeader.startsWith('Bearer w_')) {
+      // Token de trabajador
+      const token = authHeader.replace('Bearer ', '');
+      const workerDoc = await partes.verifyWorkerToken(token);
+      if (!workerDoc) return res.status(401).json({ error: 'Token expirado' });
+      workerInfo = { workerId: workerDoc.workerId, workerName: workerDoc.workerName, role: 'worker', ip: req.ip, userAgent: req.headers['user-agent'] };
+    } else {
+      // Admin autenticado con JWT normal
+      const token = authHeader.replace('Bearer ', '');
+      const jwt = require('jsonwebtoken');
+      jwt.verify(token, process.env.JWT_SECRET || 'fallback');
+      const { workerId, workerName } = req.body;
+      const worker = partes.WORKERS.find(w => w.id === workerId);
+      workerInfo = { workerId: workerId || 'admin', workerName: workerName || worker?.name || 'Admin', role: 'admin', ip: req.ip, userAgent: req.headers['user-agent'] };
+    }
+
+    const parte = await partes.createParte(req.body, workerInfo);
+    res.json({ ok: true, id: parte.id });
+  } catch (err) {
+    console.error('[Partes] Error create:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Listar partes (solo admin)
+app.get('/api/partes', requireAuth, async (req, res) => {
+  try {
+    const { workerId, clientName, status, from, to, limit, skip } = req.query;
+    const data = await partes.getPartes({ workerId, clientName, status, from, to, limit: parseInt(limit||50), skip: parseInt(skip||0) });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Ver parte individual con metadatos (solo admin)
+app.get('/api/partes/:id', requireAuth, async (req, res) => {
+  try {
+    const data = await partes.getParte(req.params.id);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Actualizar parte (solo admin)
+app.put('/api/partes/:id', requireAuth, async (req, res) => {
+  try {
+    await partes.updateParte(req.params.id, req.body, 'admin');
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Resumen para facturación (solo admin)
+app.get('/api/partes/resumen/facturacion', requireAuth, async (req, res) => {
+  try {
+    const { from, to, clientName } = req.query;
+    const data = await partes.getResumenFacturacion({ from, to, clientName });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
 
 app.listen(PORT, () => {
