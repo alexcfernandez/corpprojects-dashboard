@@ -1073,16 +1073,8 @@ function showTab(id,btn){
   document.getElementById('tab-'+id).classList.add('active');
   if(btn)btn.classList.add('active');
   if(id==='banco')showBTab('resumen',document.querySelector('.btab'));
-  if(id==='presencia' && window.CP && CP.Presencia){
-    CP.Presencia.render('presencia-container');
-  }
-  if(id==='partes'){
-    const tryRenderPartes = (attempts) => {
-      if(window.CP && CP.PartesAdmin){ CP.PartesAdmin.render('partes-container'); }
-      else if(attempts > 0){ setTimeout(()=>tryRenderPartes(attempts-1), 200); }
-    };
-    tryRenderPartes(10);
-  }
+  if(id==='presencia'){ if(window.CP&&CP.Presencia)CP.Presencia.render('presencia-container'); }
+  if(id==='partes'){ if(window.CP&&CP.PartesAdmin)CP.PartesAdmin.render('partes-container'); }
   if(id==='presencia'){renderCal();renderEstadoLegend();}
 }
 
