@@ -270,6 +270,9 @@ app.get('/api/partes/resumen/facturacion', requireAuth, async (req, res) => {
   }
 });
 
+// Ruta específica para el formulario de trabajadores
+app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
+
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
 
 app.listen(PORT, () => {
