@@ -1065,8 +1065,12 @@ function showTab(id,btn){
   if(id==='presencia' && window.CP && CP.Presencia){
     CP.Presencia.render('presencia-container');
   }
-  if(id==='partes' && window.CP && CP.PartesAdmin){
-    CP.PartesAdmin.render('partes-container');
+  if(id==='partes'){
+    const tryRenderPartes = (attempts) => {
+      if(window.CP && CP.PartesAdmin){ CP.PartesAdmin.render('partes-container'); }
+      else if(attempts > 0){ setTimeout(()=>tryRenderPartes(attempts-1), 200); }
+    };
+    tryRenderPartes(10);
   }
   if(id==='presencia'){renderCal();renderEstadoLegend();}
 }
