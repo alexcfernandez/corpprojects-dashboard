@@ -456,6 +456,22 @@ app.put('/api/partes/:id', requireAuth, async (req, res) => {
   }
 });
 
+// Eliminar parte (solo admin)
+app.delete('/api/partes/:id', requireAuth, async (req, res) => {
+  try {
+    const { MongoClient, ObjectId } = require('mongodb');
+    const client = new MongoClient(process.env.MONGODB_URI);
+    await client.connect();
+    const db = client.db('corpprojects');
+    await db.collection('partes').deleteOne({ _id: new ObjectId(req.params.id) });
+    await client.close();
+    console.log(`[Partes] Eliminado: ${req.params.id}`);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Resumen para facturación (solo admin)
 app.get('/api/partes/resumen/facturacion', requireAuth, async (req, res) => {
   try {
