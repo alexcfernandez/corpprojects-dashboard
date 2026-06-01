@@ -280,14 +280,15 @@
         return;
       }
 
-      el.innerHTML = `<table>
-        <thead><tr>
-          <th>Fecha</th><th>Trabajador</th><th>Cliente / Obra</th>
-          <th style="text-align:right">Horas</th><th>Estado</th>
-          <th style="font-size:10px;color:var(--text3)">Enviado</th>
-          <th></th>
-        </tr></thead>
-        <tbody>${data.partes.map(p => {
+      // Agrupar por estado
+      const grupos = {
+        pendiente:  data.partes.filter(p => p.status === 'pendiente'),
+        incidencia: data.partes.filter(p => p.status === 'incidencia'),
+        verificado: data.partes.filter(p => p.status === 'verificado'),
+        facturado:  data.partes.filter(p => p.status === 'facturado'),
+      };
+
+      const renderRow = (p) => {
           const est = ESTADOS[p.status] || ESTADOS.pendiente;
           const enviado = p._meta?.submittedAt ? new Date(p._meta.submittedAt).toLocaleString('es-ES',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
           const dateMatch = p.date === (p._meta?.submittedAt?.slice?.(0,10) || p.date);
@@ -298,10 +299,39 @@
             <td style="text-align:right">${p.horas} h</td>
             <td><span style="background:${est.color}22;color:${est.color};padding:2px 8px;border-radius:8px;font-size:10px;font-weight:600">${est.emoji} ${est.label}</span></td>
             <td style="font-size:10px;color:var(--text3)">${enviado}</td>
-            <td><button class="btn bgh" style="padding:3px 10px;font-size:11px" onclick="CP.PartesAdmin.openParte('${p._id}')">Ver →</button></td>
+            <td style="display:flex;gap:4px">
+            <button class="btn bgh" style="padding:3px 8px;font-size:11px" onclick="CP.PartesAdmin.openParte('${p._id}')">Ver →</button>
+            <button class="btn bgh" style="padding:3px 8px;font-size:11px;color:var(--red);border-color:var(--red)" onclick="CP.PartesAdmin.deleteParte('${p._id}','${p.clientName||'parte'}')">🗑</button>
+          </td>
           </tr>`;
-        }).join('')}</tbody>
-      </table>`;
+      };
+
+      let html = '';
+      const sectionLabels = {
+        pendiente:  '⏳ Pendientes de revisión',
+        incidencia: '⚠️ Con incidencia',
+        verificado: '✅ Verificados',
+        facturado:  '💰 Facturados',
+      };
+      Object.entries(grupos).forEach(([status, partes]) => {
+        if (!partes.length) return;
+        const est = ESTADOS[status];
+        html += `<div style="margin-bottom:16px">
+          <div style="font-size:11px;font-weight:600;color:${est?.color||'var(--text3)'};text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;padding:6px 0;border-bottom:1px solid var(--border)">
+            ${sectionLabels[status]} <span style="font-weight:400;color:var(--text3)">(${partes.length})</span>
+          </div>
+          <table>
+            <thead><tr>
+              <th>Fecha</th><th>Trabajador</th><th>Cliente / Obra</th>
+              <th style="text-align:right">Horas</th><th>Estado</th>
+              <th style="font-size:10px;color:var(--text3)">Enviado</th>
+              <th></th>
+            </tr></thead>
+            <tbody>${partes.map(p => renderRow(p)).join('')}</tbody>
+          </table>
+        </div>`;
+      });
+      el.innerHTML = html;
 
       // Paginación
       const pag = document.getElementById('pa-pagination');
@@ -535,6 +565,15 @@
     if (!el) return;
     el.textContent = el.textContent === '••••' ? (pins[wid] || '????') : '••••';
   };
+
+  async function deleteParte(id, name) {
+    if (!confirm(`¿Eliminar el parte de "${name}"? Esta acción no se puede deshacer.`)) return;
+    try {
+      const result = await api(`/api/partes/${id}`, { method: 'DELETE' });
+      if (result.error) throw new Error(result.error);
+      loadLista();
+    } catch(err) { alert('Error: ' + err.message); }
+  }
 
   CP.PartesAdmin = {
     render, showTab, applyFilters, clearFilters, goPage,
