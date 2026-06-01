@@ -327,20 +327,72 @@ app.put('/api/obras/:id', requireAuth, async (req, res) => {
 // ── PARTES DE TRABAJO ─────────────────────────────────────────────
 const partes = require('./partes');
 
-// Login trabajador (público — solo necesita workerId + PIN)
+// Login trabajador — busca por ID de MongoDB o ID legacy
 app.post('/api/partes/worker-login', async (req, res) => {
   try {
     const { workerId, pin } = req.body;
+    
+    // Intentar login por MongoDB primero
+    const { getUsers } = require('./users');
+    const allUsers = await getUsers(false);
+    
+    // Buscar por _id de MongoDB o por id legacy
+    const user = allUsers.find(u => 
+      String(u._id) === workerId || u.id === workerId
+    );
+    
+    if (user && user.pin === pin) {
+      // Usuario encontrado en MongoDB
+      const { MongoClient } = require('mongodb');
+      const crypto = require('crypto');
+      const token = `w_${crypto.randomBytes(16).toString('hex')}`;
+      const { MongoClient: MC } = require('mongodb');
+      
+      // Guardar token en worker_tokens
+      const client = new MC(process.env.MONGODB_URI);
+      await client.connect();
+      const db = client.db('corpprojects');
+      await db.collection('worker_tokens').insertOne({
+        token,
+        workerId: String(user._id),
+        workerName: user.name,
+        workerRole: user.role,
+        createdAt: new Date(),
+        expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000)
+      });
+      await client.close();
+      
+      return res.json({ token, workerId: String(user._id), workerName: user.name });
+    }
+    
+    // Fallback a login legacy (PINs hardcodeados)
     const result = await partes.workerLogin(workerId, pin);
     res.json(result);
   } catch (err) {
-    res.status(401).json({ error: err.message });
+    res.status(401).json({ error: 'PIN incorrecto' });
   }
 });
 
-// Lista de workers para el formulario de login
-app.get('/api/partes/workers', (req, res) => {
-  res.json(partes.WORKERS.map(w => ({ id: w.id, name: w.name })));
+// Lista de workers para el formulario de login — desde MongoDB
+app.get('/api/partes/workers', async (req, res) => {
+  try {
+    const { getUsers } = require('./users');
+    const allUsers = await getUsers(false); // solo activos
+    const techs = allUsers.filter(u => u.role === 'tech' || u.role === 'office');
+    if (techs.length > 0) {
+      res.json(techs.map(u => ({
+        id: String(u._id),
+        name: u.name,
+        color: u.color || '#4d9cf8',
+        role: u.role
+      })));
+    } else {
+      // Fallback a lista hardcodeada si MongoDB no tiene usuarios aún
+      res.json(partes.WORKERS.map(w => ({ id: w.id, name: w.name, color: '#4d9cf8' })));
+    }
+  } catch(err) {
+    res.json(partes.WORKERS.map(w => ({ id: w.id, name: w.name, color: '#4d9cf8' })));
+  }
 });
 
 // Crear parte — worker autenticado o admin
