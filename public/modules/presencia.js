@@ -7,7 +7,18 @@
 
   // Workers se cargan dinámicamente desde MongoDB
   let WORKERS = [];
-  const RATES = { jose:26.72, diego:19.05, abdellah:13.28, mamadou:13.28, paula:8.66 };
+  // Rates por nombre (más robusto que por ID de MongoDB)
+  const RATES_BY_NAME = {
+    'jose beliard':    26.72,
+    'diego campillo':  19.05,
+    'abdellah souiri': 13.28,
+    'mamadou barry':   13.28,
+    'paula morales':   8.66,
+  };
+  function getRateForWorker(w) {
+    const key = (w.name||'').toLowerCase();
+    return RATES_BY_NAME[key] || w.rate || 15;
+  }
 
   async function loadWorkers() {
     try {
@@ -15,7 +26,7 @@
       if (Array.isArray(data) && data.length > 0) {
         WORKERS = data.map(w => ({
           ...w,
-          rate: RATES[w.id] || 15  // rate por defecto si es nuevo
+          rate: getRateForWorker(w)
         }));
       }
     } catch(e) {
@@ -470,7 +481,7 @@
       if (tbl) tbl.innerHTML = `<table>
         <thead><tr><th>Trabajador</th><th style="text-align:right">Días reg.</th><th style="text-align:right">En obra</th><th style="text-align:right">Faltas</th><th style="text-align:right">Horas</th><th style="text-align:right">Coste est.</th></tr></thead>
         <tbody>${data.byWorker.map(w => {
-          const wd = WORKERS.find(x => x.id === w.id);
+          const rate = RATES_BY_NAME[w.name?.toLowerCase()] || 15;
           return `<tr>
             <td><span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:${w.color};display:inline-block"></span><strong>${w.name}</strong></span></td>
             <td style="text-align:right">${w.dias}</td>
