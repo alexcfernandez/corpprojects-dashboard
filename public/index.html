@@ -204,6 +204,7 @@ select:focus{border-color:var(--blue)}
   <div class="header-right">
     
     <span style="font-size:11px;color:var(--text3)"><span class="live-dot"></span><span id="lastUpd">Cargando...</span></span>
+    <button id="theme-toggle-fixed" onclick="toggleTheme()" title="Cambiar tema" style="background:none;border:1px solid var(--border2);border-radius:8px;padding:5px 10px;color:var(--text2);cursor:pointer;font-size:14px;transition:all .2s">🌙</button>
     <button class="sync-btn" onclick="loadAll()" id="syncBtn">🔄 Actualizar</button>
     <button class="logout-btn" onclick="doLogout()">Salir</button>
   </div>
@@ -219,7 +220,6 @@ select:focus{border-color:var(--blue)}
   <button class="nav-btn" onclick="showTab('obras',this)">📊 Obras</button>
   <button class="nav-btn" onclick="showTab('usuarios',this)">⚙️ Usuarios</button>
   <button class="nav-btn" onclick="showTab('alertas',this)">🔔 Alertas</button>
-  <button id="theme-toggle-fixed" onclick="toggleTheme()" title="Cambiar tema" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;padding:0 12px;margin-left:4px;line-height:1;transition:all .2s" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text3)'">🌙</button>
 </nav>
 <main class="main">
 
