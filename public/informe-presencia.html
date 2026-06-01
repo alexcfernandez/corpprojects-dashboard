@@ -5,395 +5,441 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Informe de Presencia — Corp Projects Holding SL</title>
 <style>
-/* ── RESET & BASE ─────────────────────────────── */
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',Arial,sans-serif;font-size:11pt;color:#1a1a2e;background:#f0f4f8;line-height:1.5}
+.page{background:#fff;max-width:210mm;margin:20px auto;padding:18mm 16mm;box-shadow:0 4px 24px rgba(0,0,0,.12)}
 
-/* ── LAYOUT ───────────────────────────────────── */
-.page{background:#fff;max-width:210mm;margin:20px auto;padding:20mm 18mm;box-shadow:0 4px 24px rgba(0,0,0,.12);position:relative}
+/* HEADER */
+.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:14px;border-bottom:3px solid #1a1a2e}
+.logo-box{width:44px;height:44px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;color:#fff;flex-shrink:0}
+.company-name{font-size:15pt;font-weight:700}
+.company-sub{font-size:8.5pt;color:#666;margin-top:2px}
+.report-title{font-size:13pt;font-weight:700;color:#2563eb;text-align:right}
+.report-period{font-size:10pt;color:#444;text-align:right;margin-top:2px}
+.report-meta{font-size:7.5pt;color:#999;text-align:right;margin-top:3px}
 
-/* ── HEADER ───────────────────────────────────── */
-.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #1a1a2e}
-.logo-area{display:flex;align-items:center;gap:12px}
-.logo-box{width:48px;height:48px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;color:#fff}
-.company-name{font-size:16pt;font-weight:700;color:#1a1a2e;line-height:1.2}
-.company-sub{font-size:9pt;color:#666}
-.report-info{text-align:right}
-.report-title{font-size:14pt;font-weight:700;color:#4d9cf8}
-.report-period{font-size:10pt;color:#444;margin-top:3px}
-.report-generated{font-size:8pt;color:#999;margin-top:4px}
+/* SECCIÓN */
+.section{margin-bottom:18px}
+.section-title{font-size:10pt;font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;padding-bottom:4px;border-bottom:1.5px solid #e0e7ef;color:#1a1a2e}
 
-/* ── SECCIÓN ──────────────────────────────────── */
-.section{margin-bottom:22px}
-.section-title{font-size:11pt;font-weight:700;color:#1a1a2e;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;padding-bottom:5px;border-bottom:1.5px solid #e0e7ef;display:flex;align-items:center;gap:8px}
+/* MÉTRICAS */
+.metrics-grid{display:grid;gap:8px;margin-bottom:0}
+.metrics-grid-4{grid-template-columns:repeat(4,1fr)}
+.metrics-grid-5{grid-template-columns:repeat(5,1fr)}
+.metric{background:#f8fafc;border:1px solid #e0e7ef;border-radius:8px;padding:10px 12px;text-align:center}
+.metric-val{font-size:20pt;font-weight:700;font-family:'Segoe UI',sans-serif;line-height:1}
+.metric-lbl{font-size:7.5pt;color:#666;text-transform:uppercase;letter-spacing:.05em;margin-top:3px}
+.metric-sub{font-size:7pt;color:#999;margin-top:2px}
+.green .metric-val{color:#16a34a}
+.red .metric-val{color:#dc2626}
+.blue .metric-val{color:#2563eb}
+.amber .metric-val{color:#d97706}
+.gray .metric-val{color:#64748b}
 
-/* ── MÉTRICAS ─────────────────────────────────── */
-.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:0}
-.metric{background:#f8fafc;border:1px solid #e0e7ef;border-radius:8px;padding:12px 14px}
-.metric-label{font-size:8pt;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px}
-.metric-value{font-size:18pt;font-weight:700;color:#1a1a2e;font-family:'Segoe UI',sans-serif}
-.metric-sub{font-size:8pt;color:#888;margin-top:2px}
-.metric.green .metric-value{color:#16a34a}
-.metric.red .metric-value{color:#dc2626}
-.metric.blue .metric-value{color:#2563eb}
-.metric.amber .metric-value{color:#d97706}
-
-/* ── TABLAS ───────────────────────────────────── */
-table{width:100%;border-collapse:collapse;font-size:9.5pt}
+/* TABLAS */
+table{width:100%;border-collapse:collapse;font-size:9pt}
 thead tr{background:#1a1a2e;color:#fff}
-thead th{padding:8px 10px;text-align:left;font-weight:600;font-size:8.5pt;text-transform:uppercase;letter-spacing:.05em}
-thead th:not(:first-child){text-align:right}
-tbody tr{border-bottom:1px solid #e0e7ef}
-tbody tr:nth-child(even){background:#f8fafc}
-tbody td{padding:7px 10px;vertical-align:middle}
-tbody td:not(:first-child){text-align:right}
-tfoot tr{background:#e8f0fe;font-weight:700;border-top:2px solid #1a1a2e}
-tfoot td{padding:8px 10px}
-tfoot td:not(:first-child){text-align:right}
+th{padding:7px 9px;text-align:left;font-size:8pt;text-transform:uppercase;letter-spacing:.04em;font-weight:600}
+th.r,td.r{text-align:right}
+td{padding:6px 9px;border-bottom:1px solid #e8eef5;vertical-align:middle}
+tr:nth-child(even) td{background:#f8fafc}
+tfoot td{background:#e8f0fe!important;font-weight:700;border-top:2px solid #1a1a2e;padding:7px 9px}
 
-/* ── BADGES ───────────────────────────────────── */
-.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:8pt;font-weight:600}
-.badge-green{background:#dcfce7;color:#16a34a}
-.badge-red{background:#fee2e2;color:#dc2626}
-.badge-amber{background:#fef3c7;color:#d97706}
-.badge-blue{background:#dbeafe;color:#2563eb}
-.badge-gray{background:#f1f5f9;color:#475569}
+/* BADGE */
+.badge{display:inline-block;padding:1px 7px;border-radius:8px;font-size:7.5pt;font-weight:600}
+.b-green{background:#dcfce7;color:#16a34a}
+.b-red{background:#fee2e2;color:#dc2626}
+.b-amber{background:#fef3c7;color:#d97706}
+.b-blue{background:#dbeafe;color:#2563eb}
+.b-gray{background:#f1f5f9;color:#475569}
+.b-purple{background:#ede9fe;color:#7c3aed}
 
-/* ── BARRA DE HORAS ───────────────────────────── */
-.bar-container{background:#e0e7ef;border-radius:4px;height:8px;min-width:60px;display:inline-block;vertical-align:middle}
-.bar-fill{height:100%;border-radius:4px;background:#4d9cf8}
+/* WORKER DOT */
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle;flex-shrink:0}
 
-/* ── ALERTA ───────────────────────────────────── */
-.alert-box{background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;gap:8px;align-items:flex-start;font-size:9pt}
-.alert-box.green{background:#f0fdf4;border-color:#bbf7d0}
-.alert-box.red{background:#fef2f2;border-color:#fecaca}
+/* BARRA */
+.bar{background:#e0e7ef;border-radius:3px;height:7px;display:inline-block;vertical-align:middle}
+.bar-fill{height:100%;border-radius:3px}
 
-/* ── GRID CLIENTES ────────────────────────────── */
-.client-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.client-card{background:#f8fafc;border:1px solid #e0e7ef;border-radius:8px;padding:12px}
-.client-name{font-weight:700;font-size:10pt;margin-bottom:6px;color:#1a1a2e}
-.client-workers{font-size:8.5pt;color:#555;margin-bottom:4px}
-.client-stats{display:flex;gap:12px;font-size:8.5pt}
-.client-stat{color:#888}
-.client-stat strong{color:#1a1a2e}
+/* ALERTA */
+.alert{border-radius:7px;padding:9px 13px;margin-bottom:14px;font-size:9pt;display:flex;gap:8px}
+.alert-red{background:#fef2f2;border:1px solid #fecaca;color:#991b1b}
+.alert-green{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534}
+.alert-amber{background:#fffbeb;border:1px solid #fde68a;color:#92400e}
 
-/* ── DOT WORKER ───────────────────────────────── */
-.worker-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:middle;flex-shrink:0}
+/* SEPARADOR ADMIN/CAMPO */
+.section-sub{font-size:9pt;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin:10px 0 6px;padding-left:2px;border-left:3px solid #cbd5e1;padding-left:8px}
 
-/* ── FOOTER ───────────────────────────────────── */
-.footer{margin-top:24px;padding-top:12px;border-top:1px solid #e0e7ef;display:flex;justify-content:space-between;font-size:8pt;color:#aaa}
+/* CLIENTES */
+.client-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.client-card{background:#f8fafc;border:1px solid #e0e7ef;border-radius:8px;padding:10px 12px}
+.client-name{font-weight:700;font-size:9.5pt;margin-bottom:5px}
+.client-row{display:flex;justify-content:space-between;align-items:center;font-size:8.5pt}
+.client-workers{color:#555;margin-bottom:4px;font-size:8pt}
+.coste-hora-tag{background:#dbeafe;color:#1d4ed8;font-size:7pt;padding:1px 5px;border-radius:4px;font-weight:600;margin-left:4px}
 
-/* ── PRINT ────────────────────────────────────── */
+/* CALENDAR */
+.cal-table{font-size:7.5pt}
+.cal-table th{padding:4px 3px;font-size:7pt;text-align:center;min-width:16px}
+.cal-table td{padding:3px 2px;text-align:center;border:none;border-bottom:1px solid #f0f4f8}
+.cal-cell{display:inline-block;width:14px;height:14px;border-radius:2px;line-height:14px;font-size:7pt;font-weight:700;text-align:center}
+
+/* FOOTER */
+.footer{margin-top:20px;padding-top:10px;border-top:1px solid #e0e7ef;display:flex;justify-content:space-between;font-size:7.5pt;color:#aaa}
+
+/* COBERTURA */
+.coverage-bar{background:#e0e7ef;border-radius:4px;height:10px;margin:6px 0 2px;overflow:hidden}
+.coverage-fill{height:100%;background:linear-gradient(90deg,#4d9cf8,#22c487);border-radius:4px;transition:width .5s}
+
+/* PRINT */
 @media print{
   body{background:#fff}
-  .page{box-shadow:none;margin:0;padding:15mm 12mm}
+  .page{box-shadow:none;margin:0;padding:12mm 10mm}
   .no-print{display:none!important}
-  .client-grid{grid-template-columns:1fr 1fr}
   @page{size:A4;margin:0}
 }
-
-/* ── BOTONES ──────────────────────────────────── */
-.btn-bar{position:fixed;top:16px;right:16px;display:flex;gap:8px;z-index:100}
-.btn{padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit}
-.btn-primary{background:#4d9cf8;color:#fff}
-.btn-ghost{background:#fff;color:#333;border:1px solid #ccc}
-.loading{text-align:center;padding:40px;color:#666;font-size:14pt}
+.btn-bar{position:fixed;top:14px;right:14px;display:flex;gap:8px;z-index:100}
+.btn{padding:7px 14px;border-radius:7px;border:none;cursor:pointer;font-size:11px;font-weight:600;font-family:inherit}
+.btn-p{background:#2563eb;color:#fff}
+.btn-g{background:#fff;color:#333;border:1px solid #ccc}
 </style>
 </head>
 <body>
 
 <div class="btn-bar no-print">
-  <button class="btn btn-ghost" onclick="window.close()">✕ Cerrar</button>
-  <button class="btn btn-primary" onclick="window.print()">🖨️ Imprimir / PDF</button>
+  <button class="btn btn-g" onclick="window.close()">✕ Cerrar</button>
+  <button class="btn btn-p" onclick="window.print()">🖨️ Guardar PDF</button>
 </div>
 
-<div class="page" id="report-page">
-  <div class="loading" id="loading">⏳ Cargando datos del informe...</div>
-  <div id="report-content" style="display:none"></div>
+<div class="page" id="page">
+  <div id="loading" style="text-align:center;padding:50px;color:#666;font-size:14pt">⏳ Cargando informe...</div>
+  <div id="content" style="display:none"></div>
 </div>
 
 <script>
-const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-const WORKER_COLORS_MAP = {};
+const MN = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const ESTADOS = {
+  obra:      {l:'O', bg:'#dcfce7', c:'#16a34a', label:'En obra'},
+  oficina:   {l:'F', bg:'#dbeafe', c:'#2563eb', label:'Oficina'},
+  vacaciones:{l:'V', bg:'#ede9fe', c:'#7c3aed', label:'Vacaciones'},
+  baja:      {l:'B', bg:'#fef3c7', c:'#d97706', label:'Baja'},
+  falta_j:   {l:'J', bg:'#fef3c7', c:'#d97706', label:'Falta just.'},
+  falta_i:   {l:'X', bg:'#fee2e2', c:'#dc2626', label:'Falta injust.'},
+  libre:     {l:'L', bg:'#f1f5f9', c:'#94a3b8', label:'Libre'},
+};
+// Rates por nombre — se pueden personalizar
+const RATES = {
+  'Jose Beliard':26.72,'Diego Campillo':19.05,
+  'Abdellah Souiri':13.28,'Mamadou Barry':13.28,
+  'Paula Morales':8.66
+};
+const DEFAULT_RATE = 15;
+let WORKER_COLORS = {};
 
-async function loadReport() {
-  const params = new URLSearchParams(location.search);
-  const year  = parseInt(params.get('year')  || new Date().getFullYear());
-  const month = parseInt(params.get('month') || new Date().getMonth() + 1);
-  const tok   = params.get('token') || localStorage.getItem('cp_token');
+function eur(v){return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0)}
+function pct(a,b){return b>0?Math.round(a/b*100):0}
+
+async function load() {
+  const p   = new URLSearchParams(location.search);
+  const yr  = parseInt(p.get('year')  || new Date().getFullYear());
+  const mo  = parseInt(p.get('month') || new Date().getMonth()+1);
+  const tok = p.get('token') || localStorage.getItem('cp_token');
 
   try {
-    // Cargar datos
     const [summary, workers] = await Promise.all([
-      fetch(`/api/attendance/summary/${year}/${month}`, {
-        headers: { 'Authorization': `Bearer ${tok}` }
-      }).then(r => r.json()),
-      fetch('/api/partes/workers', {
-        headers: { 'Authorization': `Bearer ${tok}` }
-      }).then(r => r.json()),
+      fetch(`/api/attendance/summary/${yr}/${mo}`,{headers:{Authorization:`Bearer ${tok}`}}).then(r=>r.json()),
+      fetch('/api/partes/workers',{headers:{Authorization:`Bearer ${tok}`}}).then(r=>r.json()),
     ]);
-
-    // Mapear colores
-    if (Array.isArray(workers)) {
-      workers.forEach(w => { WORKER_COLORS_MAP[w.name] = w.color || '#4d9cf8'; });
-    }
-
-    renderReport(summary, year, month);
-  } catch(err) {
-    document.getElementById('loading').innerHTML = `❌ Error cargando datos: ${err.message}<br><small>Asegúrate de estar autenticado en el dashboard</small>`;
+    if (Array.isArray(workers)) workers.forEach(w=>{WORKER_COLORS[w.name]=w.color||'#4d9cf8';});
+    render(summary, yr, mo);
+  } catch(e) {
+    document.getElementById('loading').innerHTML=`❌ Error: ${e.message}<br><small>Abre desde el dashboard → Presencia → Resumen mensual → Informe PDF</small>`;
   }
 }
 
-function eur(v) { return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0); }
+function render(data, yr, mo) {
+  document.getElementById('loading').style.display='none';
+  const el = document.getElementById('content');
+  el.style.display='block';
 
-function renderReport(data, year, month) {
-  document.getElementById('loading').style.display = 'none';
-  const el = document.getElementById('report-content');
-  el.style.display = 'block';
+  const all     = data.byWorker || [];
+  const entries = data.entries  || [];
 
-  const workers  = data.byWorker || [];
-  const entries  = data.entries  || [];
-  const monthName = MONTH_NAMES[month - 1];
+  // Separar oficina y campo
+  const campo   = all.filter(w => w.name !== 'Paula Morales' && !w.name.includes('Paula'));
+  const admin   = all.filter(w => w.name === 'Paula Morales' || w.name.includes('Paula'));
+  // En el futuro esto vendrá del rol del usuario
 
-  // Totales
-  const totalDias    = workers.reduce((s,w) => s + w.dias, 0);
-  const totalObra    = workers.reduce((s,w) => s + w.dias_obra, 0);
-  const totalHoras   = workers.reduce((s,w) => s + w.horas, 0);
-  const totalFaltas  = workers.reduce((s,w) => s + w.dias_falta, 0);
-  const maxHoras     = Math.max(...workers.map(w => w.horas), 1);
+  // Días laborables del mes
+  const daysInMonth = new Date(yr, mo, 0).getDate();
+  const labDays = [];
+  for(let d=1;d<=daysInMonth;d++){
+    const dow=new Date(yr,mo-1,d).getDay();
+    if(dow!==0&&dow!==6) labDays.push(d);
+  }
+  const totalLabDays = labDays.length;
 
-  // Coste estimado
-  const RATES = {};
-  workers.forEach(w => {
-    const rates = { 'Jose Beliard':26.72,'Diego Campillo':19.05,'Abdellah Souiri':13.28,'Mamadou Barry':13.28,'Paula Morales':8.66 };
-    RATES[w.name] = rates[w.name] || 15;
-  });
-  const totalCoste = workers.reduce((s,w) => s + (w.horas * (RATES[w.name]||15)), 0);
+  // Métricas campo
+  const diasObra    = campo.reduce((s,w)=>s+w.dias_obra,0);
+  const horasCampo  = campo.reduce((s,w)=>s+w.horas,0);
+  const faltasI     = entries.filter(e=>e.estado==='falta_i');
+  const faltasTotal = all.reduce((s,w)=>s+w.dias_falta,0);
+  const costeCampo  = campo.reduce((s,w)=>s+(w.horas*(RATES[w.name]||DEFAULT_RATE)),0);
+  const costeAdmin  = admin.reduce((s,w)=>s+(w.horas*(RATES[w.name]||DEFAULT_RATE)),0);
+  const costeTotal  = costeCampo + costeAdmin;
 
-  // Clientes/obras
-  const clientMap = {};
-  workers.forEach(w => {
-    Object.entries(w.clientes||{}).forEach(([client, v]) => {
-      if (!clientMap[client]) clientMap[client] = { dias:0, horas:0, workers:{} };
-      clientMap[client].dias  += v.dias;
-      clientMap[client].horas += v.horas;
-      clientMap[client].workers[w.name] = (clientMap[client].workers[w.name]||0) + v.dias;
+  // Días registrados únicos
+  const uniqueDates = new Set(entries.map(e=>e.date));
+  const diasConDatos = uniqueDates.size;
+  const cobertura   = pct(diasConDatos, totalLabDays);
+
+  // Clientes
+  const clientMap={};
+  all.forEach(w=>{
+    Object.entries(w.clientes||{}).forEach(([client,v])=>{
+      if(!clientMap[client])clientMap[client]={dias:0,horas:0,workers:{}};
+      clientMap[client].dias+=v.dias;
+      clientMap[client].horas+=v.horas;
+      clientMap[client].workers[w.name]=(clientMap[client].workers[w.name]||0)+v.dias;
     });
   });
-  const clients = Object.entries(clientMap).sort((a,b) => b[1].dias - a[1].dias);
+  const clients=Object.entries(clientMap).sort((a,b)=>b[1].dias-a[1].dias);
 
-  // Faltas injustificadas
-  const faltasI = entries.filter(e => e.estado === 'falta_i');
+  const now=new Date().toLocaleString('es-ES');
+  const monthName=MN[mo-1];
+  const maxHoras=Math.max(...all.map(w=>w.horas),1);
 
-  const now = new Date().toLocaleString('es-ES');
-
-  el.innerHTML = `
-    <!-- HEADER -->
-    <div class="header">
-      <div class="logo-area">
-        <div class="logo-box">CP</div>
-        <div>
-          <div class="company-name">Corp Projects Holding SL</div>
-          <div class="company-sub">CIF: B-XXXXXXXX · Girona, Cataluña</div>
-        </div>
-      </div>
-      <div class="report-info">
-        <div class="report-title">Informe de Presencia</div>
-        <div class="report-period">${monthName} ${year}</div>
-        <div class="report-generated">Generado: ${now}</div>
+  el.innerHTML=`
+  <!-- CABECERA -->
+  <div class="header">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="logo-box">CP</div>
+      <div>
+        <div class="company-name">Corp Projects Holding SL</div>
+        <div class="company-sub">Girona, Cataluña · Informe confidencial</div>
       </div>
     </div>
+    <div>
+      <div class="report-title">Informe de Presencia</div>
+      <div class="report-period">${monthName} ${yr}</div>
+      <div class="report-meta">Generado: ${now}</div>
+    </div>
+  </div>
 
-    <!-- ALERTA FALTAS -->
-    ${faltasI.length > 0 ? `
-    <div class="alert-box red">
-      <span>⚠️</span>
-      <div><strong>${faltasI.length} falta${faltasI.length>1?'s':''} injustificada${faltasI.length>1?'s':''} registrada${faltasI.length>1?'s':''}</strong> —
-        ${faltasI.map(e=>`${e.workerName?.split(' ')[0]} (${new Date(e.date+'T12:00:00').toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'})})`).join(', ')}
+  <!-- ALERTAS -->
+  ${faltasI.length>0?`
+  <div class="alert alert-red">
+    <span>⚠️</span>
+    <div><strong>${faltasI.length} falta${faltasI.length>1?'s':''} injustificada${faltasI.length>1?'s':''}:</strong>
+    ${faltasI.map(e=>`${e.workerName?.split(' ')[0]} (${new Date(e.date+'T12:00:00').toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'})})`).join(', ')}</div>
+  </div>`:`
+  <div class="alert alert-green">
+    <span>✅</span><div><strong>Sin faltas injustificadas</strong> en ${monthName} ${yr}</div>
+  </div>`}
+
+  <!-- COBERTURA DEL MES -->
+  <div class="section">
+    <div class="section-title">📊 Resumen ejecutivo — ${monthName} ${yr}</div>
+    <div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;font-size:8.5pt;color:#666;margin-bottom:3px">
+        <span>Cobertura de registro del mes</span>
+        <span><strong>${diasConDatos} días registrados</strong> de ${totalLabDays} laborables (${cobertura}%)</span>
       </div>
-    </div>` : `
-    <div class="alert-box green">
-      <span>✅</span>
-      <div><strong>Sin faltas injustificadas</strong> en ${monthName} ${year}</div>
-    </div>`}
-
-    <!-- MÉTRICAS -->
-    <div class="section">
-      <div class="section-title">📊 Resumen ejecutivo</div>
-      <div class="metrics">
-        <div class="metric blue">
-          <div class="metric-label">Días registrados</div>
-          <div class="metric-value">${totalDias}</div>
-          <div class="metric-sub">Entre ${workers.length} trabajadores</div>
-        </div>
-        <div class="metric green">
-          <div class="metric-label">Días en obra</div>
-          <div class="metric-value">${totalObra}</div>
-          <div class="metric-sub">${totalDias>0?(totalObra/totalDias*100).toFixed(0):0}% del total</div>
-        </div>
-        <div class="metric blue">
-          <div class="metric-label">Horas totales</div>
-          <div class="metric-value">${totalHoras.toFixed(0)}</div>
-          <div class="metric-sub">~${workers.length>0?(totalHoras/workers.length).toFixed(0):0} h/trabajador</div>
-        </div>
-        <div class="metric ${totalFaltas>0?'red':'green'}">
-          <div class="metric-label">Faltas/Bajas</div>
-          <div class="metric-value">${totalFaltas}</div>
-          <div class="metric-sub">${faltasI.length} injustificadas</div>
-        </div>
+      <div class="coverage-bar"><div class="coverage-fill" style="width:${cobertura}%"></div></div>
+      ${cobertura<50?`<div style="font-size:7.5pt;color:#d97706">⚠️ Menos del 50% del mes registrado. Recuerda registrar la presencia diariamente.</div>`:''}
+    </div>
+    <div class="metrics-grid metrics-grid-5">
+      <div class="metric blue">
+        <div class="metric-val">${campo.length+admin.length}</div>
+        <div class="metric-lbl">Trabajadores</div>
+        <div class="metric-sub">${campo.length} campo · ${admin.length} admin</div>
+      </div>
+      <div class="metric green">
+        <div class="metric-val">${diasObra}</div>
+        <div class="metric-lbl">Días en obra</div>
+        <div class="metric-sub">${horasCampo.toFixed(0)} horas de campo</div>
+      </div>
+      <div class="metric blue">
+        <div class="metric-val">${horasCampo.toFixed(0)}h</div>
+        <div class="metric-lbl">Horas campo</div>
+        <div class="metric-sub">+ ${admin.reduce((s,w)=>s+w.horas,0).toFixed(0)}h admin</div>
+      </div>
+      <div class="metric ${faltasTotal>0?'red':'green'}">
+        <div class="metric-val">${faltasTotal}</div>
+        <div class="metric-lbl">Faltas/Bajas</div>
+        <div class="metric-sub">${faltasI.length} injustificadas</div>
+      </div>
+      <div class="metric amber">
+        <div class="metric-val">${eur(costeTotal)}</div>
+        <div class="metric-lbl">Coste estimado</div>
+        <div class="metric-sub">Personal registrado</div>
       </div>
     </div>
+  </div>
 
-    <!-- TABLA TRABAJADORES -->
-    <div class="section">
-      <div class="section-title">👷 Detalle por trabajador</div>
-      <table>
-        <thead>
-          <tr>
-            <th>Trabajador</th>
-            <th>Días reg.</th>
-            <th>En obra</th>
-            <th>Oficina</th>
-            <th>Faltas</th>
-            <th>Horas</th>
-            <th style="text-align:left;padding-left:20px">Distribución</th>
-            <th>Coste est.</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${workers.map(w => {
-            const rate  = RATES[w.name] || 15;
-            const coste = w.horas * rate;
-            const color = WORKER_COLORS_MAP[w.name] || '#4d9cf8';
-            const pct   = maxHoras > 0 ? (w.horas / maxHoras * 100) : 0;
-            const diasOficina = w.dias - w.dias_obra - w.dias_falta;
-            return `<tr>
-              <td><span class="worker-dot" style="background:${color}"></span><strong>${w.name}</strong></td>
-              <td>${w.dias}</td>
-              <td><span class="badge badge-green">${w.dias_obra}</span></td>
-              <td>${diasOficina > 0 ? diasOficina : '—'}</td>
-              <td>${w.dias_falta > 0 ? `<span class="badge badge-red">${w.dias_falta}</span>` : '—'}</td>
-              <td><strong>${w.horas.toFixed(0)} h</strong></td>
-              <td style="text-align:left;padding-left:20px">
-                <div class="bar-container" style="width:80px">
-                  <div class="bar-fill" style="width:${pct}%;background:${color}"></div>
-                </div>
-              </td>
-              <td><strong>${eur(coste)}</strong></td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-        <tfoot>
-          <tr>
-            <td>TOTAL</td>
-            <td>${totalDias}</td>
-            <td>${totalObra}</td>
-            <td>${workers.reduce((s,w)=>s+(w.dias-w.dias_obra-w.dias_falta),0)}</td>
-            <td>${totalFaltas}</td>
-            <td>${totalHoras.toFixed(0)} h</td>
-            <td style="text-align:left;padding-left:20px"></td>
-            <td>${eur(totalCoste)}</td>
-          </tr>
-        </tfoot>
-      </table>
+  <!-- PERSONAL DE CAMPO -->
+  ${campo.length>0?`
+  <div class="section">
+    <div class="section-title">🔧 Personal de campo</div>
+    <table>
+      <thead><tr>
+        <th>Trabajador</th>
+        <th class="r">Días obra</th>
+        <th class="r">Otras ausencias</th>
+        <th class="r">Horas</th>
+        <th style="padding-left:16px">Distribución</th>
+        <th class="r">€/hora</th>
+        <th class="r">Coste est.</th>
+      </tr></thead>
+      <tbody>${campo.map(w=>{
+        const rate=RATES[w.name]||DEFAULT_RATE;
+        const coste=w.horas*rate;
+        const color=WORKER_COLORS[w.name]||'#4d9cf8';
+        const pctBar=maxHoras>0?(w.horas/maxHoras*100):0;
+        const diasOtros=w.dias-w.dias_obra-w.dias_falta;
+        return`<tr>
+          <td><span class="dot" style="background:${color}"></span><strong>${w.name}</strong></td>
+          <td class="r"><span class="badge b-green">${w.dias_obra}</span></td>
+          <td class="r">${w.dias_falta>0?`<span class="badge b-red">${w.dias_falta} falta${w.dias_falta>1?'s':''}</span>`:'—'}</td>
+          <td class="r"><strong>${w.horas.toFixed(0)} h</strong></td>
+          <td style="padding-left:16px">
+            <div class="bar" style="width:80px"><div class="bar-fill" style="width:${pctBar}%;background:${color}"></div></div>
+          </td>
+          <td class="r"><span style="font-size:8pt;color:#666">${rate}€</span></td>
+          <td class="r"><strong>${eur(coste)}</strong></td>
+        </tr>`;
+      }).join('')}</tbody>
+      <tfoot><tr>
+        <td>TOTAL CAMPO</td>
+        <td class="r">${campo.reduce((s,w)=>s+w.dias_obra,0)}</td>
+        <td class="r">${campo.reduce((s,w)=>s+w.dias_falta,0)||'—'}</td>
+        <td class="r">${horasCampo.toFixed(0)} h</td>
+        <td style="padding-left:16px"></td><td></td>
+        <td class="r">${eur(costeCampo)}</td>
+      </tr></tfoot>
+    </table>
+  </div>`:''}
+
+  <!-- ADMINISTRACIÓN -->
+  ${admin.length>0?`
+  <div class="section">
+    <div class="section-title">🖥️ Administración y oficina</div>
+    <table>
+      <thead><tr>
+        <th>Trabajador</th>
+        <th class="r">Días oficina</th>
+        <th class="r">Ausencias</th>
+        <th class="r">Horas</th>
+        <th class="r">€/hora</th>
+        <th class="r">Coste est.</th>
+      </tr></thead>
+      <tbody>${admin.map(w=>{
+        const rate=RATES[w.name]||DEFAULT_RATE;
+        const coste=w.horas*rate;
+        const color=WORKER_COLORS[w.name]||'#f05252';
+        const diasOficina=w.dias-w.dias_obra-w.dias_falta;
+        return`<tr>
+          <td><span class="dot" style="background:${color}"></span><strong>${w.name}</strong></td>
+          <td class="r"><span class="badge b-blue">${diasOficina||w.dias}</span></td>
+          <td class="r">${w.dias_falta>0?`<span class="badge b-red">${w.dias_falta}</span>`:'—'}</td>
+          <td class="r"><strong>${w.horas.toFixed(0)} h</strong></td>
+          <td class="r"><span style="font-size:8pt;color:#666">${rate}€</span></td>
+          <td class="r"><strong>${eur(coste)}</strong></td>
+        </tr>`;
+      }).join('')}</tbody>
+      <tfoot><tr>
+        <td>TOTAL ADMIN</td>
+        <td class="r">${admin.reduce((s,w)=>s+(w.dias-w.dias_obra-w.dias_falta),0)}</td>
+        <td class="r">${admin.reduce((s,w)=>s+w.dias_falta,0)||'—'}</td>
+        <td class="r">${admin.reduce((s,w)=>s+w.horas,0).toFixed(0)} h</td>
+        <td></td>
+        <td class="r">${eur(costeAdmin)}</td>
+      </tr></tfoot>
+    </table>
+  </div>`:''}
+
+  <!-- CLIENTES/OBRAS -->
+  ${clients.length?`
+  <div class="section">
+    <div class="section-title">🏗️ Actividad por cliente / obra</div>
+    <div class="client-grid">
+      ${clients.map(([client,v])=>{
+        const totalCosteCliente=Object.entries(v.workers).reduce((s,[name,dias])=>{
+          const rate=RATES[name]||DEFAULT_RATE;
+          return s+(dias*8*rate);
+        },0);
+        return`<div class="client-card">
+          <div class="client-name">${client}</div>
+          <div class="client-workers">
+            ${Object.entries(v.workers).map(([name,dias])=>
+              `<span class="dot" style="background:${WORKER_COLORS[name]||'#4d9cf8'}"></span>${name.split(' ')[0]}: ${dias}d`
+            ).join(' &nbsp;')}
+          </div>
+          <div class="client-row">
+            <span><strong>${v.dias}</strong> días · <strong>${v.horas.toFixed(0)}</strong> h</span>
+            <span style="color:#dc2626;font-weight:600;font-size:8.5pt">~${eur(totalCosteCliente)}</span>
+          </div>
+        </div>`;
+      }).join('')}
     </div>
+  </div>`:''}
 
-    <!-- CLIENTES/OBRAS -->
-    ${clients.length ? `
-    <div class="section">
-      <div class="section-title">🏗️ Actividad por cliente / obra</div>
-      <div class="client-grid">
-        ${clients.map(([client, v]) => `
-          <div class="client-card">
-            <div class="client-name">${client}</div>
-            <div class="client-workers">
-              ${Object.entries(v.workers).map(([name, dias]) =>
-                `<span class="worker-dot" style="background:${WORKER_COLORS_MAP[name]||'#4d9cf8'}"></span>${name.split(' ')[0]}: ${dias}d`
-              ).join(' &nbsp; ')}
-            </div>
-            <div class="client-stats">
-              <div class="client-stat">Días: <strong>${v.dias}</strong></div>
-              <div class="client-stat">Horas: <strong>${v.horas.toFixed(0)} h</strong></div>
-            </div>
-          </div>`).join('')}
-      </div>
-    </div>` : ''}
-
-    <!-- CALENDARIO VISUAL -->
-    <div class="section">
-      <div class="section-title">📅 Calendario de presencia</div>
-      ${renderCalendarTable(data, year, month)}
+  <!-- CALENDARIO -->
+  <div class="section">
+    <div class="section-title">📅 Calendario de presencia — ${monthName} ${yr}</div>
+    ${renderCal(data, yr, mo, labDays)}
+    <div style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap;font-size:7pt;color:#666">
+      ${Object.entries(ESTADOS).map(([k,v])=>`<span><span style="display:inline-block;width:11px;height:11px;background:${v.bg};border:1px solid ${v.c};border-radius:2px;vertical-align:middle;margin-right:2px"></span>${v.l} = ${v.label}</span>`).join('')}
     </div>
+  </div>
 
-    <!-- FOOTER -->
-    <div class="footer">
-      <span>Corp Projects Holding SL — Informe confidencial</span>
-      <span>${monthName} ${year} · ${now}</span>
-    </div>`;
+  <!-- FOOTER -->
+  <div class="footer">
+    <span>Corp Projects Holding SL · Documento confidencial</span>
+    <span>${monthName} ${yr} · ${now}</span>
+  </div>`;
 }
 
-function renderCalendarTable(data, year, month) {
-  const workers = data.byWorker || [];
-  const entries = data.entries  || [];
-  const daysInMonth = new Date(year, month, 0).getDate();
+function renderCal(data, yr, mo, labDays) {
+  const workers = data.byWorker||[];
+  const entries = data.entries||[];
+  const entryMap={};
+  entries.forEach(e=>{entryMap[e.workerId+'_'+e.date]=e;});
 
-  // Mapear entradas por workerId_date
-  const entryMap = {};
-  entries.forEach(e => { entryMap[e.workerId + '_' + e.date] = e; });
-
-  const ESTADOS = {
-    obra:      { letter:'O', color:'#16a34a', bg:'#dcfce7' },
-    oficina:   { letter:'F', color:'#2563eb', bg:'#dbeafe' },
-    vacaciones:{ letter:'V', color:'#7c3aed', bg:'#ede9fe' },
-    baja:      { letter:'B', color:'#d97706', bg:'#fef3c7' },
-    falta_j:   { letter:'J', color:'#d97706', bg:'#fef3c7' },
-    falta_i:   { letter:'X', color:'#dc2626', bg:'#fee2e2' },
-    libre:     { letter:'L', color:'#94a3b8', bg:'#f1f5f9' },
-  };
-
-  // Solo días laborables
-  const labDays = [];
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dow = new Date(year, month-1, d).getDay();
-    if (dow !== 0 && dow !== 6) labDays.push(d);
-  }
-
-  let html = `<table style="font-size:8pt">
-    <thead>
-      <tr>
-        <th style="text-align:left;min-width:100px">Trabajador</th>
-        ${labDays.map(d => {
-          const dow = new Date(year, month-1, d).getDay();
-          return `<th style="text-align:center;padding:4px 2px;min-width:18px">${d}</th>`;
-        }).join('')}
-        <th>Total</th>
-      </tr>
-    </thead>
+  let html=`<table class="cal-table" style="width:100%">
+    <thead><tr>
+      <th style="text-align:left;min-width:85px">Trabajador</th>
+      ${labDays.map(d=>{
+        const dow=new Date(yr,mo-1,d).getDay();
+        const dn=['D','L','M','X','J','V','S'][dow];
+        return`<th title="${dn} ${d}">${d}</th>`;
+      }).join('')}
+      <th class="r">Total</th>
+    </tr></thead>
     <tbody>`;
 
-  workers.forEach(w => {
-    const color = WORKER_COLORS_MAP[w.name] || '#4d9cf8';
-    html += `<tr>
-      <td><span class="worker-dot" style="background:${color}"></span>${w.name.split(' ')[0]}</td>
-      ${labDays.map(d => {
-        const date = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        const entry = entryMap[w.id + '_' + date];
-        const est = entry ? ESTADOS[entry.estado] : null;
-        if (!est) return `<td style="text-align:center;color:#ccc;font-size:7pt">·</td>`;
-        return `<td style="text-align:center;background:${est.bg};color:${est.color};font-weight:700;font-size:8pt;border-radius:2px" title="${entry.clientName||''}">${est.letter}</td>`;
+  workers.forEach(w=>{
+    const color=WORKER_COLORS[w.name]||'#4d9cf8';
+    html+=`<tr>
+      <td><span class="dot" style="background:${color}"></span>${w.name.split(' ')[0]}</td>
+      ${labDays.map(d=>{
+        const date=`${yr}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const entry=entryMap[w.id+'_'+date];
+        const est=entry?ESTADOS[entry.estado]:null;
+        if(!est) return`<td><span style="color:#ddd;font-size:7pt">·</span></td>`;
+        return`<td title="${entry.clientName||est.label}">
+          <span class="cal-cell" style="background:${est.bg};color:${est.c}">${est.l}</span>
+        </td>`;
       }).join('')}
-      <td style="text-align:center;font-weight:700">${w.horas.toFixed(0)}h</td>
+      <td class="r" style="font-weight:700">${w.horas.toFixed(0)}h</td>
     </tr>`;
   });
 
-  html += `</tbody></table>
-    <div style="margin-top:8px;display:flex;gap:12px;flex-wrap:wrap;font-size:7.5pt;color:#666">
-      ${Object.entries(ESTADOS).map(([k,v])=>`<span><span style="display:inline-block;width:12px;height:12px;background:${v.bg};border:1px solid ${v.color};border-radius:2px;vertical-align:middle;margin-right:3px"></span>${v.letter} = ${k==='obra'?'En obra':k==='oficina'?'Oficina':k==='vacaciones'?'Vacaciones':k==='baja'?'Baja':k==='falta_j'?'Falta just.':k==='falta_i'?'Falta injust.':'Libre'}</span>`).join('')}
-    </div>`;
+  html+=`</tbody></table>`;
   return html;
 }
 
-loadReport();
+load();
 </script>
 </body>
 </html>
