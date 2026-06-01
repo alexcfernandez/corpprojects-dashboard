@@ -164,6 +164,27 @@ select:focus{border-color:var(--blue)}
 .uzn input{display:none}
 .prog{height:6px;background:var(--bg4);border-radius:3px;overflow:hidden;margin-top:6px}
 .progf{height:6px;border-radius:3px;background:var(--green);transition:width .3s}
+
+/* Botón tema fijo — siempre visible */
+#theme-toggle-fixed {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 999;
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  font-size: 18px;
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgba(0,0,0,.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .2s;
+}
+#theme-toggle-fixed:hover { transform: scale(1.1); }
 </style>
   <!-- PWA -->
   <link rel="manifest" href="/manifest.json">
@@ -200,7 +221,7 @@ select:focus{border-color:var(--blue)}
     <div><div class="logo-text">Corp Projects Holding SL</div><div class="logo-sub">Dashboard en tiempo real</div></div>
   </div>
   <div class="header-right">
-    <button id="theme-toggle" onclick="toggleTheme()" title="Cambiar tema" style="background:none;border:1px solid var(--border2);border-radius:8px;padding:5px 10px;color:var(--text2);cursor:pointer;font-size:14px;margin-right:8px">🌙</button>
+    
     <span style="font-size:11px;color:var(--text3)"><span class="live-dot"></span><span id="lastUpd">Cargando...</span></span>
     <button class="sync-btn" onclick="loadAll()" id="syncBtn">🔄 Actualizar</button>
     <button class="logout-btn" onclick="doLogout()">Salir</button>
@@ -1595,7 +1616,8 @@ window.addEventListener('load', () => {
 function toggleTheme() {
   const isLight = document.body.classList.toggle('light');
   localStorage.setItem('cp_theme', isLight ? 'light' : 'dark');
-  document.getElementById('theme-toggle').textContent = isLight ? '☀️' : '🌙';
+  const btn = document.getElementById('theme-toggle-fixed');
+  if (btn) btn.textContent = isLight ? '☀️' : '🌙';
 }
 
 // Aplicar tema guardado al cargar
@@ -1603,7 +1625,7 @@ const savedTheme = localStorage.getItem('cp_theme');
 if (savedTheme === 'light') {
   document.body.classList.add('light');
   document.addEventListener('DOMContentLoaded', () => {
-    const btn = document.getElementById('theme-toggle');
+    const btn = document.getElementById('theme-toggle-fixed');
     if (btn) btn.textContent = '☀️';
   });
 }
