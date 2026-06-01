@@ -145,6 +145,18 @@ select:focus{border-color:var(--blue)}
 .prog{height:6px;background:var(--bg4);border-radius:3px;overflow:hidden;margin-top:6px}
 .progf{height:6px;border-radius:3px;background:var(--green);transition:width .3s}
 </style>
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#4d9cf8">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Corp Projects">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+  </script>
 </head>
 <body>
 
