@@ -306,32 +306,38 @@
           </tr>`;
       };
 
-      let html = '';
       const sectionLabels = {
         pendiente:  '⏳ Pendientes de revisión',
         incidencia: '⚠️ Con incidencia',
         verificado: '✅ Verificados',
         facturado:  '💰 Facturados',
       };
+
+      // Una sola tabla con filas separadoras por sección
+      let rows = '';
       Object.entries(grupos).forEach(([status, partes]) => {
         if (!partes.length) return;
         const est = ESTADOS[status];
-        html += `<div style="margin-bottom:16px">
-          <div style="font-size:11px;font-weight:600;color:${est?.color||'var(--text3)'};text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;padding:6px 0;border-bottom:1px solid var(--border)">
-            ${sectionLabels[status]} <span style="font-weight:400;color:var(--text3)">(${partes.length})</span>
-          </div>
-          <table>
-            <thead><tr>
-              <th>Fecha</th><th>Trabajador</th><th>Cliente / Obra</th>
-              <th style="text-align:right">Horas</th><th>Estado</th>
-              <th style="font-size:10px;color:var(--text3)">Enviado</th>
-              <th></th>
-            </tr></thead>
-            <tbody>${partes.map(p => renderRow(p)).join('')}</tbody>
-          </table>
-        </div>`;
+        rows += `<tr>
+          <td colspan="7" style="background:${est?.color||'#666'}18;color:${est?.color||'var(--text3)'};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:8px 10px;border-top:2px solid ${est?.color||'var(--border)'}44">
+            ${sectionLabels[status]} <span style="font-weight:400;opacity:.7">(${partes.length})</span>
+          </td>
+        </tr>`;
+        rows += partes.map(p => renderRow(p)).join('');
       });
-      el.innerHTML = html;
+
+      el.innerHTML = `<table>
+        <thead><tr>
+          <th style="width:90px">Fecha</th>
+          <th style="width:120px">Trabajador</th>
+          <th>Cliente / Obra</th>
+          <th style="text-align:right;width:60px">Horas</th>
+          <th style="width:140px">Estado</th>
+          <th style="width:80px;font-size:10px;color:var(--text3)">Enviado</th>
+          <th style="width:90px"></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
 
       // Paginación
       const pag = document.getElementById('pa-pagination');
@@ -577,7 +583,7 @@
 
   CP.PartesAdmin = {
     render, showTab, applyFilters, clearFilters, goPage,
-    openParte, updateStatus, saveParteChanges,
+    openParte, updateStatus, saveParteChanges, deleteParte,
     addMatRow, submitParte, resetForm, loadFacturacion,
   };
 
