@@ -168,23 +168,25 @@ select:focus{border-color:var(--blue)}
 /* Botón tema fijo — siempre visible */
 #theme-toggle-fixed {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
-  z-index: 999;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999 !important;
   background: var(--bg2);
-  border: 1px solid var(--border2);
+  border: 1.5px solid var(--border2);
   border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  font-size: 18px;
+  width: 44px;
+  height: 44px;
+  font-size: 20px;
   cursor: pointer;
-  box-shadow: 0 2px 12px rgba(0,0,0,.3);
-  display: flex;
+  box-shadow: 0 4px 16px rgba(0,0,0,.4);
+  display: flex !important;
   align-items: center;
   justify-content: center;
   transition: all .2s;
+  visibility: visible !important;
+  opacity: 1 !important;
 }
-#theme-toggle-fixed:hover { transform: scale(1.1); }
+#theme-toggle-fixed:hover { transform: scale(1.1); box-shadow: 0 6px 20px rgba(0,0,0,.5); }
 </style>
   <!-- PWA -->
   <link rel="manifest" href="/manifest.json">
