@@ -5,13 +5,30 @@
 (function(CP) {
   'use strict';
 
-  const WORKERS = [
-    {id:'jose',    name:'Jose Beliard',    color:'#4d9cf8', rate:26.72},
-    {id:'diego',   name:'Diego Campillo',  color:'#22c487', rate:19.05},
-    {id:'abdellah',name:'Abdellah Souiri', color:'#f59e0b', rate:13.28},
-    {id:'mamadou', name:'Mamadou Barry',   color:'#a78bfa', rate:13.28},
-    {id:'paula',   name:'Paula Morales',   color:'#f05252', rate:8.66},
-  ];
+  // Workers se cargan dinámicamente desde MongoDB
+  let WORKERS = [];
+  const RATES = { jose:26.72, diego:19.05, abdellah:13.28, mamadou:13.28, paula:8.66 };
+
+  async function loadWorkers() {
+    try {
+      const data = await api('/api/partes/workers');
+      if (Array.isArray(data) && data.length > 0) {
+        WORKERS = data.map(w => ({
+          ...w,
+          rate: RATES[w.id] || 15  // rate por defecto si es nuevo
+        }));
+      }
+    } catch(e) {
+      console.warn('[Presencia] Usando workers fallback');
+      WORKERS = [
+        {id:'jose',    name:'Jose Beliard',    color:'#4d9cf8', rate:26.72},
+        {id:'diego',   name:'Diego Campillo',  color:'#22c487', rate:19.05},
+        {id:'abdellah',name:'Abdellah Souiri', color:'#f59e0b', rate:13.28},
+        {id:'mamadou', name:'Mamadou Barry',   color:'#a78bfa', rate:13.28},
+        {id:'paula',   name:'Paula Morales',   color:'#f05252', rate:8.66},
+      ];
+    }
+  }
 
   const ESTADOS = {
     obra:       {label:'En obra',           color:'#22c487', emoji:'🏗️'},
@@ -44,9 +61,10 @@
   }
 
   // ── RENDER PRINCIPAL ──────────────────────────────────────────────
-  function render(containerId) {
+  async function render(containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
+    await loadWorkers(); // Cargar trabajadores desde MongoDB
 
     container.innerHTML = `
       <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:20px;overflow-x:auto">
@@ -80,7 +98,8 @@
           <button class="btn bgh" onclick="CP.Presencia.prevSumMonth()">← Anterior</button>
           <span style="font-size:15px;font-weight:600;font-family:'Space Grotesk',sans-serif" id="p-sum-label">—</span>
           <button class="btn bgh" onclick="CP.Presencia.nextSumMonth()">Siguiente →</button>
-          <button class="btn bg2" onclick="CP.Presencia.exportCSV()">📥 Exportar CSV</button>
+          <button class="btn bg2" onclick="CP.Presencia.exportCSV()">📥 CSV</button>
+          <button class="btn bp" onclick="CP.Presencia.openReport()">📄 Informe PDF</button>
         </div>
         <div id="p-sum-metrics" class="metrics-row"></div>
         <div class="card"><div class="card-title">Días por trabajador</div><div id="p-sum-table">Cargando...</div></div>
@@ -584,6 +603,13 @@
       </div>`;
   }
 
+  // ── INFORME PDF/HTML ──────────────────────────────────────────────
+  function openReport() {
+    const tok = localStorage.getItem('cp_token');
+    const url = `/informe-presencia?year=${sumYear}&month=${sumMonth}&token=${tok}`;
+    window.open(url, '_blank');
+  }
+
   // ── EXPORTAR CSV ──────────────────────────────────────────────────
   async function exportCSV() {
     try {
@@ -601,7 +627,7 @@
 
   // ── API PÚBLICA DEL MÓDULO ────────────────────────────────────────
   CP.Presencia = {
-    render, showTab,
+    render, showTab, openReport,
     prevMonth, nextMonth, goToday,
     prevSumMonth, nextSumMonth,
     searchClient, exportCSV,
