@@ -499,6 +499,9 @@ app.get('/api/clients/list', async (req, res) => {
   }
 });
 
+// Ruta para el informe de presencia
+app.get('/informe-presencia', (req, res) => res.sendFile(path.join(__dirname, '../public/informe-presencia.html')));
+
 // Ruta específica para el formulario de trabajadores
 app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
 
