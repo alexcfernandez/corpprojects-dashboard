@@ -53,7 +53,7 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-
 .login-error{color:var(--red);font-size:12px;margin-top:8px;display:none}
 /* APP */
 #app{display:none}
-.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 28px;display:flex;align-items:center;justify-content:space-between;height:60px;position:sticky;top:0;z-index:100}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 28px;display:flex;align-items:center;justify-content:space-between;height:60px;position:sticky;top:0;z-index:200;overflow:visible}
 .logo{display:flex;align-items:center;gap:10px}
 .logo-icon{width:32px;height:32px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:7px;display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12px;color:#fff}
 .logo-text{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px}
@@ -204,7 +204,7 @@ select:focus{border-color:var(--blue)}
   <div class="header-right">
     
     <span style="font-size:11px;color:var(--text3)"><span class="live-dot"></span><span id="lastUpd">Cargando...</span></span>
-    <button id="theme-toggle-fixed" onclick="toggleTheme()" title="Cambiar tema" style="background:none;border:1px solid var(--border2);border-radius:8px;padding:5px 10px;color:var(--text2);cursor:pointer;font-size:14px;transition:all .2s">🌙</button>
+    <button id="theme-toggle-fixed" onclick="toggleTheme()" title="Cambiar tema" style="background:none;border:1px solid var(--border2);border-radius:8px;padding:5px 10px;color:var(--text2);cursor:pointer;font-size:14px;transition:all .2s;position:relative;z-index:100">🌙</button>
     <button class="sync-btn" onclick="loadAll()" id="syncBtn">🔄 Actualizar</button>
     <button class="logout-btn" onclick="doLogout()">Salir</button>
   </div>
