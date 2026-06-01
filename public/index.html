@@ -165,28 +165,7 @@ select:focus{border-color:var(--blue)}
 .prog{height:6px;background:var(--bg4);border-radius:3px;overflow:hidden;margin-top:6px}
 .progf{height:6px;border-radius:3px;background:var(--green);transition:width .3s}
 
-/* Botón tema fijo — siempre visible */
-#theme-toggle-fixed {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  z-index: 9999 !important;
-  background: var(--bg2);
-  border: 1.5px solid var(--border2);
-  border-radius: 50%;
-  width: 44px;
-  height: 44px;
-  font-size: 20px;
-  cursor: pointer;
-  box-shadow: 0 4px 16px rgba(0,0,0,.4);
-  display: flex !important;
-  align-items: center;
-  justify-content: center;
-  transition: all .2s;
-  visibility: visible !important;
-  opacity: 1 !important;
-}
-#theme-toggle-fixed:hover { transform: scale(1.1); box-shadow: 0 6px 20px rgba(0,0,0,.5); }
+
 </style>
   <!-- PWA -->
   <link rel="manifest" href="/manifest.json">
@@ -240,6 +219,7 @@ select:focus{border-color:var(--blue)}
   <button class="nav-btn" onclick="showTab('obras',this)">📊 Obras</button>
   <button class="nav-btn" onclick="showTab('usuarios',this)">⚙️ Usuarios</button>
   <button class="nav-btn" onclick="showTab('alertas',this)">🔔 Alertas</button>
+  <button id="theme-toggle-fixed" onclick="toggleTheme()" title="Cambiar tema" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;padding:0 12px;margin-left:4px;line-height:1;transition:all .2s" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text3)'">🌙</button>
 </nav>
 <main class="main">
 
@@ -1641,6 +1621,5 @@ setInterval(()=>{if(tok)loadAll();},15*60*1000);
   <script src="/modules/partes-admin.js"></script>
   <script src="/modules/usuarios.js"></script>
   <script src="/modules/obras.js"></script>
-  <button id="theme-toggle-fixed" onclick="toggleTheme()" title="Cambiar tema claro/oscuro">🌙</button>
 </body>
 </html>
