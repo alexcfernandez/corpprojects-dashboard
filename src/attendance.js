@@ -30,13 +30,40 @@ async function getDB() {
   return db;
 }
 
-const WORKERS = [
+// Workers se cargan desde MongoDB dinámicamente
+const WORKERS_FALLBACK = [
   { id: 'jose',     name: 'Jose Beliard',    color: '#4d9cf8' },
   { id: 'diego',    name: 'Diego Campillo',  color: '#22c487' },
   { id: 'abdellah', name: 'Abdellah Souiri', color: '#f59e0b' },
   { id: 'mamadou',  name: 'Mamadou Barry',   color: '#a78bfa' },
   { id: 'paula',    name: 'Paula Morales',   color: '#f05252' },
 ];
+
+let _workersCache = null;
+let _workersCacheTime = 0;
+
+async function getWorkers() {
+  // Cache de 5 minutos
+  if (_workersCache && Date.now() - _workersCacheTime < 5 * 60 * 1000) return _workersCache;
+  try {
+    const { getUsers } = require('./users');
+    const users = await getUsers(false); // solo activos
+    const workers = users
+      .filter(u => u.role === 'tech' || u.role === 'office')
+      .map(u => ({ id: String(u._id), name: u.name, color: u.color || '#4d9cf8' }));
+    if (workers.length > 0) {
+      _workersCache = workers;
+      _workersCacheTime = Date.now();
+      return workers;
+    }
+  } catch(e) {
+    console.warn('[Attendance] Usando workers fallback:', e.message);
+  }
+  return WORKERS_FALLBACK;
+}
+
+// Para compatibilidad con código que usa WORKERS directamente
+const WORKERS = WORKERS_FALLBACK;
 
 const ESTADOS = {
   obra:       { label: 'En obra',            color: '#22c487', emoji: '🏗️' },
@@ -81,8 +108,9 @@ async function getMonthlySummary(year, month) {
     .find({ date: { $gte: from, $lte: to } })
     .sort({ date: 1 }).toArray();
 
+  const workersList = await getWorkers();
   const byWorker = {};
-  WORKERS.forEach(w => {
+  workersList.forEach(w => {
     byWorker[w.id] = { ...w, dias: 0, horas: 0, dias_obra: 0, dias_falta: 0, clientes: {} };
   });
   entries.forEach(e => {
