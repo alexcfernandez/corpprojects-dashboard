@@ -108,6 +108,7 @@ tfoot td{background:#e8f0fe!important;font-weight:700;border-top:2px solid #1a1a
 
 <div class="btn-bar no-print">
   <button class="btn btn-g" onclick="window.close()">✕ Cerrar</button>
+  <button class="btn btn-g" onclick="togglePrecios()" id="btn-precios">💰 Ocultar precios</button>
   <button class="btn btn-p" onclick="window.print()">🖨️ Guardar PDF</button>
 </div>
 
@@ -256,12 +257,12 @@ function render(data, yr, mo) {
       </div>
       <div class="metric green">
         <div class="metric-val">${diasObra}</div>
-        <div class="metric-lbl">Días en obra</div>
-        <div class="metric-sub">${horasCampo.toFixed(0)} horas de campo</div>
+        <div class="metric-lbl">${diasConDatos===1?'Trabaj. en obra hoy':'Días en obra'}</div>
+        <div class="metric-sub">${diasConDatos===1?'Este día registrado':'Total del período'}</div>
       </div>
       <div class="metric blue">
         <div class="metric-val">${horasCampo.toFixed(0)}h</div>
-        <div class="metric-lbl">Horas campo</div>
+        <div class="metric-lbl">Horas en obra</div>
         <div class="metric-sub">+ ${admin.reduce((s,w)=>s+w.horas,0).toFixed(0)}h admin</div>
       </div>
       <div class="metric ${faltasTotal>0?'red':'green'}">
@@ -269,7 +270,7 @@ function render(data, yr, mo) {
         <div class="metric-lbl">Faltas/Bajas</div>
         <div class="metric-sub">${faltasI.length} injustificadas</div>
       </div>
-      <div class="metric amber">
+      <div class="metric amber coste-col">
         <div class="metric-val">${eur(costeTotal)}</div>
         <div class="metric-lbl">Coste estimado</div>
         <div class="metric-sub">Personal registrado</div>
@@ -305,8 +306,8 @@ function render(data, yr, mo) {
           <td style="padding-left:16px">
             <div class="bar" style="width:80px"><div class="bar-fill" style="width:${pctBar}%;background:${color}"></div></div>
           </td>
-          <td class="r"><span style="font-size:8pt;color:#666">${rate}€</span></td>
-          <td class="r"><strong>${eur(coste)}</strong></td>
+          <td class="r rate-col"><span style="font-size:8pt;color:#666">${rate}€</span></td>
+          <td class="r coste-col"><strong>${eur(coste)}</strong></td>
         </tr>`;
       }).join('')}</tbody>
       <tfoot><tr>
@@ -315,7 +316,7 @@ function render(data, yr, mo) {
         <td class="r">${campo.reduce((s,w)=>s+w.dias_falta,0)||'—'}</td>
         <td class="r">${horasCampo.toFixed(0)} h</td>
         <td style="padding-left:16px"></td><td></td>
-        <td class="r">${eur(costeCampo)}</td>
+        <td class="r coste-col">${eur(costeCampo)}</td>
       </tr></tfoot>
     </table>
   </div>`:''}
@@ -343,8 +344,8 @@ function render(data, yr, mo) {
           <td class="r"><span class="badge b-blue">${diasOficina||w.dias}</span></td>
           <td class="r">${w.dias_falta>0?`<span class="badge b-red">${w.dias_falta}</span>`:'—'}</td>
           <td class="r"><strong>${w.horas.toFixed(0)} h</strong></td>
-          <td class="r"><span style="font-size:8pt;color:#666">${rate}€</span></td>
-          <td class="r"><strong>${eur(coste)}</strong></td>
+          <td class="r rate-col"><span style="font-size:8pt;color:#666">${rate}€</span></td>
+          <td class="r coste-col"><strong>${eur(coste)}</strong></td>
         </tr>`;
       }).join('')}</tbody>
       <tfoot><tr>
@@ -353,7 +354,7 @@ function render(data, yr, mo) {
         <td class="r">${admin.reduce((s,w)=>s+w.dias_falta,0)||'—'}</td>
         <td class="r">${admin.reduce((s,w)=>s+w.horas,0).toFixed(0)} h</td>
         <td></td>
-        <td class="r">${eur(costeAdmin)}</td>
+        <td class="r coste-col">${eur(costeAdmin)}</td>
       </tr></tfoot>
     </table>
   </div>`:''}
@@ -376,8 +377,12 @@ function render(data, yr, mo) {
             ).join(' &nbsp;')}
           </div>
           <div class="client-row">
-            <span><strong>${v.dias}</strong> días · <strong>${v.horas.toFixed(0)}</strong> h</span>
-            <span style="color:#dc2626;font-weight:600;font-size:8.5pt">~${eur(totalCosteCliente)}</span>
+            <span>
+              <strong>${Object.keys(v.workers).length}</strong> trabajador${Object.keys(v.workers).length>1?'es':''} · 
+              <strong>${diasConDatos>1?v.dias+' días':Object.keys(v.workers).length+' d hoy'}</strong> · 
+              <strong>${v.horas.toFixed(0)} h</strong>
+            </span>
+            <span class="coste-col" style="color:#dc2626;font-weight:600;font-size:8.5pt">~${eur(totalCosteCliente)}</span>
           </div>
         </div>`;
       }).join('')}
@@ -437,6 +442,22 @@ function renderCal(data, yr, mo, labDays) {
 
   html+=`</tbody></table>`;
   return html;
+}
+
+// Ocultar/mostrar precios
+let preciosVisibles = true;
+function togglePrecios() {
+  preciosVisibles = !preciosVisibles;
+  const btn = document.getElementById('btn-precios');
+  // Ocultar columnas de precio y coste
+  document.querySelectorAll('.coste-col, .rate-col').forEach(el => {
+    el.style.visibility = preciosVisibles ? 'visible' : 'hidden';
+  });
+  // Ocultar th de coste
+  document.querySelectorAll('.th-coste').forEach(el => {
+    el.style.visibility = preciosVisibles ? 'visible' : 'hidden';
+  });
+  if (btn) btn.textContent = preciosVisibles ? '💰 Ocultar precios' : '💰 Mostrar precios';
 }
 
 load();
