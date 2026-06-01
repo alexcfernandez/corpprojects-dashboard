@@ -19,6 +19,26 @@
   --purple:#a78bfa;--purple-bg:rgba(167,139,250,0.1);
   --r:12px;--rs:8px;
 }
+/* MODO CLARO */
+body.light{
+  --bg:#f0f4f8;--bg2:#ffffff;--bg3:#f8fafc;--bg4:#e8eef5;
+  --border:rgba(0,0,0,0.08);--border2:rgba(0,0,0,0.14);
+  --text:#1a1a2e;--text2:#4a5568;--text3:#718096;
+  --green:#16a34a;--green-bg:rgba(22,163,74,0.08);
+  --red:#dc2626;--red-bg:rgba(220,38,38,0.08);
+  --blue:#2563eb;--blue-bg:rgba(37,99,235,0.08);
+  --amber:#d97706;--amber-bg:rgba(217,119,6,0.08);
+  --purple:#7c3aed;--purple-bg:rgba(124,58,237,0.08);
+}
+body.light .header{background:#ffffff;border-bottom:1px solid rgba(0,0,0,0.1)}
+body.light .nav-btn{color:#4a5568}
+body.light .nav-btn:hover{background:rgba(0,0,0,0.05);color:#1a1a2e}
+body.light .nav-btn.active{color:var(--blue)}
+body.light .card{box-shadow:0 1px 4px rgba(0,0,0,0.08)}
+body.light input,body.light select,body.light textarea{color:#1a1a2e!important}
+body.light .srch{background:#fff;border-color:rgba(0,0,0,0.2);color:#1a1a2e}
+body.light table thead tr{background:#1a1a2e}
+body.light .metric-card{background:#fff}
 body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-size:14px;line-height:1.6;min-height:100vh}
 /* LOGIN */
 #loginScreen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
@@ -180,6 +200,7 @@ select:focus{border-color:var(--blue)}
     <div><div class="logo-text">Corp Projects Holding SL</div><div class="logo-sub">Dashboard en tiempo real</div></div>
   </div>
   <div class="header-right">
+    <button id="theme-toggle" onclick="toggleTheme()" title="Cambiar tema" style="background:none;border:1px solid var(--border2);border-radius:8px;padding:5px 10px;color:var(--text2);cursor:pointer;font-size:14px;margin-right:8px">🌙</button>
     <span style="font-size:11px;color:var(--text3)"><span class="live-dot"></span><span id="lastUpd">Cargando...</span></span>
     <button class="sync-btn" onclick="loadAll()" id="syncBtn">🔄 Actualizar</button>
     <button class="logout-btn" onclick="doLogout()">Salir</button>
@@ -1569,6 +1590,23 @@ function startAutoRefresh(tabId) {
 window.addEventListener('load', () => {
   console.log('[CP] Módulos cargados:', Object.keys(window.CP||{}).join(', '));
 });
+
+// TEMA CLARO/OSCURO
+function toggleTheme() {
+  const isLight = document.body.classList.toggle('light');
+  localStorage.setItem('cp_theme', isLight ? 'light' : 'dark');
+  document.getElementById('theme-toggle').textContent = isLight ? '☀️' : '🌙';
+}
+
+// Aplicar tema guardado al cargar
+const savedTheme = localStorage.getItem('cp_theme');
+if (savedTheme === 'light') {
+  document.body.classList.add('light');
+  document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('theme-toggle');
+    if (btn) btn.textContent = '☀️';
+  });
+}
 
 // INIT
 if(tok){showApp();}else{document.getElementById('loginScreen').style.display='flex';}
