@@ -195,6 +195,7 @@
               ${u.lastLogin?`<div style="font-size:10px;color:var(--text3)">Último acceso: ${new Date(u.lastLogin).toLocaleDateString('es-ES')}</div>`:''}
             </div>
             <div style="display:flex;gap:6px;flex-shrink:0">
+              ${(u.role==='tech'||u.role==='office')?`<button class="btn bgh" style="padding:5px 10px;font-size:11px" onclick="copyWorkerLink('${u._id}','${u.name}')">🔗 Enlace</button>`:''}
               <button class="btn bgh" style="padding:5px 10px;font-size:11px" onclick="CP.Usuarios.editUser('${u._id}')">✏️ Editar</button>
               ${u.active!==false?`<button class="btn bgh" style="padding:5px 10px;font-size:11px;color:var(--red);border-color:var(--red)" onclick="CP.Usuarios.deactivateUser('${u._id}','${u.name}')">⏸️</button>`:''}
             </div>
@@ -302,6 +303,33 @@
       if (btn) { btn.textContent='💾 Crear usuario'; btn.onclick = submitUser; }
     }
   }
+
+  // Copiar enlace directo del trabajador
+  window.copyWorkerLink = function(userId, userName) {
+    const base = location.origin;
+    const url  = `${base}/parte?w=${userId}`;
+    
+    // Copiar al portapapeles
+    navigator.clipboard.writeText(url).then(() => {
+      // Mostrar toast
+      const toast = document.createElement('div');
+      toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--green);color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:99999;animation:fadeIn .2s';
+      toast.textContent = `✅ Enlace de ${userName.split(' ')[0]} copiado`;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 2500);
+    }).catch(() => {
+      // Fallback — mostrar el enlace
+      prompt(`Enlace de ${userName}:`, url);
+    });
+  };
+
+  // También mostrar enlace en la pestaña de accesos
+  window.togglePin = function(wid) {
+    const pins = { jose:'1234', diego:'2345', abdellah:'3456', mamadou:'4567', paula:'5678' };
+    const el = document.getElementById('pin-' + wid);
+    if (!el) return;
+    el.textContent = el.textContent === '••••' ? (pins[wid] || '????') : '••••';
+  };
 
   CP.Usuarios = { render, showTab, loadUsers, editUser, deactivateUser, submitUser, resetForm };
 
