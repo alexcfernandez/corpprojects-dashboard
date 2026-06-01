@@ -218,21 +218,51 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
 <script>
 const WORKER_COLORS = {jose:'#4d9cf8',diego:'#22c487',abdellah:'#f59e0b',mamadou:'#a78bfa',paula:'#f05252'};
-let workerToken = null, workerInfo = null;
+let workerToken = null, workerInfo = null, workerDirect = null;
 let gpsData = { lat: null, lng: null, accuracy: null };
 
 // INIT
 window.onload = async function() {
-  // Preseleccionar trabajador si viene en URL
   const urlW = new URLSearchParams(location.search).get('w');
-  await loadWorkers(urlW);
   
-  // Obtener GPS en segundo plano
+  if (urlW) {
+    // Modo directo — mostrar solo este trabajador, sin selección
+    await loadSingleWorker(urlW);
+  } else {
+    // Modo general — mostrar todos (solo para admin)
+    await loadWorkers(null);
+  }
+  
   getGPS();
-  
-  // Fecha de hoy por defecto
   document.getElementById('f-date').value = new Date().toISOString().slice(0,10);
 };
+
+async function loadSingleWorker(workerId) {
+  const container = document.getElementById('worker-selector');
+  try {
+    const r = await fetch('/api/partes/workers');
+    const workers = await r.json();
+    const worker = workers.find(w => String(w.id) === workerId || w.id === workerId);
+    if (!worker) {
+      // ID no encontrado — mostrar todos
+      await loadWorkers(null);
+      return;
+    }
+    // Mostrar solo este trabajador, ya seleccionado
+    container.innerHTML = `
+      <div class="worker-btn selected" data-id="${worker.id}" 
+        style="grid-column:1/-1;max-width:200px;margin:0 auto;border-color:${worker.color||'#4d9cf8'}">
+        <div class="worker-dot" style="background:${worker.color||'#4d9cf8'}"></div>
+        <div class="worker-name">${worker.name.split(' ')[0]}</div>
+        <div style="font-size:11px;color:var(--text3)">${worker.name.split(' ').slice(1).join(' ')}</div>
+      </div>`;
+    // Auto-seleccionar
+    workerDirect = worker;
+    document.getElementById('pin-input').focus();
+  } catch(e) {
+    await loadWorkers(null);
+  }
+}
 
 async function loadWorkers(preselect) {
   const container = document.getElementById('worker-selector');
@@ -264,7 +294,7 @@ function selectWorker(btn, id) {
 async function doLogin() {
   const selectedBtn = document.querySelector('.worker-btn.selected');
   if (!selectedBtn) { showMsg('login-msg', '⚠️ Selecciona tu nombre', 'warn'); return; }
-  const workerId = selectedBtn.dataset.id;
+  const workerId = workerDirect ? String(workerDirect.id) : selectedBtn.dataset.id;
   const pin = document.getElementById('pin-input').value;
   if (pin.length < 4) return;
 
