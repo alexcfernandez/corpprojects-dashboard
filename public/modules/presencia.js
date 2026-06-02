@@ -501,7 +501,7 @@
             <td style="text-align:right;color:var(--green)">${w.dias_obra}</td>
             <td style="text-align:right;color:${w.dias_falta > 0 ? 'var(--red)' : 'var(--text2)'}">${w.dias_falta}</td>
             <td style="text-align:right">${w.horas.toFixed(0)} h</td>
-            <td style="text-align:right;color:var(--red)">${eur(w.horas * (wd?.rate || 0))}</td>
+            <td style="text-align:right;color:var(--red)">${eur(w.horas * (RATES_BY_NAME[w.name?.toLowerCase()] || 15))}</td>
           </tr>`;
         }).join('')}</tbody></table>`;
 
