@@ -290,6 +290,7 @@
           title="${est ? est.label + (entry.clientName ? ' — ' + entry.clientName : '') : weekend ? 'Fin de semana' : 'Sin registrar'}">
           <div style="font-size:12px;line-height:1">${est ? est.emoji : ''}</div>
           <div style="font-size:7px;color:var(--text3);overflow:hidden;max-width:100%;white-space:nowrap;text-overflow:ellipsis;padding:0 2px">${entry?.clientName ? entry.clientName.slice(0, 8) : ''}</div>
+          ${entry?.tieneParte ? '<div style="font-size:8px;line-height:1">📋</div>' : ''}
         </div>`;
       });
     });
@@ -359,6 +360,17 @@
           <datalist id="p-clients-datalist"></datalist>
         </div>
 
+        <!-- Checkbox parte -->
+        <div style="margin-bottom:12px">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px 14px">
+            <input type="checkbox" id="p-tiene-parte" ${entry?.tieneParte?'checked':''} style="width:18px;height:18px;cursor:pointer;accent-color:var(--blue)">
+            <div>
+              <div style="font-size:13px;font-weight:600">📋 Tiene parte de trabajo</div>
+              <div style="font-size:11px;color:var(--text3);margin-top:1px">El trabajador ha subido o subirá un parte para este día</div>
+            </div>
+          </label>
+        </div>
+
         <div style="display:flex;gap:10px;margin-bottom:14px">
           <div style="flex:1">
             <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">Horas</div>
@@ -421,13 +433,14 @@
       return;
     }
     const entry = {
-      workerId:   modalWorker,
-      workerName: WORKERS.find(w => w.id === modalWorker)?.name || '',
-      date:       modalDate,
-      estado:     selectedEstado,
-      clientName: selectedEstado === 'obra' ? (document.getElementById('p-client-name')?.value?.trim() || '') : '',
-      horas:      parseFloat(document.getElementById('p-horas')?.value || 8),
-      notas:      document.getElementById('p-notas')?.value?.trim() || '',
+      workerId:    modalWorker,
+      workerName:  WORKERS.find(w => w.id === modalWorker)?.name || '',
+      date:        modalDate,
+      estado:      selectedEstado,
+      clientName:  selectedEstado === 'obra' ? (document.getElementById('p-client-name')?.value?.trim() || '') : '',
+      horas:       parseFloat(document.getElementById('p-horas')?.value || 8),
+      notas:       document.getElementById('p-notas')?.value?.trim() || '',
+      tieneParte:  document.getElementById('p-tiene-parte')?.checked || false,
     };
 
     const msg = document.getElementById('p-modal-msg');
