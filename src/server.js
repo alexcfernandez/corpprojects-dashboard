@@ -421,6 +421,11 @@ app.post('/api/partes', uploadMemory.any(), async (req, res) => {
       workerInfo = { workerId: bodyData.workerId || 'admin', workerName: bodyData.workerName || worker?.name || 'Admin', role: 'admin', ip: req.ip, userAgent: req.headers['user-agent'] };
     }
 
+    // Log para debug
+    console.log('[Partes] Files recibidos:', req.files?.length || 0);
+    console.log('[Partes] Content-Type:', req.headers['content-type']?.slice(0,50));
+    console.log('[Partes] Body keys:', Object.keys(req.body||{}));
+
     // Parsear datos — puede venir como JSON o dentro de FormData
     const bodyData = req.body.data ? JSON.parse(req.body.data) : req.body;
 
