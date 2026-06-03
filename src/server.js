@@ -16,6 +16,35 @@ const {
 const { sendWhatsApp, sendEmail } = require('./notifications');
 const { startScheduler, checkPendingInvoices, runDailySummary } = require('./scheduler');
 
+// ===== OAUTH GMAIL - TEMPORAL PARA OBTENER REFRESH TOKEN =====
+const { google } = require('googleapis');
+const oauth2Client = new google.auth.OAuth2(
+  process.env.GMAIL_CLIENT_ID,
+  process.env.GMAIL_CLIENT_SECRET,
+  process.env.GMAIL_REDIRECT_URI
+);
+app.get('/auth/google', (req, res) => {
+  const url = oauth2Client.generateAuthUrl({
+    access_type: 'offline',
+    prompt: 'consent',
+    scope: [
+      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/gmail.modify'
+    ]
+  });
+  res.redirect(url);
+});
+app.get('/auth/google/callback', async (req, res) => {
+  try {
+    const { code } = req.query;
+    const { tokens } = await oauth2Client.getToken(code);
+    res.json(tokens);
+  } catch (err) {
+    res.json({ error: err.message });
+  }
+});
+// ===== FIN TEMPORAL =====
+
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
