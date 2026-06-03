@@ -545,8 +545,10 @@ async function submitParte() {
     formData.append('data', JSON.stringify(parteData));
 
     // Añadir fotos de trabajo
+    console.log('[Parte] Fotos trabajo:', photoStore.work.length, 'albaranes:', photoStore.albaran.length);
     photoStore.work.forEach((file, i) => {
       formData.append(`foto_trabajo_${i}`, file, `trabajo_${i}.jpg`);
+      console.log('[Parte] Añadida foto trabajo', i, file.size, 'bytes');
     });
 
     // Añadir fotos de albaranes
