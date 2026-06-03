@@ -84,14 +84,15 @@ async function createParte(data, workerInfo) {
     
     // Metadatos de control (solo admin puede ver)
     _meta: {
-      submittedAt:  new Date(),         // fecha/hora real de envío (siempre)
-      submittedBy:  workerInfo.role,    // 'worker' o 'admin'
+      submittedAt:  new Date(),
+      submittedBy:  workerInfo.role,
       ipAddress:    workerInfo.ip || '',
       gpsLat:       data.gpsLat || null,
       gpsLng:       data.gpsLng || null,
       gpsAccuracy:  data.gpsAccuracy || null,
       userAgent:    workerInfo.userAgent || '',
-      photoUrls:    data.photoUrls || [],
+      fotosTrabajo: data.fotosTrabajo || [],
+      fotosAlbaran: data.fotosAlbaran || [],
     },
     
     // Control de admin
