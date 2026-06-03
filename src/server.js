@@ -35,6 +35,12 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 
+// Memoria para fotos de partes → base64 → MongoDB
+const uploadMemory = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 15 }
+});
+
 app.use(express.static(path.join(__dirname, '../public')));
 
 const limiter = rateLimit({ windowMs: 15*60*1000, max: 300, message: { error: 'Rate limit.' } });
@@ -396,7 +402,7 @@ app.get('/api/partes/workers', async (req, res) => {
 });
 
 // Crear parte — worker autenticado o admin (acepta JSON y FormData con fotos)
-app.post('/api/partes', upload.any(), async (req, res) => {
+app.post('/api/partes', uploadMemory.any(), async (req, res) => {
   try {
     const authHeader = req.headers.authorization || '';
     let workerInfo;
