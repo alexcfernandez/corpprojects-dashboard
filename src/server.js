@@ -395,29 +395,45 @@ app.get('/api/partes/workers', async (req, res) => {
   }
 });
 
-// Crear parte — worker autenticado o admin
-app.post('/api/partes', async (req, res) => {
+// Crear parte — worker autenticado o admin (acepta JSON y FormData con fotos)
+app.post('/api/partes', upload.any(), async (req, res) => {
   try {
     const authHeader = req.headers.authorization || '';
     let workerInfo;
 
     if (authHeader.startsWith('Bearer w_')) {
-      // Token de trabajador
       const token = authHeader.replace('Bearer ', '');
       const workerDoc = await partes.verifyWorkerToken(token);
       if (!workerDoc) return res.status(401).json({ error: 'Token expirado' });
       workerInfo = { workerId: workerDoc.workerId, workerName: workerDoc.workerName, role: 'worker', ip: req.ip, userAgent: req.headers['user-agent'] };
     } else {
-      // Admin autenticado con JWT normal
       const token = authHeader.replace('Bearer ', '');
       const jwt = require('jsonwebtoken');
       jwt.verify(token, process.env.JWT_SECRET || 'fallback');
-      const { workerId, workerName } = req.body;
-      const worker = partes.WORKERS.find(w => w.id === workerId);
-      workerInfo = { workerId: workerId || 'admin', workerName: workerName || worker?.name || 'Admin', role: 'admin', ip: req.ip, userAgent: req.headers['user-agent'] };
+      const bodyData = req.body.data ? JSON.parse(req.body.data) : req.body;
+      const worker = partes.WORKERS.find(w => w.id === bodyData.workerId);
+      workerInfo = { workerId: bodyData.workerId || 'admin', workerName: bodyData.workerName || worker?.name || 'Admin', role: 'admin', ip: req.ip, userAgent: req.headers['user-agent'] };
     }
 
-    const parte = await partes.createParte(req.body, workerInfo);
+    // Parsear datos — puede venir como JSON o dentro de FormData
+    const bodyData = req.body.data ? JSON.parse(req.body.data) : req.body;
+
+    // Procesar fotos subidas
+    const fotosTrabajo  = [];
+    const fotosAlbaran  = [];
+    if (req.files && req.files.length > 0) {
+      req.files.forEach(f => {
+        // Convertir buffer a base64 data URL
+        const b64 = `data:${f.mimetype};base64,${f.buffer.toString('base64')}`;
+        if (f.fieldname.startsWith('foto_trabajo')) fotosTrabajo.push(b64);
+        if (f.fieldname.startsWith('foto_albaran')) fotosAlbaran.push(b64);
+      });
+    }
+
+    bodyData.fotosTrabajo = fotosTrabajo;
+    bodyData.fotosAlbaran = fotosAlbaran;
+
+    const parte = await partes.createParte(bodyData, workerInfo);
     res.json({ ok: true, id: parte.id });
   } catch (err) {
     console.error('[Partes] Error create:', err.message);
