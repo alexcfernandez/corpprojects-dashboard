@@ -534,20 +534,38 @@ async function submitParte() {
   btn.innerHTML = '<span class="spinner"></span>Enviando...';
 
   try {
-    const body = {
+    // Usar FormData para poder enviar fotos
+    const formData = new FormData();
+    
+    // Datos del parte
+    const parteData = {
       ...workerInfo, date, clientName, description, horas, notas, materiales,
       gpsLat: gpsData.lat, gpsLng: gpsData.lng, gpsAccuracy: gpsData.accuracy,
     };
+    formData.append('data', JSON.stringify(parteData));
+
+    // Añadir fotos de trabajo
+    photoStore.work.forEach((file, i) => {
+      formData.append(`foto_trabajo_${i}`, file, `trabajo_${i}.jpg`);
+    });
+
+    // Añadir fotos de albaranes
+    photoStore.albaran.forEach((file, i) => {
+      formData.append(`foto_albaran_${i}`, file, `albaran_${i}.jpg`);
+    });
+
     const r = await fetch('/api/partes', {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${workerToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      headers: { 'Authorization': `Bearer ${workerToken}` },
+      // Sin Content-Type — el navegador lo pone automático con boundary para FormData
+      body: formData
     });
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || 'Error al enviar');
 
+    const nFotos = photoStore.work.length + photoStore.albaran.length;
     document.getElementById('success-text').textContent = 
-      `Parte de ${workerInfo.workerName} para "${clientName}" registrado el ${new Date().toLocaleString('es-ES')}.`;
+      `Parte de ${workerInfo.workerName} para "${clientName}" registrado${nFotos>0?' con '+nFotos+' foto'+(nFotos>1?'s':''):''}.`;
     showPage('success');
     resetForm();
   } catch(err) {
