@@ -8,6 +8,7 @@ const jwt       = require('jsonwebtoken');
 const path      = require('path');
 const multer    = require('multer');
 const fs        = require('fs');
+const { google } = require('googleapis');
 
 const {
   getSummary, getPendingInvoices, getInvoices, getClients,
@@ -15,35 +16,6 @@ const {
 } = require('./stelorder');
 const { sendWhatsApp, sendEmail } = require('./notifications');
 const { startScheduler, checkPendingInvoices, runDailySummary } = require('./scheduler');
-
-// ===== OAUTH GMAIL - TEMPORAL PARA OBTENER REFRESH TOKEN =====
-const { google } = require('googleapis');
-const oauth2Client = new google.auth.OAuth2(
-  process.env.GMAIL_CLIENT_ID,
-  process.env.GMAIL_CLIENT_SECRET,
-  process.env.GMAIL_REDIRECT_URI
-);
-app.get('/auth/google', (req, res) => {
-  const url = oauth2Client.generateAuthUrl({
-    access_type: 'offline',
-    prompt: 'consent',
-    scope: [
-      'https://www.googleapis.com/auth/gmail.readonly',
-      'https://www.googleapis.com/auth/gmail.modify'
-    ]
-  });
-  res.redirect(url);
-});
-app.get('/auth/google/callback', async (req, res) => {
-  try {
-    const { code } = req.query;
-    const { tokens } = await oauth2Client.getToken(code);
-    res.json(tokens);
-  } catch (err) {
-    res.json({ error: err.message });
-  }
-});
-// ===== FIN TEMPORAL =====
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -82,6 +54,36 @@ function requireAuth(req, res, next) {
   try { req.user = jwt.verify(token, process.env.JWT_SECRET || 'fallback'); next(); }
   catch { return res.status(401).json({ error: 'Token inválido' }); }
 }
+
+// ===== OAUTH GMAIL - TEMPORAL PARA OBTENER REFRESH TOKEN =====
+const oauth2Client = new google.auth.OAuth2(
+  process.env.GMAIL_CLIENT_ID,
+  process.env.GMAIL_CLIENT_SECRET,
+  process.env.GMAIL_REDIRECT_URI
+);
+
+app.get('/auth/google', (req, res) => {
+  const url = oauth2Client.generateAuthUrl({
+    access_type: 'offline',
+    prompt: 'consent',
+    scope: [
+      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/gmail.modify'
+    ]
+  });
+  res.redirect(url);
+});
+
+app.get('/auth/google/callback', async (req, res) => {
+  try {
+    const { code } = req.query;
+    const { tokens } = await oauth2Client.getToken(code);
+    res.json(tokens);
+  } catch (err) {
+    res.json({ error: err.message });
+  }
+});
+// ===== FIN TEMPORAL =====
 
 // ── Públicas ──────────────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({
@@ -158,7 +160,6 @@ app.get('/api/estados', requireAuth, (req, res) => {
   res.json(attendance.ESTADOS);
 });
 
-// Guardar entrada de presencia
 app.post('/api/attendance', requireAuth, async (req, res) => {
   try {
     const result = await attendance.saveAttendance(req.body);
@@ -169,7 +170,6 @@ app.post('/api/attendance', requireAuth, async (req, res) => {
   }
 });
 
-// Borrar entrada
 app.delete('/api/attendance/:workerId/:date', requireAuth, async (req, res) => {
   try {
     await attendance.deleteAttendance(req.params.workerId, req.params.date);
@@ -179,7 +179,6 @@ app.delete('/api/attendance/:workerId/:date', requireAuth, async (req, res) => {
   }
 });
 
-// Listar entradas con filtros
 app.get('/api/attendance', requireAuth, async (req, res) => {
   try {
     const { workerId, from, to, clientName } = req.query;
@@ -190,7 +189,6 @@ app.get('/api/attendance', requireAuth, async (req, res) => {
   }
 });
 
-// Resumen mensual
 app.get('/api/attendance/summary/:year/:month', requireAuth, async (req, res) => {
   try {
     const data = await attendance.getMonthlySummary(
@@ -202,7 +200,6 @@ app.get('/api/attendance/summary/:year/:month', requireAuth, async (req, res) =>
   }
 });
 
-// Extracto por cliente
 app.get('/api/attendance/client', requireAuth, async (req, res) => {
   try {
     const { clientName, from, to } = req.query;
@@ -214,14 +211,11 @@ app.get('/api/attendance/client', requireAuth, async (req, res) => {
 });
 
 
-
 // ── GESTIÓN DE USUARIOS ───────────────────────────────────────────
 const users = require('./users');
 
-// Inicializar usuarios por defecto al arrancar
 users.initDefaultUsers().catch(err => console.error('[Users] Error init:', err.message));
 
-// Login con PIN (público)
 app.post('/api/users/login', async (req, res) => {
   try {
     const { pin } = req.body;
@@ -233,25 +227,21 @@ app.post('/api/users/login', async (req, res) => {
   }
 });
 
-// Logout
 app.post('/api/users/logout', async (req, res) => {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (token) await users.logout(token).catch(() => {});
   res.json({ ok: true });
 });
 
-// Verificar token de usuario (para el dashboard de oficina)
 app.get('/api/users/me', async (req, res) => {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) return res.status(401).json({ error: 'No autorizado' });
   try {
-    // Token de admin (JWT)
     if (!token.startsWith('u_')) {
       const jwt = require('jsonwebtoken');
       jwt.verify(token, process.env.JWT_SECRET || 'fallback');
       return res.json({ role: 'admin', userName: 'Admin' });
     }
-    // Token de usuario (PIN)
     const session = await users.verifyUserToken(token);
     if (!session) return res.status(401).json({ error: 'Sesión expirada' });
     res.json({ role: session.userRole, userName: session.userName, userId: session.userId });
@@ -260,11 +250,9 @@ app.get('/api/users/me', async (req, res) => {
   }
 });
 
-// CRUD usuarios (solo admin)
 app.get('/api/users', requireAuth, async (req, res) => {
   try {
     const list = await users.getUsers(true);
-    // No devolver PINs en la lista general
     res.json(list.map(u => ({ ...u, pin: '••••' })));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -275,7 +263,7 @@ app.get('/api/users/:id', requireAuth, async (req, res) => {
   try {
     const u = await users.getUser(req.params.id);
     if (!u) return res.status(404).json({ error: 'Usuario no encontrado' });
-    res.json(u); // Admin ve el PIN
+    res.json(u);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -362,29 +350,19 @@ app.put('/api/obras/:id', requireAuth, async (req, res) => {
 // ── PARTES DE TRABAJO ─────────────────────────────────────────────
 const partes = require('./partes');
 
-// Login trabajador — busca por ID de MongoDB o ID legacy
 app.post('/api/partes/worker-login', async (req, res) => {
   try {
     const { workerId, pin } = req.body;
-    
-    // Intentar login por MongoDB primero
     const { getUsers } = require('./users');
     const allUsers = await getUsers(false);
-    
-    // Buscar por _id de MongoDB o por id legacy
-    const user = allUsers.find(u => 
+    const user = allUsers.find(u =>
       String(u._id) === workerId || u.id === workerId
     );
-    
     if (user && user.pin === pin) {
-      // Usuario encontrado en MongoDB
       const { MongoClient } = require('mongodb');
       const crypto = require('crypto');
       const token = `w_${crypto.randomBytes(16).toString('hex')}`;
-      const { MongoClient: MC } = require('mongodb');
-      
-      // Guardar token en worker_tokens
-      const client = new MC(process.env.MONGODB_URI);
+      const client = new MongoClient(process.env.MONGODB_URI);
       await client.connect();
       const db = client.db('corpprojects');
       await db.collection('worker_tokens').insertOne({
@@ -396,11 +374,8 @@ app.post('/api/partes/worker-login', async (req, res) => {
         expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000)
       });
       await client.close();
-      
       return res.json({ token, workerId: String(user._id), workerName: user.name });
     }
-    
-    // Fallback a login legacy (PINs hardcodeados)
     const result = await partes.workerLogin(workerId, pin);
     res.json(result);
   } catch (err) {
@@ -408,11 +383,10 @@ app.post('/api/partes/worker-login', async (req, res) => {
   }
 });
 
-// Lista de workers para el formulario de login — desde MongoDB
 app.get('/api/partes/workers', async (req, res) => {
   try {
     const { getUsers } = require('./users');
-    const allUsers = await getUsers(false); // solo activos
+    const allUsers = await getUsers(false);
     const techs = allUsers.filter(u => u.role === 'tech' || u.role === 'office');
     if (techs.length > 0) {
       res.json(techs.map(u => ({
@@ -422,7 +396,6 @@ app.get('/api/partes/workers', async (req, res) => {
         role: u.role
       })));
     } else {
-      // Fallback a lista hardcodeada si MongoDB no tiene usuarios aún
       res.json(partes.WORKERS.map(w => ({ id: w.id, name: w.name, color: '#4d9cf8' })));
     }
   } catch(err) {
@@ -430,7 +403,6 @@ app.get('/api/partes/workers', async (req, res) => {
   }
 });
 
-// Crear parte — worker autenticado o admin (acepta JSON y FormData con fotos)
 app.post('/api/partes', uploadMemory.any(), async (req, res) => {
   try {
     const authHeader = req.headers.authorization || '';
@@ -443,27 +415,22 @@ app.post('/api/partes', uploadMemory.any(), async (req, res) => {
       workerInfo = { workerId: workerDoc.workerId, workerName: workerDoc.workerName, role: 'worker', ip: req.ip, userAgent: req.headers['user-agent'] };
     } else {
       const token = authHeader.replace('Bearer ', '');
-      const jwt = require('jsonwebtoken');
       jwt.verify(token, process.env.JWT_SECRET || 'fallback');
       const bodyData = req.body.data ? JSON.parse(req.body.data) : req.body;
       const worker = partes.WORKERS.find(w => w.id === bodyData.workerId);
       workerInfo = { workerId: bodyData.workerId || 'admin', workerName: bodyData.workerName || worker?.name || 'Admin', role: 'admin', ip: req.ip, userAgent: req.headers['user-agent'] };
     }
 
-    // Log para debug
     console.log('[Partes] Files recibidos:', req.files?.length || 0);
     console.log('[Partes] Content-Type:', req.headers['content-type']?.slice(0,50));
     console.log('[Partes] Body keys:', Object.keys(req.body||{}));
 
-    // Parsear datos — puede venir como JSON o dentro de FormData
     const bodyData = req.body.data ? JSON.parse(req.body.data) : req.body;
 
-    // Procesar fotos subidas
     const fotosTrabajo  = [];
     const fotosAlbaran  = [];
     if (req.files && req.files.length > 0) {
       req.files.forEach(f => {
-        // Convertir buffer a base64 data URL
         const b64 = `data:${f.mimetype};base64,${f.buffer.toString('base64')}`;
         if (f.fieldname.startsWith('foto_trabajo')) fotosTrabajo.push(b64);
         if (f.fieldname.startsWith('foto_albaran')) fotosAlbaran.push(b64);
@@ -481,7 +448,6 @@ app.post('/api/partes', uploadMemory.any(), async (req, res) => {
   }
 });
 
-// Listar partes (solo admin)
 app.get('/api/partes', requireAuth, async (req, res) => {
   try {
     const { workerId, clientName, status, from, to, limit, skip } = req.query;
@@ -492,7 +458,6 @@ app.get('/api/partes', requireAuth, async (req, res) => {
   }
 });
 
-// Ver parte individual con metadatos (solo admin)
 app.get('/api/partes/:id', requireAuth, async (req, res) => {
   try {
     const data = await partes.getParte(req.params.id);
@@ -502,7 +467,6 @@ app.get('/api/partes/:id', requireAuth, async (req, res) => {
   }
 });
 
-// Actualizar parte (solo admin)
 app.put('/api/partes/:id', requireAuth, async (req, res) => {
   try {
     await partes.updateParte(req.params.id, req.body, 'admin');
@@ -512,7 +476,6 @@ app.put('/api/partes/:id', requireAuth, async (req, res) => {
   }
 });
 
-// Eliminar parte (solo admin)
 app.delete('/api/partes/:id', requireAuth, async (req, res) => {
   try {
     const { MongoClient, ObjectId } = require('mongodb');
@@ -528,7 +491,6 @@ app.delete('/api/partes/:id', requireAuth, async (req, res) => {
   }
 });
 
-// Resumen para facturación (solo admin)
 app.get('/api/partes/resumen/facturacion', requireAuth, async (req, res) => {
   try {
     const { from, to, clientName } = req.query;
@@ -539,28 +501,20 @@ app.get('/api/partes/resumen/facturacion', requireAuth, async (req, res) => {
   }
 });
 
-// Endpoint de clientes para autocompletado (accesible con cualquier token válido)
 app.get('/api/clients/list', async (req, res) => {
   try {
     const authHeader = req.headers.authorization || '';
     const token = authHeader.replace('Bearer ', '');
-    
-    // Verificar token (admin JWT o worker token)
     let valid = false;
     if (token.startsWith('w_') || token.startsWith('u_')) {
-      // Token de trabajador o usuario — verificar en DB
       const { verifyWorkerToken } = require('./partes');
       const { verifyUserToken } = require('./users');
       const w = token.startsWith('w_') ? await verifyWorkerToken(token) : await verifyUserToken(token);
       valid = !!w;
     } else {
-      // Token admin JWT
-      try { const jwt = require('jsonwebtoken'); jwt.verify(token, process.env.JWT_SECRET||'fallback'); valid = true; } catch(e) {}
+      try { jwt.verify(token, process.env.JWT_SECRET||'fallback'); valid = true; } catch(e) {}
     }
-    
     if (!valid) return res.status(401).json({ error: 'No autorizado' });
-    
-    // Obtener clientes de StelOrder (ya cacheados en memoria)
     const { getClients } = require('./stelorder');
     const { clients } = await getClients();
     const names = [...new Set(clients.map(c => c['legal-name']||c['fiscal-name']||'').filter(n=>n))].sort();
@@ -571,12 +525,9 @@ app.get('/api/clients/list', async (req, res) => {
   }
 });
 
-// Ruta para el informe de presencia
+// ── Rutas HTML ────────────────────────────────────────────────────
 app.get('/informe-presencia', (req, res) => res.sendFile(path.join(__dirname, '../public/informe-presencia.html')));
-
-// Ruta específica para el formulario de trabajadores
 app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
-
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
 
 app.listen(PORT, () => {
