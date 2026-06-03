@@ -399,6 +399,31 @@
               </table>` : ''}
           </div>
 
+          <!-- FOTOS -->
+          ${(p._meta?.fotosTrabajo?.length || p._meta?.fotosAlbaran?.length) ? `
+          <div style="margin-bottom:12px">
+            ${p._meta.fotosTrabajo?.length ? `
+              <div style="font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:600;margin-bottom:6px">📸 Fotos del trabajo (${p._meta.fotosTrabajo.length})</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;margin-bottom:10px">
+                ${p._meta.fotosTrabajo.map((src,i) => `
+                  <img src="${src}" onclick="window.open('${src}','_blank')" 
+                    style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer;transition:opacity .15s"
+                    onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'"
+                    title="Ver foto completa">
+                `).join('')}
+              </div>` : ''}
+            ${p._meta.fotosAlbaran?.length ? `
+              <div style="font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:600;margin-bottom:6px">🧾 Fotos de albaranes (${p._meta.fotosAlbaran.length})</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px">
+                ${p._meta.fotosAlbaran.map((src,i) => `
+                  <img src="${src}" onclick="window.open('${src}','_blank')"
+                    style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer;transition:opacity .15s"
+                    onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'"
+                    title="Ver albarán completo">
+                `).join('')}
+              </div>` : ''}
+          </div>` : '<div style="font-size:11px;color:var(--text3);padding:8px 0;margin-bottom:8px">Sin fotos adjuntas</div>'}
+
           <!-- METADATOS ADMIN -->
           <div style="background:rgba(77,156,248,.06);border:1px solid rgba(77,156,248,.2);border-radius:var(--rs);padding:14px;margin-bottom:12px">
             <div style="font-size:10px;color:var(--blue);text-transform:uppercase;margin-bottom:8px;font-weight:600">🔒 Datos de control (solo admin)</div>
