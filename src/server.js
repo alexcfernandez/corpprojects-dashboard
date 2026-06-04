@@ -525,6 +525,197 @@ app.get('/api/clients/list', async (req, res) => {
   }
 });
 
+// ── EMAILS INTELIGENTES ───────────────────────────────────────────
+const { pollEmails, enviarRespuesta } = require('./email-intelligence');
+
+// Listar emails con filtros
+app.get('/api/emails', requireAuth, async (req, res) => {
+  try {
+    const { MongoClient } = require('mongodb');
+    const client = new MongoClient(process.env.MONGODB_URI);
+    await client.connect();
+    const db = client.db('corpprojects');
+    const { categoria, estado, urgencia, limit = 50, skip = 0 } = req.query;
+    const filtro = {};
+    if (categoria && categoria !== 'TODOS') filtro.categoria = categoria;
+    if (estado && estado !== 'TODOS') filtro.estado = estado;
+    if (urgencia && urgencia !== 'TODOS') filtro.urgencia = urgencia;
+    const emails = await db.collection('emails')
+      .find(filtro)
+      .sort({ fecha: -1 })
+      .skip(parseInt(skip))
+      .limit(parseInt(limit))
+      .toArray();
+    const total = await db.collection('emails').countDocuments(filtro);
+    const pendientes = await db.collection('emails').countDocuments({ estado: 'PENDIENTE' });
+    const noLeidos = await db.collection('emails').countDocuments({ leido: false });
+    await client.close();
+    res.json({ emails, total, pendientes, noLeidos });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Marcar como leído
+app.put('/api/emails/:id/read', requireAuth, async (req, res) => {
+  try {
+    const { MongoClient, ObjectId } = require('mongodb');
+    const client = new MongoClient(process.env.MONGODB_URI);
+    await client.connect();
+    const db = client.db('corpprojects');
+    await db.collection('emails').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { leido: true } }
+    );
+    await client.close();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Archivar email
+app.put('/api/emails/:id/archive', requireAuth, async (req, res) => {
+  try {
+    const { MongoClient, ObjectId } = require('mongodb');
+    const client = new MongoClient(process.env.MONGODB_URI);
+    await client.connect();
+    const db = client.db('corpprojects');
+    await db.collection('emails').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { estado: 'ARCHIVADO', leido: true } }
+    );
+    await client.close();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Añadir nota a un email
+app.put('/api/emails/:id/nota', requireAuth, async (req, res) => {
+  try {
+    const { MongoClient, ObjectId } = require('mongodb');
+    const client = new MongoClient(process.env.MONGODB_URI);
+    await client.connect();
+    const db = client.db('corpprojects');
+    await db.collection('emails').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { notas: req.body.notas } }
+    );
+    await client.close();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Ejecutar acción sobre un email
+app.post('/api/emails/:id/action', requireAuth, async (req, res) => {
+  try {
+    const { MongoClient, ObjectId } = require('mongodb');
+    const client = new MongoClient(process.env.MONGODB_URI);
+    await client.connect();
+    const db = client.db('corpprojects');
+    const email = await db.collection('emails').findOne({ _id: new ObjectId(req.params.id) });
+    if (!email) { await client.close(); return res.status(404).json({ error: 'Email no encontrado' }); }
+
+    const { accion, datos } = req.body;
+    let stelOrderRef = null;
+    let mensajeRespuesta = null;
+
+    // ── Crear incidencia en StelOrder ──────────────────────────────
+    if (accion === 'CREAR_INCIDENCIA') {
+      const body = {
+        description: datos?.descripcion || email.resumen,
+        priority: email.urgencia === 'ALTA' ? 'HIGH' : email.urgencia === 'MEDIA' ? 'NORMAL' : 'LOW'
+      };
+      if (email.remitente?.id) body['account-id'] = email.remitente.id;
+      const r = await fetch('https://app.stelorder.com/app/incidents', {
+        method: 'POST',
+        headers: { 'APIKEY': process.env.STELORDER_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const inc = await r.json();
+      stelOrderRef = `INC — ID: ${inc.id || 'creada'}`;
+      mensajeRespuesta = `Hola,\n\nHemos recibido tu solicitud y hemos abierto una incidencia en nuestro sistema.\n\nReferencia: ${inc['full-reference'] || stelOrderRef}\n\nUno de nuestros operarios se encargará en breve. Te mantendremos informado.\n\nCorp Projects`;
+    }
+
+    // ── Crear presupuesto en StelOrder ─────────────────────────────
+    if (accion === 'CREAR_PRESUPUESTO') {
+      const body = {
+        title: datos?.titulo || email.asunto,
+        comments: datos?.comentarios || email.resumen
+      };
+      if (email.remitente?.id) body['account-id'] = email.remitente.id;
+      if (body['account-id']) {
+        const r = await fetch('https://app.stelorder.com/app/workEstimates', {
+          method: 'POST',
+          headers: { 'APIKEY': process.env.STELORDER_API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const est = await r.json();
+        stelOrderRef = `Presupuesto — ID: ${est.id || 'creado'}`;
+        mensajeRespuesta = `Hola,\n\nHemos recibido tu solicitud de presupuesto.\n\nEstamos preparando una propuesta y nos pondremos en contacto contigo en breve.\n\nCorp Projects`;
+      } else {
+        stelOrderRef = 'Presupuesto pendiente — sin cliente vinculado';
+        mensajeRespuesta = `Hola,\n\nHemos recibido tu solicitud de presupuesto y nos pondremos en contacto contigo en breve.\n\nCorp Projects`;
+      }
+    }
+
+    // ── Enviar respuesta al remitente ──────────────────────────────
+    if (mensajeRespuesta && datos?.enviarRespuesta !== false) {
+      const emailDe = email.de.match(/<(.+)>/)?.[1] || email.de;
+      await enviarRespuesta(emailDe, email.asunto, mensajeRespuesta);
+    }
+
+    // ── Actualizar estado en MongoDB ───────────────────────────────
+    await db.collection('emails').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: {
+        estado: 'GESTIONADO',
+        leido: true,
+        accionRealizada: accion,
+        stelOrderRef,
+        gestionadoEn: new Date()
+      }}
+    );
+
+    await client.close();
+    res.json({ ok: true, stelOrderRef, mensajeRespuesta });
+  } catch (err) {
+    console.error('[Emails] Error acción:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Forzar poll manual de emails
+app.post('/api/emails/poll', requireAuth, async (req, res) => {
+  try {
+    pollEmails().catch(err => console.error('[Emails] Error poll manual:', err.message));
+    res.json({ message: 'Poll iniciado' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Stats para badge en menú
+app.get('/api/emails/stats', requireAuth, async (req, res) => {
+  try {
+    const { MongoClient } = require('mongodb');
+    const client = new MongoClient(process.env.MONGODB_URI);
+    await client.connect();
+    const db = client.db('corpprojects');
+    const pendientes = await db.collection('emails').countDocuments({ estado: 'PENDIENTE' });
+    const noLeidos = await db.collection('emails').countDocuments({ leido: false });
+    const urgentes = await db.collection('emails').countDocuments({ estado: 'PENDIENTE', urgencia: 'ALTA' });
+    await client.close();
+    res.json({ pendientes, noLeidos, urgentes });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Rutas HTML ────────────────────────────────────────────────────
 app.get('/informe-presencia', (req, res) => res.sendFile(path.join(__dirname, '../public/informe-presencia.html')));
 app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
