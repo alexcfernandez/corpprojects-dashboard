@@ -130,7 +130,10 @@ async function abrirEmail(id) {
 
 function cerrarDetalle() {
   emailsState.emailAbierto = null;
+  const overlay = document.getElementById('email-detalle-overlay');
+  if (overlay) overlay.remove();
   renderEmails();
+}
 }
 
 // ── Render lista emails ───────────────────────────────────────────
