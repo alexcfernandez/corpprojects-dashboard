@@ -10,9 +10,7 @@ function getGmailClient() {
     process.env.GMAIL_CLIENT_SECRET,
     process.env.GMAIL_REDIRECT_URI
   );
-  oauth2Client.setCredentials({
-    refresh_token: process.env.GMAIL_REFRESH_TOKEN
-  });
+  oauth2Client.setCredentials({ refresh_token: process.env.GMAIL_REFRESH_TOKEN });
   return google.gmail({ version: 'v1', auth: oauth2Client });
 }
 
@@ -28,26 +26,83 @@ function decodeBase64(data) {
   return Buffer.from(data.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8');
 }
 
+// ── Limpiar HTML y URLs del cuerpo ────────────────────────────────
+function limpiarCuerpo(texto) {
+  return texto
+    // Quitar URLs largas (tracking, redirects, etc.)
+    .replace(/https?:\/\/\S{60,}/g, '[enlace]')
+    .replace(/https?:\/\/\S+/g, (url) => {
+      // Conservar URLs cortas legibles
+      try {
+        const u = new URL(url);
+        return u.hostname.replace('www.', '');
+      } catch { return '[enlace]'; }
+    })
+    // Quitar HTML residual
+    .replace(/<[^>]+>/g, ' ')
+    // Quitar caracteres raros de encoding
+    .replace(/=\w{2}/g, '')
+    .replace(/\r\n/g, '\n')
+    // Reducir espacios múltiples
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 // ── Extraer texto del mensaje ─────────────────────────────────────
 function extractBody(payload) {
   if (!payload) return '';
-  if (payload.body?.data) return decodeBase64(payload.body.data);
-  if (payload.parts) {
-    for (const part of payload.parts) {
-      if (part.mimeType === 'text/plain' && part.body?.data) return decodeBase64(part.body.data);
-    }
-    for (const part of payload.parts) {
-      if (part.mimeType === 'text/html' && part.body?.data) {
-        return decodeBase64(part.body.data).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
+  // Función recursiva para buscar en partes anidadas
+  function buscarTexto(parts, mimeTarget) {
+    for (const part of parts || []) {
+      if (part.mimeType === mimeTarget && part.body?.data) {
+        return decodeBase64(part.body.data);
+      }
+      if (part.parts) {
+        const found = buscarTexto(part.parts, mimeTarget);
+        if (found) return found;
       }
     }
+    return '';
   }
+
+  // 1. Body directo
+  if (payload.body?.data) return limpiarCuerpo(decodeBase64(payload.body.data));
+
+  // 2. text/plain primero (más limpio)
+  const plain = buscarTexto(payload.parts, 'text/plain');
+  if (plain) return limpiarCuerpo(plain);
+
+  // 3. text/html como fallback
+  const html = buscarTexto(payload.parts, 'text/html');
+  if (html) return limpiarCuerpo(html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '));
+
   return '';
+}
+
+// ── Extraer email limpio del campo "De:" ──────────────────────────
+function parsearRemitente(de) {
+  // Formato: "Nombre Apellido <email@dominio.com>" o solo "email@dominio.com"
+  const matchCompleto = de.match(/^"?([^"<]+)"?\s*<([^>]+)>/);
+  if (matchCompleto) {
+    return {
+      nombreMostrado: matchCompleto[1].trim(),
+      email: matchCompleto[2].trim().toLowerCase()
+    };
+  }
+  // Solo email
+  const emailLimpio = de.trim().toLowerCase();
+  return {
+    nombreMostrado: emailLimpio.split('@')[0],
+    email: emailLimpio
+  };
 }
 
 // ── Clasificar con Claude API ─────────────────────────────────────
 async function clasificarEmail(de, asunto, cuerpo) {
   try {
+    const cuerpoLimpio = cuerpo.slice(0, 2000);
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -57,51 +112,78 @@ async function clasificarEmail(de, asunto, cuerpo) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
+        max_tokens: 500,
         messages: [{
           role: 'user',
-          content: `Eres el asistente de Corp Projects, empresa de administración de fincas y mantenimiento. 
-Analiza este email y responde SOLO con JSON válido, sin texto adicional.
+          content: `Eres el asistente de Corp Projects, empresa de administración de fincas y mantenimiento en España.
+Analiza este email y responde ÚNICAMENTE con un objeto JSON válido, sin texto antes ni después, sin markdown.
 
-Email de: ${de}
+De: ${de}
 Asunto: ${asunto}
-Cuerpo: ${cuerpo.slice(0, 1500)}
+Cuerpo: ${cuerpoLimpio}
 
-Responde con este JSON exacto:
+CATEGORÍAS disponibles:
+- INCIDENCIA: avería, reparación, urgencia, problema técnico
+- PRESUPUESTO: solicitud de presupuesto o precio
+- FACTURA_PROVEEDOR: factura de un proveedor o suministrador
+- PAGO_RECIBIDO: confirmación de pago o transferencia
+- COMUNICACION: comunicación de comunidad de vecinos, administración
+- PEDIDO_ALBARAN: pedido de material o albarán de entrega
+- PUBLICIDAD: email comercial, newsletter, oferta, promoción, infojobs, marketing
+- SPAM: spam, phishing, no solicitado
+- OTRO: no encaja en ninguna categoría anterior
+
+URGENCIA:
+- ALTA: avería grave, urgencia, agua, gas, seguridad, plazo inminente
+- MEDIA: solicitud normal con cierta prioridad
+- BAJA: informativo, publicidad, newsletters, sin acción requerida
+
+JSON a devolver (todos los campos obligatorios):
 {
-  "categoria": "INCIDENCIA|PRESUPUESTO|FACTURA_PROVEEDOR|PAGO_RECIBIDO|COMUNICACION|PEDIDO_ALBARAN|OTRO",
+  "categoria": "una de las categorías de arriba",
   "urgencia": "ALTA|MEDIA|BAJA",
-  "resumen": "máximo 100 caracteres explicando qué pide",
-  "clienteDetectado": "nombre del cliente/empresa si se menciona, o null",
-  "accionSugerida": "qué debería hacer el admin en máximo 80 caracteres",
-  "confianza": 0.0
+  "resumen": "frase corta en español explicando de qué trata el email (máx 100 chars)",
+  "clienteDetectado": "nombre de empresa o persona mencionada, o null",
+  "accionSugerida": "qué debe hacer el admin con este email (máx 80 chars)",
+  "confianza": 0.85
 }`
         }]
       })
     });
+
     const data = await response.json();
     const texto = data.content?.[0]?.text || '{}';
-    return JSON.parse(texto.replace(/```json|```/g, '').trim());
+    const limpio = texto.replace(/```json|```/g, '').trim();
+    const result = JSON.parse(limpio);
+
+    // Validar campos obligatorios
+    if (!result.resumen || result.resumen.length < 3) {
+      result.resumen = `Email de ${de.split('@')[0]} sobre: ${asunto.slice(0, 60)}`;
+    }
+    if (!result.accionSugerida) {
+      result.accionSugerida = result.categoria === 'PUBLICIDAD' ? 'Archivar — publicidad' : 'Revisar manualmente';
+    }
+
+    return result;
   } catch (err) {
     console.error('[Email] Error clasificando:', err.message);
     return {
       categoria: 'OTRO',
       urgencia: 'BAJA',
-      resumen: 'No se pudo clasificar automáticamente',
+      resumen: `Email sobre: ${asunto.slice(0, 80)}`,
       clienteDetectado: null,
       accionSugerida: 'Revisar manualmente',
-      confianza: 0
+      confianza: 0.1
     };
   }
 }
 
 // ── Buscar remitente en StelOrder ─────────────────────────────────
 async function buscarRemitenteEnStelOrder(emailDe) {
+  const { email: emailLimpio, nombreMostrado } = parsearRemitente(emailDe);
   try {
-    const emailLimpio = emailDe.match(/<(.+)>/)?.[1] || emailDe.trim();
     const base = 'https://app.stelorder.com/app';
-    const key = process.env.STELORDER_API_KEY;
-    const headers = { 'APIKEY': key };
+    const headers = { 'APIKEY': process.env.STELORDER_API_KEY };
 
     // Buscar en clientes
     const rcli = await fetch(`${base}/clients?email=${encodeURIComponent(emailLimpio)}&limit=5`, { headers });
@@ -113,9 +195,9 @@ async function buscarRemitenteEnStelOrder(emailDe) {
         tipo: 'cliente',
         id: c.id,
         nombre: c['legal-name'] || c.name,
-        familia: c['account-category-id'],
-        emailActual: c.email,
-        emailRemitente: emailLimpio
+        nombreMostrado,
+        emailRemitente: emailLimpio,
+        familia: c['account-category-id']
       };
     }
 
@@ -129,87 +211,77 @@ async function buscarRemitenteEnStelOrder(emailDe) {
         tipo: 'contacto',
         id: c['account-id'],
         nombre: c.name,
-        familia: null,
-        emailActual: c.email,
-        emailRemitente: emailLimpio
+        nombreMostrado,
+        emailRemitente: emailLimpio,
+        familia: null
       };
     }
 
-    return { encontrado: false, emailRemitente: emailLimpio };
+    return { encontrado: false, nombreMostrado, emailRemitente: emailLimpio };
   } catch (err) {
     console.error('[Email] Error buscando remitente:', err.message);
-    return { encontrado: false, emailRemitente: emailDe };
+    return { encontrado: false, nombreMostrado, emailRemitente: emailLimpio };
   }
 }
 
-// ── Verificar permisos del remitente ──────────────────────────────
+// ── Verificar permisos ────────────────────────────────────────────
 function verificarPermisos(remitente, clasificacion) {
   if (!remitente.encontrado) {
     return { permitido: false, razon: 'Remitente desconocido en StelOrder' };
   }
-
-  // Acciones siempre bloqueadas
-  const bloqueadas = ['listar clientes', 'exportar', 'todos los clientes', 'listado'];
+  const bloqueadas = ['listar clientes', 'exportar', 'todos los clientes', 'listado global'];
   const resumenLower = (clasificacion.resumen || '').toLowerCase();
   if (bloqueadas.some(b => resumenLower.includes(b))) {
-    return { permitido: false, razon: 'Solicitud de datos globales bloqueada por seguridad' };
+    return { permitido: false, razon: 'Solicitud de datos globales bloqueada' };
   }
-
   return { permitido: true, razon: 'Remitente verificado' };
 }
 
-// ── Procesar un email ─────────────────────────────────────────────
+// ── Procesar un email individual ──────────────────────────────────
 async function procesarEmail(gmail, messageId) {
   const { db, client } = await getDB();
   try {
-    // Evitar duplicados
     const existe = await db.collection('emails').findOne({ gmailId: messageId });
     if (existe) return;
 
     const msg = await gmail.users.messages.get({ userId: 'me', id: messageId, format: 'full' });
     const headers = msg.data.payload.headers;
-    const de      = headers.find(h => h.name === 'From')?.value || '';
-    const asunto  = headers.find(h => h.name === 'Subject')?.value || '(sin asunto)';
-    const fecha   = new Date(parseInt(msg.data.internalDate));
-    const cuerpo  = extractBody(msg.data.payload);
+    const de     = headers.find(h => h.name === 'From')?.value || '';
+    const asunto = headers.find(h => h.name === 'Subject')?.value || '(sin asunto)';
+    const fecha  = new Date(parseInt(msg.data.internalDate));
+    const cuerpo = extractBody(msg.data.payload);
 
     console.log(`[Email] Procesando: ${asunto} de ${de}`);
 
-    // Clasificar con Claude
     const clasificacion = await clasificarEmail(de, asunto, cuerpo);
+    const remitente     = await buscarRemitenteEnStelOrder(de);
+    const permisos      = verificarPermisos(remitente, clasificacion);
 
-    // Buscar remitente en StelOrder
-    const remitente = await buscarRemitenteEnStelOrder(de);
-
-    // Verificar permisos
-    const permisos = verificarPermisos(remitente, clasificacion);
-
-    // Guardar en MongoDB
     await db.collection('emails').insertOne({
       gmailId: messageId,
       fecha,
       de,
       asunto,
       cuerpo: cuerpo.slice(0, 3000),
-      categoria: clasificacion.categoria || 'OTRO',
-      urgencia: clasificacion.urgencia || 'BAJA',
-      resumen: clasificacion.resumen || '',
-      accionSugerida: clasificacion.accionSugerida || '',
+      categoria:        clasificacion.categoria   || 'OTRO',
+      urgencia:         clasificacion.urgencia    || 'BAJA',
+      resumen:          clasificacion.resumen     || `Email de ${de} — ${asunto}`,
+      accionSugerida:   clasificacion.accionSugerida || 'Revisar manualmente',
       clienteDetectado: clasificacion.clienteDetectado || null,
-      confianza: clasificacion.confianza || 0,
+      confianza:        clasificacion.confianza   || 0,
       remitente,
       permisos,
-      estado: 'PENDIENTE',
-      accionRealizada: null,
-      stelOrderRef: null,
-      notas: '',
-      leido: false,
-      procesadoEn: new Date()
+      estado:          'PENDIENTE',
+      accionRealizada:  null,
+      stelOrderRef:     null,
+      notas:           '',
+      leido:           false,
+      importante:      false,
+      procesadoEn:     new Date()
     });
 
     console.log(`[Email] Guardado: ${clasificacion.categoria} — ${clasificacion.resumen}`);
 
-    // Marcar como leído en Gmail
     await gmail.users.messages.modify({
       userId: 'me',
       id: messageId,
@@ -221,33 +293,28 @@ async function procesarEmail(gmail, messageId) {
   }
 }
 
-// ── Poll principal — llamado cada 15 min por scheduler ────────────
+// ── Poll principal ────────────────────────────────────────────────
 async function pollEmails() {
-  console.log('[Email] Iniciando poll de emails...');
+  console.log('[Email] Iniciando poll...');
   try {
     const gmail = getGmailClient();
-
-    // Buscar emails no leídos de los últimos 2 días
     const res = await gmail.users.messages.list({
       userId: 'me',
       q: 'is:unread newer_than:2d -from:me',
       maxResults: 20
     });
-
     const mensajes = res.data.messages || [];
-    console.log(`[Email] Encontrados ${mensajes.length} emails nuevos`);
-
+    console.log(`[Email] ${mensajes.length} emails nuevos`);
     for (const msg of mensajes) {
       await procesarEmail(gmail, msg.id);
     }
-
     console.log('[Email] Poll completado');
   } catch (err) {
     console.error('[Email] Error en poll:', err.message);
   }
 }
 
-// ── Enviar respuesta automática al remitente ──────────────────────
+// ── Enviar respuesta por SMTP ─────────────────────────────────────
 async function enviarRespuesta(emailDestino, asuntoOriginal, mensaje) {
   try {
     const nodemailer = require('nodemailer');
@@ -257,7 +324,6 @@ async function enviarRespuesta(emailDestino, asuntoOriginal, mensaje) {
       secure: false,
       auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
     });
-
     await transporter.sendMail({
       from: `Corp Projects <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
       to: emailDestino,
@@ -267,7 +333,6 @@ async function enviarRespuesta(emailDestino, asuntoOriginal, mensaje) {
              <hr style="border:1px solid #eee;margin:20px 0">
              <p style="font-size:12px;color:#999">Corp Projects Holding SL<br>hola@corpprojects.es</p>`
     });
-
     console.log(`[Email] Respuesta enviada a ${emailDestino}`);
     return true;
   } catch (err) {
