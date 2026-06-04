@@ -714,6 +714,51 @@ app.get('/api/emails/stats', requireAuth, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+  // Marcar importante
+app.put('/api/emails/:id/importante', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    await db.collection('emails').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { importante: req.body.importante } }
+    );
+    await client.close();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Eliminar email
+app.delete('/api/emails/:id', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    await db.collection('emails').deleteOne({ _id: new ObjectId(req.params.id) });
+    await client.close();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reenviar email
+app.post('/api/emails/:id/reenviar', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    const email = await db.collection('emails').findOne({ _id: new ObjectId(req.params.id) });
+    await client.close();
+    if (!email) return res.status(404).json({ error: 'No encontrado' });
+    const { enviarRespuesta } = require('./src/email-intelligence');
+    const ok = await enviarRespuesta(
+      req.body.destino,
+      email.asunto,
+      `--- Email reenviado ---\n\nDe: ${email.de}\nAsunto: ${email.asunto}\n\n${email.cuerpo}`
+    );
+    res.json({ ok });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 });
 
 // ── Rutas HTML ────────────────────────────────────────────────────
