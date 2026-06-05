@@ -1,18 +1,16 @@
-// modules/presencia.js — Módulo de presencia y calendario
+// modules/presencia.js — v2 con equipo persistente, icono ayudantes y campos correctos
 (function(CP) {
   'use strict';
 
-  // Todo desde config central — nunca redefinir aquí
-  const CFG    = window.CP_CONFIG;
+  const CFG     = window.CP_CONFIG;
   const ESTADOS = CFG.estadosPresencia;
-
   const MN = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   const DN = ['D','L','M','X','J','V','S'];
 
   let calYear  = new Date().getFullYear();
   let calMonth = new Date().getMonth() + 1;
   let calData  = {};
-  let selectedEstado = null;
+  let selectedEstado   = null;
   let modalWorker = null, modalDate = null;
   let _equipoPresencia = [];
   let _libresPresencia = [];
@@ -30,9 +28,6 @@
   async function render(containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
-
-    // Workers ya cargados por CP_CONFIG.loadWorkers() en el init del dashboard
-    const WORKERS = CFG.workers;
 
     container.innerHTML = `
       <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:20px;overflow-x:auto">
@@ -54,7 +49,6 @@
           <button class="btn bgh" onclick="CP.Presencia.goToday()">Hoy</button>
           <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
             ${Object.entries(ESTADOS).map(([,v])=>`<span style="font-size:10px;display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:${v.color};display:inline-block"></span>${v.emoji} ${v.label}</span>`).join('')}
-            <span style="font-size:10px;display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:#f59e0b;display:inline-block"></span>⭐ Extra</span>
           </div>
         </div>
         <div class="card" style="overflow-x:auto;padding:10px">
@@ -107,8 +101,8 @@
             <table>
               <thead><tr><th>Trabajador</th><th style="text-align:center">Días</th><th style="text-align:center">H. extra</th><th style="text-align:right">Coste</th></tr></thead>
               <tbody>
-                ${WORKERS.map(w=>`<tr>
-                  <td><strong>${w.name.split(' ')[0]}</strong><br><span style="font-size:9px;color:var(--text3)">${w.rate}€/h</span></td>
+                ${CFG.workers.map(w=>`<tr>
+                  <td><strong>${w.name.split(' ')[0]}</strong><br><span style="font-size:9px;color:var(--text3)">${w.rate||w.costeHora||15}€/h</span></td>
                   <td><input type="number" id="calc-d-${w.id}" min="0" max="31" value="0" oninput="CP.Presencia.calcObra()" style="width:50px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px;color:var(--text);font-size:12px"></td>
                   <td><input type="number" id="calc-h-${w.id}" min="0" max="50" value="0" oninput="CP.Presencia.calcObra()" style="width:50px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px;color:var(--text);font-size:12px"></td>
                   <td style="text-align:right;font-weight:600" id="calc-c-${w.id}">0 €</td>
@@ -165,8 +159,8 @@
     loadCalendar();
   }
 
-  let sumYear = new Date().getFullYear();
-  let sumMonth = new Date().getMonth() + 1;
+  let sumYear2  = new Date().getFullYear();
+  let sumMonth2 = new Date().getMonth() + 1;
 
   function showTab(id, btn) {
     document.querySelectorAll('.p-tab').forEach(p => { p.style.display='none'; p.classList.remove('active'); });
@@ -204,10 +198,10 @@
   function buildGrid() {
     const grid = document.getElementById('p-cal-grid');
     if (!grid) return;
-    const WORKERS = CFG.workers;
-    const daysInMonth = new Date(calYear, calMonth, 0).getDate();
-    const today = new Date().toISOString().slice(0,10);
-    const days  = [];
+    const WORKERS      = CFG.workers;
+    const daysInMonth  = new Date(calYear, calMonth, 0).getDate();
+    const today        = new Date().toISOString().slice(0,10);
+    const days = [];
     for (let d = 1; d <= daysInMonth; d++) {
       const date = `${calYear}-${String(calMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
       const dow  = new Date(calYear, calMonth-1, d).getDay();
@@ -215,6 +209,8 @@
     }
 
     let html = `<div style="display:grid;grid-template-columns:100px repeat(${days.length},minmax(26px,1fr));gap:1px;font-size:10px">`;
+
+    // Cabecera días
     html += `<div style="padding:4px 6px;color:var(--text3);font-size:9px;font-weight:600;border-bottom:1px solid var(--border)">Trabajador</div>`;
     days.forEach(({ d, date, dow, weekend }) => {
       const isToday = date === today;
@@ -224,23 +220,32 @@
       </div>`;
     });
 
+    // Filas trabajadores
     WORKERS.forEach(w => {
       html += `<div style="padding:4px 8px;color:var(--text2);font-size:10px;font-weight:500;border-right:1px solid var(--border);display:flex;align-items:center;gap:4px;white-space:nowrap">
         <div style="width:6px;height:6px;border-radius:50%;background:${w.color};flex-shrink:0"></div>
         ${w.name.split(' ')[0]}
       </div>`;
       days.forEach(({ date, weekend }) => {
-        const entry = calData[w.id + '_' + date];
-        const est   = entry ? ESTADOS[entry.estado] : null;
-        const bg    = est ? est.color+'28' : weekend ? 'rgba(245,158,11,.06)' : 'var(--bg3)';
-        const border = est ? est.color+'55' : weekend ? 'rgba(245,158,11,.25)' : 'var(--border)';
+        const entry      = calData[w.id + '_' + date];
+        const est        = entry ? ESTADOS[entry.estado] : null;
+        const tieneEquipo = entry?.equipo?.length > 0;
+        const bg         = est ? est.color+'28' : weekend ? 'rgba(245,158,11,.06)' : 'var(--bg3)';
+        const border     = est ? est.color+'55'  : weekend ? 'rgba(245,158,11,.25)' : 'var(--border)';
+        const tooltip    = est
+          ? `${est.label}${entry.clientName?' — '+entry.clientName:''}${tieneEquipo?' · '+entry.equipo.length+' personas':''}`
+          : weekend ? 'Fin de semana' : 'Sin registrar';
+
         html += `<div
           data-wid="${w.id}" data-wname="${w.name}" data-date="${date}" data-clickable="true"
           style="min-height:36px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;background:${bg};border:1px solid ${border};border-radius:3px;cursor:pointer;padding:1px;transition:opacity .15s"
-          title="${est ? est.label+(entry.clientName?' — '+entry.clientName:'') : weekend?'Fin de semana':'Sin registrar'}">
+          title="${tooltip}">
           <div style="font-size:11px;line-height:1">${est ? est.emoji : weekend ? '⭐' : ''}</div>
           <div style="font-size:7px;color:var(--text3);overflow:hidden;max-width:100%;white-space:nowrap;text-overflow:ellipsis;padding:0 2px">${entry?.clientName ? entry.clientName.slice(0,8) : ''}</div>
-          ${entry?.tieneParte ? '<div style="font-size:8px;line-height:1">📋</div>' : ''}
+          <div style="font-size:8px;line-height:1;display:flex;gap:1px">
+            ${entry?.tieneParte ? '<span title="Tiene parte">📋</span>' : ''}
+            ${tieneEquipo ? '<span title="Con ayudantes">👥</span>' : ''}
+          </div>
         </div>`;
       });
     });
@@ -262,20 +267,29 @@
   function goToday()   { const n=new Date(); calYear=n.getFullYear(); calMonth=n.getMonth()+1; loadCalendar(); }
 
   function openModal(wid, wname, date) {
-    modalWorker = wid; modalDate = date;
-    _equipoPresencia = []; _libresPresencia = [];
-    const entry = calData[wid + '_' + date];
-    const esFinDeSemana = CFG.esFinDeSemana(date);
-    selectedEstado = entry ? entry.estado : (esFinDeSemana ? 'obra' : null);
-    if (entry?.equipo) _equipoPresencia = entry.equipo.filter(m => m.tipo !== 'libre');
+    modalWorker      = wid;
+    modalDate        = date;
+    _equipoPresencia = [];
+    _libresPresencia = [];
+
+    const entry          = calData[wid + '_' + date];
+    const esFinDeSemana  = CFG.esFinDeSemana(date);
+    selectedEstado       = entry ? entry.estado : (esFinDeSemana ? 'obra' : null);
+
+    // Recuperar equipo guardado
+    if (entry?.equipo) {
+      _equipoPresencia = entry.equipo.filter(m => m.tipo === 'plantilla' || m.tipo === 'externo');
+      _libresPresencia = entry.equipo.filter(m => m.tipo === 'libre');
+    }
 
     document.getElementById('p-modal')?.remove();
     const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long' });
-    const WORKERS = CFG.workers;
+    const WORKERS   = CFG.workers;
 
     const modal = document.createElement('div');
     modal.id = 'p-modal';
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
+
     modal.innerHTML = `
       <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:22px;width:100%;max-width:440px;margin:auto">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
@@ -317,7 +331,7 @@
             <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Quién estuvo ese día</div>
             <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px" id="p-equipo-chips">
               ${WORKERS.filter(w => w.id !== wid).map(w => {
-                const enEquipo = (_equipoPresencia||[]).some(m => m.id === w.id);
+                const enEquipo = _equipoPresencia.some(m => m.id === w.id);
                 return `<button type="button" class="p-chip ${enEquipo?'on':''}"
                   data-id="${w.id}" data-nombre="${w.name}" data-tipo="plantilla"
                   onclick="CP.Presencia._toggleChipEquipo(this)">
@@ -370,6 +384,18 @@
 
     document.body.appendChild(modal);
     modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
+
+    // Renderizar libres ya guardados
+    _libresPresencia.forEach((m, i) => {
+      const cont = document.getElementById('p-libres-chips');
+      if (!cont) return;
+      const chip = document.createElement('span');
+      chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:rgba(167,139,250,.12);border:1.5px solid rgba(167,139,250,.4);border-radius:20px;padding:5px 12px;font-size:12px;color:var(--purple)';
+      chip.dataset.index = i;
+      chip.innerHTML = `👤 ${m.nombre} <button onclick="CP.Presencia._removeLibre(${i},this)" style="background:none;border:none;color:var(--purple);cursor:pointer;font-size:13px;padding:0;line-height:1">✕</button>`;
+      cont.appendChild(chip);
+    });
+
     loadClientSuggestions();
   }
 
@@ -383,6 +409,16 @@
       }
       dl.innerHTML = window._cpClients.map(n=>`<option value="${n}">`).join('');
     } catch(err) {}
+  }
+
+  function _removeLibre(index, btn) {
+    _libresPresencia.splice(index, 1);
+    btn.parentElement.remove();
+    // Re-numerar índices de los chips restantes
+    document.querySelectorAll('#p-libres-chips span').forEach((chip, i) => {
+      const b = chip.querySelector('button');
+      if (b) b.setAttribute('onclick', `CP.Presencia._removeLibre(${i},this)`);
+    });
   }
 
   function _selectEstado(k) {
@@ -399,22 +435,22 @@
 
   function _toggleChipEquipo(btn) {
     const idx = _equipoPresencia.findIndex(m => m.id === btn.dataset.id);
-    if (idx >= 0) { _equipoPresencia.splice(idx,1); btn.classList.remove('on'); }
-    else          { _equipoPresencia.push({ id:btn.dataset.id, nombre:btn.dataset.nombre, tipo:btn.dataset.tipo }); btn.classList.add('on'); }
+    if (idx >= 0) { _equipoPresencia.splice(idx, 1); btn.classList.remove('on'); }
+    else          { _equipoPresencia.push({ id: btn.dataset.id, nombre: btn.dataset.nombre, tipo: btn.dataset.tipo }); btn.classList.add('on'); }
   }
 
   function _addExternoPresencia() {
     const input  = document.getElementById('p-externo-libre');
     const nombre = input?.value?.trim();
     if (!nombre) return;
-    _libresPresencia.push({ nombre, tipo:'libre' });
+    const i = _libresPresencia.length;
+    _libresPresencia.push({ nombre, tipo: 'libre' });
     input.value = '';
     const cont = document.getElementById('p-libres-chips');
     if (!cont) return;
-    const i = _libresPresencia.length - 1;
     const chip = document.createElement('span');
     chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:rgba(167,139,250,.12);border:1.5px solid rgba(167,139,250,.4);border-radius:20px;padding:5px 12px;font-size:12px;color:var(--purple)';
-    chip.innerHTML = `👤 ${nombre} <button onclick="this.parentElement.remove();_libresPresencia.splice(${i},1)" style="background:none;border:none;color:var(--purple);cursor:pointer;font-size:13px;padding:0;line-height:1">✕</button>`;
+    chip.innerHTML = `👤 ${nombre} <button onclick="CP.Presencia._removeLibre(${i},this)" style="background:none;border:none;color:var(--purple);cursor:pointer;font-size:13px;padding:0;line-height:1">✕</button>`;
     cont.appendChild(chip);
   }
 
@@ -424,9 +460,10 @@
       if (msg) { msg.textContent='⚠️ Selecciona un estado primero'; msg.style.display='block'; msg.style.color='var(--amber)'; }
       return;
     }
+    const workerInfo = CFG.workers.find(w => w.id === modalWorker);
     const entry = {
       workerId:    modalWorker,
-      workerName:  CFG.workers.find(w => w.id === modalWorker)?.name || '',
+      workerName:  workerInfo?.name || '',
       date:        modalDate,
       estado:      selectedEstado,
       clientName:  selectedEstado==='obra' ? (document.getElementById('p-client-name')?.value?.trim()||'') : '',
@@ -455,8 +492,6 @@
     } catch(err) { console.error('[Presencia] Error delete:', err.message); }
   }
 
-  let sumYear2 = new Date().getFullYear();
-  let sumMonth2 = new Date().getMonth() + 1;
   function prevSumMonth() { if(sumMonth2===1){sumMonth2=12;sumYear2--;}else sumMonth2--; loadSummary(); }
   function nextSumMonth() { if(sumMonth2===12){sumMonth2=1;sumYear2++;}else sumMonth2++; loadSummary(); }
 
@@ -465,52 +500,82 @@
     if (el) el.textContent = MN[sumMonth2-1] + ' ' + sumYear2;
     try {
       const data = await api(`/api/attendance/summary/${sumYear2}/${sumMonth2}`);
-      const totalObra  = data.byWorker.reduce((s,w)=>s+w.dias_obra,0);
-      const totalFalta = data.byWorker.reduce((s,w)=>s+w.dias_falta,0);
-      const uniqueDates = new Set((data.entries||[]).map(e=>e.date));
+      const eur  = v => new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0);
+
+      const totalObra       = data.byWorker.reduce((s,w) => s+(w.dias_obra||0), 0);
+      const totalFalta      = data.byWorker.reduce((s,w) => s+(w.dias_falta||0), 0);
+      const totalBaja       = data.byWorker.reduce((s,w) => s+(w.dias_baja||0), 0);
+      const totalHorasProd  = data.byWorker.reduce((s,w) => s+(w.horas_productivas||w.horas||0), 0);
+      const totalCoste      = data.byWorker.reduce((s,w) => s+(w.coste_real||0), 0);
+      const uniqueDates     = new Set((data.entries||[]).map(e=>e.date));
 
       const metrics = document.getElementById('p-sum-metrics');
       if (metrics) metrics.innerHTML = `
         <div class="mc"><div class="ml">Días registrados</div><div class="mv b">${uniqueDates.size}</div></div>
         <div class="mc"><div class="ml">Días en obra</div><div class="mv g">${totalObra}</div></div>
-        <div class="mc"><div class="ml">Faltas/bajas</div><div class="mv r">${totalFalta}</div></div>
-        <div class="mc"><div class="ml">Horas totales</div><div class="mv b">${data.byWorker.reduce((s,w)=>s+w.horas,0).toFixed(0)} h</div></div>`;
+        <div class="mc"><div class="ml">Faltas/bajas</div><div class="mv r">${totalFalta + totalBaja}</div></div>
+        <div class="mc"><div class="ml">Horas productivas</div><div class="mv b">${totalHorasProd.toFixed(0)} h</div></div>
+        <div class="mc"><div class="ml">Coste total</div><div class="mv r">${eur(totalCoste)}</div></div>`;
 
-      const eur = v => new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0);
       const tbl = document.getElementById('p-sum-table');
       if (tbl) tbl.innerHTML = `<table>
-        <thead><tr><th>Trabajador</th><th style="text-align:right">Días</th><th style="text-align:right">En obra</th><th style="text-align:right">Faltas</th><th style="text-align:right">Horas</th><th style="text-align:right">Coste est.</th></tr></thead>
-        <tbody>${data.byWorker.map(w=>`<tr>
-          <td><span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:${w.color};display:inline-block"></span><strong>${w.name}</strong></span></td>
-          <td style="text-align:right">${w.dias}</td>
-          <td style="text-align:right;color:var(--green)">${w.dias_obra}</td>
-          <td style="text-align:right;color:${w.dias_falta>0?'var(--red)':'var(--text2)'}">${w.dias_falta}</td>
-          <td style="text-align:right">${w.horas.toFixed(0)} h</td>
-          <td style="text-align:right;color:var(--red)">${eur(w.horas * CFG.getRateForWorker(w))}</td>
-        </tr>`).join('')}</tbody></table>`;
+        <thead><tr>
+          <th>Trabajador</th>
+          <th style="text-align:right">Días</th>
+          <th style="text-align:right">En obra</th>
+          <th style="text-align:right">Baja/Vac</th>
+          <th style="text-align:right">Faltas</th>
+          <th style="text-align:right">Horas prod.</th>
+          <th style="text-align:right">Coste real</th>
+        </tr></thead>
+        <tbody>${data.byWorker.map(w => {
+          const diasAus = (w.dias_baja||0) + (w.dias_vacaciones||0);
+          return `<tr>
+            <td>
+              <span style="display:flex;align-items:center;gap:6px">
+                <span style="width:7px;height:7px;border-radius:50%;background:${w.color};display:inline-block"></span>
+                <strong>${w.name}</strong>
+                ${w.nota ? `<span style="font-size:9px;color:var(--amber);background:rgba(245,158,11,.1);padding:1px 5px;border-radius:4px">${w.nota}</span>` : ''}
+              </span>
+            </td>
+            <td style="text-align:right">${w.dias}</td>
+            <td style="text-align:right;color:var(--green)">${w.dias_obra||0}</td>
+            <td style="text-align:right;color:${diasAus>0?'var(--amber)':'var(--text2)'}">${diasAus||'—'}</td>
+            <td style="text-align:right;color:${(w.dias_falta||0)>0?'var(--red)':'var(--text2)'}">${w.dias_falta||'—'}</td>
+            <td style="text-align:right">${(w.horas_productivas||w.horas||0).toFixed(0)} h</td>
+            <td style="text-align:right;color:var(--red)">${eur(w.coste_real||0)}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>`;
 
-      const clientMap = {};
-      data.byWorker.forEach(w => {
-        Object.entries(w.clientes||{}).forEach(([client,v]) => {
-          if (!clientMap[client]) clientMap[client]={dias:0,horas:0,workers:{}};
-          clientMap[client].dias  += v.dias;
-          clientMap[client].horas += v.horas;
-          clientMap[client].workers[w.name] = (clientMap[client].workers[w.name]||0)+v.dias;
-        });
-      });
-      const clients = Object.entries(clientMap).sort((a,b)=>b[1].dias-a[1].dias);
+      // Clientes con días únicos — desde clientSummary del backend
+      const clients = data.clientSummary || [];
       const cEl = document.getElementById('p-sum-clients');
       if (cEl) {
-        if (!clients.length) { cEl.innerHTML='<div style="color:var(--text3);font-size:12px;padding:10px">No hay días en obra este mes.</div>'; return; }
-        cEl.innerHTML = `<table>
-          <thead><tr><th>Cliente / Obra</th><th style="text-align:right">Días</th><th style="text-align:right">Horas</th><th>Detalle</th></tr></thead>
-          <tbody>${clients.map(([client,v])=>`<tr>
-            <td><strong>${client}</strong></td>
-            <td style="text-align:right">${v.dias}</td>
-            <td style="text-align:right">${v.horas.toFixed(0)} h</td>
-            <td style="font-size:11px;color:var(--text2)">${Object.entries(v.workers).map(([n,d])=>`${n.split(' ')[0]}:${d}d`).join(' · ')}</td>
-          </tr>`).join('')}</tbody></table>`;
+        if (!clients.length) {
+          cEl.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:10px">No hay días en obra este mes.</div>';
+        } else {
+          cEl.innerHTML = `<table>
+            <thead><tr>
+              <th>Cliente / Obra</th>
+              <th style="text-align:right">Días únicos</th>
+              <th style="text-align:right">Pers/día</th>
+              <th style="text-align:right">Horas</th>
+              <th style="text-align:right">Coste est.</th>
+              <th>Detalle</th>
+            </tr></thead>
+            <tbody>${clients.map(c=>`<tr>
+              <td><strong>${c.client}</strong></td>
+              <td style="text-align:right;color:var(--green)">${c.dias_unicos}</td>
+              <td style="text-align:right;color:var(--text3);font-size:11px">${c.dias_persona}</td>
+              <td style="text-align:right">${c.horas.toFixed(0)} h</td>
+              <td style="text-align:right;color:var(--red)">${eur(c.coste)}</td>
+              <td style="font-size:11px;color:var(--text2)">${Object.entries(c.workers).map(([n,d])=>`${n.split(' ')[0]}:${d}d`).join(' · ')}</td>
+            </tr>`).join('')}</tbody>
+          </table>`;
+        }
       }
+
     } catch(err) { console.error('[Presencia] Error summary:', err.message); }
   }
 
@@ -520,13 +585,19 @@
     const to   = document.getElementById('p-client-to')?.value   || '';
     if (!name) return;
     const el = document.getElementById('p-client-result');
-    if (el) el.innerHTML='<div style="color:var(--text3);font-size:12px">Buscando...</div>';
+    if (el) el.innerHTML = '<div style="color:var(--text3);font-size:12px">Buscando...</div>';
     try {
-      const data = await api(`/api/attendance/client?clientName=${encodeURIComponent(name)}&from=${from}&to=${to}`);
-      const eur  = v => new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0);
+      const data  = await api(`/api/attendance/client?clientName=${encodeURIComponent(name)}&from=${from}&to=${to}`);
+      const eur   = v => new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0);
       const workers = Object.values(data.byWorker||{});
-      if (!data.totalDias) { if(el) el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:10px">Sin registros para este cliente.</div>'; return; }
-      const totalCoste = workers.reduce((s,w)=>{ const wd=CFG.workers.find(x=>x.name===w.name); return s+(wd?w.horas*wd.rate:0); },0);
+      if (!data.totalDias) {
+        if(el) el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:10px">Sin registros para este cliente.</div>';
+        return;
+      }
+      const totalCoste = workers.reduce((s,w)=>{
+        const wd = CFG.workers.find(x=>x.name===w.name);
+        return s+(wd ? w.horas*(wd.rate||wd.costeHora||15) : 0);
+      },0);
       if (el) el.innerHTML = `
         <div class="metrics-row" style="margin-bottom:14px">
           <div class="mc"><div class="ml">Total días</div><div class="mv g">${data.totalDias}</div></div>
@@ -540,7 +611,7 @@
             <td><strong>${w.name}</strong></td>
             <td style="text-align:right">${w.dias}</td>
             <td style="text-align:right">${w.horas.toFixed(0)} h</td>
-            <td style="text-align:right;color:var(--red)">${eur(wd?w.horas*wd.rate:0)}</td>
+            <td style="text-align:right;color:var(--red)">${eur(wd?w.horas*(wd.rate||wd.costeHora||15):0)}</td>
             <td style="font-size:10px;color:var(--text3)">${w.dates.slice(0,5).map(d=>new Date(d+'T12:00:00').toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'})).join(', ')}${w.dates.length>5?` +${w.dates.length-5} más`:''}</td>
           </tr>`;
         }).join('')}</tbody></table>`;
@@ -567,7 +638,8 @@
     WORKERS.forEach(w => {
       const dias  = parseFloat(document.getElementById('calc-d-'+w.id)?.value||0);
       const extra = parseFloat(document.getElementById('calc-h-'+w.id)?.value||0);
-      const cost  = (dias*8+extra)*w.rate;
+      const rate  = w.rate || w.costeHora || 15;
+      const cost  = (dias*8+extra)*rate;
       totalPersonal += cost;
       const el = document.getElementById('calc-c-'+w.id);
       if (el) el.textContent = eur(cost);
@@ -611,8 +683,11 @@
     try {
       const data = await api(`/api/attendance?from=${sumYear2}-${String(sumMonth2).padStart(2,'0')}-01&to=${sumYear2}-${String(sumMonth2).padStart(2,'0')}-31`);
       if (!data?.length) return;
-      const rows = [['Fecha','Trabajador','Estado','Cliente/Obra','Horas','Jornada','Notas']];
-      data.forEach(e => rows.push([e.date, e.workerName, ESTADOS[e.estado]?.label||e.estado, e.clientName||'', e.horas||8, e.tipoJornada||'NORMAL', e.notas||'']));
+      const rows = [['Fecha','Trabajador','Estado','Cliente/Obra','Horas','Jornada','Equipo','Notas']];
+      data.forEach(e => {
+        const equipoStr = (e.equipo||[]).map(m=>m.nombre||m.name).join('+');
+        rows.push([e.date, e.workerName, ESTADOS[e.estado]?.label||e.estado, e.clientName||'', e.horas||8, e.tipoJornada||'NORMAL', equipoStr, e.notas||'']);
+      });
       const csv = rows.map(r=>r.map(v=>`"${v}"`).join(',')).join('\n');
       const a = document.createElement('a');
       a.href = 'data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
@@ -628,7 +703,7 @@
     searchClient, exportCSV,
     addMatRow, calcObra,
     _selectEstado, _saveEntry, _deleteEntry,
-    _toggleChipEquipo, _addExternoPresencia,
+    _toggleChipEquipo, _addExternoPresencia, _removeLibre,
   };
 
 })(window.CP = window.CP || {});
