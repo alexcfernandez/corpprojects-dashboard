@@ -187,14 +187,17 @@ app.get('/api/attendance', requireAuth, async (req, res) => {
   }
 });
 
-app.get('/api/attendance/summary/:year/:month', requireAuth, async (req, res) => {
+app.get('/api/attendance/summary/:year/:month', authMiddleware, async (req, res) => {
   try {
-    const data = await attendance.getMonthlySummary(
-      parseInt(req.params.year), parseInt(req.params.month)
+    const { getMonthlySummary, buildClientSummary } = require('./attendance');
+    const summary = await getMonthlySummary(
+      parseInt(req.params.year),
+      parseInt(req.params.month)
     );
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    summary.clientSummary = buildClientSummary(summary.byWorker);
+    res.json(summary);
+  } catch(e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
