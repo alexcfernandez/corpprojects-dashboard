@@ -187,7 +187,7 @@ app.get('/api/attendance', requireAuth, async (req, res) => {
   }
 });
 
-app.get('/api/attendance/summary/:year/:month', authMiddleware, async (req, res) => {
+app.get('/api/attendance/summary/:year/:month', requireAuth, async (req, res) => {
   try {
     const { getMonthlySummary, buildClientSummary } = require('./attendance');
     const summary = await getMonthlySummary(
