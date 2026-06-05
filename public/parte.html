@@ -10,98 +10,93 @@
   --bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;
   --border:rgba(255,255,255,0.1);--border2:rgba(255,255,255,0.15);
   --text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;
-  --green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b;
+  --green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b;--purple:#a78bfa;
   --r:12px;--rs:10px;
 }
 body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:16px;min-height:100vh;padding:0}
-
-/* HEADER */
 .header{background:var(--bg2);border-bottom:1px solid var(--border);padding:14px 20px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:10}
 .logo{width:34px;height:34px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#fff;flex-shrink:0}
 .header-text{font-weight:600;font-size:15px}
 .header-sub{font-size:12px;color:var(--text3);margin-top:1px}
-
 .page{display:none;min-height:100vh}
 .page.active{display:block}
 .container{padding:20px;max-width:500px;margin:0 auto}
-
-/* LOGIN PAGE */
 .login-card{background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:28px 24px;margin-top:24px}
 .login-title{font-size:18px;font-weight:600;margin-bottom:4px;text-align:center}
 .login-sub{font-size:13px;color:var(--text3);text-align:center;margin-bottom:24px}
-
-/* WORKER SELECTOR */
 .worker-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
 .worker-btn{background:var(--bg3);border:2px solid var(--border);border-radius:var(--r);padding:14px 10px;text-align:center;cursor:pointer;transition:all .15s;font-family:inherit}
 .worker-btn:hover{border-color:var(--blue)}
 .worker-btn.selected{border-color:var(--blue);background:rgba(77,156,248,.1)}
 .worker-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-bottom:6px}
 .worker-name{font-size:13px;font-weight:600;color:var(--text)}
-
-/* PIN */
 .pin-input{width:100%;background:var(--bg3);border:2px solid var(--border2);border-radius:var(--rs);padding:14px;color:var(--text);font-size:24px;font-weight:700;text-align:center;letter-spacing:8px;outline:none;font-family:monospace}
 .pin-input:focus{border-color:var(--blue)}
-
-/* FORM */
 .field{margin-bottom:18px}
 .field label{display:block;font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
 .field input,.field textarea,.field select{width:100%;background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:13px 14px;color:var(--text);font-size:16px;outline:none;font-family:inherit;-webkit-appearance:none}
 .field input:focus,.field textarea:focus,.field select:focus{border-color:var(--blue)}
 .field textarea{resize:vertical;min-height:80px}
-
-/* ESTADO SELECTOR */
-.estado-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.estado-btn{background:var(--bg3);border:1.5px solid var(--border);border-radius:var(--rs);padding:12px;text-align:center;cursor:pointer;font-family:inherit}
-.estado-btn.selected{border-color:var(--blue);background:rgba(77,156,248,.1)}
-.estado-btn .emoji{font-size:22px;display:block;margin-bottom:4px}
-.estado-btn .label{font-size:12px;color:var(--text2)}
-
-/* MATERIALES */
 .mat-row{display:grid;grid-template-columns:2fr 1fr auto;gap:8px;margin-bottom:8px;align-items:center}
 .mat-row input{background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:10px 12px;color:var(--text);font-size:14px;outline:none}
 .mat-row input:focus{border-color:var(--blue)}
 .del-btn{background:rgba(240,82,82,.15);border:1px solid var(--red);border-radius:8px;padding:10px 12px;color:var(--red);cursor:pointer;font-size:14px}
-
-/* FOTO */
-.foto-zone{border:2px dashed var(--border2);border-radius:var(--r);padding:24px;text-align:center;cursor:pointer;transition:all .2s}
-.foto-zone:hover{border-color:var(--blue);background:rgba(77,156,248,.05)}
-.foto-zone input{display:none}
 .foto-preview{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}
 .foto-preview img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid var(--border)}
-
-/* BOTONES */
 .btn-primary{width:100%;background:var(--blue);border:none;border-radius:var(--rs);padding:15px;color:#fff;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:6px}
 .btn-primary:active{opacity:.85}
 .btn-primary:disabled{opacity:.5;cursor:not-allowed}
 .btn-ghost{width:100%;background:none;border:1.5px solid var(--border2);border-radius:var(--rs);padding:13px;color:var(--text2);font-size:15px;cursor:pointer;font-family:inherit;margin-top:8px}
-
-/* SUCCESS */
 .success-card{background:rgba(34,196,135,.1);border:1.5px solid var(--green);border-radius:16px;padding:28px 24px;text-align:center;margin-top:24px}
 .success-icon{font-size:48px;margin-bottom:12px}
 .success-title{font-size:20px;font-weight:700;color:var(--green);margin-bottom:6px}
 .success-sub{font-size:14px;color:var(--text2)}
-
-/* MSG */
 .msg{padding:10px 14px;border-radius:var(--rs);font-size:13px;margin-top:10px;display:none}
 .msg.error{background:rgba(240,82,82,.1);border:1px solid var(--red);color:var(--red)}
 .msg.ok{background:rgba(34,196,135,.1);border:1px solid var(--green);color:var(--green)}
 .msg.warn{background:rgba(245,158,11,.1);border:1px solid var(--amber);color:var(--amber)}
-
 .spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* ASIGNACIONES */
+.asignacion-card{background:var(--bg2);border:2px solid var(--border2);border-radius:14px;padding:16px;margin-bottom:10px;cursor:pointer;transition:border-color .15s}
+.asignacion-card:hover{border-color:var(--blue)}
+.asignacion-card.selected{border-color:var(--blue);background:rgba(77,156,248,.08)}
+.asignacion-card.selected-extra{border-color:var(--amber)}
+
+/* EQUIPO */
+.equipo-chip{display:inline-flex;align-items:center;gap:6px;background:var(--bg3);border:1.5px solid var(--border2);border-radius:20px;padding:8px 14px;font-size:14px;cursor:pointer;transition:all .15s;margin:4px}
+.equipo-chip.selected{border-color:var(--blue);background:rgba(77,156,248,.12);color:var(--blue)}
+.equipo-chip.externo{border-style:dashed}
+.equipo-chip.externo.selected{border-color:var(--amber);background:rgba(245,158,11,.1);color:var(--amber)}
+
+/* ESTADO TRABAJO */
+.estado-trabajo-grid{display:grid;grid-template-columns:1fr;gap:8px}
+.estado-trabajo-btn{background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:14px 16px;text-align:left;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:12px;transition:all .15s}
+.estado-trabajo-btn.selected-completado{border-color:var(--green);background:rgba(34,196,135,.1)}
+.estado-trabajo-btn.selected-continua{border-color:var(--red);background:rgba(240,82,82,.1)}
+.estado-trabajo-btn.selected-parcial{border-color:var(--amber);background:rgba(245,158,11,.1)}
+.estado-trabajo-emoji{font-size:24px;flex-shrink:0}
+.estado-trabajo-info .titulo{font-size:15px;font-weight:600;color:var(--text)}
+.estado-trabajo-info .sub{font-size:12px;color:var(--text3);margin-top:2px}
+
+/* TIPO JORNADA */
+.jornada-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.jornada-btn{background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:12px 8px;text-align:center;cursor:pointer;font-family:inherit;transition:all .15s}
+.jornada-btn.selected-NORMAL{border-color:var(--blue);background:rgba(77,156,248,.1)}
+.jornada-btn.selected-EXTRA{border-color:var(--amber);background:rgba(245,158,11,.1)}
+.jornada-btn.selected-GUARDIA{border-color:var(--purple);background:rgba(167,139,250,.1)}
+
+/* EXPEDIENTE BANNER */
+.exp-banner{background:rgba(245,158,11,.08);border:1.5px solid rgba(245,158,11,.3);border-radius:12px;padding:14px 16px;margin-bottom:16px}
 </style>
-  <!-- PWA -->
-  <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#4d9cf8">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Corp Projects">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png">
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {});
-    }
-  </script>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#4d9cf8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Corp Projects">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}</script>
 </head>
 <body>
 
@@ -119,17 +114,14 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
     <div class="login-card">
       <div class="login-title">Identificación</div>
       <div class="login-sub">Selecciona tu nombre e introduce tu PIN</div>
-
       <div style="margin-bottom:16px">
         <label style="display:block;font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">¿Quién eres?</label>
         <div class="worker-grid" id="worker-selector"></div>
       </div>
-
       <div class="field">
         <label>PIN de acceso</label>
         <input type="password" id="pin-input" class="pin-input" maxlength="4" placeholder="••••" inputmode="numeric" pattern="[0-9]*" oninput="if(this.value.length===4)doLogin()">
       </div>
-
       <button class="btn-primary" id="login-btn" onclick="doLogin()">Entrar →</button>
       <div class="msg" id="login-msg"></div>
     </div>
@@ -138,456 +130,4 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
 <!-- FORMULARIO PARTE -->
 <div id="page-form" class="page">
-  <div class="container" style="padding-bottom:40px">
-    <div style="margin:20px 0 16px;display:flex;align-items:center;justify-content:space-between">
-      <div style="font-size:18px;font-weight:700">Nuevo parte</div>
-      <button onclick="logout()" style="background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer">Salir</button>
-    </div>
-
-    <div class="field">
-      <label>Fecha del trabajo</label>
-      <input type="date" id="f-date">
-    </div>
-
-    <div class="field">
-      <label>Cliente / Obra</label>
-      <input type="text" id="f-client" list="f-clients-list" placeholder="Escribe el nombre del cliente..." autocomplete="off">
-      <datalist id="f-clients-list"></datalist>
-    </div>
-
-    <div class="field">
-      <label>¿Qué se hizo?</label>
-      <textarea id="f-desc" placeholder="Describe brevemente el trabajo realizado..."></textarea>
-    </div>
-
-    <div class="field">
-      <label>Horas trabajadas</label>
-      <input type="number" id="f-horas" value="8" min="0.5" max="16" step="0.5" inputmode="decimal">
-    </div>
-
-    <div class="field">
-      <label>Materiales usados</label>
-      <div id="f-mat-rows"></div>
-      <button onclick="addMat()" style="background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:10px 16px;color:var(--text2);font-size:14px;cursor:pointer;width:100%;margin-top:4px">+ Añadir material</button>
-    </div>
-
-    <div class="field">
-      <label>Fotos del trabajo <span style="color:var(--text3);font-weight:400" id="work-count">(0/10)</span></label>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
-        <button type="button" onclick="openCamera('work')" style="background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:13px;color:var(--text2);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
-          📷 Cámara
-          <input type="file" id="f-camera-work" accept="image/*" capture="environment" style="display:none" onchange="addPhoto(this,'work')">
-        </button>
-        <button type="button" onclick="document.getElementById('f-gallery-work').click()" style="background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:13px;color:var(--text2);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
-          🖼️ Galería
-          <input type="file" id="f-gallery-work" accept="image/*" multiple style="display:none" onchange="addPhotos(this,'work')">
-        </button>
-      </div>
-      <div class="foto-preview" id="f-fotos-preview"></div>
-    </div>
-
-    <div class="field">
-      <label>Fotos de albaranes <span style="color:var(--text3);font-weight:400" id="albaran-count">(0/5)</span></label>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
-        <button type="button" onclick="openCamera('albaran')" style="background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:13px;color:var(--text2);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
-          📷 Cámara
-          <input type="file" id="f-camera-albaran" accept="image/*" capture="environment" style="display:none" onchange="addPhoto(this,'albaran')">
-        </button>
-        <button type="button" onclick="document.getElementById('f-gallery-albaran').click()" style="background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:13px;color:var(--text2);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
-          🖼️ Galería
-          <input type="file" id="f-gallery-albaran" accept="image/*" multiple style="display:none" onchange="addPhotos(this,'albaran')">
-        </button>
-      </div>
-      <div class="foto-preview" id="f-albaranes-preview"></div>
-    </div>
-
-    <div class="field">
-      <label>Notas adicionales</label>
-      <input type="text" id="f-notas" placeholder="Cualquier observación...">
-    </div>
-
-    <div id="gps-status" style="font-size:12px;color:var(--text3);margin-bottom:14px;display:flex;align-items:center;gap:6px">
-      <span id="gps-icon">📍</span> <span id="gps-text">Obteniendo ubicación...</span>
-    </div>
-
-    <button class="btn-primary" id="submit-btn" onclick="submitParte()">📤 Enviar parte</button>
-    <div class="msg" id="form-msg"></div>
-  </div>
-</div>
-
-<!-- ÉXITO -->
-<div id="page-success" class="page">
-  <div class="container">
-    <div class="success-card">
-      <div class="success-icon">✅</div>
-      <div class="success-title">¡Parte enviado!</div>
-      <div class="success-sub" id="success-text">El parte se ha registrado correctamente.</div>
-    </div>
-    <button class="btn-primary" style="margin-top:20px" onclick="newParte()">Enviar otro parte</button>
-    <button class="btn-ghost" onclick="logout()">Salir</button>
-  </div>
-</div>
-
-<script>
-const WORKER_COLORS = {jose:'#4d9cf8',diego:'#22c487',abdellah:'#f59e0b',mamadou:'#a78bfa',paula:'#f05252'};
-let workerToken = null, workerInfo = null, workerDirect = null;
-let gpsData = { lat: null, lng: null, accuracy: null };
-
-// INIT
-window.onload = async function() {
-  const urlW = new URLSearchParams(location.search).get('w');
-  
-  if (urlW) {
-    // Modo directo — mostrar solo este trabajador, sin selección
-    await loadSingleWorker(urlW);
-  } else {
-    // Modo general — mostrar todos (solo para admin)
-    await loadWorkers(null);
-  }
-  
-  getGPS();
-  document.getElementById('f-date').value = new Date().toISOString().slice(0,10);
-};
-
-async function loadSingleWorker(workerId) {
-  const container = document.getElementById('worker-selector');
-  try {
-    const r = await fetch('/api/partes/workers');
-    const workers = await r.json();
-    const worker = workers.find(w => String(w.id) === workerId || w.id === workerId);
-    if (!worker) {
-      // ID no encontrado — mostrar todos
-      await loadWorkers(null);
-      return;
-    }
-    // Mostrar solo este trabajador, ya seleccionado
-    container.innerHTML = `
-      <div class="worker-btn selected" data-id="${worker.id}" 
-        style="grid-column:1/-1;max-width:200px;margin:0 auto;border-color:${worker.color||'#4d9cf8'}">
-        <div class="worker-dot" style="background:${worker.color||'#4d9cf8'}"></div>
-        <div class="worker-name">${worker.name.split(' ')[0]}</div>
-        <div style="font-size:11px;color:var(--text3)">${worker.name.split(' ').slice(1).join(' ')}</div>
-      </div>`;
-    // Auto-seleccionar
-    workerDirect = worker;
-    document.getElementById('pin-input').focus();
-  } catch(e) {
-    await loadWorkers(null);
-  }
-}
-
-async function loadWorkers(preselect) {
-  const container = document.getElementById('worker-selector');
-  try {
-    const r = await fetch('/api/partes/workers');
-    const workers = await r.json();
-    container.innerHTML = workers.map(w => `
-      <button class="worker-btn ${preselect===w.id?'selected':''}" 
-        data-id="${w.id}" onclick="selectWorker(this,'${w.id}')">
-        <div class="worker-dot" style="background:${WORKER_COLORS[w.id]||'#888'}"></div>
-        <div class="worker-name">${w.name.split(' ')[0]}</div>
-        <div style="font-size:11px;color:var(--text3)">${w.name.split(' ').slice(1).join(' ')}</div>
-      </button>`).join('');
-    if (preselect) {
-      const btn = container.querySelector(`[data-id="${preselect}"]`);
-      if (btn) btn.classList.add('selected');
-    }
-  } catch(e) {
-    container.innerHTML = '<div style="color:var(--text3);font-size:13px">Error cargando trabajadores</div>';
-  }
-}
-
-function selectWorker(btn, id) {
-  document.querySelectorAll('.worker-btn').forEach(b => b.classList.remove('selected'));
-  btn.classList.add('selected');
-  document.getElementById('pin-input').focus();
-}
-
-async function doLogin() {
-  const selectedBtn = document.querySelector('.worker-btn.selected');
-  if (!selectedBtn) { showMsg('login-msg', '⚠️ Selecciona tu nombre', 'warn'); return; }
-  const workerId = workerDirect ? String(workerDirect.id) : selectedBtn.dataset.id;
-  const pin = document.getElementById('pin-input').value;
-  if (pin.length < 4) return;
-
-  const btn = document.getElementById('login-btn');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>Verificando...';
-
-  try {
-    const r = await fetch('/api/partes/worker-login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workerId, pin })
-    });
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.error || 'PIN incorrecto');
-    
-    workerToken = data.token;
-    workerInfo  = { workerId: data.workerId, workerName: data.workerName };
-    
-    document.getElementById('header-sub').textContent = data.workerName;
-    showPage('form');
-    loadClientSuggestions();
-  } catch(err) {
-    showMsg('login-msg', '❌ ' + err.message, 'error');
-    document.getElementById('pin-input').value = '';
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = 'Entrar →';
-  }
-}
-
-function logout() {
-  workerToken = null; workerInfo = null;
-  document.getElementById('pin-input').value = '';
-  document.querySelectorAll('.worker-btn').forEach(b => b.classList.remove('selected'));
-  showPage('login');
-}
-
-function newParte() {
-  resetForm();
-  showPage('form');
-}
-
-function showPage(id) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.getElementById('page-' + id).classList.add('active');
-}
-
-function showMsg(id, text, type) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.textContent = text;
-  el.className = 'msg ' + (type || 'error');
-  el.style.display = 'block';
-  if (type !== 'error') setTimeout(() => el.style.display = 'none', 3000);
-}
-
-// GPS
-function getGPS() {
-  if (!navigator.geolocation) {
-    document.getElementById('gps-text').textContent = 'GPS no disponible en este dispositivo';
-    return;
-  }
-  navigator.geolocation.getCurrentPosition(
-    pos => {
-      gpsData = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy };
-      document.getElementById('gps-icon').textContent = '✅';
-      document.getElementById('gps-text').textContent = `Ubicación obtenida (±${Math.round(pos.coords.accuracy)}m)`;
-    },
-    err => {
-      document.getElementById('gps-icon').textContent = '⚠️';
-      document.getElementById('gps-text').textContent = 'No se pudo obtener la ubicación';
-    },
-    { enableHighAccuracy: true, timeout: 15000 }
-  );
-}
-
-// CLIENTES
-async function loadClientSuggestions() {
-  const dl = document.getElementById('f-clients-list');
-  if (!dl) return;
-  try {
-    const r = await fetch('/api/clients/list', {
-      headers: { 'Authorization': `Bearer ${workerToken}` }
-    });
-    if (!r.ok) return;
-    const names = await r.json();
-    if (Array.isArray(names)) {
-      dl.innerHTML = names.map(n => `<option value="${n}">`).join('');
-    }
-  } catch(e) {
-    console.warn('No se pudieron cargar clientes:', e.message);
-  }
-}
-
-// MATERIALES
-function addMat() {
-  const c = document.getElementById('f-mat-rows');
-  const row = document.createElement('div');
-  row.className = 'mat-row';
-  row.innerHTML = `
-    <input type="text" placeholder="Nombre del material" autocomplete="off">
-    <input type="number" placeholder="Cant." min="0" step="0.1" inputmode="decimal">
-    <button class="del-btn" onclick="this.closest('.mat-row').remove()">🗑</button>`;
-  c.appendChild(row);
-  row.querySelector('input').focus();
-}
-
-// FOTOS
-// Almacenes de fotos (File objects comprimidos)
-const photoStore = { work: [], albaran: [] };
-const LIMITS = { work: 10, albaran: 5 };
-
-function openCamera(type) {
-  document.getElementById(`f-camera-${type}`).click();
-}
-
-// Comprime una imagen usando Canvas
-function compressImage(file, maxPx, quality) {
-  return new Promise(resolve => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      let w = img.width, h = img.height;
-      if (w > maxPx || h > maxPx) {
-        if (w > h) { h = Math.round(h * maxPx / w); w = maxPx; }
-        else       { w = Math.round(w * maxPx / h); h = maxPx; }
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      canvas.toBlob(blob => resolve(new File([blob], file.name, { type: 'image/jpeg' })), 'image/jpeg', quality);
-    };
-    img.src = url;
-  });
-}
-
-// Añadir foto desde cámara (1 a la vez, acumulativa)
-async function addPhoto(input, type) {
-  if (!input.files[0]) return;
-  const limit = LIMITS[type];
-  if (photoStore[type].length >= limit) {
-    alert(`Máximo ${limit} fotos para este campo.`);
-    input.value = '';
-    return;
-  }
-  const compressed = await compressImage(input.files[0], 1200, 0.8);
-  photoStore[type].push(compressed);
-  renderPreviews(type);
-  input.value = ''; // Reset para poder volver a abrir la cámara
-}
-
-// Añadir fotos desde galería (múltiples)
-async function addPhotos(input, type) {
-  if (!input.files.length) return;
-  const limit = LIMITS[type];
-  const available = limit - photoStore[type].length;
-  if (available <= 0) { alert(`Ya tienes ${limit} fotos. Borra alguna para añadir más.`); input.value=''; return; }
-  const files = [...input.files].slice(0, available);
-  if (input.files.length > available) alert(`Solo se añaden ${available} fotos más (máximo ${limit}).`);
-  
-  const btn = input.previousElementSibling;
-  if (btn) { btn.textContent = '⏳ Comprimiendo...'; btn.disabled = true; }
-  
-  for (const file of files) {
-    const compressed = await compressImage(file, 1200, 0.8);
-    photoStore[type].push(compressed);
-  }
-  renderPreviews(type);
-  input.value = '';
-  if (btn) { btn.textContent = '🖼️ Galería'; btn.disabled = false; }
-}
-
-function renderPreviews(type) {
-  const previewId = type === 'work' ? 'f-fotos-preview' : 'f-albaranes-preview';
-  const countId   = type === 'work' ? 'work-count' : 'albaran-count';
-  const preview   = document.getElementById(previewId);
-  const countEl   = document.getElementById(countId);
-  if (!preview) return;
-
-  preview.innerHTML = '';
-  photoStore[type].forEach((file, i) => {
-    const url = URL.createObjectURL(file);
-    const sizeMB = (file.size / 1024 / 1024).toFixed(1);
-    const wrap = document.createElement('div');
-    wrap.style.cssText = 'position:relative';
-    wrap.innerHTML = `
-      <img src="${url}" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
-      <div style="position:absolute;bottom:3px;left:3px;background:rgba(0,0,0,.6);color:#fff;font-size:9px;padding:1px 5px;border-radius:4px">${sizeMB}MB</div>
-      <button onclick="removePhoto('${type}',${i})" style="position:absolute;top:3px;right:3px;background:rgba(0,0,0,.7);border:none;color:#fff;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:12px;line-height:1">✕</button>`;
-    preview.appendChild(wrap);
-  });
-
-  if (countEl) countEl.textContent = `(${photoStore[type].length}/${LIMITS[type]})`;
-}
-
-function removePhoto(type, index) {
-  photoStore[type].splice(index, 1);
-  renderPreviews(type);
-}
-
-// SUBMIT
-async function submitParte() {
-  const date       = document.getElementById('f-date').value;
-  const clientName = document.getElementById('f-client').value.trim();
-  const description = document.getElementById('f-desc').value.trim();
-  const horas      = parseFloat(document.getElementById('f-horas').value || 8);
-  const notas      = document.getElementById('f-notas').value.trim();
-
-  if (!date)       { showMsg('form-msg', '⚠️ La fecha es obligatoria', 'warn'); return; }
-  if (!clientName) { showMsg('form-msg', '⚠️ El cliente es obligatorio', 'warn'); return; }
-  if (!description){ showMsg('form-msg', '⚠️ Describe el trabajo realizado', 'warn'); return; }
-
-  const materiales = [];
-  document.querySelectorAll('.mat-row').forEach(row => {
-    const inputs = row.querySelectorAll('input');
-    const nombre = inputs[0]?.value?.trim();
-    const cantidad = parseFloat(inputs[1]?.value || 0);
-    if (nombre) materiales.push({ nombre, cantidad, precio: 0 });
-  });
-
-  const btn = document.getElementById('submit-btn');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>Enviando...';
-
-  try {
-    // Usar FormData para poder enviar fotos
-    const formData = new FormData();
-    
-    // Datos del parte
-    const parteData = {
-      ...workerInfo, date, clientName, description, horas, notas, materiales,
-      gpsLat: gpsData.lat, gpsLng: gpsData.lng, gpsAccuracy: gpsData.accuracy,
-    };
-    formData.append('data', JSON.stringify(parteData));
-
-    // Añadir fotos de trabajo
-    console.log('[Parte] Fotos trabajo:', photoStore.work.length, 'albaranes:', photoStore.albaran.length);
-    photoStore.work.forEach((file, i) => {
-      formData.append(`foto_trabajo_${i}`, file, `trabajo_${i}.jpg`);
-      console.log('[Parte] Añadida foto trabajo', i, file.size, 'bytes');
-    });
-
-    // Añadir fotos de albaranes
-    photoStore.albaran.forEach((file, i) => {
-      formData.append(`foto_albaran_${i}`, file, `albaran_${i}.jpg`);
-    });
-
-    const r = await fetch('/api/partes', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${workerToken}` },
-      // Sin Content-Type — el navegador lo pone automático con boundary para FormData
-      body: formData
-    });
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.error || 'Error al enviar');
-
-    const nFotos = photoStore.work.length + photoStore.albaran.length;
-    document.getElementById('success-text').textContent = 
-      `Parte de ${workerInfo.workerName} para "${clientName}" registrado${nFotos>0?' con '+nFotos+' foto'+(nFotos>1?'s':''):''}.`;
-    showPage('success');
-    resetForm();
-  } catch(err) {
-    showMsg('form-msg', '❌ Error: ' + err.message, 'error');
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = '📤 Enviar parte';
-  }
-}
-
-function resetForm() {
-  document.getElementById('f-date').value = new Date().toISOString().slice(0,10);
-  ['f-client','f-desc','f-notas'].forEach(id => { const e = document.getElementById(id); if(e) e.value=''; });
-  document.getElementById('f-horas').value = '8';
-  document.getElementById('f-mat-rows').innerHTML = '';
-  // Limpiar fotos
-  photoStore.work = []; photoStore.albaran = [];
-  ['f-fotos-preview','f-albaranes-preview'].forEach(id => { const e=document.getElementById(id); if(e) e.innerHTML=''; });
-  ['work-count','albaran-count'].forEach(id => { const e=document.getElementById(id); if(e) e.textContent=`(0/${id==='work-count'?10:5})`; });
-}
-</script>
-</body>
-</html>
+  <div class="container" style="padding-bottom
