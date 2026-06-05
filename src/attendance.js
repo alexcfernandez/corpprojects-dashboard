@@ -28,6 +28,12 @@ const ESTADOS = CONFIG.estadosPresencia;
 let _workersCache     = null;
 let _workersCacheTime = 0;
 
+function _invalidateWorkersCache() {
+  _workersCache     = null;
+  _workersCacheTime = 0;
+  console.log('[Attendance] Caché de workers invalidada');
+}
+
 async function getWorkers() {
   if (_workersCache && Date.now() - _workersCacheTime < 5 * 60 * 1000) return _workersCache;
   try {
@@ -222,4 +228,5 @@ module.exports = {
   WORKERS, ESTADOS,
   saveAttendance, deleteAttendance, getAttendance,
   getMonthlySummary, buildClientSummary, getClientExtract,
+  _invalidateWorkersCache,
 };
