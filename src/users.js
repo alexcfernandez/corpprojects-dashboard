@@ -21,44 +21,43 @@ async function getDB() {
 
 // ── ROLES ────────────────────────────────────────────────────────
 const ROLES = {
-  admin:   { label: 'Administrador', color: '#f05252', permissions: ['all'] },
-  office:  { label: 'Oficina',       color: '#4d9cf8', permissions: ['dashboard', 'partes', 'presencia', 'facturas', 'presupuestos'] },
-  tech:    { label: 'Técnico',       color: '#22c487', permissions: ['partes_create'] },
-  client:  { label: 'Cliente',       color: '#a78bfa', permissions: ['invoices_read'] },
+  admin:  { label: 'Administrador', color: '#f05252', permissions: ['all'] },
+  office: { label: 'Oficina',       color: '#4d9cf8', permissions: ['dashboard', 'partes', 'presencia', 'facturas', 'presupuestos'] },
+  tech:   { label: 'Técnico',       color: '#22c487', permissions: ['partes_create'] },
+  client: { label: 'Cliente',       color: '#a78bfa', permissions: ['invoices_read'] },
 };
 
-// ── INIT — crear admin por defecto si no hay usuarios ────────────
+// ── INIT — crear usuarios por defecto si no hay ninguno ──────────
 async function initDefaultUsers() {
-  const db = await getDB();
+  const db    = await getDB();
   const count = await db.collection('users').countDocuments();
   if (count > 0) return;
 
-  // Usuarios iniciales migrados desde partes.js
-  const defaultUsers = [
-    { name: 'Jose Beliard',    role: 'tech',   pin: '1234', color: '#4d9cf8', active: true },
-    { name: 'Diego Campillo',  role: 'tech',   pin: '2345', color: '#22c487', active: true },
-    { name: 'Abdellah Souiri', role: 'tech',   pin: '3456', color: '#f59e0b', active: true },
-    { name: 'Mamadou Barry',   role: 'tech',   pin: '4567', color: '#a78bfa', active: true },
-    { name: 'Paula Morales',   role: 'office', pin: '5678', color: '#f05252', active: true },
-  ];
+  const CONFIG = require('./config');
+  const defaultUsers = CONFIG.workersFallback.map(w => ({
+    name:      w.name,
+    role:      w.name === 'Paula Morales' ? 'office' : 'tech',
+    pin:       w.pin,
+    color:     w.color,
+    costeHora: w.costeHora,
+    nota:      w.nota || '',
+    active:    true,
+    notes:     '',
+    docs:      { dni: '', carnet: '', nif: '', emergency: '' },
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    lastLogin: null,
+  }));
 
   for (const u of defaultUsers) {
-    await db.collection('users').insertOne({
-      ...u,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      lastLogin: null,
-      notes: '',
-      // Documentación personal (cifrada en el futuro)
-      docs: { dni: '', carnet: '', nif: '', emergency: '' },
-    });
+    await db.collection('users').insertOne(u);
   }
-  console.log('[Users] Usuarios iniciales creados');
+  console.log('[Users] Usuarios iniciales creados desde config');
 }
 
 // ── CRUD USUARIOS ────────────────────────────────────────────────
 async function getUsers(includeInactive = true) {
-  const db = await getDB();
+  const db    = await getDB();
   const query = includeInactive ? {} : { active: true };
   return db.collection('users').find(query).sort({ role: 1, name: 1 }).toArray();
 }
@@ -70,36 +69,54 @@ async function getUser(id) {
 
 async function createUser(data) {
   const db = await getDB();
+
   // Verificar PIN único
-  const existing = await db.collection('users').findOne({ pin: data.pin, active: true });
-  if (existing) throw new Error(`El PIN ${data.pin} ya está en uso por ${existing.name}`);
+  if (data.pin) {
+    const existing = await db.collection('users').findOne({ pin: data.pin, active: true });
+    if (existing) throw new Error(`El PIN ${data.pin} ya está en uso por ${existing.name}`);
+  }
 
   const user = {
     name:      data.name?.trim(),
-    role:      data.role || 'tech',
+    role:      data.role     || 'tech',
     pin:       data.pin,
-    color:     data.color || '#4d9cf8',
+    color:     data.color    || '#4d9cf8',
+    costeHora: parseFloat(data.costeHora || 0),
+    nota:      data.nota     || '',
     active:    true,
-    notes:     data.notes || '',
-    docs:      { dni: data.dni||'', carnet: data.carnet||'', nif: data.nif||'', emergency: data.emergency||'' },
+    notes:     data.notes    || '',
+    docs: {
+      dni:       data.docs?.dni       || '',
+      carnet:    data.docs?.carnet    || '',
+      nif:       data.docs?.nif       || '',
+      emergency: data.docs?.emergency || '',
+    },
     createdAt: new Date(),
     updatedAt: new Date(),
     lastLogin: null,
   };
 
-  if (!user.name) throw new Error('El nombre es obligatorio');
-  if (!user.pin || user.pin.length < 4) throw new Error('El PIN debe tener al menos 4 dígitos');
+  if (!user.name)                        throw new Error('El nombre es obligatorio');
+  if (!user.pin || user.pin.length < 4)  throw new Error('El PIN debe tener al menos 4 dígitos');
+  if (!user.costeHora || user.costeHora <= 0) throw new Error('El coste/hora es obligatorio');
 
   const result = await db.collection('users').insertOne(user);
-  console.log(`[Users] Nuevo usuario: ${user.name} (${user.role})`);
+  console.log(`[Users] Nuevo usuario: ${user.name} (${user.role}) — ${user.costeHora}€/h`);
+
+  // Invalidar caché de workers en attendance
+  try { require('./attendance')._invalidateWorkersCache?.(); } catch(e) {}
+
   return { id: result.insertedId, ...user };
 }
 
 async function updateUser(id, data) {
-  const db = await getDB();
-  const allowed = ['name','role','pin','color','active','notes','docs'];
-  const set = { updatedAt: new Date() };
+  const db      = await getDB();
+  const allowed = ['name','role','pin','color','costeHora','nota','active','notes','docs'];
+  const set     = { updatedAt: new Date() };
   allowed.forEach(k => { if (data[k] !== undefined) set[k] = data[k]; });
+
+  // Parsear costeHora como número
+  if (set.costeHora !== undefined) set.costeHora = parseFloat(set.costeHora || 0);
 
   // Si cambia PIN, verificar que no esté en uso
   if (data.pin) {
@@ -109,12 +126,16 @@ async function updateUser(id, data) {
     if (existing) throw new Error(`El PIN ${data.pin} ya está en uso por ${existing.name}`);
   }
 
-  return db.collection('users').updateOne({ _id: new ObjectId(id) }, { $set: set });
+  const result = await db.collection('users').updateOne({ _id: new ObjectId(id) }, { $set: set });
+
+  // Invalidar caché de workers en attendance para que el nuevo costeHora se aplique
+  try { require('./attendance')._invalidateWorkersCache?.(); } catch(e) {}
+
+  return result;
 }
 
 async function deactivateUser(id) {
   const db = await getDB();
-  // Revocar sesiones activas
   await db.collection('user_sessions').deleteMany({ userId: id });
   return db.collection('users').updateOne(
     { _id: new ObjectId(id) },
@@ -124,20 +145,18 @@ async function deactivateUser(id) {
 
 // ── AUTENTICACIÓN ─────────────────────────────────────────────────
 async function loginWithPin(pin) {
-  const db = await getDB();
+  const db   = await getDB();
   const user = await db.collection('users').findOne({ pin, active: true });
   if (!user) throw new Error('PIN incorrecto o usuario inactivo');
 
-  // Generar token de sesión
-  const token = `u_${crypto.randomBytes(24).toString('hex')}`;
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+  const token     = `u_${crypto.randomBytes(24).toString('hex')}`;
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
   await db.collection('user_sessions').insertOne({
     token, userId: String(user._id), userRole: user.role,
     userName: user.name, createdAt: new Date(), expiresAt
   });
 
-  // Actualizar último login
   await db.collection('users').updateOne(
     { _id: user._id },
     { $set: { lastLogin: new Date() } }
@@ -149,7 +168,7 @@ async function loginWithPin(pin) {
 
 async function verifyUserToken(token) {
   if (!token || !token.startsWith('u_')) return null;
-  const db = await getDB();
+  const db      = await getDB();
   const session = await db.collection('user_sessions').findOne({
     token, expiresAt: { $gt: new Date() }
   });
@@ -172,5 +191,5 @@ function hasPermission(role, permission) {
 module.exports = {
   ROLES, initDefaultUsers,
   getUsers, getUser, createUser, updateUser, deactivateUser,
-  loginWithPin, verifyUserToken, logout, hasPermission
+  loginWithPin, verifyUserToken, logout, hasPermission,
 };
