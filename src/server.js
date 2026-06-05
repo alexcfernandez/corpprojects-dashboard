@@ -55,7 +55,6 @@ function requireAuth(req, res, next) {
   catch { return res.status(401).json({ error: 'Token inválido' }); }
 }
 
-// ── MongoDB helper ────────────────────────────────────────────────
 async function getDB() {
   const client = new MongoClient(process.env.MONGODB_URI);
   await client.connect();
@@ -374,12 +373,12 @@ app.get('/api/partes/workers', async (req, res) => {
     const allUsers = await getUsers(false);
     const techs = allUsers.filter(u => u.role === 'tech' || u.role === 'office');
     if (techs.length > 0) {
-      res.json(techs.map(u => ({ id: String(u._id), name: u.name, color: u.color || '#4d9cf8', role: u.role })));
+      res.json(techs.map(u => ({ id: String(u._id), name: u.name, color: u.color || '#4d9cf8', role: u.role, costeHora: u.costeHora || 15 })));
     } else {
-      res.json(partes.WORKERS.map(w => ({ id: w.id, name: w.name, color: '#4d9cf8' })));
+      res.json(partes.WORKERS.map(w => ({ id: w.id, name: w.name, color: '#4d9cf8', costeHora: w.costeHora || 15 })));
     }
   } catch(err) {
-    res.json(partes.WORKERS.map(w => ({ id: w.id, name: w.name, color: '#4d9cf8' })));
+    res.json(partes.WORKERS.map(w => ({ id: w.id, name: w.name, color: '#4d9cf8', costeHora: w.costeHora || 15 })));
   }
 });
 
@@ -487,10 +486,10 @@ app.get('/api/clients/list', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 // ── ASIGNACIONES, EXTERNOS Y EXPEDIENTES ─────────────────────────
 const expedientes = require('./expedientes');
 
-// EXTERNOS
 app.get('/api/externos', requireAuth, async (req, res) => {
   try { res.json(await expedientes.getExternos()); }
   catch (err) { res.status(500).json({ error: err.message }); }
@@ -511,7 +510,6 @@ app.delete('/api/externos/:id', requireAuth, async (req, res) => {
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ASIGNACIONES
 app.get('/api/asignaciones', requireAuth, async (req, res) => {
   try {
     const { fecha, workerId } = req.query;
@@ -524,7 +522,6 @@ app.get('/api/asignaciones/dia/:fecha', requireAuth, async (req, res) => {
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Ruta pública para trabajadores — ver sus asignaciones del día
 app.get('/api/asignaciones/worker/:workerId', async (req, res) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
@@ -556,7 +553,6 @@ app.delete('/api/asignaciones/:id', requireAuth, async (req, res) => {
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// EXPEDIENTES
 app.get('/api/expedientes', requireAuth, async (req, res) => {
   try {
     const { estado, clientName } = req.query;
@@ -579,7 +575,6 @@ app.put('/api/expedientes/:id', requireAuth, async (req, res) => {
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 
-// Cuando el admin cierra un expediente — genera resumen para StelOrder
 app.post('/api/expedientes/:id/cerrar', requireAuth, async (req, res) => {
   try {
     await expedientes.updateExpediente(req.params.id, { estado: 'COMPLETADO' });
@@ -589,7 +584,6 @@ app.post('/api/expedientes/:id/cerrar', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Al crear un parte — gestiona equipo + expediente automáticamente
 app.post('/api/partes/confirmar', async (req, res) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
@@ -608,14 +602,12 @@ app.post('/api/partes/confirmar', async (req, res) => {
     const bodyData = req.body;
     const parte = await partes.createParte(bodyData, workerInfo);
 
-    // Si tiene equipo → generar partes automáticos para el resto
     const equipo = bodyData.equipo || [];
     let partesGenerados = [];
     if (equipo.length > 1) {
       partesGenerados = await expedientes.generarPartesEquipo(parte, equipo);
     }
 
-    // Si el trabajo continúa → vincular o crear expediente
     let expedienteId = null;
     if (bodyData.estadoTrabajo === 'continua' || bodyData.estadoTrabajo === 'parcial' || bodyData.expedienteId) {
       expedienteId = await expedientes.vincularOCrearExpediente(
@@ -624,7 +616,6 @@ app.post('/api/partes/confirmar', async (req, res) => {
         parte.description,
         bodyData.expedienteId || null
       );
-      // Vincular también los partes auto-generados
       if (expedienteId && partesGenerados.length > 0) {
         const { db, client } = await (async () => {
           const { MongoClient } = require('mongodb');
@@ -653,6 +644,7 @@ app.post('/api/partes/confirmar', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 // ── EMAILS INTELIGENTES ───────────────────────────────────────────
 const { pollEmails, enviarRespuesta } = require('./email-intelligence');
 
@@ -844,6 +836,43 @@ app.get('/api/emails/stats', requireAuth, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ── PAGOS EN EFECTIVO ─────────────────────────────────────────────
+const pagos = require('./pagos');
+
+app.get('/api/pagos/resumen', requireAuth, async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    res.json(await pagos.getResumenPagos({ from, to }));
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/pagos', requireAuth, async (req, res) => {
+  try {
+    const { persona, tipo, from, to, limit, skip } = req.query;
+    res.json(await pagos.getPagos({ persona, tipo, from, to, limit: parseInt(limit||100), skip: parseInt(skip||0) }));
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/pagos/:id', requireAuth, async (req, res) => {
+  try { res.json(await pagos.getPago(req.params.id)); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/pagos', requireAuth, async (req, res) => {
+  try { res.json(await pagos.createPago({ ...req.body, registradoPor: 'admin' })); }
+  catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.put('/api/pagos/:id', requireAuth, async (req, res) => {
+  try { await pagos.updatePago(req.params.id, req.body); res.json({ ok: true }); }
+  catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.delete('/api/pagos/:id', requireAuth, async (req, res) => {
+  try { await pagos.deletePago(req.params.id); res.json({ ok: true }); }
+  catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 // ── Rutas HTML ────────────────────────────────────────────────────
