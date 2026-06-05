@@ -144,12 +144,15 @@ async function getSaldoColaborador(colaboradorId) {
   let totalEntregado  = 0;
   let totalDescuentos = 0;
 
-  movs.forEach(m => {
-  if (m.tipo === 'pago_semana' || m.tipo === 'pago_dias') {
-    totalDevengado += m.importe;  // lo que ha ganado trabajando
-    totalEntregado += m.importe;  // y también lo hemos pagado
+movs.forEach(m => {
+  if (m.tipo === 'semana_trabajada') {
+    // Solo devengado — trabajo registrado, no dinero entregado
+    totalDevengado += m.importe;
+  } else if (m.tipo === 'pago_semana' || m.tipo === 'pago_dias') {
+    // Dinero entregado como pago
+    totalEntregado += m.importe;
   } else if (m.tipo === 'adelanto') {
-    totalEntregado += m.importe;  // dinero adelantado
+    totalEntregado += m.importe;
   } else if (m.tipo === 'descuento') {
     totalDescuentos += m.importe;
     totalEntregado  += m.importe;
