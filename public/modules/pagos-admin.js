@@ -11,12 +11,13 @@
   };
 
   const TIPOS_MOV = {
-    pago_semana: { label: 'Pago semana',   emoji: '📅', color: '#22c487' },
-    pago_dias:   { label: 'Pago días',     emoji: '📆', color: '#4d9cf8' },
-    adelanto:    { label: 'Adelanto',      emoji: '💸', color: '#f59e0b' },
-    descuento:   { label: 'Descuento',     emoji: '➖', color: '#f05252' },
-    devolucion:  { label: 'Devolución',    emoji: '↩️',  color: '#a78bfa' },
-  };
+  semana_trabajada: { label: 'Semana trabajada', emoji: '📅', color: '#22c487' },
+  pago_semana:      { label: 'Pago semana',       emoji: '💵', color: '#4d9cf8' },
+  pago_dias:        { label: 'Pago días',          emoji: '📆', color: '#4d9cf8' },
+  adelanto:         { label: 'Adelanto',           emoji: '💸', color: '#f59e0b' },
+  descuento:        { label: 'Descuento',          emoji: '➖', color: '#f05252' },
+  devolucion:       { label: 'Devolución',         emoji: '↩️',  color: '#a78bfa' },
+};
 
   async function api(url, opts = {}) {
     const tok = localStorage.getItem('cp_token');
