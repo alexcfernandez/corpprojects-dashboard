@@ -93,19 +93,49 @@ async function getResumenPagos({ from, to } = {}) {
   }
   const pagos = await db.collection('pagos').find(query).sort({ fecha: -1 }).toArray();
 
-  // Agrupar por persona
-  const byPersona = {};
-  pagos.forEach(p => {
-    if (!byPersona[p.persona]) byPersona[p.persona] = {
-      persona: p.persona, totalPagado: 0, totalDias: 0,
-      efectivos: 0, adelantos: 0, pagos: [],
-    };
-    byPersona[p.persona].totalPagado += p.importe;
-    byPersona[p.persona].totalDias   += p.diasTrabajados || 0;
-    if (p.tipo === 'efectivo') byPersona[p.persona].efectivos += p.importe;
-    if (p.tipo === 'adelanto') byPersona[p.persona].adelantos += p.importe;
-    byPersona[p.persona].pagos.push(p);
+  // Separar salidas de entradas
+  const salidas  = pagos.filter(p => p.tipo !== 'ingreso' && p.tipo !== 'devolucion');
+  const entradas = pagos.filter(p => p.tipo === 'ingreso' || p.tipo === 'devolucion');
+
+  // Agrupar salidas por persona
+  const bySalida = {};
+  salidas.forEach(p => {
+    if (!bySalida[p.persona]) bySalida[p.persona] = { persona: p.persona, totalPagado: 0, pagos: [] };
+    bySalida[p.persona].totalPagado += p.importe;
+    bySalida[p.persona].pagos.push(p);
   });
+
+  // Agrupar entradas por persona
+  const byEntrada = {};
+  entradas.forEach(p => {
+    if (!byEntrada[p.persona]) byEntrada[p.persona] = { persona: p.persona, totalCobrado: 0, pagos: [] };
+    byEntrada[p.persona].totalCobrado += p.importe;
+    byEntrada[p.persona].pagos.push(p);
+  });
+
+  const totalEfectivo  = salidas.filter(p=>p.tipo==='efectivo').reduce((s,p)=>s+p.importe,0);
+  const totalAdelantos = salidas.filter(p=>p.tipo==='adelanto').reduce((s,p)=>s+p.importe,0);
+  const totalMaterial  = salidas.filter(p=>p.tipo==='material').reduce((s,p)=>s+p.importe,0);
+  const totalSalidas   = salidas.reduce((s,p)=>s+p.importe,0);
+  const totalEntradas  = entradas.reduce((s,p)=>s+p.importe,0);
+  const balanceCash    = totalEntradas - totalSalidas;
+
+  return {
+    pagos,
+    salidas,
+    entradas,
+    bySalida:  Object.values(bySalida).sort((a,b)=>b.totalPagado-a.totalPagado),
+    byEntrada: Object.values(byEntrada).sort((a,b)=>b.totalCobrado-a.totalCobrado),
+    totales: {
+      efectivo:   totalEfectivo,
+      adelantos:  totalAdelantos,
+      material:   totalMaterial,
+      salidas:    totalSalidas,
+      entradas:   totalEntradas,
+      balance:    balanceCash,
+    },
+  };
+}
 
   const totalEfectivo = pagos.filter(p=>p.tipo==='efectivo').reduce((s,p)=>s+p.importe,0);
   const totalAdelantos = pagos.filter(p=>p.tipo==='adelanto').reduce((s,p)=>s+p.importe,0);
