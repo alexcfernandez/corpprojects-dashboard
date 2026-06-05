@@ -95,56 +95,63 @@
   }
 
   function renderForm(user={}) {
-    return `
-      <div class="g2" style="margin-bottom:12px">
-        <div>
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">Nombre completo *</div>
-          <input type="text" id="u-name" value="${user.name||''}" placeholder="Ej: Juan García" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px">
-        </div>
-        <div>
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">Rol *</div>
-          <select id="u-role" style="width:100%;background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;font-size:13px">
-            ${Object.entries(ROLE_LABELS).map(([k,v])=>`<option value="${k}" ${user.role===k?'selected':''}>${v}</option>`).join('')}
-          </select>
+  return `
+    <div class="g2" style="margin-bottom:12px">
+      <div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">Nombre completo *</div>
+        <input type="text" id="u-name" value="${user.name||''}" placeholder="Ej: Juan García" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px">
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">Rol *</div>
+        <select id="u-role" style="width:100%;background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;font-size:13px">
+          ${Object.entries(ROLE_LABELS).map(([k,v])=>`<option value="${k}" ${user.role===k?'selected':''}>${v}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="g2" style="margin-bottom:12px">
+      <div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">PIN de acceso * (4 dígitos)</div>
+        <input type="text" id="u-pin" value="${user.pin&&user.pin!=='••••'?user.pin:''}" placeholder="Ej: 6789" maxlength="6" inputmode="numeric" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px;font-family:monospace;letter-spacing:4px">
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">Coste/hora real (€) *</div>
+        <input type="number" id="u-coste-hora" value="${user.costeHora||''}" placeholder="Ej: 13.28" min="0" step="0.01" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px">
+        <div style="font-size:10px;color:var(--text3);margin-top:3px">Sueldo + SS prorrateado por hora</div>
+      </div>
+    </div>
+    <div class="g2" style="margin-bottom:12px">
+      <div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">Color</div>
+        <div style="display:flex;gap:8px;align-items:center;padding-top:6px">
+          ${['#4d9cf8','#22c487','#f59e0b','#a78bfa','#f05252','#e879a1','#6b7280'].map(c=>`
+            <div onclick="selectColor('${c}')" id="color-${c.slice(1)}"
+              style="width:24px;height:24px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${user.color===c?'#fff':'transparent'};transition:border-color .15s"></div>`).join('')}
+          <input type="color" id="u-color" value="${user.color||'#4d9cf8'}" style="width:28px;height:28px;border:none;border-radius:50%;cursor:pointer;background:none;padding:0" onchange="document.querySelectorAll('[id^=color-]').forEach(e=>e.style.borderColor='transparent')">
         </div>
       </div>
-      <div class="g2" style="margin-bottom:12px">
-        <div>
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">PIN de acceso * (4 dígitos)</div>
-          <input type="text" id="u-pin" value="${user.pin&&user.pin!=='••••'?user.pin:''}" placeholder="Ej: 6789" maxlength="6" inputmode="numeric" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px;font-family:monospace;letter-spacing:4px">
-        </div>
-        <div>
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">Color</div>
-          <div style="display:flex;gap:8px;align-items:center;padding-top:6px">
-            ${['#4d9cf8','#22c487','#f59e0b','#a78bfa','#f05252','#e879a1','#6b7280'].map(c=>`
-              <div onclick="selectColor('${c}')" id="color-${c.slice(1)}"
-                style="width:24px;height:24px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${user.color===c?'#fff':'transparent'};transition:border-color .15s"></div>`).join('')}
-            <input type="color" id="u-color" value="${user.color||'#4d9cf8'}" style="width:28px;height:28px;border:none;border-radius:50%;cursor:pointer;background:none;padding:0" onchange="document.querySelectorAll('[id^=color-]').forEach(e=>e.style.borderColor='transparent')">
-          </div>
-        </div>
-      </div>
-      <div style="margin-bottom:12px">
+      <div>
         <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">Notas internas</div>
-        <input type="text" id="u-notes" value="${user.notes||''}" placeholder="Ej: Conductor principal, trabaja lunes-viernes" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px">
+        <input type="text" id="u-notes" value="${user.notes||''}" placeholder="Ej: Conductor principal, lunes-viernes" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px">
       </div>
-      <div style="background:var(--bg3);border-radius:var(--rs);padding:14px;margin-bottom:0">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">📁 Documentación (solo admin puede ver)</div>
-        <div class="g2" style="margin-bottom:8px">
-          <div>
-            <div style="font-size:10px;color:var(--text3);margin-bottom:4px">DNI / NIE</div>
-            <input type="text" id="u-dni" value="${user.docs?.dni||''}" placeholder="12345678A" style="width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--rs);padding:8px 10px;color:var(--text);font-size:13px">
-          </div>
-          <div>
-            <div style="font-size:10px;color:var(--text3);margin-bottom:4px">Carnet de conducir</div>
-            <input type="text" id="u-carnet" value="${user.docs?.carnet||''}" placeholder="Categoría y número" style="width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--rs);padding:8px 10px;color:var(--text);font-size:13px">
-          </div>
+    </div>
+    <div style="background:var(--bg3);border-radius:var(--rs);padding:14px;margin-bottom:0">
+      <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">📁 Documentación (solo admin puede ver)</div>
+      <div class="g2" style="margin-bottom:8px">
+        <div>
+          <div style="font-size:10px;color:var(--text3);margin-bottom:4px">DNI / NIE</div>
+          <input type="text" id="u-dni" value="${user.docs?.dni||''}" placeholder="12345678A" style="width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--rs);padding:8px 10px;color:var(--text);font-size:13px">
         </div>
         <div>
-          <div style="font-size:10px;color:var(--text3);margin-bottom:4px">Contacto de emergencia</div>
-          <input type="text" id="u-emergency" value="${user.docs?.emergency||''}" placeholder="Nombre y teléfono" style="width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--rs);padding:8px 10px;color:var(--text);font-size:13px">
+          <div style="font-size:10px;color:var(--text3);margin-bottom:4px">Carnet de conducir</div>
+          <input type="text" id="u-carnet" value="${user.docs?.carnet||''}" placeholder="Categoría y número" style="width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--rs);padding:8px 10px;color:var(--text);font-size:13px">
         </div>
-      </div>`;
-  }
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--text3);margin-bottom:4px">Contacto de emergencia</div>
+        <input type="text" id="u-emergency" value="${user.docs?.emergency||''}" placeholder="Nombre y teléfono" style="width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--rs);padding:8px 10px;color:var(--text);font-size:13px">
+      </div>
+    </div>`;
+}
 
   window.selectColor = function(color) {
     document.getElementById('u-color').value = color;
@@ -262,19 +269,20 @@
   }
 
   function getFormData() {
-    return {
-      name:  document.getElementById('u-name')?.value?.trim(),
-      role:  document.getElementById('u-role')?.value,
-      pin:   document.getElementById('u-pin')?.value?.trim(),
-      color: document.getElementById('u-color')?.value,
-      notes: document.getElementById('u-notes')?.value?.trim(),
-      docs: {
-        dni:       document.getElementById('u-dni')?.value?.trim(),
-        carnet:    document.getElementById('u-carnet')?.value?.trim(),
-        emergency: document.getElementById('u-emergency')?.value?.trim(),
-      }
-    };
-  }
+  return {
+    name:      document.getElementById('u-name')?.value?.trim(),
+    role:      document.getElementById('u-role')?.value,
+    pin:       document.getElementById('u-pin')?.value?.trim(),
+    costeHora: parseFloat(document.getElementById('u-coste-hora')?.value || 0),
+    color:     document.getElementById('u-color')?.value,
+    notes:     document.getElementById('u-notes')?.value?.trim(),
+    docs: {
+      dni:       document.getElementById('u-dni')?.value?.trim(),
+      carnet:    document.getElementById('u-carnet')?.value?.trim(),
+      emergency: document.getElementById('u-emergency')?.value?.trim(),
+    }
+  };
+}
 
   async function submitUser() {
     const data = getFormData();
