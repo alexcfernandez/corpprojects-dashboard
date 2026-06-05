@@ -837,7 +837,81 @@ app.get('/api/emails/stats', requireAuth, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// ── COLABORADORES EXTERNOS ────────────────────────────────────────
+const colaboradores = require('./colaboradores');
 
+app.get('/api/colaboradores', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.getColaboradores()); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/colaboradores/resumen', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.getResumenTodosColaboradores()); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/colaboradores/:id', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.getSaldoColaborador(req.params.id)); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/colaboradores', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.createColaborador(req.body)); }
+  catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.put('/api/colaboradores/:id', requireAuth, async (req, res) => {
+  try { await colaboradores.updateColaborador(req.params.id, req.body); res.json({ ok: true }); }
+  catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.get('/api/colaboradores/:id/movimientos', requireAuth, async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    res.json(await colaboradores.getMovimientos(req.params.id, { from, to }));
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/colaboradores/:id/movimientos', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.createMovimiento(req.params.id, req.body)); }
+  catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.delete('/api/colaboradores/movimientos/:id', requireAuth, async (req, res) => {
+  try { await colaboradores.deleteMovimiento(req.params.id); res.json({ ok: true }); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── PROYECTOS DE INVERSIÓN ────────────────────────────────────────
+app.get('/api/proyectos', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.getProyectos()); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/proyectos/:id', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.getProyecto(req.params.id)); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/proyectos', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.createProyecto(req.body)); }
+  catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.put('/api/proyectos/:id', requireAuth, async (req, res) => {
+  try { await colaboradores.updateProyecto(req.params.id, req.body); res.json({ ok: true }); }
+  catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.post('/api/proyectos/:id/movimientos', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.addMovimientoProyecto(req.params.id, req.body)); }
+  catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.delete('/api/proyectos/movimientos/:id', requireAuth, async (req, res) => {
+  try { await colaboradores.deleteMovimientoProyecto(req.params.id); res.json({ ok: true }); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
 // ── PAGOS EN EFECTIVO ─────────────────────────────────────────────
 const pagos = require('./pagos');
 
