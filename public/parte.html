@@ -130,4 +130,764 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
 <!-- FORMULARIO PARTE -->
 <div id="page-form" class="page">
-  <div class="container" style="padding-bottom
+  <div class="container" style="padding-bottom:60px">
+    <div style="margin:20px 0 16px;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:18px;font-weight:700">Nuevo parte</div>
+      <button onclick="logout()" style="background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer">Salir</button>
+    </div>
+
+    <!-- ASIGNACIONES DEL DÍA -->
+    <div id="asignaciones-section" style="display:none;margin-bottom:20px">
+      <div style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">📋 Tus trabajos de hoy</div>
+      <div id="asignaciones-lista"></div>
+      <button onclick="sinAsignacion()" style="background:none;border:1.5px dashed var(--border2);border-radius:var(--rs);padding:12px;color:var(--text3);font-size:14px;cursor:pointer;width:100%;margin-top:4px">
+        + Parte sin asignación previa
+      </button>
+    </div>
+
+    <!-- EXPEDIENTE ACTIVO BANNER -->
+    <div id="exp-banner" class="exp-banner" style="display:none">
+      <div style="font-size:12px;font-weight:700;color:var(--amber);margin-bottom:4px">📁 Trabajo en curso</div>
+      <div id="exp-banner-texto" style="font-size:13px;color:var(--text2)"></div>
+      <div id="exp-banner-pendiente" style="font-size:12px;color:var(--text3);margin-top:4px;font-style:italic"></div>
+    </div>
+
+    <!-- CAMPOS DEL PARTE -->
+    <div id="form-fields">
+
+      <div class="field">
+        <label>Fecha del trabajo</label>
+        <input type="date" id="f-date">
+      </div>
+
+      <div class="field">
+        <label>Cliente / Obra</label>
+        <input type="text" id="f-client" list="f-clients-list" placeholder="Escribe el nombre del cliente..." autocomplete="off">
+        <datalist id="f-clients-list"></datalist>
+      </div>
+
+      <div class="field">
+        <label>¿Qué se hizo?</label>
+        <textarea id="f-desc" placeholder="Describe brevemente el trabajo realizado..."></textarea>
+      </div>
+
+      <!-- TIPO DE JORNADA -->
+      <div class="field">
+        <label>Tipo de jornada</label>
+        <div class="jornada-grid">
+          <button class="jornada-btn selected-NORMAL" data-jornada="NORMAL" onclick="seleccionarJornada('NORMAL',this)">
+            <div style="font-size:20px;margin-bottom:4px">📅</div>
+            <div style="font-size:13px;font-weight:600;color:var(--blue)">Normal</div>
+          </button>
+          <button class="jornada-btn" data-jornada="EXTRA" onclick="seleccionarJornada('EXTRA',this)">
+            <div style="font-size:20px;margin-bottom:4px">⭐</div>
+            <div style="font-size:13px;font-weight:600;color:var(--text2)">Extra</div>
+            <div style="font-size:10px;color:var(--text3)">Sábado/festivo</div>
+          </button>
+          <button class="jornada-btn" data-jornada="GUARDIA" onclick="seleccionarJornada('GUARDIA',this)">
+            <div style="font-size:20px;margin-bottom:4px">🛡️</div>
+            <div style="font-size:13px;font-weight:600;color:var(--text2)">Guardia</div>
+          </button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Horas trabajadas</label>
+        <input type="number" id="f-horas" value="8" min="0.5" max="16" step="0.5" inputmode="decimal">
+      </div>
+
+      <!-- EQUIPO -->
+      <div class="field" id="equipo-section">
+        <label>¿Quién más estuvo contigo? <span style="font-weight:400;color:var(--text3)">(opcional)</span></label>
+        <div id="equipo-lista" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px"></div>
+        <div id="externos-lista" style="margin-top:8px"></div>
+      </div>
+
+      <div class="field">
+        <label>Materiales usados</label>
+        <div id="f-mat-rows"></div>
+        <button onclick="addMat()" style="background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:10px 16px;color:var(--text2);font-size:14px;cursor:pointer;width:100%;margin-top:4px">+ Añadir material</button>
+      </div>
+
+      <!-- FOTOS TRABAJO -->
+      <div class="field">
+        <label>Fotos del trabajo <span style="color:var(--text3);font-weight:400" id="work-count">(0/10)</span></label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+          <button type="button" onclick="openCamera('work')" style="background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:13px;color:var(--text2);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+            📷 Cámara
+            <input type="file" id="f-camera-work" accept="image/*" capture="environment" style="display:none" onchange="addPhoto(this,'work')">
+          </button>
+          <button type="button" onclick="document.getElementById('f-gallery-work').click()" style="background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:13px;color:var(--text2);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+            🖼️ Galería
+            <input type="file" id="f-gallery-work" accept="image/*" multiple style="display:none" onchange="addPhotos(this,'work')">
+          </button>
+        </div>
+        <div class="foto-preview" id="f-fotos-preview"></div>
+      </div>
+
+      <!-- FOTOS ALBARANES -->
+      <div class="field">
+        <label>Fotos de albaranes <span style="color:var(--text3);font-weight:400" id="albaran-count">(0/5)</span></label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+          <button type="button" onclick="openCamera('albaran')" style="background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:13px;color:var(--text2);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+            📷 Cámara
+            <input type="file" id="f-camera-albaran" accept="image/*" capture="environment" style="display:none" onchange="addPhoto(this,'albaran')">
+          </button>
+          <button type="button" onclick="document.getElementById('f-gallery-albaran').click()" style="background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:13px;color:var(--text2);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+            🖼️ Galería
+            <input type="file" id="f-gallery-albaran" accept="image/*" multiple style="display:none" onchange="addPhotos(this,'albaran')">
+          </button>
+        </div>
+        <div class="foto-preview" id="f-albaranes-preview"></div>
+      </div>
+
+      <!-- ESTADO DEL TRABAJO -->
+      <div class="field">
+        <label>¿Cómo quedó el trabajo?</label>
+        <div class="estado-trabajo-grid">
+          <button class="estado-trabajo-btn selected-completado" data-estado="completado" onclick="seleccionarEstadoTrabajo('completado',this)">
+            <div class="estado-trabajo-emoji">✅</div>
+            <div class="estado-trabajo-info">
+              <div class="titulo">Trabajo completado</div>
+              <div class="sub">El trabajo está terminado</div>
+            </div>
+          </button>
+          <button class="estado-trabajo-btn" data-estado="continua" onclick="seleccionarEstadoTrabajo('continua',this)">
+            <div class="estado-trabajo-emoji">🔴</div>
+            <div class="estado-trabajo-info">
+              <div class="titulo">Continúa otro día</div>
+              <div class="sub">Hay que volver a terminar</div>
+            </div>
+          </button>
+          <button class="estado-trabajo-btn" data-estado="parcial" onclick="seleccionarEstadoTrabajo('parcial',this)">
+            <div class="estado-trabajo-emoji">🟡</div>
+            <div class="estado-trabajo-info">
+              <div class="titulo">Parcialmente completado</div>
+              <div class="sub">Se hizo parte del trabajo</div>
+            </div>
+          </button>
+        </div>
+        <!-- Qué queda pendiente (se muestra si continúa o parcial) -->
+        <div id="pendiente-detalle-field" style="display:none;margin-top:12px">
+          <label style="font-size:12px;font-weight:600;color:var(--amber);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;display:block">¿Qué queda por hacer?</label>
+          <textarea id="f-pendiente-detalle" rows="2" placeholder="Describe qué falta para terminar..." style="width:100%;background:var(--bg3);border:1.5px solid rgba(245,158,11,.4);border-radius:var(--rs);padding:13px 14px;color:var(--text);font-size:15px;outline:none;font-family:inherit;resize:vertical"></textarea>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Notas adicionales</label>
+        <input type="text" id="f-notas" placeholder="Cualquier observación...">
+      </div>
+
+      <div id="gps-status" style="font-size:12px;color:var(--text3);margin-bottom:14px;display:flex;align-items:center;gap:6px">
+        <span id="gps-icon">📍</span> <span id="gps-text">Obteniendo ubicación...</span>
+      </div>
+
+      <button class="btn-primary" id="submit-btn" onclick="submitParte()">📤 Enviar parte</button>
+      <div class="msg" id="form-msg"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ÉXITO -->
+<div id="page-success" class="page">
+  <div class="container">
+    <div class="success-card">
+      <div class="success-icon">✅</div>
+      <div class="success-title">¡Parte enviado!</div>
+      <div class="success-sub" id="success-text">El parte se ha registrado correctamente.</div>
+    </div>
+    <div id="success-extra" style="margin-top:14px;display:none">
+      <div style="background:rgba(77,156,248,.08);border:1px solid rgba(77,156,248,.2);border-radius:12px;padding:14px;font-size:13px;color:var(--text2)">
+        <div id="success-equipo-info"></div>
+        <div id="success-exp-info" style="margin-top:6px"></div>
+      </div>
+    </div>
+    <button class="btn-primary" style="margin-top:20px" onclick="newParte()">Enviar otro parte</button>
+    <button class="btn-ghost" onclick="logout()">Salir</button>
+  </div>
+</div>
+
+<script>
+const WORKER_COLORS = {jose:'#4d9cf8',diego:'#22c487',abdellah:'#f59e0b',mamadou:'#a78bfa',paula:'#f05252'};
+let workerToken = null, workerInfo = null, workerDirect = null;
+let gpsData = { lat: null, lng: null, accuracy: null };
+let todosWorkers = [];
+let todosExternos = [];
+let equipoSeleccionado = []; // [{id, nombre, tipo: 'plantilla'|'externo'}]
+let estadoTrabajoSel = 'completado';
+let tipoJornadaSel = 'NORMAL';
+let asignacionSeleccionada = null; // asignación del día seleccionada
+let expedienteActivo = null; // expediente en curso para este cliente
+
+// ── INIT ─────────────────────────────────────────────────────────
+window.onload = async function() {
+  const urlW = new URLSearchParams(location.search).get('w');
+  if (urlW) {
+    await loadSingleWorker(urlW);
+  } else {
+    await loadWorkers(null);
+  }
+  getGPS();
+  document.getElementById('f-date').value = new Date().toISOString().slice(0,10);
+};
+
+// ── LOGIN ─────────────────────────────────────────────────────────
+async function loadSingleWorker(workerId) {
+  const container = document.getElementById('worker-selector');
+  try {
+    const r = await fetch('/api/partes/workers');
+    todosWorkers = await r.json();
+    const worker = todosWorkers.find(w => String(w.id) === workerId || w.id === workerId);
+    if (!worker) { await loadWorkers(null); return; }
+    container.innerHTML = `
+      <div class="worker-btn selected" data-id="${worker.id}"
+        style="grid-column:1/-1;max-width:200px;margin:0 auto;border-color:${worker.color||'#4d9cf8'}">
+        <div class="worker-dot" style="background:${worker.color||'#4d9cf8'}"></div>
+        <div class="worker-name">${worker.name.split(' ')[0]}</div>
+        <div style="font-size:11px;color:var(--text3)">${worker.name.split(' ').slice(1).join(' ')}</div>
+      </div>`;
+    workerDirect = worker;
+    document.getElementById('pin-input').focus();
+  } catch(e) { await loadWorkers(null); }
+}
+
+async function loadWorkers(preselect) {
+  const container = document.getElementById('worker-selector');
+  try {
+    const r = await fetch('/api/partes/workers');
+    todosWorkers = await r.json();
+    container.innerHTML = todosWorkers.map(w => `
+      <button class="worker-btn ${preselect===w.id?'selected':''}"
+        data-id="${w.id}" onclick="selectWorker(this,'${w.id}')">
+        <div class="worker-dot" style="background:${WORKER_COLORS[w.id]||'#888'}"></div>
+        <div class="worker-name">${w.name.split(' ')[0]}</div>
+        <div style="font-size:11px;color:var(--text3)">${w.name.split(' ').slice(1).join(' ')}</div>
+      </button>`).join('');
+  } catch(e) {
+    container.innerHTML = '<div style="color:var(--text3);font-size:13px">Error cargando trabajadores</div>';
+  }
+}
+
+function selectWorker(btn, id) {
+  document.querySelectorAll('.worker-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  document.getElementById('pin-input').focus();
+}
+
+async function doLogin() {
+  const selectedBtn = document.querySelector('.worker-btn.selected');
+  if (!selectedBtn) { showMsg('login-msg', '⚠️ Selecciona tu nombre', 'warn'); return; }
+  const workerId = workerDirect ? String(workerDirect.id) : selectedBtn.dataset.id;
+  const pin = document.getElementById('pin-input').value;
+  if (pin.length < 4) return;
+
+  const btn = document.getElementById('login-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Verificando...';
+
+  try {
+    const r = await fetch('/api/partes/worker-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workerId, pin })
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'PIN incorrecto');
+
+    workerToken = data.token;
+    workerInfo  = { workerId: data.workerId, workerName: data.workerName };
+
+    document.getElementById('header-sub').textContent = data.workerName;
+    showPage('form');
+    await Promise.all([
+      loadClientSuggestions(),
+      loadAsignacionesHoy(),
+      loadExternos()
+    ]);
+    renderEquipo();
+  } catch(err) {
+    showMsg('login-msg', '❌ ' + err.message, 'error');
+    document.getElementById('pin-input').value = '';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Entrar →';
+  }
+}
+
+function logout() {
+  workerToken = null; workerInfo = null;
+  asignacionSeleccionada = null; expedienteActivo = null;
+  equipoSeleccionado = []; estadoTrabajoSel = 'completado'; tipoJornadaSel = 'NORMAL';
+  document.getElementById('pin-input').value = '';
+  document.querySelectorAll('.worker-btn').forEach(b => b.classList.remove('selected'));
+  showPage('login');
+}
+
+function newParte() { resetForm(); showPage('form'); }
+
+// ── ASIGNACIONES DEL DÍA ──────────────────────────────────────────
+async function loadAsignacionesHoy() {
+  if (!workerInfo) return;
+  try {
+    const hoy = new Date().toISOString().slice(0, 10);
+    const r = await fetch(`/api/asignaciones/worker/${workerInfo.workerId}?fecha=${hoy}`, {
+      headers: { 'Authorization': `Bearer ${workerToken}` }
+    });
+    const asignaciones = await r.json();
+    const section = document.getElementById('asignaciones-section');
+    const lista   = document.getElementById('asignaciones-lista');
+
+    if (!Array.isArray(asignaciones) || asignaciones.length === 0) {
+      section.style.display = 'none';
+      return;
+    }
+
+    section.style.display = 'block';
+    lista.innerHTML = asignaciones.map(a => {
+      const esExtra = a.tipoJornada === 'EXTRA';
+      const hora = a.horaInicio ? ` · ${a.horaInicio}${a.horaFin ? '–' + a.horaFin : ''}` : '';
+      const miembros = (a.equipo || []).filter(m => m.id !== workerInfo.workerId).map(m => m.nombre.split(' ')[0]).join(', ');
+      return `
+        <div class="asignacion-card${esExtra ? ' selected-extra' : ''}" data-id="${a._id}" onclick="seleccionarAsignacion(${JSON.stringify(a).replace(/"/g,'&quot;')})">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+            <div style="font-size:15px;font-weight:700">${a.clientName}</div>
+            <div style="font-size:11px;background:${esExtra?'rgba(245,158,11,.15)':'rgba(77,156,248,.1)'};color:${esExtra?'var(--amber)':'var(--blue)'};border-radius:6px;padding:2px 8px;font-weight:600">
+              ${esExtra ? '⭐ EXTRA' : '📅 Normal'}${hora}
+            </div>
+          </div>
+          <div style="font-size:13px;color:var(--text2);margin-bottom:6px">${a.descripcion || '—'}</div>
+          ${miembros ? `<div style="font-size:12px;color:var(--text3)">👥 Con: ${miembros}</div>` : ''}
+        </div>`;
+    }).join('');
+  } catch(e) {
+    console.warn('[Asignaciones] Error cargando:', e.message);
+  }
+}
+
+function seleccionarAsignacion(asignacion) {
+  asignacionSeleccionada = asignacion;
+
+  // Marcar visualmente
+  document.querySelectorAll('.asignacion-card').forEach(c => c.classList.remove('selected'));
+  const card = document.querySelector(`.asignacion-card[data-id="${asignacion._id}"]`);
+  if (card) card.classList.add('selected');
+
+  // Prellenar campos
+  document.getElementById('f-client').value   = asignacion.clientName || '';
+  document.getElementById('f-desc').value      = asignacion.descripcion || '';
+  if (asignacion.horaInicio && asignacion.horaFin) {
+    const h1 = asignacion.horaInicio.split(':');
+    const h2 = asignacion.horaFin.split(':');
+    const horas = (parseInt(h2[0]) * 60 + parseInt(h2[1]) - parseInt(h1[0]) * 60 - parseInt(h1[1])) / 60;
+    if (horas > 0) document.getElementById('f-horas').value = horas.toFixed(1);
+  }
+
+  // Tipo jornada
+  seleccionarJornada(asignacion.tipoJornada || 'NORMAL', null);
+
+  // Preseleccionar equipo de la asignación
+  equipoSeleccionado = (asignacion.equipo || []).filter(m => m.id !== workerInfo.workerId);
+  renderEquipo();
+
+  // Buscar expediente activo para este cliente
+  buscarExpedienteActivo(asignacion.clientName);
+
+  // Scroll al formulario
+  document.getElementById('form-fields').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function sinAsignacion() {
+  asignacionSeleccionada = null;
+  expedienteActivo = null;
+  document.querySelectorAll('.asignacion-card').forEach(c => c.classList.remove('selected'));
+  document.getElementById('exp-banner').style.display = 'none';
+  document.getElementById('f-client').value = '';
+  document.getElementById('f-desc').value = '';
+  equipoSeleccionado = [];
+  renderEquipo();
+  document.getElementById('form-fields').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function buscarExpedienteActivo(clientName) {
+  try {
+    const r = await fetch(`/api/expedientes?estado=EN_CURSO&clientName=${encodeURIComponent(clientName)}`, {
+      headers: { 'Authorization': `Bearer ${workerToken}` }
+    });
+    const lista = await r.json();
+    const exp = lista.find(e => e.clientName === clientName);
+    if (exp) {
+      expedienteActivo = exp;
+      const banner = document.getElementById('exp-banner');
+      banner.style.display = 'block';
+      document.getElementById('exp-banner-texto').textContent = `${exp.numero} — ${exp.descripcion || exp.clientName} · ${exp.totalHoras || 0}h acumuladas`;
+      document.getElementById('exp-banner-pendiente').textContent = exp.ultimoPendiente ? `Pendiente: "${exp.ultimoPendiente}"` : '';
+    } else {
+      expedienteActivo = null;
+      document.getElementById('exp-banner').style.display = 'none';
+    }
+  } catch(e) {
+    expedienteActivo = null;
+  }
+}
+
+// Actualizar expediente cuando cambia el cliente manualmente
+document.addEventListener('DOMContentLoaded', () => {
+  const clientInput = document.getElementById('f-client');
+  if (clientInput) {
+    let debounce;
+    clientInput.addEventListener('input', () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        const val = clientInput.value.trim();
+        if (val.length > 3) buscarExpedienteActivo(val);
+        else { expedienteActivo = null; document.getElementById('exp-banner').style.display = 'none'; }
+      }, 600);
+    });
+  }
+});
+
+// ── EQUIPO ────────────────────────────────────────────────────────
+async function loadExternos() {
+  try {
+    const r = await fetch('/api/externos', {
+      headers: { 'Authorization': `Bearer ${workerToken}` }
+    });
+    todosExternos = await r.json();
+  } catch(e) { todosExternos = []; }
+}
+
+function renderEquipo() {
+  const lista = document.getElementById('equipo-lista');
+  const extLista = document.getElementById('externos-lista');
+  if (!lista) return;
+
+  // Compañeros de plantilla (excluir al propio trabajador)
+  const companyeros = todosWorkers.filter(w => String(w.id) !== String(workerInfo?.workerId));
+  lista.innerHTML = companyeros.map(w => {
+    const sel = equipoSeleccionado.some(e => e.id === String(w.id) && e.tipo === 'plantilla');
+    return `<button class="equipo-chip ${sel ? 'selected' : ''}" onclick="toggleEquipoMiembro('${w.id}','${w.name}','plantilla',this)">
+      <span style="width:8px;height:8px;border-radius:50%;background:${WORKER_COLORS[w.id]||'#888'};display:inline-block"></span>
+      ${w.name.split(' ')[0]}
+    </button>`;
+  }).join('');
+
+  // Externos
+  extLista.innerHTML = `
+    <div style="font-size:11px;color:var(--text3);margin-bottom:6px">👤 Externos / colaboradores:</div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">
+      ${todosExternos.map(e => {
+        const sel = equipoSeleccionado.some(m => m.id === String(e._id) && m.tipo === 'externo');
+        return `<button class="equipo-chip externo ${sel ? 'selected' : ''}" onclick="toggleEquipoMiembro('${e._id}','${e.nombre}','externo',this)">
+          👤 ${e.nombre}
+        </button>`;
+      }).join('')}
+      <button onclick="addExternoRapido()" style="background:none;border:1.5px dashed var(--border2);border-radius:20px;padding:8px 14px;color:var(--text3);font-size:13px;cursor:pointer;margin:4px">
+        + Nuevo externo
+      </button>
+    </div>`;
+}
+
+function toggleEquipoMiembro(id, nombre, tipo, btn) {
+  const idx = equipoSeleccionado.findIndex(m => m.id === id && m.tipo === tipo);
+  if (idx >= 0) {
+    equipoSeleccionado.splice(idx, 1);
+    btn.classList.remove('selected');
+  } else {
+    equipoSeleccionado.push({ id, nombre, tipo });
+    btn.classList.add('selected');
+  }
+}
+
+async function addExternoRapido() {
+  const nombre = prompt('Nombre del colaborador externo:');
+  if (!nombre || !nombre.trim()) return;
+  try {
+    const r = await fetch('/api/externos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${workerToken}` },
+      body: JSON.stringify({ nombre: nombre.trim() })
+    });
+    const nuevo = await r.json();
+    todosExternos.push(nuevo);
+    equipoSeleccionado.push({ id: String(nuevo._id), nombre: nuevo.nombre, tipo: 'externo' });
+    renderEquipo();
+  } catch(e) {
+    alert('Error añadiendo externo: ' + e.message);
+  }
+}
+
+// ── TIPO JORNADA ──────────────────────────────────────────────────
+function seleccionarJornada(tipo, btn) {
+  tipoJornadaSel = tipo;
+  document.querySelectorAll('.jornada-btn').forEach(b => {
+    b.className = 'jornada-btn';
+    const t = b.dataset.jornada;
+    const colors = { NORMAL: 'var(--blue)', EXTRA: 'var(--amber)', GUARDIA: 'var(--purple)' };
+    b.querySelector('div:last-child').style.color = 'var(--text2)';
+    if (t === tipo) {
+      b.classList.add(`selected-${tipo}`);
+      b.querySelector('div:last-child').style.color = colors[tipo] || 'var(--text)';
+    }
+  });
+}
+
+// ── ESTADO TRABAJO ────────────────────────────────────────────────
+function seleccionarEstadoTrabajo(estado, btn) {
+  estadoTrabajoSel = estado;
+  document.querySelectorAll('.estado-trabajo-btn').forEach(b => {
+    b.className = 'estado-trabajo-btn';
+  });
+  btn.classList.add(`selected-${estado}`);
+  const pendField = document.getElementById('pendiente-detalle-field');
+  if (pendField) pendField.style.display = (estado === 'continua' || estado === 'parcial') ? 'block' : 'none';
+}
+
+// ── GPS ───────────────────────────────────────────────────────────
+function getGPS() {
+  if (!navigator.geolocation) {
+    document.getElementById('gps-text').textContent = 'GPS no disponible';
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      gpsData = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy };
+      document.getElementById('gps-icon').textContent = '✅';
+      document.getElementById('gps-text').textContent = `Ubicación obtenida (±${Math.round(pos.coords.accuracy)}m)`;
+    },
+    () => {
+      document.getElementById('gps-icon').textContent = '⚠️';
+      document.getElementById('gps-text').textContent = 'No se pudo obtener la ubicación';
+    },
+    { enableHighAccuracy: true, timeout: 15000 }
+  );
+}
+
+// ── CLIENTES ──────────────────────────────────────────────────────
+async function loadClientSuggestions() {
+  try {
+    const r = await fetch('/api/clients/list', { headers: { 'Authorization': `Bearer ${workerToken}` } });
+    if (!r.ok) return;
+    const names = await r.json();
+    const dl = document.getElementById('f-clients-list');
+    if (dl && Array.isArray(names)) dl.innerHTML = names.map(n => `<option value="${n}">`).join('');
+  } catch(e) {}
+}
+
+// ── MATERIALES ────────────────────────────────────────────────────
+function addMat() {
+  const c = document.getElementById('f-mat-rows');
+  const row = document.createElement('div');
+  row.className = 'mat-row';
+  row.innerHTML = `
+    <input type="text" placeholder="Nombre del material" autocomplete="off">
+    <input type="number" placeholder="Cant." min="0" step="0.1" inputmode="decimal">
+    <button class="del-btn" onclick="this.closest('.mat-row').remove()">🗑</button>`;
+  c.appendChild(row);
+  row.querySelector('input').focus();
+}
+
+// ── FOTOS ─────────────────────────────────────────────────────────
+const photoStore = { work: [], albaran: [] };
+const LIMITS = { work: 10, albaran: 5 };
+
+function openCamera(type) { document.getElementById(`f-camera-${type}`).click(); }
+
+function compressImage(file, maxPx, quality) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.width, h = img.height;
+      if (w > maxPx || h > maxPx) {
+        if (w > h) { h = Math.round(h * maxPx / w); w = maxPx; }
+        else       { w = Math.round(w * maxPx / h); h = maxPx; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob(blob => resolve(new File([blob], file.name, { type:'image/jpeg' })), 'image/jpeg', quality);
+    };
+    img.src = url;
+  });
+}
+
+async function addPhoto(input, type) {
+  if (!input.files[0]) return;
+  if (photoStore[type].length >= LIMITS[type]) { alert(`Máximo ${LIMITS[type]} fotos.`); input.value=''; return; }
+  const compressed = await compressImage(input.files[0], 1200, 0.8);
+  photoStore[type].push(compressed);
+  renderPreviews(type);
+  input.value = '';
+}
+
+async function addPhotos(input, type) {
+  if (!input.files.length) return;
+  const available = LIMITS[type] - photoStore[type].length;
+  if (available <= 0) { alert(`Ya tienes ${LIMITS[type]} fotos.`); input.value=''; return; }
+  const files = [...input.files].slice(0, available);
+  const btn = input.previousElementSibling;
+  if (btn) { btn.textContent = '⏳ Comprimiendo...'; btn.disabled = true; }
+  for (const file of files) {
+    const compressed = await compressImage(file, 1200, 0.8);
+    photoStore[type].push(compressed);
+  }
+  renderPreviews(type);
+  input.value = '';
+  if (btn) { btn.textContent = '🖼️ Galería'; btn.disabled = false; }
+}
+
+function renderPreviews(type) {
+  const previewId = type === 'work' ? 'f-fotos-preview' : 'f-albaranes-preview';
+  const countId   = type === 'work' ? 'work-count' : 'albaran-count';
+  const preview   = document.getElementById(previewId);
+  const countEl   = document.getElementById(countId);
+  if (!preview) return;
+  preview.innerHTML = '';
+  photoStore[type].forEach((file, i) => {
+    const url = URL.createObjectURL(file);
+    const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative';
+    wrap.innerHTML = `
+      <img src="${url}" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
+      <div style="position:absolute;bottom:3px;left:3px;background:rgba(0,0,0,.6);color:#fff;font-size:9px;padding:1px 5px;border-radius:4px">${sizeMB}MB</div>
+      <button onclick="removePhoto('${type}',${i})" style="position:absolute;top:3px;right:3px;background:rgba(0,0,0,.7);border:none;color:#fff;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:12px;line-height:1">✕</button>`;
+    preview.appendChild(wrap);
+  });
+  if (countEl) countEl.textContent = `(${photoStore[type].length}/${LIMITS[type]})`;
+}
+
+function removePhoto(type, index) { photoStore[type].splice(index, 1); renderPreviews(type); }
+
+// ── SUBMIT ────────────────────────────────────────────────────────
+async function submitParte() {
+  const date            = document.getElementById('f-date').value;
+  const clientName      = document.getElementById('f-client').value.trim();
+  const description     = document.getElementById('f-desc').value.trim();
+  const horas           = parseFloat(document.getElementById('f-horas').value || 8);
+  const notas           = document.getElementById('f-notas').value.trim();
+  const pendienteDetalle = document.getElementById('f-pendiente-detalle')?.value?.trim() || '';
+
+  if (!date)        { showMsg('form-msg', '⚠️ La fecha es obligatoria', 'warn'); return; }
+  if (!clientName)  { showMsg('form-msg', '⚠️ El cliente es obligatorio', 'warn'); return; }
+  if (!description) { showMsg('form-msg', '⚠️ Describe el trabajo realizado', 'warn'); return; }
+  if ((estadoTrabajoSel === 'continua' || estadoTrabajoSel === 'parcial') && !pendienteDetalle) {
+    showMsg('form-msg', '⚠️ Indica qué queda por hacer', 'warn'); return;
+  }
+
+  const materiales = [];
+  document.querySelectorAll('.mat-row').forEach(row => {
+    const inputs = row.querySelectorAll('input');
+    const nombre = inputs[0]?.value?.trim();
+    const cantidad = parseFloat(inputs[1]?.value || 0);
+    if (nombre) materiales.push({ nombre, cantidad, precio: 0 });
+  });
+
+  // Construir equipo completo (yo + seleccionados)
+  const equipoCompleto = [
+    { id: workerInfo.workerId, nombre: workerInfo.workerName, tipo: 'plantilla', esResponsable: true },
+    ...equipoSeleccionado.map(m => ({ ...m, esResponsable: false }))
+  ];
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Enviando...';
+
+  try {
+    const formData = new FormData();
+    const parteData = {
+      ...workerInfo,
+      date, clientName, description, horas, notas, materiales,
+      estadoTrabajo:    estadoTrabajoSel,
+      pendienteDetalle,
+      tipoJornada:      tipoJornadaSel,
+      equipo:           equipoCompleto,
+      asignacionId:     asignacionSeleccionada?._id || null,
+      expedienteId:     expedienteActivo ? String(expedienteActivo._id) : null,
+      gpsLat: gpsData.lat, gpsLng: gpsData.lng, gpsAccuracy: gpsData.accuracy,
+    };
+    formData.append('data', JSON.stringify(parteData));
+    photoStore.work.forEach((file, i)    => formData.append(`foto_trabajo_${i}`, file, `trabajo_${i}.jpg`));
+    photoStore.albaran.forEach((file, i) => formData.append(`foto_albaran_${i}`, file, `albaran_${i}.jpg`));
+
+    // Usar la ruta /confirmar que gestiona equipo + expediente automáticamente
+    const r = await fetch('/api/partes/confirmar', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${workerToken}` },
+      body: formData
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Error al enviar');
+
+    // Mensaje de éxito
+    const nFotos = photoStore.work.length + photoStore.albaran.length;
+    let textoExito = `Parte de ${workerInfo.workerName} para "${clientName}" registrado`;
+    if (nFotos > 0) textoExito += ` con ${nFotos} foto${nFotos > 1 ? 's' : ''}`;
+    document.getElementById('success-text').textContent = textoExito + '.';
+
+    // Info extra de equipo y expediente
+    const extraDiv  = document.getElementById('success-extra');
+    const equipoDiv = document.getElementById('success-equipo-info');
+    const expDiv    = document.getElementById('success-exp-info');
+    let hayExtra = false;
+
+    if (data.partesGenerados > 0) {
+      equipoDiv.textContent = `✅ Partes generados automáticamente para ${data.partesGenerados} compañero${data.partesGenerados > 1 ? 's' : ''} del equipo.`;
+      hayExtra = true;
+    } else { equipoDiv.textContent = ''; }
+
+    if (data.expedienteId) {
+      const accion = expedienteActivo ? 'vinculado al expediente existente' : 'expediente creado automáticamente';
+      expDiv.textContent = `📁 Parte ${accion}.`;
+      hayExtra = true;
+    } else { expDiv.textContent = ''; }
+
+    extraDiv.style.display = hayExtra ? 'block' : 'none';
+    showPage('success');
+    resetForm();
+  } catch(err) {
+    showMsg('form-msg', '❌ Error: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '📤 Enviar parte';
+  }
+}
+
+// ── HELPERS ───────────────────────────────────────────────────────
+function resetForm() {
+  document.getElementById('f-date').value = new Date().toISOString().slice(0,10);
+  ['f-client','f-desc','f-notas','f-pendiente-detalle'].forEach(id => { const e=document.getElementById(id); if(e) e.value=''; });
+  document.getElementById('f-horas').value = '8';
+  document.getElementById('f-mat-rows').innerHTML = '';
+  photoStore.work = []; photoStore.albaran = [];
+  ['f-fotos-preview','f-albaranes-preview'].forEach(id => { const e=document.getElementById(id); if(e) e.innerHTML=''; });
+  ['work-count','albaran-count'].forEach(id => { const e=document.getElementById(id); if(e) e.textContent=`(0/${id==='work-count'?10:5})`; });
+  equipoSeleccionado = []; estadoTrabajoSel = 'completado'; tipoJornadaSel = 'NORMAL';
+  asignacionSeleccionada = null; expedienteActivo = null;
+  document.getElementById('pendiente-detalle-field').style.display = 'none';
+  document.getElementById('exp-banner').style.display = 'none';
+  document.querySelectorAll('.estado-trabajo-btn').forEach(b => b.className = 'estado-trabajo-btn');
+  const btnCompletado = document.querySelector('[data-estado="completado"]');
+  if (btnCompletado) btnCompletado.classList.add('selected-completado');
+  seleccionarJornada('NORMAL', null);
+  renderEquipo();
+}
+
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+}
+
+function showMsg(id, text, type) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'msg ' + (type || 'error');
+  el.style.display = 'block';
+  if (type !== 'error') setTimeout(() => el.style.display='none', 3000);
+}
+</script>
+</body>
+</html>
