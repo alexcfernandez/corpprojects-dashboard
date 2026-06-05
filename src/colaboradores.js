@@ -145,17 +145,18 @@ async function getSaldoColaborador(colaboradorId) {
   let totalDescuentos = 0;
 
   movs.forEach(m => {
-    if (m.tipo === 'pago_semana' || m.tipo === 'pago_dias') {
-      totalDevengado += m.importe;
-    } else if (m.tipo === 'adelanto') {
-      totalEntregado += m.importe;
-    } else if (m.tipo === 'descuento') {
-      totalDescuentos += m.importe;
-      totalEntregado  += m.importe;
-    } else if (m.tipo === 'devolucion') {
-      totalEntregado -= m.importe;
-    }
-  });
+  if (m.tipo === 'pago_semana' || m.tipo === 'pago_dias') {
+    totalDevengado += m.importe;  // lo que ha ganado trabajando
+    totalEntregado += m.importe;  // y también lo hemos pagado
+  } else if (m.tipo === 'adelanto') {
+    totalEntregado += m.importe;  // dinero adelantado
+  } else if (m.tipo === 'descuento') {
+    totalDescuentos += m.importe;
+    totalEntregado  += m.importe;
+  } else if (m.tipo === 'devolucion') {
+    totalEntregado -= m.importe;
+  }
+});
 
   // positivo = le debemos | negativo = nos debe él
   const saldoPendiente = totalDevengado - totalEntregado;
