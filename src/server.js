@@ -484,7 +484,172 @@ app.get('/api/clients/list', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// ── ASIGNACIONES, EXTERNOS Y EXPEDIENTES ─────────────────────────
+const expedientes = require('./expedientes');
 
+// EXTERNOS
+app.get('/api/externos', requireAuth, async (req, res) => {
+  try { res.json(await expedientes.getExternos()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/externos', requireAuth, async (req, res) => {
+  try { res.json(await expedientes.createExterno(req.body)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.put('/api/externos/:id', requireAuth, async (req, res) => {
+  try { await expedientes.updateExterno(req.params.id, req.body); res.json({ ok: true }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.delete('/api/externos/:id', requireAuth, async (req, res) => {
+  try { await expedientes.deleteExterno(req.params.id); res.json({ ok: true }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ASIGNACIONES
+app.get('/api/asignaciones', requireAuth, async (req, res) => {
+  try {
+    const { fecha, workerId } = req.query;
+    res.json(await expedientes.getAsignaciones({ fecha, workerId }));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/asignaciones/dia/:fecha', requireAuth, async (req, res) => {
+  try { res.json(await expedientes.getAsignacionesDelDia(req.params.fecha)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Ruta pública para trabajadores — ver sus asignaciones del día
+app.get('/api/asignaciones/worker/:workerId', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'No autorizado' });
+    const { verifyWorkerToken } = require('./partes');
+    const { verifyUserToken } = require('./users');
+    let valid = false;
+    if (token.startsWith('w_')) { valid = !!(await verifyWorkerToken(token)); }
+    else if (token.startsWith('u_')) { valid = !!(await verifyUserToken(token)); }
+    else { try { jwt.verify(token, process.env.JWT_SECRET||'fallback'); valid = true; } catch(e){} }
+    if (!valid) return res.status(401).json({ error: 'No autorizado' });
+    const fecha = req.query.fecha || new Date().toISOString().slice(0, 10);
+    res.json(await expedientes.getAsignacionesWorker(req.params.workerId, fecha));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/asignaciones', requireAuth, async (req, res) => {
+  try { res.json(await expedientes.createAsignacion(req.body)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.put('/api/asignaciones/:id', requireAuth, async (req, res) => {
+  try { await expedientes.updateAsignacion(req.params.id, req.body); res.json({ ok: true }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.delete('/api/asignaciones/:id', requireAuth, async (req, res) => {
+  try { await expedientes.deleteAsignacion(req.params.id); res.json({ ok: true }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// EXPEDIENTES
+app.get('/api/expedientes', requireAuth, async (req, res) => {
+  try {
+    const { estado, clientName } = req.query;
+    res.json(await expedientes.getExpedientes({ estado, clientName }));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/expedientes/:id', requireAuth, async (req, res) => {
+  try { res.json(await expedientes.getExpediente(req.params.id)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/expedientes', requireAuth, async (req, res) => {
+  try { res.json(await expedientes.createExpediente(req.body)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.put('/api/expedientes/:id', requireAuth, async (req, res) => {
+  try { await expedientes.updateExpediente(req.params.id, req.body); res.json({ ok: true }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Cuando el admin cierra un expediente — genera resumen para StelOrder
+app.post('/api/expedientes/:id/cerrar', requireAuth, async (req, res) => {
+  try {
+    await expedientes.updateExpediente(req.params.id, { estado: 'COMPLETADO' });
+    const exp = await expedientes.getExpediente(req.params.id);
+    const totalHoras = await expedientes.recalcularHorasExpediente(req.params.id);
+    res.json({ ok: true, totalHoras, partes: exp.partes.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Al crear un parte — gestiona equipo + expediente automáticamente
+app.post('/api/partes/confirmar', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'No autorizado' });
+    const workerDoc = await partes.verifyWorkerToken(token);
+    if (!workerDoc) return res.status(401).json({ error: 'Token expirado' });
+
+    const workerInfo = {
+      workerId: workerDoc.workerId,
+      workerName: workerDoc.workerName,
+      role: 'worker',
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    };
+
+    const bodyData = req.body;
+    const parte = await partes.createParte(bodyData, workerInfo);
+
+    // Si tiene equipo → generar partes automáticos para el resto
+    const equipo = bodyData.equipo || [];
+    let partesGenerados = [];
+    if (equipo.length > 1) {
+      partesGenerados = await expedientes.generarPartesEquipo(parte, equipo);
+    }
+
+    // Si el trabajo continúa → vincular o crear expediente
+    let expedienteId = null;
+    if (bodyData.estadoTrabajo === 'continua' || bodyData.estadoTrabajo === 'parcial' || bodyData.expedienteId) {
+      expedienteId = await expedientes.vincularOCrearExpediente(
+        String(parte._id),
+        parte.clientName,
+        parte.description,
+        bodyData.expedienteId || null
+      );
+      // Vincular también los partes auto-generados
+      if (expedienteId && partesGenerados.length > 0) {
+        const { db, client } = await (async () => {
+          const { MongoClient } = require('mongodb');
+          const c = new MongoClient(process.env.MONGODB_URI);
+          await c.connect();
+          return { db: c.db('corpprojects'), client: c };
+        })();
+        for (const pg of partesGenerados) {
+          await db.collection('partes').updateOne(
+            { _id: pg.id },
+            { $set: { expedienteId } }
+          );
+        }
+        await client.close();
+      }
+    }
+
+    res.json({
+      ok: true,
+      parteId: String(parte._id),
+      partesGenerados: partesGenerados.length,
+      expedienteId
+    });
+  } catch (err) {
+    console.error('[Partes] Error confirmar:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 // ── EMAILS INTELIGENTES ───────────────────────────────────────────
 const { pollEmails, enviarRespuesta } = require('./email-intelligence');
 
