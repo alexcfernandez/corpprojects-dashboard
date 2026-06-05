@@ -119,26 +119,42 @@ tfoot td{background:#e8f0fe!important;font-weight:700;border-top:2px solid #1a1a
 
 <script>
 const MN = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-const ESTADOS = {
-  obra:      {l:'O', bg:'#dcfce7', c:'#16a34a', label:'En obra'},
-  oficina:   {l:'F', bg:'#dbeafe', c:'#2563eb', label:'Oficina'},
-  vacaciones:{l:'V', bg:'#ede9fe', c:'#7c3aed', label:'Vacaciones'},
-  baja:      {l:'B', bg:'#fef3c7', c:'#d97706', label:'Baja'},
-  falta_j:   {l:'J', bg:'#fef3c7', c:'#d97706', label:'Falta just.'},
-  falta_i:   {l:'X', bg:'#fee2e2', c:'#dc2626', label:'Falta injust.'},
-  libre:     {l:'L', bg:'#f1f5f9', c:'#94a3b8', label:'Libre'},
+
+// Estados del informe — desde config si está disponible, si no fallback local
+const ESTADOS = (window.CP_CONFIG?.estadosPresenciaInforme) || {
+  obra:       { l:'O', bg:'#dcfce7', c:'#16a34a', label:'En obra' },
+  oficina:    { l:'F', bg:'#dbeafe', c:'#2563eb', label:'Oficina' },
+  vacaciones: { l:'V', bg:'#ede9fe', c:'#7c3aed', label:'Vacaciones' },
+  baja:       { l:'B', bg:'#fef3c7', c:'#d97706', label:'Baja' },
+  falta_j:    { l:'J', bg:'#fef3c7', c:'#d97706', label:'Falta just.' },
+  falta_i:    { l:'X', bg:'#fee2e2', c:'#dc2626', label:'Falta injust.' },
+  libre:      { l:'L', bg:'#f1f5f9', c:'#94a3b8', label:'Libre' },
 };
-// Rates por nombre — se pueden personalizar
-const RATES = {
-  'Jose Beliard':26.72,'Diego Campillo':19.05,
-  'Abdellah Souiri':13.28,'Mamadou Barry':13.28,
-  'Paula Morales':8.66
-};
-const DEFAULT_RATE = 15;
+
+// Rates — desde config si está disponible, si no fallback local
+// Config guarda nombres en minúsculas, informe los necesita con mayúsculas
+function buildRates() {
+  if (window.CP_CONFIG?.rates) {
+    const r = {};
+    Object.entries(window.CP_CONFIG.rates).forEach(([k,v]) => {
+      const nombre = k.split(' ').map(w => w.charAt(0).toUpperCase()+w.slice(1)).join(' ');
+      r[nombre] = v;
+    });
+    return r;
+  }
+  return {
+    'Jose Beliard':26.72, 'Diego Campillo':19.05,
+    'Abdellah Souiri':13.28, 'Mamadou Barry':13.28,
+    'Paula Morales':8.66
+  };
+}
+const RATES = buildRates();
+const DEFAULT_RATE = window.CP_CONFIG?.defaultRate || 15;
+
 let WORKER_COLORS = {};
 
-function eur(v){return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0)}
-function pct(a,b){return b>0?Math.round(a/b*100):0}
+function eur(v){ return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0); }
+function pct(a,b){ return b>0?Math.round(a/b*100):0; }
 
 async function load() {
   const p   = new URLSearchParams(location.search);
@@ -148,70 +164,63 @@ async function load() {
 
   try {
     const [summary, workers] = await Promise.all([
-      fetch(`/api/attendance/summary/${yr}/${mo}`,{headers:{Authorization:`Bearer ${tok}`}}).then(r=>r.json()),
-      fetch('/api/partes/workers',{headers:{Authorization:`Bearer ${tok}`}}).then(r=>r.json()),
+      fetch(`/api/attendance/summary/${yr}/${mo}`, { headers:{ Authorization:`Bearer ${tok}` } }).then(r=>r.json()),
+      fetch('/api/partes/workers',                  { headers:{ Authorization:`Bearer ${tok}` } }).then(r=>r.json()),
     ]);
-    if (Array.isArray(workers)) workers.forEach(w=>{WORKER_COLORS[w.name]=w.color||'#4d9cf8';});
+    if (Array.isArray(workers)) workers.forEach(w => { WORKER_COLORS[w.name] = w.color || '#4d9cf8'; });
     render(summary, yr, mo);
   } catch(e) {
-    document.getElementById('loading').innerHTML=`❌ Error: ${e.message}<br><small>Abre desde el dashboard → Presencia → Resumen mensual → Informe PDF</small>`;
+    document.getElementById('loading').innerHTML = `❌ Error: ${e.message}<br><small>Abre desde el dashboard → Presencia → Resumen mensual → Informe PDF</small>`;
   }
 }
 
 function render(data, yr, mo) {
-  document.getElementById('loading').style.display='none';
+  document.getElementById('loading').style.display = 'none';
   const el = document.getElementById('content');
-  el.style.display='block';
+  el.style.display = 'block';
 
   const all     = data.byWorker || [];
   const entries = data.entries  || [];
 
-  // Separar oficina y campo
-  const campo   = all.filter(w => w.name !== 'Paula Morales' && !w.name.includes('Paula'));
-  const admin   = all.filter(w => w.name === 'Paula Morales' || w.name.includes('Paula'));
-  // En el futuro esto vendrá del rol del usuario
+  const campo = all.filter(w => w.name !== 'Paula Morales' && !w.name.includes('Paula'));
+  const admin = all.filter(w => w.name === 'Paula Morales' || w.name.includes('Paula'));
 
-  // Días laborables del mes
   const daysInMonth = new Date(yr, mo, 0).getDate();
   const labDays = [];
-  for(let d=1;d<=daysInMonth;d++){
-    const dow=new Date(yr,mo-1,d).getDay();
-    if(dow!==0&&dow!==6) labDays.push(d);
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dow = new Date(yr, mo-1, d).getDay();
+    if (dow !== 0 && dow !== 6) labDays.push(d);
   }
   const totalLabDays = labDays.length;
 
-  // Métricas campo
-  const diasObra    = campo.reduce((s,w)=>s+w.dias_obra,0);
-  const horasCampo  = campo.reduce((s,w)=>s+w.horas,0);
+  const diasObra    = campo.reduce((s,w)=>s+w.dias_obra, 0);
+  const horasCampo  = campo.reduce((s,w)=>s+w.horas, 0);
   const faltasI     = entries.filter(e=>e.estado==='falta_i');
-  const faltasTotal = all.reduce((s,w)=>s+w.dias_falta,0);
-  const costeCampo  = campo.reduce((s,w)=>s+(w.horas*(RATES[w.name]||DEFAULT_RATE)),0);
-  const costeAdmin  = admin.reduce((s,w)=>s+(w.horas*(RATES[w.name]||DEFAULT_RATE)),0);
+  const faltasTotal = all.reduce((s,w)=>s+w.dias_falta, 0);
+  const costeCampo  = campo.reduce((s,w)=>s+(w.horas*(RATES[w.name]||DEFAULT_RATE)), 0);
+  const costeAdmin  = admin.reduce((s,w)=>s+(w.horas*(RATES[w.name]||DEFAULT_RATE)), 0);
   const costeTotal  = costeCampo + costeAdmin;
 
-  // Días registrados únicos
   const uniqueDates = new Set(entries.map(e=>e.date));
   const diasConDatos = uniqueDates.size;
   const cobertura   = pct(diasConDatos, totalLabDays);
 
-  // Clientes
-  const clientMap={};
-  all.forEach(w=>{
-    Object.entries(w.clientes||{}).forEach(([client,v])=>{
-      if(!clientMap[client])clientMap[client]={dias:0,horas:0,workers:{}};
-      clientMap[client].dias+=v.dias;
-      clientMap[client].horas+=v.horas;
-      clientMap[client].workers[w.name]=(clientMap[client].workers[w.name]||0)+v.dias;
+  const clientMap = {};
+  all.forEach(w => {
+    Object.entries(w.clientes||{}).forEach(([client,v]) => {
+      if (!clientMap[client]) clientMap[client] = { dias:0, horas:0, workers:{} };
+      clientMap[client].dias  += v.dias;
+      clientMap[client].horas += v.horas;
+      clientMap[client].workers[w.name] = (clientMap[client].workers[w.name]||0)+v.dias;
     });
   });
-  const clients=Object.entries(clientMap).sort((a,b)=>b[1].dias-a[1].dias);
+  const clients = Object.entries(clientMap).sort((a,b)=>b[1].dias-a[1].dias);
 
-  const now=new Date().toLocaleString('es-ES');
-  const monthName=MN[mo-1];
-  const maxHoras=Math.max(...all.map(w=>w.horas),1);
+  const now       = new Date().toLocaleString('es-ES');
+  const monthName = MN[mo-1];
+  const maxHoras  = Math.max(...all.map(w=>w.horas), 1);
 
-  el.innerHTML=`
-  <!-- CABECERA -->
+  el.innerHTML = `
   <div class="header">
     <div style="display:flex;align-items:center;gap:10px">
       <div class="logo-box">CP</div>
@@ -227,18 +236,16 @@ function render(data, yr, mo) {
     </div>
   </div>
 
-  <!-- ALERTAS -->
-  ${faltasI.length>0?`
+  ${faltasI.length > 0 ? `
   <div class="alert alert-red">
     <span>⚠️</span>
     <div><strong>${faltasI.length} falta${faltasI.length>1?'s':''} injustificada${faltasI.length>1?'s':''}:</strong>
     ${faltasI.map(e=>`${e.workerName?.split(' ')[0]} (${new Date(e.date+'T12:00:00').toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'})})`).join(', ')}</div>
-  </div>`:`
+  </div>` : `
   <div class="alert alert-green">
     <span>✅</span><div><strong>Sin faltas injustificadas</strong> en ${monthName} ${yr}</div>
   </div>`}
 
-  <!-- COBERTURA DEL MES -->
   <div class="section">
     <div class="section-title">📊 Resumen ejecutivo — ${monthName} ${yr}</div>
     <div style="margin-bottom:10px">
@@ -247,58 +254,32 @@ function render(data, yr, mo) {
         <span><strong>${diasConDatos} días registrados</strong> de ${totalLabDays} laborables (${cobertura}%)</span>
       </div>
       <div class="coverage-bar"><div class="coverage-fill" style="width:${cobertura}%"></div></div>
-      ${cobertura<50?`<div style="font-size:7.5pt;color:#d97706">⚠️ Menos del 50% del mes registrado. Recuerda registrar la presencia diariamente.</div>`:''}
+      ${cobertura<50?`<div style="font-size:7.5pt;color:#d97706">⚠️ Menos del 50% del mes registrado.</div>`:''}
     </div>
     <div class="metrics-grid metrics-grid-5">
-      <div class="metric blue">
-        <div class="metric-val">${campo.length+admin.length}</div>
-        <div class="metric-lbl">Trabajadores</div>
-        <div class="metric-sub">${campo.length} campo · ${admin.length} admin</div>
-      </div>
-      <div class="metric green">
-        <div class="metric-val">${diasObra}</div>
-        <div class="metric-lbl">${diasConDatos===1?'Trabaj. en obra hoy':'Días en obra'}</div>
-        <div class="metric-sub">${diasConDatos===1?'Este día registrado':'Total del período'}</div>
-      </div>
-      <div class="metric blue">
-        <div class="metric-val">${horasCampo.toFixed(0)}h</div>
-        <div class="metric-lbl">Horas en obra</div>
-        <div class="metric-sub">+ ${admin.reduce((s,w)=>s+w.horas,0).toFixed(0)}h admin</div>
-      </div>
-      <div class="metric ${faltasTotal>0?'red':'green'}">
-        <div class="metric-val">${faltasTotal}</div>
-        <div class="metric-lbl">Faltas/Bajas</div>
-        <div class="metric-sub">${faltasI.length} injustificadas</div>
-      </div>
-      <div class="metric amber coste-col">
-        <div class="metric-val">${eur(costeTotal)}</div>
-        <div class="metric-lbl">Coste estimado</div>
-        <div class="metric-sub">Personal registrado</div>
-      </div>
+      <div class="metric blue"><div class="metric-val">${campo.length+admin.length}</div><div class="metric-lbl">Trabajadores</div><div class="metric-sub">${campo.length} campo · ${admin.length} admin</div></div>
+      <div class="metric green"><div class="metric-val">${diasObra}</div><div class="metric-lbl">Días en obra</div><div class="metric-sub">Total del período</div></div>
+      <div class="metric blue"><div class="metric-val">${horasCampo.toFixed(0)}h</div><div class="metric-lbl">Horas en obra</div><div class="metric-sub">+ ${admin.reduce((s,w)=>s+w.horas,0).toFixed(0)}h admin</div></div>
+      <div class="metric ${faltasTotal>0?'red':'green'}"><div class="metric-val">${faltasTotal}</div><div class="metric-lbl">Faltas/Bajas</div><div class="metric-sub">${faltasI.length} injustificadas</div></div>
+      <div class="metric amber coste-col"><div class="metric-val">${eur(costeTotal)}</div><div class="metric-lbl">Coste estimado</div><div class="metric-sub">Personal registrado</div></div>
     </div>
   </div>
 
-  <!-- PERSONAL DE CAMPO -->
-  ${campo.length>0?`
+  ${campo.length > 0 ? `
   <div class="section">
     <div class="section-title">🔧 Personal de campo</div>
     <table>
       <thead><tr>
-        <th>Trabajador</th>
-        <th class="r">Días obra</th>
-        <th class="r">Otras ausencias</th>
-        <th class="r">Horas</th>
-        <th style="padding-left:16px">Distribución</th>
-        <th class="r">€/hora</th>
-        <th class="r">Coste est.</th>
+        <th>Trabajador</th><th class="r">Días obra</th><th class="r">Ausencias</th>
+        <th class="r">Horas</th><th style="padding-left:16px">Distribución</th>
+        <th class="r">€/hora</th><th class="r">Coste est.</th>
       </tr></thead>
-      <tbody>${campo.map(w=>{
-        const rate=RATES[w.name]||DEFAULT_RATE;
-        const coste=w.horas*rate;
-        const color=WORKER_COLORS[w.name]||'#4d9cf8';
-        const pctBar=maxHoras>0?(w.horas/maxHoras*100):0;
-        const diasOtros=w.dias-w.dias_obra-w.dias_falta;
-        return`<tr>
+      <tbody>${campo.map(w => {
+        const rate  = RATES[w.name] || DEFAULT_RATE;
+        const coste = w.horas * rate;
+        const color = WORKER_COLORS[w.name] || '#4d9cf8';
+        const pctBar = maxHoras > 0 ? (w.horas/maxHoras*100) : 0;
+        return `<tr>
           <td><span class="dot" style="background:${color}"></span><strong>${w.name}</strong></td>
           <td class="r"><span class="badge b-green">${w.dias_obra}</span></td>
           <td class="r">${w.dias_falta>0?`<span class="badge b-red">${w.dias_falta} falta${w.dias_falta>1?'s':''}</span>`:'—'}</td>
@@ -319,27 +300,22 @@ function render(data, yr, mo) {
         <td class="r coste-col">${eur(costeCampo)}</td>
       </tr></tfoot>
     </table>
-  </div>`:''}
+  </div>` : ''}
 
-  <!-- ADMINISTRACIÓN -->
-  ${admin.length>0?`
+  ${admin.length > 0 ? `
   <div class="section">
     <div class="section-title">🖥️ Administración y oficina</div>
     <table>
       <thead><tr>
-        <th>Trabajador</th>
-        <th class="r">Días oficina</th>
-        <th class="r">Ausencias</th>
-        <th class="r">Horas</th>
-        <th class="r">€/hora</th>
-        <th class="r">Coste est.</th>
+        <th>Trabajador</th><th class="r">Días oficina</th><th class="r">Ausencias</th>
+        <th class="r">Horas</th><th class="r">€/hora</th><th class="r">Coste est.</th>
       </tr></thead>
-      <tbody>${admin.map(w=>{
-        const rate=RATES[w.name]||DEFAULT_RATE;
-        const coste=w.horas*rate;
-        const color=WORKER_COLORS[w.name]||'#f05252';
-        const diasOficina=w.dias-w.dias_obra-w.dias_falta;
-        return`<tr>
+      <tbody>${admin.map(w => {
+        const rate  = RATES[w.name] || DEFAULT_RATE;
+        const coste = w.horas * rate;
+        const color = WORKER_COLORS[w.name] || '#f05252';
+        const diasOficina = w.dias - w.dias_obra - w.dias_falta;
+        return `<tr>
           <td><span class="dot" style="background:${color}"></span><strong>${w.name}</strong></td>
           <td class="r"><span class="badge b-blue">${diasOficina||w.dias}</span></td>
           <td class="r">${w.dias_falta>0?`<span class="badge b-red">${w.dias_falta}</span>`:'—'}</td>
@@ -357,19 +333,18 @@ function render(data, yr, mo) {
         <td class="r coste-col">${eur(costeAdmin)}</td>
       </tr></tfoot>
     </table>
-  </div>`:''}
+  </div>` : ''}
 
-  <!-- CLIENTES/OBRAS -->
-  ${clients.length?`
+  ${clients.length ? `
   <div class="section">
     <div class="section-title">🏗️ Actividad por cliente / obra</div>
     <div class="client-grid">
-      ${clients.map(([client,v])=>{
-        const totalCosteCliente=Object.entries(v.workers).reduce((s,[name,dias])=>{
-          const rate=RATES[name]||DEFAULT_RATE;
-          return s+(dias*8*rate);
-        },0);
-        return`<div class="client-card">
+      ${clients.map(([client,v]) => {
+        const totalCosteCliente = Object.entries(v.workers).reduce((s,[name,dias]) => {
+          const rate = RATES[name] || DEFAULT_RATE;
+          return s + (dias * 8 * rate);
+        }, 0);
+        return `<div class="client-card">
           <div class="client-name">${client}</div>
           <div class="client-workers">
             ${Object.entries(v.workers).map(([name,dias])=>
@@ -378,8 +353,8 @@ function render(data, yr, mo) {
           </div>
           <div class="client-row">
             <span>
-              <strong>${Object.keys(v.workers).length}</strong> trabajador${Object.keys(v.workers).length>1?'es':''} · 
-              <strong>${diasConDatos>1?v.dias+' días':Object.keys(v.workers).length+' d hoy'}</strong> · 
+              <strong>${Object.keys(v.workers).length}</strong> trabajador${Object.keys(v.workers).length>1?'es':''} ·
+              <strong>${v.dias} días</strong> ·
               <strong>${v.horas.toFixed(0)} h</strong>
             </span>
             <span class="coste-col" style="color:#dc2626;font-weight:600;font-size:8.5pt">~${eur(totalCosteCliente)}</span>
@@ -387,18 +362,19 @@ function render(data, yr, mo) {
         </div>`;
       }).join('')}
     </div>
-  </div>`:''}
+  </div>` : ''}
 
-  <!-- CALENDARIO -->
   <div class="section">
     <div class="section-title">📅 Calendario de presencia — ${monthName} ${yr}</div>
     ${renderCal(data, yr, mo, labDays)}
     <div style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap;font-size:7pt;color:#666">
-      ${Object.entries(ESTADOS).map(([k,v])=>`<span><span style="display:inline-block;width:11px;height:11px;background:${v.bg};border:1px solid ${v.c};border-radius:2px;vertical-align:middle;margin-right:2px"></span>${v.l} = ${v.label}</span>`).join('')}
+      ${Object.entries(ESTADOS).map(([k,v])=>`<span>
+        <span style="display:inline-block;width:11px;height:11px;background:${v.bg};border:1px solid ${v.c};border-radius:2px;vertical-align:middle;margin-right:2px"></span>
+        ${v.l} = ${v.label}
+      </span>`).join('')}
     </div>
   </div>
 
-  <!-- FOOTER -->
   <div class="footer">
     <span>Corp Projects Holding SL · Documento confidencial</span>
     <span>${monthName} ${yr} · ${now}</span>
@@ -406,33 +382,33 @@ function render(data, yr, mo) {
 }
 
 function renderCal(data, yr, mo, labDays) {
-  const workers = data.byWorker||[];
-  const entries = data.entries||[];
-  const entryMap={};
-  entries.forEach(e=>{entryMap[e.workerId+'_'+e.date]=e;});
+  const workers  = data.byWorker || [];
+  const entries  = data.entries  || [];
+  const entryMap = {};
+  entries.forEach(e => { entryMap[e.workerId+'_'+e.date] = e; });
 
-  let html=`<table class="cal-table" style="width:100%">
+  let html = `<table class="cal-table" style="width:100%">
     <thead><tr>
       <th style="text-align:left;min-width:85px">Trabajador</th>
-      ${labDays.map(d=>{
-        const dow=new Date(yr,mo-1,d).getDay();
-        const dn=['D','L','M','X','J','V','S'][dow];
-        return`<th title="${dn} ${d}">${d}</th>`;
+      ${labDays.map(d => {
+        const dow = new Date(yr,mo-1,d).getDay();
+        const dn  = ['D','L','M','X','J','V','S'][dow];
+        return `<th title="${dn} ${d}">${d}</th>`;
       }).join('')}
       <th class="r">Total</th>
     </tr></thead>
     <tbody>`;
 
-  workers.forEach(w=>{
-    const color=WORKER_COLORS[w.name]||'#4d9cf8';
-    html+=`<tr>
+  workers.forEach(w => {
+    const color = WORKER_COLORS[w.name] || '#4d9cf8';
+    html += `<tr>
       <td><span class="dot" style="background:${color}"></span>${w.name.split(' ')[0]}</td>
-      ${labDays.map(d=>{
-        const date=`${yr}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        const entry=entryMap[w.id+'_'+date];
-        const est=entry?ESTADOS[entry.estado]:null;
-        if(!est) return`<td><span style="color:#ddd;font-size:7pt">·</span></td>`;
-        return`<td title="${entry.clientName||est.label}">
+      ${labDays.map(d => {
+        const date  = `${yr}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const entry = entryMap[w.id+'_'+date];
+        const est   = entry ? ESTADOS[entry.estado] : null;
+        if (!est) return `<td><span style="color:#ddd;font-size:7pt">·</span></td>`;
+        return `<td title="${entry.clientName||est.label}">
           <span class="cal-cell" style="background:${est.bg};color:${est.c}">${est.l}</span>
         </td>`;
       }).join('')}
@@ -440,23 +416,17 @@ function renderCal(data, yr, mo, labDays) {
     </tr>`;
   });
 
-  html+=`</tbody></table>`;
+  html += `</tbody></table>`;
   return html;
 }
 
-// Ocultar/mostrar precios
 let preciosVisibles = true;
 function togglePrecios() {
   preciosVisibles = !preciosVisibles;
-  const btn = document.getElementById('btn-precios');
-  // Ocultar columnas de precio y coste
   document.querySelectorAll('.coste-col, .rate-col').forEach(el => {
     el.style.visibility = preciosVisibles ? 'visible' : 'hidden';
   });
-  // Ocultar th de coste
-  document.querySelectorAll('.th-coste').forEach(el => {
-    el.style.visibility = preciosVisibles ? 'visible' : 'hidden';
-  });
+  const btn = document.getElementById('btn-precios');
   if (btn) btn.textContent = preciosVisibles ? '💰 Ocultar precios' : '💰 Mostrar precios';
 }
 
