@@ -15,14 +15,6 @@ async function getDB() {
   return db;
 }
 
-// ── TIPOS DE MOVIMIENTO ───────────────────────────────────────────
-// pago_semana   — pago de semana completa trabajada
-// pago_dias     — pago de días sueltos
-// adelanto      — adelanto que se descuenta del próximo pago
-// descuento     — descuento aplicado (herramientas, nevera, etc.)
-// devolucion    — el colaborador devuelve dinero
-
-// ── COLABORADORES ────────────────────────────────────────────────
 async function getColaboradores(soloActivos = false) {
   const db    = await getDB();
   const query = soloActivos ? { activo: true } : {};
@@ -42,7 +34,7 @@ async function createColaborador(data) {
     tarifaDia:     parseFloat(data.tarifaDia || 0),
     tarifaSemana:  parseFloat(data.tarifaSemana || 0),
     tarifaHora:    parseFloat(data.tarifaHora || 0),
-    tipoTarifa:    data.tipoTarifa || 'semana', // semana | dia | hora
+    tipoTarifa:    data.tipoTarifa || 'semana',
     diasSemanales: parseInt(data.diasSemanales || 5),
     horasDia:      parseInt(data.horasDia || 8),
     oficio:        data.oficio?.trim() || '',
@@ -56,7 +48,6 @@ async function createColaborador(data) {
 
   if (!col.nombre) throw new Error('El nombre es obligatorio');
 
-  // Calcular tarifas derivadas automáticamente
   if (col.tipoTarifa === 'semana' && col.tarifaSemana > 0) {
     col.tarifaDia  = parseFloat((col.tarifaSemana / col.diasSemanales).toFixed(2));
     col.tarifaHora = parseFloat((col.tarifaDia / col.horasDia).toFixed(2));
@@ -80,9 +71,8 @@ async function updateColaborador(id, data) {
   const set     = { updatedAt: new Date() };
   allowed.forEach(k => { if (data[k] !== undefined) set[k] = data[k]; });
 
-  // Recalcular tarifas si cambia alguna
-  const tipo = set.tipoTarifa || data.tipoTarifa;
-  const dias = parseInt(set.diasSemanales || data.diasSemanales || 5);
+  const tipo  = set.tipoTarifa || data.tipoTarifa;
+  const dias  = parseInt(set.diasSemanales || data.diasSemanales || 5);
   const horas = parseInt(set.horasDia || data.horasDia || 8);
   if (tipo === 'semana' && set.tarifaSemana) {
     set.tarifaDia  = parseFloat((set.tarifaSemana / dias).toFixed(2));
@@ -95,7 +85,6 @@ async function updateColaborador(id, data) {
   return db.collection('colaboradores').updateOne({ _id: new ObjectId(id) }, { $set: set });
 }
 
-// ── MOVIMIENTOS ───────────────────────────────────────────────────
 async function getMovimientos(colaboradorId, { from, to, limit = 200 } = {}) {
   const db    = await getDB();
   const query = { colaboradorId };
@@ -116,22 +105,19 @@ async function createMovimiento(colaboradorId, data) {
   const mov = {
     colaboradorId,
     colaboradorNombre: col.nombre,
-    fecha:       data.fecha || new Date().toISOString().slice(0,10),
-    tipo:        data.tipo  || 'pago_semana',
-    importe:     parseFloat(data.importe || 0),
-    // Para pagos de semana/días
-    semanaDesde: data.semanaDesde || '',
-    semanaHasta: data.semanaHasta || '',
+    fecha:          data.fecha || new Date().toISOString().slice(0,10),
+    tipo:           data.tipo  || 'pago_semana',
+    importe:        parseFloat(data.importe || 0),
+    semanaDesde:    data.semanaDesde || '',
+    semanaHasta:    data.semanaHasta || '',
     diasTrabajados: parseFloat(data.diasTrabajados || 0),
     horasExtra:     parseFloat(data.horasExtra || 0),
-    // Contexto
-    clienteObra: data.clienteObra?.trim() || '',
-    concepto:    data.concepto?.trim()    || '',
-    notas:       data.notas?.trim()       || '',
-    // Los descuentos van como importe negativo en el saldo
-    esDescuento: ['descuento'].includes(data.tipo),
-    esDevolucion: data.tipo === 'devolucion',
-    createdAt:   new Date(),
+    clienteObra:    data.clienteObra?.trim() || '',
+    concepto:       data.concepto?.trim()    || '',
+    notas:          data.notas?.trim()       || '',
+    esDescuento:    data.tipo === 'descuento',
+    esDevolucion:   data.tipo === 'devolucion',
+    createdAt:      new Date(),
   };
 
   if (!mov.importe || mov.importe <= 0) throw new Error('El importe debe ser mayor que 0');
@@ -146,7 +132,6 @@ async function deleteMovimiento(id) {
   return db.collection('colaborador_movimientos').deleteOne({ _id: new ObjectId(id) });
 }
 
-// ── SALDO Y RESUMEN ───────────────────────────────────────────────
 async function getSaldoColaborador(colaboradorId) {
   const db  = await getDB();
   const col = await db.collection('colaboradores').findOne({ _id: new ObjectId(colaboradorId) });
@@ -155,84 +140,82 @@ async function getSaldoColaborador(colaboradorId) {
   const movs = await db.collection('colaborador_movimientos')
     .find({ colaboradorId }).sort({ fecha: 1 }).toArray();
 
-  // Devengado = lo que ha ganado trabajando (semanas + días)
   let totalDevengado  = 0;
-  // Entregado = todo el dinero que le hemos dado (pagos + adelantos + descuentos)
   let totalEntregado  = 0;
   let totalDescuentos = 0;
 
   movs.forEach(m => {
     if (m.tipo === 'pago_semana' || m.tipo === 'pago_dias') {
-      // Es trabajo devengado — va al debe
       totalDevengado += m.importe;
     } else if (m.tipo === 'adelanto') {
-      // Dinero adelantado — va al haber
       totalEntregado += m.importe;
     } else if (m.tipo === 'descuento') {
-      // Descuento — reduce lo que le debemos
       totalDescuentos += m.importe;
       totalEntregado  += m.importe;
     } else if (m.tipo === 'devolucion') {
-      // Nos devuelve dinero — reduce lo entregado
       totalEntregado -= m.importe;
     }
   });
 
-  // Saldo = devengado - entregado
-  // positivo = le debemos nosotros
-  // negativo = ha cobrado de más (nos debe él)
+  // positivo = le debemos | negativo = nos debe él
   const saldoPendiente = totalDevengado - totalEntregado;
 
   return {
     colaborador:      col,
     totalDevengado,
     totalEntregado,
-    totalPagado:      totalEntregado, // alias para compatibilidad frontend
+    totalPagado:      totalEntregado,
     totalDescuentos,
     saldoPendiente,
     movimientos:      movs.length,
     ultimoMovimiento: movs[movs.length - 1]?.fecha || null,
   };
 }
-// ── PROYECTO SANTA EUGENIA ────────────────────────────────────────
+
+async function getResumenTodosColaboradores() {
+  const db   = await getDB();
+  const cols = await db.collection('colaboradores').find({ activo: true }).toArray();
+
+  const resumen = await Promise.all(
+    cols.map(col => getSaldoColaborador(String(col._id)))
+  );
+
+  return resumen.sort((a, b) => Math.abs(b.saldoPendiente) - Math.abs(a.saldoPendiente));
+}
+
 async function getProyectos() {
   const db = await getDB();
   return db.collection('proyectos_inversion').find({}).sort({ createdAt: -1 }).toArray();
 }
 
 async function getProyecto(id) {
-  const db = await getDB();
+  const db      = await getDB();
   const proyecto = await db.collection('proyectos_inversion').findOne({ _id: new ObjectId(id) });
   if (!proyecto) throw new Error('Proyecto no encontrado');
 
-  // Calcular totales
   const movs = await db.collection('proyecto_movimientos')
     .find({ proyectoId: id }).sort({ fecha: 1 }).toArray();
 
-  const totalInvertido = movs
-    .filter(m => m.tipo === 'gasto')
-    .reduce((s, m) => s + m.importe, 0);
-  const totalCobrado = movs
-    .filter(m => m.tipo === 'ingreso')
-    .reduce((s, m) => s + m.importe, 0);
+  const totalInvertido = movs.filter(m => m.tipo === 'gasto').reduce((s, m) => s + m.importe, 0);
+  const totalCobrado   = movs.filter(m => m.tipo === 'ingreso').reduce((s, m) => s + m.importe, 0);
 
   return {
     ...proyecto,
-    movimientos: movs,
+    movimientos:       movs,
     totalInvertido,
     totalCobrado,
     beneficioEstimado: (proyecto.precioVentaPactado || 0) - totalInvertido,
-    beneficioReal: totalCobrado > 0 ? totalCobrado - totalInvertido : null,
+    beneficioReal:     totalCobrado > 0 ? totalCobrado - totalInvertido : null,
   };
 }
 
 async function createProyecto(data) {
-  const db = await getDB();
+  const db      = await getDB();
   const proyecto = {
     nombre:             data.nombre?.trim(),
     descripcion:        data.descripcion?.trim() || '',
-    tipo:               data.tipo || 'inmobiliario',
-    estado:             data.estado || 'en_curso',
+    tipo:               data.tipo    || 'inmobiliario',
+    estado:             data.estado  || 'en_curso',
     fechaInicio:        data.fechaInicio || new Date().toISOString().slice(0,10),
     precioVentaPactado: parseFloat(data.precioVentaPactado || 0),
     notas:              data.notas?.trim() || '',
@@ -256,16 +239,16 @@ async function addMovimientoProyecto(proyectoId, data) {
   const db  = await getDB();
   const mov = {
     proyectoId,
-    fecha:       data.fecha || new Date().toISOString().slice(0,10),
-    tipo:        data.tipo  || 'gasto', // gasto | ingreso
-    concepto:    data.concepto?.trim() || '',
-    importe:     parseFloat(data.importe || 0),
-    formaPago:   data.formaPago || 'efectivo', // efectivo | banco | mixto
-    importeCash: parseFloat(data.importeCash || 0),
+    fecha:        data.fecha || new Date().toISOString().slice(0,10),
+    tipo:         data.tipo  || 'gasto',
+    concepto:     data.concepto?.trim()  || '',
+    importe:      parseFloat(data.importe || 0),
+    formaPago:    data.formaPago || 'efectivo',
+    importeCash:  parseFloat(data.importeCash  || 0),
     importeBanco: parseFloat(data.importeBanco || 0),
-    referencia:  data.referencia?.trim() || '',
-    notas:       data.notas?.trim() || '',
-    createdAt:   new Date(),
+    referencia:   data.referencia?.trim() || '',
+    notas:        data.notas?.trim()      || '',
+    createdAt:    new Date(),
   };
   if (!mov.importe || mov.importe <= 0) throw new Error('El importe debe ser mayor que 0');
   const result = await db.collection('proyecto_movimientos').insertOne(mov);
