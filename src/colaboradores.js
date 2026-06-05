@@ -155,53 +155,45 @@ async function getSaldoColaborador(colaboradorId) {
   const movs = await db.collection('colaborador_movimientos')
     .find({ colaboradorId }).sort({ fecha: 1 }).toArray();
 
-  let totalDevengado = 0; // lo que ha ganado trabajando
-  let totalPagado    = 0; // lo que hemos pagado (pagos + adelantos)
-  let totalDescuentos = 0; // descuentos aplicados
+  // Devengado = lo que ha ganado trabajando (semanas + días)
+  let totalDevengado  = 0;
+  // Entregado = todo el dinero que le hemos dado (pagos + adelantos + descuentos)
+  let totalEntregado  = 0;
+  let totalDescuentos = 0;
 
   movs.forEach(m => {
-    if (m.tipo === 'pago_semana') {
+    if (m.tipo === 'pago_semana' || m.tipo === 'pago_dias') {
+      // Es trabajo devengado — va al debe
       totalDevengado += m.importe;
-      totalPagado    += m.importe;
-    } else if (m.tipo === 'pago_dias') {
-      totalDevengado += m.importe;
-      totalPagado    += m.importe;
     } else if (m.tipo === 'adelanto') {
-      totalPagado += m.importe;
+      // Dinero adelantado — va al haber
+      totalEntregado += m.importe;
     } else if (m.tipo === 'descuento') {
+      // Descuento — reduce lo que le debemos
       totalDescuentos += m.importe;
+      totalEntregado  += m.importe;
     } else if (m.tipo === 'devolucion') {
-      totalPagado -= m.importe; // nos devuelve dinero
+      // Nos devuelve dinero — reduce lo entregado
+      totalEntregado -= m.importe;
     }
   });
 
-  // Saldo pendiente = lo que se le debe aún
-  // (lo devengado + lo no pagado aún - descuentos)
-  const saldoPendiente = totalDevengado - totalPagado + totalDescuentos;
+  // Saldo = devengado - entregado
+  // positivo = le debemos nosotros
+  // negativo = ha cobrado de más (nos debe él)
+  const saldoPendiente = totalDevengado - totalEntregado;
 
   return {
-    colaborador:    col,
+    colaborador:      col,
     totalDevengado,
-    totalPagado,
+    totalEntregado,
+    totalPagado:      totalEntregado, // alias para compatibilidad frontend
     totalDescuentos,
-    saldoPendiente, // positivo = le debemos, negativo = nos debe
-    movimientos:    movs.length,
+    saldoPendiente,
+    movimientos:      movs.length,
     ultimoMovimiento: movs[movs.length - 1]?.fecha || null,
   };
 }
-
-async function getResumenTodosColaboradores() {
-  const db   = await getDB();
-  const cols = await db.collection('colaboradores').find({ activo: true }).toArray();
-
-  const resumen = await Promise.all(cols.map(async col => {
-    const saldo = await getSaldoColaborador(String(col._id));
-    return saldo;
-  }));
-
-  return resumen.sort((a,b) => Math.abs(b.saldoPendiente) - Math.abs(a.saldoPendiente));
-}
-
 // ── PROYECTO SANTA EUGENIA ────────────────────────────────────────
 async function getProyectos() {
   const db = await getDB();
