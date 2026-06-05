@@ -1,4 +1,4 @@
-// modules/pagos-admin.js — v2 Pagos, Colaboradores y Proyectos
+// modules/pagos-admin.js — v3 con borrar colaborador
 (function(CP) {
   'use strict';
 
@@ -11,13 +11,13 @@
   };
 
   const TIPOS_MOV = {
-  semana_trabajada: { label: 'Semana trabajada', emoji: '📅', color: '#22c487' },
-  pago_semana:      { label: 'Pago semana',       emoji: '💵', color: '#4d9cf8' },
-  pago_dias:        { label: 'Pago días',          emoji: '📆', color: '#4d9cf8' },
-  adelanto:         { label: 'Adelanto',           emoji: '💸', color: '#f59e0b' },
-  descuento:        { label: 'Descuento',          emoji: '➖', color: '#f05252' },
-  devolucion:       { label: 'Devolución',         emoji: '↩️',  color: '#a78bfa' },
-};
+    semana_trabajada: { label: 'Semana trabajada', emoji: '📅', color: '#22c487' },
+    pago_semana:      { label: 'Pago semana',       emoji: '💵', color: '#4d9cf8' },
+    pago_dias:        { label: 'Pago días',          emoji: '📆', color: '#4d9cf8' },
+    adelanto:         { label: 'Adelanto',           emoji: '💸', color: '#f59e0b' },
+    descuento:        { label: 'Descuento',          emoji: '➖', color: '#f05252' },
+    devolucion:       { label: 'Devolución',         emoji: '↩️',  color: '#a78bfa' },
+  };
 
   async function api(url, opts = {}) {
     const tok = localStorage.getItem('cp_token');
@@ -41,7 +41,6 @@
     if (tipo !== 'error') setTimeout(() => el.style.display='none', 3000);
   }
 
-  // ── RENDER PRINCIPAL ──────────────────────────────────────────
   function render(containerId) {
     const el = document.getElementById(containerId);
     if (!el) return;
@@ -53,7 +52,6 @@
         <button class="btab" onclick="CP.Pagos.showTab('proyectos',this)">🏠 Proyectos inversión</button>
       </div>
 
-      <!-- COLABORADORES -->
       <div id="pg-tab-colaboradores" class="p-tab active">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
           <div style="font-size:12px;color:var(--text3)">Colaboradores externos con cuenta corriente de pagos</div>
@@ -62,7 +60,6 @@
         <div id="pg-col-resumen"><div class="empty"><div class="et">Cargando...</div></div></div>
       </div>
 
-      <!-- PAGOS GENERALES -->
       <div id="pg-tab-pagos" class="p-tab" style="display:none">
         <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:16px;overflow-x:auto">
           <button class="btab active" onclick="CP.Pagos.showPagosTab('resumen',this)">📊 Resumen</button>
@@ -127,7 +124,6 @@
         </div>
       </div>
 
-      <!-- PROYECTOS -->
       <div id="pg-tab-proyectos" class="p-tab" style="display:none">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
           <div style="font-size:12px;color:var(--text3)">Inversiones y proyectos propios</div>
@@ -136,9 +132,7 @@
         <div id="pg-proyectos-lista"><div class="empty"><div class="et">Cargando...</div></div></div>
       </div>`;
 
-    // Cargar datos iniciales
     loadColaboradores();
-
     const hoy  = new Date();
     const from = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-01`;
     const to   = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-31`;
@@ -148,7 +142,6 @@
     if (te) te.value = to;
   }
 
-  // ── TABS ─────────────────────────────────────────────────────
   function showTab(id, btn) {
     document.querySelectorAll('#pagos-container .p-tab').forEach(p => { p.style.display='none'; p.classList.remove('active'); });
     document.querySelectorAll('#pagos-container > div > .btab').forEach(b => b.classList.remove('active'));
@@ -171,7 +164,6 @@
     if (id === 'resumen') loadResumen();
   }
 
-  // ── COLABORADORES ─────────────────────────────────────────────
   async function loadColaboradores() {
     const el = document.getElementById('pg-col-resumen');
     if (!el) return;
@@ -188,7 +180,6 @@
         return;
       }
 
-      // Métricas globales
       const totalSaldo     = data.reduce((s,c) => s + Math.max(0, c.saldoPendiente), 0);
       const totalPagado    = data.reduce((s,c) => s + c.totalPagado, 0);
       const totalDevengado = data.reduce((s,c) => s + c.totalDevengado, 0);
@@ -202,13 +193,13 @@
         </div>
         <div style="display:grid;gap:12px">
           ${data.map(c => {
-            const col    = c.colaborador;
-            const saldo  = c.saldoPendiente;
-            const ok     = saldo <= 0;
+            const col   = c.colaborador;
+            const saldo = c.saldoPendiente;
+            const ok    = saldo <= 0;
             return `
-            <div class="card" style="margin-bottom:0;cursor:pointer" onclick="CP.Pagos.abrirFichaColaborador('${col._id}')">
+            <div class="card" style="margin-bottom:0">
               <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
-                <div>
+                <div style="cursor:pointer" onclick="CP.Pagos.abrirFichaColaborador('${col._id}')">
                   <div style="font-size:15px;font-weight:700">👤 ${col.nombre}</div>
                   <div style="font-size:11px;color:var(--text3);margin-top:2px">
                     ${col.oficio||'Colaborador'} ·
@@ -224,15 +215,16 @@
                   <div style="font-size:11px;color:var(--text3);margin-top:2px">${c.movimientos} movimientos</div>
                 </div>
               </div>
-              <div style="display:flex;gap:16px;font-size:11px;color:var(--text2)">
+              <div style="display:flex;gap:16px;font-size:11px;color:var(--text2);margin-bottom:12px">
                 <span>💰 Devengado: <strong>${eur(c.totalDevengado)}</strong></span>
                 <span>✅ Pagado: <strong>${eur(c.totalPagado)}</strong></span>
                 ${c.totalDescuentos > 0 ? `<span>➖ Descuentos: <strong>${eur(c.totalDescuentos)}</strong></span>` : ''}
                 ${c.ultimoMovimiento ? `<span>📅 Último: <strong>${dt(c.ultimoMovimiento)}</strong></span>` : ''}
               </div>
-              <div style="display:flex;gap:8px;margin-top:12px">
-                <button class="btn bp" style="font-size:11px;padding:5px 12px" onclick="event.stopPropagation();CP.Pagos.abrirModalMovimiento('${col._id}','${col.nombre}')">+ Añadir movimiento</button>
-                <button class="btn bgh" style="font-size:11px;padding:5px 12px" onclick="event.stopPropagation();CP.Pagos.abrirFichaColaborador('${col._id}')">Ver ficha completa →</button>
+              <div style="display:flex;gap:8px">
+                <button class="btn bp" style="font-size:11px;padding:5px 12px" onclick="CP.Pagos.abrirModalMovimiento('${col._id}','${col.nombre}')">+ Añadir movimiento</button>
+                <button class="btn bgh" style="font-size:11px;padding:5px 12px" onclick="CP.Pagos.abrirFichaColaborador('${col._id}')">Ver ficha →</button>
+                <button class="btn bgh" style="font-size:11px;padding:5px 12px;color:var(--red);border-color:var(--red)" onclick="CP.Pagos.borrarColaborador('${col._id}','${col.nombre.replace(/'/g,"\\'")}')">🗑 Borrar</button>
               </div>
             </div>`;
           }).join('')}
@@ -240,6 +232,14 @@
     } catch(err) {
       el.innerHTML = `<div style="color:var(--red);font-size:12px">Error: ${err.message}</div>`;
     }
+  }
+
+  async function borrarColaborador(id, nombre) {
+    if (!confirm(`¿Borrar a "${nombre}" y todos sus movimientos? Esta acción no se puede deshacer.`)) return;
+    try {
+      await api(`/api/colaboradores/${id}`, { method: 'DELETE' });
+      loadColaboradores();
+    } catch(err) { alert('Error: ' + err.message); }
   }
 
   async function abrirFichaColaborador(id) {
@@ -285,7 +285,7 @@
             ${!movs.length ? '<div class="empty"><div class="et">Sin movimientos</div></div>' : `
             <table>
               <thead><tr>
-                <th>Fecha</th><th>Tipo</th><th>Concepto</th><th>Semana / Período</th>
+                <th>Fecha</th><th>Tipo</th><th>Concepto</th><th>Período</th>
                 <th style="text-align:right">Importe</th><th></th>
               </tr></thead>
               <tbody>${movs.map(m => {
@@ -483,7 +483,6 @@
       </div>`;
     document.body.appendChild(modal);
     modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
-    // Cargar sugerencias de clientes
     try {
       if (window._cpClients) {
         const dl = document.getElementById('mov-clientes-list');
@@ -495,7 +494,7 @@
   function _onMovTipoChange() {
     const tipo   = document.getElementById('mov-tipo')?.value;
     const fields = document.getElementById('mov-semana-fields');
-    if (fields) fields.style.display = (tipo==='pago_semana'||tipo==='pago_dias') ? 'block' : 'none';
+    if (fields) fields.style.display = (tipo==='semana_trabajada'||tipo==='pago_semana'||tipo==='pago_dias') ? 'block' : 'none';
   }
 
   async function guardarMovimiento(colId) {
@@ -517,7 +516,6 @@
         body: JSON.stringify({ tipo, fecha, importe, semanaDesde: desde, semanaHasta: hasta, diasTrabajados: dias, horasExtra, clienteObra: obra, concepto })
       });
       document.getElementById('pg-mov-modal').remove();
-      // Refrescar ficha si está abierta
       document.getElementById('pg-col-ficha-modal')?.remove();
       loadColaboradores();
     } catch(err) { mostrarMsg('mov-msg','❌ '+err.message,'error'); }
@@ -533,7 +531,6 @@
     } catch(err) { alert('Error: ' + err.message); }
   }
 
-  // ── PAGOS GENERALES ───────────────────────────────────────────
   function renderFormPago() {
     return `
       <div class="field-grid-2" style="margin-bottom:12px">
@@ -662,12 +659,12 @@
   }
 
   async function submitPago() {
-    const tipo    = document.getElementById('pg-tipo')?.value;
-    const fecha   = document.getElementById('pg-fecha')?.value;
-    const persona = document.getElementById('pg-persona')?.value?.trim();
-    const importe = parseFloat(document.getElementById('pg-importe')?.value || 0);
-    const ref     = document.getElementById('pg-referencia')?.value?.trim() || '';
-    const obra    = document.getElementById('pg-cliente-obra')?.value?.trim() || '';
+    const tipo     = document.getElementById('pg-tipo')?.value;
+    const fecha    = document.getElementById('pg-fecha')?.value;
+    const persona  = document.getElementById('pg-persona')?.value?.trim();
+    const importe  = parseFloat(document.getElementById('pg-importe')?.value || 0);
+    const ref      = document.getElementById('pg-referencia')?.value?.trim() || '';
+    const obra     = document.getElementById('pg-cliente-obra')?.value?.trim() || '';
     const concepto = document.getElementById('pg-concepto')?.value?.trim()   || '';
 
     if (!persona) { mostrarMsg('pg-form-msg','⚠️ El nombre/descripción es obligatorio','warn'); return; }
@@ -715,7 +712,6 @@
     } catch(err) { console.error('[Pagos] CSV error:', err.message); }
   }
 
-  // ── PROYECTOS DE INVERSIÓN ─────────────────────────────────────
   async function loadProyectos() {
     const el = document.getElementById('pg-proyectos-lista');
     if (!el) return;
@@ -772,19 +768,16 @@
             </div>
             <button class="modal-close" onclick="document.getElementById('pg-proyecto-modal').remove()">✕</button>
           </div>
-
           <div class="metrics-row" style="margin-bottom:16px">
             <div class="mc"><div class="ml">Total invertido</div><div class="mv r">${eur(p.totalInvertido)}</div></div>
-            <div class class="mc"><div class="ml">Total cobrado</div><div class="mv g">${eur(p.totalCobrado)}</div></div>
+            <div class="mc"><div class="ml">Total cobrado</div><div class="mv g">${eur(p.totalCobrado)}</div></div>
             ${p.precioVentaPactado?`<div class="mc"><div class="ml">Precio venta</div><div class="mv g">${eur(p.precioVentaPactado)}</div></div>`:''}
             <div class="mc"><div class="ml">Beneficio est.</div><div class="mv ${p.beneficioEstimado>=0?'g':'r'}">${eur(p.beneficioEstimado)}</div></div>
           </div>
-
           <div style="display:flex;gap:8px;margin-bottom:14px">
             <button class="btn bp" onclick="CP.Pagos.abrirModalMovProyecto('${p._id}','gasto')">+ Añadir gasto</button>
             <button class="btn bg2" onclick="CP.Pagos.abrirModalMovProyecto('${p._id}','ingreso')">+ Añadir ingreso</button>
           </div>
-
           <div class="card" style="max-height:380px;overflow-y:auto">
             <div class="card-title">Movimientos</div>
             ${!p.movimientos.length ? '<div class="empty"><div class="et">Sin movimientos</div></div>' : `
@@ -800,7 +793,6 @@
               </tr>`).join('')}</tbody>
             </table>`}
           </div>
-
           <div class="modal-footer">
             <button class="btn bgh" onclick="document.getElementById('pg-proyecto-modal').remove()">Cerrar</button>
           </div>
@@ -912,7 +904,7 @@
         </div>
         <div class="field-row">
           <span class="field-label">Concepto *</span>
-          <input type="text" id="mp-concepto" placeholder="Ej: Pago Montse arquitecta, Reforma baño..." class="field-input">
+          <input type="text" id="mp-concepto" placeholder="Ej: Pago Montse arquitecta..." class="field-input">
         </div>
         <div class="field-row">
           <span class="field-label">Referencia / factura</span>
@@ -975,7 +967,7 @@
 
   CP.Pagos = {
     render, showTab, showPagosTab,
-    loadColaboradores, abrirFichaColaborador,
+    loadColaboradores, abrirFichaColaborador, borrarColaborador,
     abrirModalColaborador, guardarColaborador,
     abrirModalMovimiento, guardarMovimiento, deleteMovimiento,
     loadResumen, loadLista, submitPago, deletePago, resetFormPago, exportCSV,
