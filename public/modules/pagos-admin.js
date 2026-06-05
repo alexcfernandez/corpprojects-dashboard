@@ -577,26 +577,82 @@
   }
 
   async function loadResumen() {
-    const from = document.getElementById('pg-res-from')?.value || '';
-    const to   = document.getElementById('pg-res-to')?.value   || '';
-    const el   = document.getElementById('pg-res-content');
-    if (!el) return;
-    el.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:10px">Cargando...</div>';
-    try {
-      const data    = await api(`/api/pagos/resumen?from=${from}&to=${to}`);
-      const metrics = document.getElementById('pg-res-metrics');
-      if (metrics) metrics.innerHTML = `
-        <div class="mc"><div class="ml">Total salidas</div><div class="mv r">${eur(data.totales.total)}</div></div>
-        <div class="mc"><div class="ml">Efectivo</div><div class="mv a">${eur(data.totales.efectivo)}</div></div>
-        <div class="mc"><div class="ml">Adelantos plantilla</div><div class="mv b">${eur(data.totales.adelantos)}</div></div>
-        <div class="mc"><div class="ml">Materiales</div><div class="mv p">${eur(data.totales.material)}</div></div>
-        <div class="mc"><div class="ml">Personas</div><div class="mv b">${data.byPersona.length}</div></div>`;
+  const from = document.getElementById('pg-res-from')?.value || '';
+  const to   = document.getElementById('pg-res-to')?.value   || '';
+  const el   = document.getElementById('pg-res-content');
+  if (!el) return;
+  el.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:10px">Cargando...</div>';
+  try {
+    const data    = await api(`/api/pagos/resumen?from=${from}&to=${to}`);
+    const metrics = document.getElementById('pg-res-metrics');
+    const balance = data.totales.balance;
+    if (metrics) metrics.innerHTML = `
+      <div class="mc"><div class="ml">💸 Total salidas</div><div class="mv r">${eur(data.totales.salidas)}</div></div>
+      <div class="mc"><div class="ml">⬆️ Total entradas</div><div class="mv g">${eur(data.totales.entradas)}</div></div>
+      <div class="mc"><div class="ml">⚖️ Balance cash</div><div class="mv ${balance>=0?'g':'r'}">${balance>=0?'+':''}${eur(balance)}</div></div>
+      <div class="mc"><div class="ml">📦 Materiales</div><div class="mv p">${eur(data.totales.material)}</div></div>
+      <div class="mc"><div class="ml">💰 Adelantos plantilla</div><div class="mv b">${eur(data.totales.adelantos)}</div></div>`;
 
-      if (!data.pagos.length) {
-        el.innerHTML = '<div class="empty"><div class="ei">💵</div><div class="et">No hay pagos en este período</div></div>';
-        return;
-      }
+    if (!data.pagos.length) {
+      el.innerHTML = '<div class="empty"><div class="ei">💵</div><div class="et">No hay pagos en este período</div></div>';
+      return;
+    }
 
+    el.innerHTML = `
+      <!-- ENTRADAS -->
+      ${data.entradas.length ? `
+      <div class="card" style="margin-bottom:12px;border-left:3px solid var(--green)">
+        <div class="card-title" style="color:var(--green)">⬆️ Cobros e ingresos recibidos — ${eur(data.totales.entradas)}</div>
+        ${data.byEntrada.map(p => `
+          <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <div style="font-weight:700;color:var(--green)">⬆️ ${p.persona}</div>
+              <div style="font-weight:700;color:var(--green)">${eur(p.totalCobrado)}</div>
+            </div>
+            <table style="font-size:11px">
+              <tbody>${p.pagos.map(pg => {
+                const t = TIPOS_PAGO[pg.tipo] || TIPOS_PAGO.ingreso;
+                return `<tr>
+                  <td style="color:var(--text3);width:90px">${dt(pg.fecha)}</td>
+                  <td style="color:var(--green)">${t.emoji} ${t.label}</td>
+                  <td style="color:var(--text2)">${pg.concepto||'—'}</td>
+                  <td style="text-align:right;font-weight:600;color:var(--green);white-space:nowrap">+${eur(pg.importe)}</td>
+                  <td><button class="btn bgh" style="font-size:10px;padding:2px 7px;color:var(--red);border-color:var(--red)" onclick="CP.Pagos.deletePago('${pg._id}','${pg.persona?.replace(/'/g,"\\'")||''}')">🗑</button></td>
+                </tr>`;
+              }).join('')}</tbody>
+            </table>
+          </div>`).join('')}
+      </div>` : ''}
+
+      <!-- SALIDAS -->
+      ${data.salidas.length ? `
+      <div class="card" style="border-left:3px solid var(--red)">
+        <div class="card-title" style="color:var(--red)">⬇️ Pagos y gastos realizados — ${eur(data.totales.salidas)}</div>
+        ${data.bySalida.map(p => `
+          <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <div style="font-weight:700">💵 ${p.persona}</div>
+              <div style="font-weight:700;color:var(--red)">${eur(p.totalPagado)}</div>
+            </div>
+            <table style="font-size:11px">
+              <tbody>${p.pagos.map(pg => {
+                const t = TIPOS_PAGO[pg.tipo] || TIPOS_PAGO.efectivo;
+                return `<tr>
+                  <td style="color:var(--text3);width:90px">${dt(pg.fecha)}</td>
+                  <td><span style="color:${t.color}">${t.emoji} ${t.label}</span></td>
+                  <td style="color:var(--text2)">${pg.concepto||pg.persona||'—'}</td>
+                  <td style="text-align:right;font-weight:600;color:var(--red);white-space:nowrap">${eur(pg.importe)}</td>
+                  <td><button class="btn bgh" style="font-size:10px;padding:2px 7px;color:var(--red);border-color:var(--red)" onclick="CP.Pagos.deletePago('${pg._id}','${pg.persona?.replace(/'/g,"\\'")||''}')">🗑</button></td>
+                </tr>`;
+              }).join('')}</tbody>
+            </table>
+          </div>`).join('')}
+      </div>` : ''}`;
+
+  } catch(err) {
+    el.innerHTML = `<div style="color:var(--red);font-size:12px">Error: ${err.message}</div>`;
+  }
+}
       el.innerHTML = `<div style="display:flex;flex-direction:column;gap:10px">
         ${data.byPersona.map(p => `
           <div class="card" style="margin-bottom:0">
