@@ -58,6 +58,7 @@
   <button class="nav-btn" onclick="showTab('partes',this)">📋 Partes</button>
   <button class="nav-btn" onclick="showTab('obras',this)">📊 Obras</button>
   <button class="nav-btn" onclick="showTab('usuarios',this)">⚙️ Usuarios</button>
+  <button class="nav-btn" onclick="showTab('pagos',this)">💵 Pagos</button>
   <button class="nav-btn" onclick="showTab('emails',this)" id="nav-emails">📧 Emails <span id="badge-emails" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:2px">0</span></button>
   <button class="nav-btn" onclick="showTab('alertas',this)">🔔 Alertas</button>
 </nav>
@@ -379,7 +380,14 @@
     <div style="text-align:center;padding:40px;color:var(--text3)"><div style="font-size:32px;margin-bottom:10px">📊</div><div>Cargando módulo de obras...</div></div>
   </div>
 </div>
-
+  
+<!-- PAGOS EN EFECTIVO -->
+<div id="tab-pagos" class="panel">
+  <div id="pagos-container">
+    <div style="text-align:center;padding:40px;color:var(--text3)"><div style="font-size:32px;margin-bottom:10px">💵</div><div>Cargando módulo de pagos...</div></div>
+  </div>
+</div>
+  
 <!-- EMAILS -->
 <div id="tab-emails" class="panel">
   <div id="emails-content">
@@ -848,6 +856,7 @@ function showTab(id, btn){
     partes:    ['PartesAdmin', 'partes-container'],
     usuarios:  ['Usuarios',    'usuarios-container'],
     obras:     ['Obras',       'obras-container'],
+    pagos: ['Pagos', 'pagos-container'],
   };
   if(moduleMap[id]){
     const [modName, containerId]=moduleMap[id];
@@ -911,6 +920,7 @@ window.addEventListener('load',()=>{
 </script>
 
 <!-- ── MÓDULOS ── -->
+<script src="/modules/pagos-admin.js"></script>
 <script src="/modules/presencia.js"></script>
 <script src="/modules/partes-admin.js"></script>
 <script src="/modules/usuarios.js"></script>
