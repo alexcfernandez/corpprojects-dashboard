@@ -2,46 +2,9 @@
 (function(CP) {
   'use strict';
 
-  let WORKERS = [];
-  const RATES_BY_NAME = {
-    'jose beliard':    26.72,
-    'diego campillo':  19.05,
-    'abdellah souiri': 13.28,
-    'mamadou barry':   13.28,
-    'paula morales':   8.66,
-  };
-  function getRateForWorker(w) {
-    const key = (w.name||'').toLowerCase();
-    return RATES_BY_NAME[key] || w.rate || 15;
-  }
-
-  async function loadWorkers() {
-    try {
-      const data = await api('/api/partes/workers');
-      if (Array.isArray(data) && data.length > 0) {
-        WORKERS = data.map(w => ({ ...w, rate: getRateForWorker(w) }));
-      }
-    } catch(e) {
-      console.warn('[Presencia] Usando workers fallback');
-      WORKERS = [
-        {id:'jose',    name:'Jose Beliard',    color:'#4d9cf8', rate:26.72},
-        {id:'diego',   name:'Diego Campillo',  color:'#22c487', rate:19.05},
-        {id:'abdellah',name:'Abdellah Souiri', color:'#f59e0b', rate:13.28},
-        {id:'mamadou', name:'Mamadou Barry',   color:'#a78bfa', rate:13.28},
-        {id:'paula',   name:'Paula Morales',   color:'#f05252', rate:8.66},
-      ];
-    }
-  }
-
-  const ESTADOS = {
-    obra:       {label:'En obra',           color:'#22c487', emoji:'🏗️'},
-    oficina:    {label:'Oficina/almacén',   color:'#4d9cf8', emoji:'🏢'},
-    vacaciones: {label:'Vacaciones',        color:'#a78bfa', emoji:'🌴'},
-    baja:       {label:'Baja médica',       color:'#f59e0b', emoji:'🏥'},
-    falta_j:    {label:'Falta justificada', color:'#f59e0b', emoji:'📋'},
-    falta_i:    {label:'Falta injust.',     color:'#f05252', emoji:'❌'},
-    libre:      {label:'Libre',             color:'#5a6278', emoji:'⏸️'},
-  };
+  // Todo desde config central — nunca redefinir aquí
+  const CFG    = window.CP_CONFIG;
+  const ESTADOS = CFG.estadosPresencia;
 
   const MN = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   const DN = ['D','L','M','X','J','V','S'];
@@ -51,12 +14,9 @@
   let calData  = {};
   let selectedEstado = null;
   let modalWorker = null, modalDate = null;
-
-  // Variables de equipo para el modal de presencia
   let _equipoPresencia = [];
   let _libresPresencia = [];
 
-  // ── API ───────────────────────────────────────────────────────────
   async function api(url, opts = {}) {
     const tok = localStorage.getItem('cp_token');
     const r = await fetch(url, {
@@ -67,11 +27,12 @@
     return r.json();
   }
 
-  // ── RENDER PRINCIPAL ──────────────────────────────────────────────
   async function render(containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
-    await loadWorkers();
+
+    // Workers ya cargados por CP_CONFIG.loadWorkers() en el init del dashboard
+    const WORKERS = CFG.workers;
 
     container.innerHTML = `
       <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:20px;overflow-x:auto">
@@ -84,7 +45,7 @@
       <div id="p-tab-calendario" class="p-tab active">
         <div class="alert ain" style="margin-bottom:16px">
           <div>📅</div>
-          <div><strong>Control de presencia diario</strong> — haz clic en cualquier día para registrar el estado del trabajador. Los fines de semana se marcan automáticamente como jornada extra.</div>
+          <div><strong>Control de presencia diario</strong> — haz clic en cualquier día para registrar el estado. Los fines de semana se marcan automáticamente como jornada extra.</div>
         </div>
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
           <button class="btn bgh" onclick="CP.Presencia.prevMonth()">← Anterior</button>
@@ -132,13 +93,13 @@
             <button class="btn bp" onclick="CP.Presencia.searchClient()">Buscar</button>
           </div>
         </div>
-        <div class="card"><div id="p-client-result"><div style="color:var(--text3);font-size:12px">Introduce un cliente para ver el extracto de días y horas.</div></div></div>
+        <div class="card"><div id="p-client-result"><div style="color:var(--text3);font-size:12px">Introduce un cliente para ver el extracto.</div></div></div>
       </div>
 
       <div id="p-tab-calculadora" class="p-tab" style="display:none">
         <div class="alert ain" style="margin-bottom:16px">
           <div>🧮</div>
-          <div><strong>Calculadora de rentabilidad de obra</strong> — introduce días por trabajador, materiales y precio para ver si la obra sale rentable.</div>
+          <div><strong>Calculadora de rentabilidad de obra</strong></div>
         </div>
         <div class="g2">
           <div class="card">
@@ -194,9 +155,6 @@
       const style = document.createElement('style');
       style.id = 'presencia-styles';
       style.textContent = `
-        .btab{background:none;border:none;color:var(--text3);padding:10px 16px;font-size:12px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;font-family:'Inter',sans-serif;white-space:nowrap;transition:all .2s}
-        .btab:hover{color:var(--text)}.btab.active{color:var(--green);border-bottom-color:var(--green)}
-        .p-tab{display:none}.p-tab.active{display:block}
         .p-chip{display:inline-flex;align-items:center;gap:5px;background:var(--bg3);border:1.5px solid var(--border2);border-radius:20px;padding:6px 13px;font-size:12px;cursor:pointer;transition:all .15s;font-family:'Inter',sans-serif;color:var(--text2)}
         .p-chip:hover{border-color:var(--blue);color:var(--text)}
         .p-chip.on{border-color:var(--blue);background:rgba(77,156,248,.12);color:var(--blue)}
@@ -207,7 +165,6 @@
     loadCalendar();
   }
 
-  // ── TABS ──────────────────────────────────────────────────────────
   let sumYear = new Date().getFullYear();
   let sumMonth = new Date().getMonth() + 1;
 
@@ -221,7 +178,6 @@
     if (id === 'resumen')    loadSummary();
   }
 
-  // ── CALENDARIO ────────────────────────────────────────────────────
   function updateMonthLabel() {
     const el = document.getElementById('p-month-label');
     if (el) el.textContent = MN[calMonth-1] + ' ' + calYear;
@@ -241,18 +197,17 @@
         buildGrid();
       }
     } catch(err) {
-      console.warn('[Presencia] No se pudieron cargar datos:', err.message);
+      console.warn('[Presencia] Error cargando datos:', err.message);
     }
   }
 
   function buildGrid() {
     const grid = document.getElementById('p-cal-grid');
     if (!grid) return;
-
+    const WORKERS = CFG.workers;
     const daysInMonth = new Date(calYear, calMonth, 0).getDate();
     const today = new Date().toISOString().slice(0,10);
     const days  = [];
-
     for (let d = 1; d <= daysInMonth; d++) {
       const date = `${calYear}-${String(calMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
       const dow  = new Date(calYear, calMonth-1, d).getDay();
@@ -260,8 +215,6 @@
     }
 
     let html = `<div style="display:grid;grid-template-columns:100px repeat(${days.length},minmax(26px,1fr));gap:1px;font-size:10px">`;
-
-    // Cabecera días
     html += `<div style="padding:4px 6px;color:var(--text3);font-size:9px;font-weight:600;border-bottom:1px solid var(--border)">Trabajador</div>`;
     days.forEach(({ d, date, dow, weekend }) => {
       const isToday = date === today;
@@ -271,7 +224,6 @@
       </div>`;
     });
 
-    // Filas trabajadores — todos los días son clicables
     WORKERS.forEach(w => {
       html += `<div style="padding:4px 8px;color:var(--text2);font-size:10px;font-weight:500;border-right:1px solid var(--border);display:flex;align-items:center;gap:4px;white-space:nowrap">
         <div style="width:6px;height:6px;border-radius:50%;background:${w.color};flex-shrink:0"></div>
@@ -280,18 +232,12 @@
       days.forEach(({ date, weekend }) => {
         const entry = calData[w.id + '_' + date];
         const est   = entry ? ESTADOS[entry.estado] : null;
-        const esExtra = entry?.tipoJornada === 'EXTRA' || weekend;
-        // Fondo: si es finde sin registro → amarillo muy tenue; si tiene registro → color estado
-        const bg = est
-          ? est.color + '28'
-          : weekend ? 'rgba(245,158,11,.06)' : 'var(--bg3)';
-        const border = est
-          ? est.color + '55'
-          : weekend ? 'rgba(245,158,11,.25)' : 'var(--border)';
+        const bg    = est ? est.color+'28' : weekend ? 'rgba(245,158,11,.06)' : 'var(--bg3)';
+        const border = est ? est.color+'55' : weekend ? 'rgba(245,158,11,.25)' : 'var(--border)';
         html += `<div
           data-wid="${w.id}" data-wname="${w.name}" data-date="${date}" data-clickable="true"
           style="min-height:36px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;background:${bg};border:1px solid ${border};border-radius:3px;cursor:pointer;padding:1px;transition:opacity .15s"
-          title="${est ? est.label+(entry.clientName?' — '+entry.clientName:'') : weekend?'Fin de semana — clic para registrar jornada extra':'Sin registrar'}">
+          title="${est ? est.label+(entry.clientName?' — '+entry.clientName:'') : weekend?'Fin de semana':'Sin registrar'}">
           <div style="font-size:11px;line-height:1">${est ? est.emoji : weekend ? '⭐' : ''}</div>
           <div style="font-size:7px;color:var(--text3);overflow:hidden;max-width:100%;white-space:nowrap;text-overflow:ellipsis;padding:0 2px">${entry?.clientName ? entry.clientName.slice(0,8) : ''}</div>
           ${entry?.tieneParte ? '<div style="font-size:8px;line-height:1">📋</div>' : ''}
@@ -307,49 +253,31 @@
       if (!cell || cell.dataset.clickable !== 'true') return;
       openModal(cell.dataset.wid, cell.dataset.wname, cell.dataset.date);
     });
-    grid.addEventListener('mouseover', e => {
-      const c = e.target.closest('[data-clickable="true"]');
-      if (c) c.style.opacity = '.7';
-    });
-    grid.addEventListener('mouseout', e => {
-      const c = e.target.closest('[data-clickable="true"]');
-      if (c) c.style.opacity = '1';
-    });
+    grid.addEventListener('mouseover', e => { const c=e.target.closest('[data-clickable="true"]'); if(c) c.style.opacity='.7'; });
+    grid.addEventListener('mouseout',  e => { const c=e.target.closest('[data-clickable="true"]'); if(c) c.style.opacity='1'; });
   }
 
   function prevMonth() { if(calMonth===1){calMonth=12;calYear--;}else calMonth--; loadCalendar(); }
   function nextMonth() { if(calMonth===12){calMonth=1;calYear++;}else calMonth++; loadCalendar(); }
   function goToday()   { const n=new Date(); calYear=n.getFullYear(); calMonth=n.getMonth()+1; loadCalendar(); }
 
-  // ── MODAL ─────────────────────────────────────────────────────────
   function openModal(wid, wname, date) {
-    modalWorker = wid;
-    modalDate   = date;
-    _equipoPresencia = [];
-    _libresPresencia = [];
-
+    modalWorker = wid; modalDate = date;
+    _equipoPresencia = []; _libresPresencia = [];
     const entry = calData[wid + '_' + date];
-    const dow   = new Date(date + 'T12:00:00').getDay();
-    const esFinDeSemana = dow === 0 || dow === 6;
-
-    // Estado inicial: si hay registro previo → ese; si es finde sin registro → obra preseleccionada
+    const esFinDeSemana = CFG.esFinDeSemana(date);
     selectedEstado = entry ? entry.estado : (esFinDeSemana ? 'obra' : null);
-
-    // Recuperar equipo previo si existe
     if (entry?.equipo) _equipoPresencia = entry.equipo.filter(m => m.tipo !== 'libre');
 
     document.getElementById('p-modal')?.remove();
-
     const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long' });
+    const WORKERS = CFG.workers;
 
     const modal = document.createElement('div');
     modal.id = 'p-modal';
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
-
     modal.innerHTML = `
       <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:22px;width:100%;max-width:440px;margin:auto">
-
-        <!-- Cabecera -->
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
           <div>
             <div style="font-weight:600;font-size:15px">${wname}</div>
@@ -358,7 +286,6 @@
           <button onclick="document.getElementById('p-modal').remove()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;padding:4px">✕</button>
         </div>
 
-        <!-- Banner jornada extra -->
         ${esFinDeSemana ? `
         <div style="background:rgba(245,158,11,.1);border:1.5px solid rgba(245,158,11,.35);border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
           <span style="font-size:22px">⭐</span>
@@ -368,7 +295,6 @@
           </div>
         </div>` : ''}
 
-        <!-- Estado -->
         <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Estado</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px">
           ${Object.entries(ESTADOS).map(([k,v]) => `
@@ -379,10 +305,7 @@
             </button>`).join('')}
         </div>
 
-        <!-- Campos solo si es "En obra" -->
         <div id="p-obra-fields" style="display:${selectedEstado==='obra'?'block':'none'}">
-
-          <!-- Cliente -->
           <div style="margin-bottom:12px">
             <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Cliente / Obra</div>
             <input type="text" id="p-client-name" value="${entry?.clientName||''}" placeholder="Buscar cliente..."
@@ -390,8 +313,6 @@
               style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;color:var(--text);font-size:13px;outline:none;font-family:'Inter',sans-serif">
             <datalist id="p-clients-datalist"></datalist>
           </div>
-
-          <!-- Equipo plantilla -->
           <div style="margin-bottom:10px">
             <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Quién estuvo ese día</div>
             <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px" id="p-equipo-chips">
@@ -404,13 +325,11 @@
                 </button>`;
               }).join('')}
             </div>
-
-            <!-- Campo libre para añadir persona no registrada -->
             <div style="display:flex;gap:6px;margin-bottom:6px">
               <input type="text" id="p-externo-libre" placeholder="Añadir persona no registrada..."
                 style="flex:1;background:var(--bg3);border:1.5px dashed var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none;font-family:'Inter',sans-serif">
               <button onclick="CP.Presencia._addExternoPresencia()"
-                style="background:var(--bg3);border:1.5px dashed var(--border2);border-radius:8px;padding:8px 12px;color:var(--text3);font-size:13px;cursor:pointer;white-space:nowrap;font-family:'Inter',sans-serif">
+                style="background:var(--bg3);border:1.5px dashed var(--border2);border-radius:8px;padding:8px 12px;color:var(--text3);font-size:13px;cursor:pointer;font-family:'Inter',sans-serif">
                 + Añadir
               </button>
             </div>
@@ -418,7 +337,6 @@
           </div>
         </div>
 
-        <!-- Tiene parte -->
         <div style="margin-bottom:12px">
           <label style="display:flex;align-items:center;gap:10px;cursor:pointer;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px 14px">
             <input type="checkbox" id="p-tiene-parte" ${entry?.tieneParte?'checked':''} style="width:18px;height:18px;cursor:pointer;accent-color:var(--blue)">
@@ -429,7 +347,6 @@
           </label>
         </div>
 
-        <!-- Horas y notas -->
         <div style="display:flex;gap:10px;margin-bottom:16px">
           <div style="flex:1">
             <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Horas</div>
@@ -443,7 +360,6 @@
           </div>
         </div>
 
-        <!-- Botones -->
         <div style="display:flex;gap:8px">
           <button class="btn bp" style="flex:1" onclick="CP.Presencia._saveEntry()">💾 Guardar</button>
           ${entry ? `<button class="btn bgh" onclick="CP.Presencia._deleteEntry()">🗑️ Borrar</button>` : ''}
@@ -466,9 +382,7 @@
         window._cpClients = Array.isArray(names) ? names : [];
       }
       dl.innerHTML = window._cpClients.map(n=>`<option value="${n}">`).join('');
-    } catch(err) {
-      console.warn('[Presencia] No se pudieron cargar clientes:', err.message);
-    }
+    } catch(err) {}
   }
 
   function _selectEstado(k) {
@@ -484,17 +398,9 @@
   }
 
   function _toggleChipEquipo(btn) {
-    const id     = btn.dataset.id;
-    const nombre = btn.dataset.nombre;
-    const tipo   = btn.dataset.tipo;
-    const idx    = _equipoPresencia.findIndex(m => m.id === id);
-    if (idx >= 0) {
-      _equipoPresencia.splice(idx, 1);
-      btn.classList.remove('on');
-    } else {
-      _equipoPresencia.push({ id, nombre, tipo });
-      btn.classList.add('on');
-    }
+    const idx = _equipoPresencia.findIndex(m => m.id === btn.dataset.id);
+    if (idx >= 0) { _equipoPresencia.splice(idx,1); btn.classList.remove('on'); }
+    else          { _equipoPresencia.push({ id:btn.dataset.id, nombre:btn.dataset.nombre, tipo:btn.dataset.tipo }); btn.classList.add('on'); }
   }
 
   function _addExternoPresencia() {
@@ -518,25 +424,20 @@
       if (msg) { msg.textContent='⚠️ Selecciona un estado primero'; msg.style.display='block'; msg.style.color='var(--amber)'; }
       return;
     }
-    const dow = new Date(modalDate + 'T12:00:00').getDay();
-    const esFinDeSemana = dow === 0 || dow === 6;
-
     const entry = {
       workerId:    modalWorker,
-      workerName:  WORKERS.find(w => w.id === modalWorker)?.name || '',
+      workerName:  CFG.workers.find(w => w.id === modalWorker)?.name || '',
       date:        modalDate,
       estado:      selectedEstado,
       clientName:  selectedEstado==='obra' ? (document.getElementById('p-client-name')?.value?.trim()||'') : '',
       horas:       parseFloat(document.getElementById('p-horas')?.value || 8),
       notas:       document.getElementById('p-notas')?.value?.trim() || '',
       tieneParte:  document.getElementById('p-tiene-parte')?.checked || false,
-      tipoJornada: esFinDeSemana ? 'EXTRA' : 'NORMAL',
+      tipoJornada: CFG.tipoJornadaPorFecha(modalDate),
       equipo:      [..._equipoPresencia, ..._libresPresencia],
     };
-
     const msg = document.getElementById('p-modal-msg');
     if (msg) { msg.textContent='⏳ Guardando...'; msg.style.display='block'; msg.style.color='var(--text2)'; }
-
     try {
       await api('/api/attendance', { method:'POST', body: JSON.stringify(entry) });
       document.getElementById('p-modal')?.remove();
@@ -551,29 +452,26 @@
       await api(`/api/attendance/${modalWorker}/${modalDate}`, { method:'DELETE' });
       document.getElementById('p-modal')?.remove();
       loadCalendar();
-    } catch(err) {
-      console.error('[Presencia] Error delete:', err.message);
-    }
+    } catch(err) { console.error('[Presencia] Error delete:', err.message); }
   }
 
-  // ── RESUMEN MENSUAL ───────────────────────────────────────────────
-  function prevSumMonth() { if(sumMonth===1){sumMonth=12;sumYear--;}else sumMonth--; loadSummary(); }
-  function nextSumMonth() { if(sumMonth===12){sumMonth=1;sumYear++;}else sumMonth++; loadSummary(); }
+  let sumYear2 = new Date().getFullYear();
+  let sumMonth2 = new Date().getMonth() + 1;
+  function prevSumMonth() { if(sumMonth2===1){sumMonth2=12;sumYear2--;}else sumMonth2--; loadSummary(); }
+  function nextSumMonth() { if(sumMonth2===12){sumMonth2=1;sumYear2++;}else sumMonth2++; loadSummary(); }
 
   async function loadSummary() {
     const el = document.getElementById('p-sum-label');
-    if (el) el.textContent = MN[sumMonth-1] + ' ' + sumYear;
+    if (el) el.textContent = MN[sumMonth2-1] + ' ' + sumYear2;
     try {
-      const data = await api(`/api/attendance/summary/${sumYear}/${sumMonth}`);
-      const totalDias  = data.byWorker.reduce((s,w)=>s+w.dias,0);
+      const data = await api(`/api/attendance/summary/${sumYear2}/${sumMonth2}`);
       const totalObra  = data.byWorker.reduce((s,w)=>s+w.dias_obra,0);
       const totalFalta = data.byWorker.reduce((s,w)=>s+w.dias_falta,0);
       const uniqueDates = new Set((data.entries||[]).map(e=>e.date));
-      const diasUnicos  = uniqueDates.size;
 
       const metrics = document.getElementById('p-sum-metrics');
       if (metrics) metrics.innerHTML = `
-        <div class="mc"><div class="ml">Días registrados</div><div class="mv b">${diasUnicos}</div></div>
+        <div class="mc"><div class="ml">Días registrados</div><div class="mv b">${uniqueDates.size}</div></div>
         <div class="mc"><div class="ml">Días en obra</div><div class="mv g">${totalObra}</div></div>
         <div class="mc"><div class="ml">Faltas/bajas</div><div class="mv r">${totalFalta}</div></div>
         <div class="mc"><div class="ml">Horas totales</div><div class="mv b">${data.byWorker.reduce((s,w)=>s+w.horas,0).toFixed(0)} h</div></div>`;
@@ -582,20 +480,20 @@
       const tbl = document.getElementById('p-sum-table');
       if (tbl) tbl.innerHTML = `<table>
         <thead><tr><th>Trabajador</th><th style="text-align:right">Días</th><th style="text-align:right">En obra</th><th style="text-align:right">Faltas</th><th style="text-align:right">Horas</th><th style="text-align:right">Coste est.</th></tr></thead>
-        <tbody>${data.byWorker.map(w => `<tr>
+        <tbody>${data.byWorker.map(w=>`<tr>
           <td><span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:${w.color};display:inline-block"></span><strong>${w.name}</strong></span></td>
           <td style="text-align:right">${w.dias}</td>
           <td style="text-align:right;color:var(--green)">${w.dias_obra}</td>
           <td style="text-align:right;color:${w.dias_falta>0?'var(--red)':'var(--text2)'}">${w.dias_falta}</td>
           <td style="text-align:right">${w.horas.toFixed(0)} h</td>
-          <td style="text-align:right;color:var(--red)">${eur(w.horas*(RATES_BY_NAME[w.name?.toLowerCase()]||15))}</td>
+          <td style="text-align:right;color:var(--red)">${eur(w.horas * CFG.getRateForWorker(w))}</td>
         </tr>`).join('')}</tbody></table>`;
 
       const clientMap = {};
       data.byWorker.forEach(w => {
         Object.entries(w.clientes||{}).forEach(([client,v]) => {
           if (!clientMap[client]) clientMap[client]={dias:0,horas:0,workers:{}};
-          clientMap[client].dias += v.dias;
+          clientMap[client].dias  += v.dias;
           clientMap[client].horas += v.horas;
           clientMap[client].workers[w.name] = (clientMap[client].workers[w.name]||0)+v.dias;
         });
@@ -603,7 +501,7 @@
       const clients = Object.entries(clientMap).sort((a,b)=>b[1].dias-a[1].dias);
       const cEl = document.getElementById('p-sum-clients');
       if (cEl) {
-        if (!clients.length) { cEl.innerHTML='<div style="color:var(--text3);font-size:12px;padding:10px">No hay días en obra registrados este mes.</div>'; return; }
+        if (!clients.length) { cEl.innerHTML='<div style="color:var(--text3);font-size:12px;padding:10px">No hay días en obra este mes.</div>'; return; }
         cEl.innerHTML = `<table>
           <thead><tr><th>Cliente / Obra</th><th style="text-align:right">Días</th><th style="text-align:right">Horas</th><th>Detalle</th></tr></thead>
           <tbody>${clients.map(([client,v])=>`<tr>
@@ -613,12 +511,9 @@
             <td style="font-size:11px;color:var(--text2)">${Object.entries(v.workers).map(([n,d])=>`${n.split(' ')[0]}:${d}d`).join(' · ')}</td>
           </tr>`).join('')}</tbody></table>`;
       }
-    } catch(err) {
-      console.error('[Presencia] Error summary:', err.message);
-    }
+    } catch(err) { console.error('[Presencia] Error summary:', err.message); }
   }
 
-  // ── BÚSQUEDA POR CLIENTE ──────────────────────────────────────────
   async function searchClient() {
     const name = document.getElementById('p-client-search')?.value?.trim() || '';
     const from = document.getElementById('p-client-from')?.value || '';
@@ -628,20 +523,20 @@
     if (el) el.innerHTML='<div style="color:var(--text3);font-size:12px">Buscando...</div>';
     try {
       const data = await api(`/api/attendance/client?clientName=${encodeURIComponent(name)}&from=${from}&to=${to}`);
-      const eur = v => new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0);
+      const eur  = v => new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0);
       const workers = Object.values(data.byWorker||{});
-      if (!data.totalDias) { if(el) el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:10px">Sin registros para este cliente en el período.</div>'; return; }
-      const totalCoste = workers.reduce((s,w)=>{ const wd=WORKERS.find(x=>x.name===w.name); return s+(wd?w.horas*wd.rate:0); },0);
+      if (!data.totalDias) { if(el) el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:10px">Sin registros para este cliente.</div>'; return; }
+      const totalCoste = workers.reduce((s,w)=>{ const wd=CFG.workers.find(x=>x.name===w.name); return s+(wd?w.horas*wd.rate:0); },0);
       if (el) el.innerHTML = `
         <div class="metrics-row" style="margin-bottom:14px">
-          <div class="mc"><div class="ml">Total días en obra</div><div class="mv g">${data.totalDias}</div></div>
+          <div class="mc"><div class="ml">Total días</div><div class="mv g">${data.totalDias}</div></div>
           <div class="mc"><div class="ml">Total horas</div><div class="mv g">${workers.reduce((s,w)=>s+w.horas,0).toFixed(0)} h</div></div>
           <div class="mc"><div class="ml">Coste personal</div><div class="mv r">${eur(totalCoste)}</div></div>
         </div>
         <table><thead><tr><th>Trabajador</th><th style="text-align:right">Días</th><th style="text-align:right">Horas</th><th style="text-align:right">Coste</th><th>Fechas</th></tr></thead>
         <tbody>${workers.map(w=>{
-          const wd=WORKERS.find(x=>x.name===w.name);
-          return `<tr>
+          const wd=CFG.workers.find(x=>x.name===w.name);
+          return`<tr>
             <td><strong>${w.name}</strong></td>
             <td style="text-align:right">${w.dias}</td>
             <td style="text-align:right">${w.horas.toFixed(0)} h</td>
@@ -649,12 +544,9 @@
             <td style="font-size:10px;color:var(--text3)">${w.dates.slice(0,5).map(d=>new Date(d+'T12:00:00').toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'})).join(', ')}${w.dates.length>5?` +${w.dates.length-5} más`:''}</td>
           </tr>`;
         }).join('')}</tbody></table>`;
-    } catch(err) {
-      if(el) el.innerHTML=`<div style="color:var(--red);font-size:12px">Error: ${err.message}</div>`;
-    }
+    } catch(err) { if(el) el.innerHTML=`<div style="color:var(--red);font-size:12px">Error: ${err.message}</div>`; }
   }
 
-  // ── CALCULADORA ───────────────────────────────────────────────────
   function addMatRow() {
     const container = document.getElementById('calc-mat-rows');
     if (!container) return;
@@ -670,6 +562,7 @@
 
   function calcObra() {
     const eur = v => new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0);
+    const WORKERS = CFG.workers;
     let totalPersonal = 0;
     WORKERS.forEach(w => {
       const dias  = parseFloat(document.getElementById('calc-d-'+w.id)?.value||0);
@@ -704,32 +597,30 @@
       </div>
       <div style="padding:10px;background:${ok?'var(--green-bg)':'var(--red-bg)'};border-radius:8px;border:1px solid ${ok?'rgba(34,196,135,.3)':'rgba(240,82,82,.3)'};font-size:12px;color:${ok?'var(--green)':'var(--red)'}">
         ${ok
-          ? `✅ <strong>${nombre}</strong> — Obra rentable. ${eur(beneficio)} de beneficio con ${margen.toFixed(1)}% de margen.${margen<20?' Margen algo ajustado.':' Buen margen.'}`
-          : `🚨 <strong>${nombre}</strong> — Pérdidas de ${eur(Math.abs(beneficio))}. Precio mínimo para 20% de margen: ${eur(total*1.2)}`}
+          ? `✅ <strong>${nombre}</strong> — Obra rentable. ${eur(beneficio)} de beneficio con ${margen.toFixed(1)}% de margen.${margen<20?' Margen ajustado.':' Buen margen.'}`
+          : `🚨 <strong>${nombre}</strong> — Pérdidas de ${eur(Math.abs(beneficio))}. Precio mínimo para 20%: ${eur(total*1.2)}`}
       </div>`;
   }
 
-  // ── INFORME / CSV ─────────────────────────────────────────────────
   function openReport() {
     const tok = localStorage.getItem('cp_token');
-    window.open(`/informe-presencia?year=${sumYear}&month=${sumMonth}&token=${tok}`, '_blank');
+    window.open(`/informe-presencia?year=${sumYear2}&month=${sumMonth2}&token=${tok}`, '_blank');
   }
 
   async function exportCSV() {
     try {
-      const data = await api(`/api/attendance?from=${sumYear}-${String(sumMonth).padStart(2,'0')}-01&to=${sumYear}-${String(sumMonth).padStart(2,'0')}-31`);
+      const data = await api(`/api/attendance?from=${sumYear2}-${String(sumMonth2).padStart(2,'0')}-01&to=${sumYear2}-${String(sumMonth2).padStart(2,'0')}-31`);
       if (!data?.length) return;
       const rows = [['Fecha','Trabajador','Estado','Cliente/Obra','Horas','Jornada','Notas']];
       data.forEach(e => rows.push([e.date, e.workerName, ESTADOS[e.estado]?.label||e.estado, e.clientName||'', e.horas||8, e.tipoJornada||'NORMAL', e.notas||'']));
       const csv = rows.map(r=>r.map(v=>`"${v}"`).join(',')).join('\n');
       const a = document.createElement('a');
       a.href = 'data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
-      a.download = `presencia_${sumYear}_${String(sumMonth).padStart(2,'0')}.csv`;
+      a.download = `presencia_${sumYear2}_${String(sumMonth2).padStart(2,'0')}.csv`;
       a.click();
     } catch(err) { console.error('[Presencia] CSV error:', err.message); }
   }
 
-  // ── API PÚBLICA ───────────────────────────────────────────────────
   CP.Presencia = {
     render, showTab, openReport,
     prevMonth, nextMonth, goToday,
