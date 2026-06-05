@@ -477,7 +477,10 @@ async function doLogin(){
   try{
     const r=await fetch(`${API}/api/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pass})});
     const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');
-    tok=d.token;localStorage.setItem('cp_token',tok);showApp();
+    tok=d.token;localStorage.setItem('cp_token',tok);
+    // ── Cargar workers en config central antes de mostrar la app ──
+    await window.CP_CONFIG.loadWorkers();
+    showApp();
   }catch(e){
     const el=document.getElementById('loginError');el.textContent=e.message;el.style.display='block';
     btn.disabled=false;btn.textContent='Entrar →';
@@ -833,12 +836,10 @@ function showTab(id, btn){
   if(btn) btn.classList.add('active');
   if(id==='banco') showBTab('resumen', document.querySelector('.btab'));
   startAutoRefresh(id);
-  // Módulo emails
   if(id==='emails'){
     if(window.initEmails) window.initEmails();
     return;
   }
-  // Módulos independientes
   const moduleMap={
     presencia: ['Presencia',   'presencia-container'],
     partes:    ['PartesAdmin', 'partes-container'],
@@ -889,14 +890,27 @@ if(savedTheme==='light'){
 }
 
 // ── INIT ──────────────────────────────────────────────────────────
-if(tok){ showApp(); }else{ document.getElementById('loginScreen').style.display='flex'; }
+async function init() {
+  if (tok) {
+    // Si ya hay token guardado, cargar workers antes de mostrar la app
+    await window.CP_CONFIG.loadWorkers();
+    showApp();
+  } else {
+    document.getElementById('loginScreen').style.display = 'flex';
+  }
+}
+init();
 setInterval(()=>{if(tok) loadAll();}, 15*60*1000);
 window.addEventListener('load',()=>{
-  console.log('[CP] Módulos cargados:',Object.keys(window.CP||{}).join(', '));
+  console.log('[CP] Config workers cargados:', window.CP_CONFIG.workers.length);
+  console.log('[CP] Módulos:', Object.keys(window.CP||{}).join(', '));
 });
 </script>
 
-<!-- MÓDULOS INDEPENDIENTES -->
+<!-- ── CONFIG CENTRAL — SIEMPRE PRIMERO ── -->
+<script src="/config.js"></script>
+
+<!-- ── MÓDULOS ── -->
 <script src="/modules/presencia.js"></script>
 <script src="/modules/partes-admin.js"></script>
 <script src="/modules/usuarios.js"></script>
