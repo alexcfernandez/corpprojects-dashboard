@@ -1,29 +1,24 @@
 // src/partes.js — Módulo de partes de trabajo
-// Dos roles: admin (acceso total) y worker (solo crear, no editar)
-
 const { MongoClient, ObjectId } = require('mongodb');
 
 let db = null;
 
 async function getDB() {
   if (db) return db;
-  const uri = process.env.MONGODB_URI;
-  if (!uri) throw new Error('MONGODB_URI no configurada');
-  const client = new MongoClient(uri);
+  const client = new MongoClient(process.env.MONGODB_URI);
   await client.connect();
   db = client.db('corpprojects');
-  // Índices para búsquedas rápidas
   await db.collection('partes').createIndex({ date: -1 });
   await db.collection('partes').createIndex({ workerId: 1, date: -1 });
   await db.collection('partes').createIndex({ clientName: 1 });
   await db.collection('partes').createIndex({ status: 1 });
-  // Tokens de acceso para trabajadores
+  await db.collection('partes').createIndex({ expedienteId: 1 });
+  await db.collection('partes').createIndex({ asignacionId: 1 });
   await db.collection('worker_tokens').createIndex({ token: 1 }, { unique: true });
   console.log('[Partes] MongoDB conectado');
   return db;
 }
 
-// ── WORKERS (mismos que en presencia) ────────────────────────────
 const WORKERS = [
   { id: 'jose',     name: 'Jose Beliard',    pin: '1234' },
   { id: 'diego',    name: 'Diego Campillo',  pin: '2345' },
@@ -32,7 +27,6 @@ const WORKERS = [
   { id: 'paula',    name: 'Paula Morales',   pin: '5678' },
 ];
 
-// ── ESTADOS DEL PARTE ────────────────────────────────────────────
 const ESTADOS_PARTE = {
   pendiente:  { label: 'Pendiente revisión', color: '#f59e0b', emoji: '⏳' },
   verificado: { label: 'Verificado',         color: '#22c487', emoji: '✅' },
@@ -40,12 +34,22 @@ const ESTADOS_PARTE = {
   incidencia: { label: 'Con incidencia',     color: '#f05252', emoji: '⚠️' },
 };
 
-// ── LOGIN DE TRABAJADOR (por PIN) ────────────────────────────────
+// Estados del trabajo (nuevo campo)
+const ESTADOS_TRABAJO = {
+  completado:  { label: 'Trabajo completado',     color: '#22c487', emoji: '✅' },
+  continua:    { label: 'Continúa otro día',       color: '#f05252', emoji: '🔴' },
+  parcial:     { label: 'Parcialmente completado', color: '#f59e0b', emoji: '🟡' },
+};
+
+const TIPOS_JORNADA = {
+  NORMAL:   { label: 'Jornada normal',  color: '#4d9cf8', emoji: '📅' },
+  EXTRA:    { label: 'Hora extra',      color: '#f59e0b', emoji: '⭐' },
+  GUARDIA:  { label: 'Guardia',         color: '#a78bfa', emoji: '🛡️' },
+};
+
 async function workerLogin(workerId, pin) {
   const worker = WORKERS.find(w => w.id === workerId && w.pin === pin);
   if (!worker) throw new Error('PIN incorrecto');
-  
-  // Generar token simple para el trabajador (válido 12h)
   const token = `w_${workerId}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const db = await getDB();
   await db.collection('worker_tokens').insertOne({
@@ -65,24 +69,31 @@ async function verifyWorkerToken(token) {
   return doc || null;
 }
 
-// ── CREAR PARTE (trabajador o admin) ────────────────────────────
 async function createParte(data, workerInfo) {
   const db = await getDB();
-  
+
   const parte = {
-    // Datos del trabajador
     workerId:    workerInfo.workerId,
     workerName:  workerInfo.workerName,
-    
-    // Datos del trabajo
-    date:        data.date,           // fecha que declara el trabajador
+
+    date:        data.date,
     clientName:  data.clientName || '',
     description: data.description || '',
     horas:       parseFloat(data.horas || 8),
-    materiales:  data.materiales || [],  // [{nombre, cantidad, unidad, precio}]
+    materiales:  data.materiales || [],
     notas:       data.notas || '',
-    
-    // Metadatos de control (solo admin puede ver)
+
+    // NUEVO — estado del trabajo
+    estadoTrabajo:    data.estadoTrabajo || 'completado',  // completado | continua | parcial
+    pendienteDetalle: data.pendienteDetalle || '',          // qué queda por hacer
+    tipoJornada:      data.tipoJornada || 'NORMAL',
+
+    // NUEVO — equipo y vinculaciones
+    equipo:       data.equipo || [],     // miembros del equipo ese día
+    asignacionId: data.asignacionId || null,
+    expedienteId: data.expedienteId || null,
+    generadoAuto: false,
+
     _meta: {
       submittedAt:  new Date(),
       submittedBy:  workerInfo.role,
@@ -94,30 +105,32 @@ async function createParte(data, workerInfo) {
       fotosTrabajo: data.fotosTrabajo || [],
       fotosAlbaran: data.fotosAlbaran || [],
     },
-    
-    // Control de admin
-    status:         'pendiente',
-    adminNotes:     '',
-    verifiedAt:     null,
-    verifiedBy:     null,
-    facturaRef:     null,
-    
+
+    status:     'pendiente',
+    adminNotes: '',
+    verifiedAt: null,
+    verifiedBy: null,
+    facturaRef: null,
+
     createdAt: new Date(),
     updatedAt: new Date(),
   };
 
   const result = await db.collection('partes').insertOne(parte);
+  parte._id = result.insertedId;
+  parte.id  = result.insertedId;
   console.log(`[Partes] Nuevo parte: ${result.insertedId} — ${workerInfo.workerName} — ${data.clientName}`);
-  return { id: result.insertedId, ...parte };
+  return parte;
 }
 
-// ── LISTAR PARTES (admin) ────────────────────────────────────────
-async function getPartes({ workerId, clientName, status, from, to, limit = 50, skip = 0 } = {}) {
+async function getPartes({ workerId, clientName, status, estadoTrabajo, expedienteId, from, to, limit = 50, skip = 0 } = {}) {
   const db = await getDB();
   const query = {};
-  if (workerId)   query.workerId   = workerId;
-  if (status)     query.status     = status;
-  if (clientName) query.clientName = { $regex: clientName, $options: 'i' };
+  if (workerId)     query.workerId     = workerId;
+  if (status)       query.status       = status;
+  if (estadoTrabajo) query.estadoTrabajo = estadoTrabajo;
+  if (expedienteId) query.expedienteId = expedienteId;
+  if (clientName)   query.clientName   = { $regex: clientName, $options: 'i' };
   if (from || to) {
     query.date = {};
     if (from) query.date.$gte = from;
@@ -130,37 +143,31 @@ async function getPartes({ workerId, clientName, status, from, to, limit = 50, s
   return { partes, total, limit, skip };
 }
 
-// ── VER PARTE INDIVIDUAL (admin, con metadatos) ──────────────────
 async function getParte(id) {
   const db = await getDB();
   return db.collection('partes').findOne({ _id: new ObjectId(id) });
 }
 
-// ── ACTUALIZAR PARTE (solo admin) ────────────────────────────────
 async function updateParte(id, updates, adminName) {
   const db = await getDB();
-  const allowed = ['date','clientName','description','horas','materiales','notas','status','adminNotes','facturaRef'];
+  const allowed = ['date','clientName','description','horas','materiales','notas',
+                   'status','adminNotes','facturaRef','estadoTrabajo','pendienteDetalle',
+                   'tipoJornada','expedienteId','asignacionId'];
   const set = { updatedAt: new Date() };
   allowed.forEach(k => { if (updates[k] !== undefined) set[k] = updates[k]; });
-  
   if (updates.status === 'verificado') {
     set.verifiedAt = new Date();
     set.verifiedBy = adminName;
   }
-  
   return db.collection('partes').updateOne({ _id: new ObjectId(id) }, { $set: set });
 }
 
-// ── RESUMEN PARA FACTURACIÓN ────────────────────────────────────
 async function getResumenFacturacion({ from, to, clientName } = {}) {
   const db = await getDB();
   const query = { status: { $in: ['verificado', 'pendiente'] } };
   if (clientName) query.clientName = { $regex: clientName, $options: 'i' };
   if (from || to) { query.date = {}; if (from) query.date.$gte = from; if (to) query.date.$lte = to; }
-  
   const partes = await db.collection('partes').find(query).toArray();
-  
-  // Agrupar por cliente
   const byClient = {};
   partes.forEach(p => {
     const k = p.clientName || 'Sin cliente';
@@ -171,12 +178,11 @@ async function getResumenFacturacion({ from, to, clientName } = {}) {
     byClient[k][p.status]++;
     (p.materiales || []).forEach(m => byClient[k].materiales.push(m));
   });
-  
   return Object.values(byClient).map(c => ({ ...c, workers: [...c.workers] })).sort((a,b) => b.horas - a.horas);
 }
 
 module.exports = {
-  WORKERS, ESTADOS_PARTE,
+  WORKERS, ESTADOS_PARTE, ESTADOS_TRABAJO, TIPOS_JORNADA,
   workerLogin, verifyWorkerToken,
   createParte, getPartes, getParte, updateParte,
   getResumenFacturacion
