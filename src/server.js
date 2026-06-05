@@ -882,6 +882,16 @@ app.delete('/api/colaboradores/movimientos/:id', requireAuth, async (req, res) =
   catch(err) { res.status(500).json({ error: err.message }); }
 });
 
+app.delete('/api/colaboradores/:id', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    await db.collection('colaborador_movimientos').deleteMany({ colaboradorId: req.params.id });
+    await db.collection('colaboradores').deleteOne({ _id: new ObjectId(req.params.id) });
+    await client.close();
+    res.json({ ok: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── PROYECTOS DE INVERSIÓN ────────────────────────────────────────
 app.get('/api/proyectos', requireAuth, async (req, res) => {
   try { res.json(await colaboradores.getProyectos()); }
