@@ -1,4 +1,4 @@
-// modules/presencia.js — v2 con equipo persistente, icono ayudantes y campos correctos
+// modules/presencia.js — v3 con ayudantes en resumen mensual
 (function(CP) {
   'use strict';
 
@@ -67,6 +67,7 @@
         <div id="p-sum-metrics" class="metrics-row"></div>
         <div class="card"><div class="card-title">Días por trabajador</div><div id="p-sum-table">Cargando...</div></div>
         <div class="card"><div class="card-title">Horas en obra por cliente</div><div id="p-sum-clients">Cargando...</div></div>
+        <div id="p-ayudantes-card" style="display:none"></div>
       </div>
 
       <div id="p-tab-clientes" class="p-tab" style="display:none">
@@ -210,7 +211,6 @@
 
     let html = `<div style="display:grid;grid-template-columns:100px repeat(${days.length},minmax(26px,1fr));gap:1px;font-size:10px">`;
 
-    // Cabecera días
     html += `<div style="padding:4px 6px;color:var(--text3);font-size:9px;font-weight:600;border-bottom:1px solid var(--border)">Trabajador</div>`;
     days.forEach(({ d, date, dow, weekend }) => {
       const isToday = date === today;
@@ -220,19 +220,18 @@
       </div>`;
     });
 
-    // Filas trabajadores
     WORKERS.forEach(w => {
       html += `<div style="padding:4px 8px;color:var(--text2);font-size:10px;font-weight:500;border-right:1px solid var(--border);display:flex;align-items:center;gap:4px;white-space:nowrap">
         <div style="width:6px;height:6px;border-radius:50%;background:${w.color};flex-shrink:0"></div>
         ${w.name.split(' ')[0]}
       </div>`;
       days.forEach(({ date, weekend }) => {
-        const entry      = calData[w.id + '_' + date];
-        const est        = entry ? ESTADOS[entry.estado] : null;
+        const entry       = calData[w.id + '_' + date];
+        const est         = entry ? ESTADOS[entry.estado] : null;
         const tieneEquipo = entry?.equipo?.length > 0;
-        const bg         = est ? est.color+'28' : weekend ? 'rgba(245,158,11,.06)' : 'var(--bg3)';
-        const border     = est ? est.color+'55'  : weekend ? 'rgba(245,158,11,.25)' : 'var(--border)';
-        const tooltip    = est
+        const bg          = est ? est.color+'28' : weekend ? 'rgba(245,158,11,.06)' : 'var(--bg3)';
+        const border      = est ? est.color+'55'  : weekend ? 'rgba(245,158,11,.25)' : 'var(--border)';
+        const tooltip     = est
           ? `${est.label}${entry.clientName?' — '+entry.clientName:''}${tieneEquipo?' · '+entry.equipo.length+' personas':''}`
           : weekend ? 'Fin de semana' : 'Sin registrar';
 
@@ -272,11 +271,10 @@
     _equipoPresencia = [];
     _libresPresencia = [];
 
-    const entry          = calData[wid + '_' + date];
-    const esFinDeSemana  = CFG.esFinDeSemana(date);
-    selectedEstado       = entry ? entry.estado : (esFinDeSemana ? 'obra' : null);
+    const entry         = calData[wid + '_' + date];
+    const esFinDeSemana = CFG.esFinDeSemana(date);
+    selectedEstado      = entry ? entry.estado : (esFinDeSemana ? 'obra' : null);
 
-    // Recuperar equipo guardado
     if (entry?.equipo) {
       _equipoPresencia = entry.equipo.filter(m => m.tipo === 'plantilla' || m.tipo === 'externo');
       _libresPresencia = entry.equipo.filter(m => m.tipo === 'libre');
@@ -385,7 +383,6 @@
     document.body.appendChild(modal);
     modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
 
-    // Renderizar libres ya guardados
     _libresPresencia.forEach((m, i) => {
       const cont = document.getElementById('p-libres-chips');
       if (!cont) return;
@@ -414,7 +411,6 @@
   function _removeLibre(index, btn) {
     _libresPresencia.splice(index, 1);
     btn.parentElement.remove();
-    // Re-numerar índices de los chips restantes
     document.querySelectorAll('#p-libres-chips span').forEach((chip, i) => {
       const b = chip.querySelector('button');
       if (b) b.setAttribute('onclick', `CP.Presencia._removeLibre(${i},this)`);
@@ -502,12 +498,12 @@
       const data = await api(`/api/attendance/summary/${sumYear2}/${sumMonth2}`);
       const eur  = v => new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0);
 
-      const totalObra       = data.byWorker.reduce((s,w) => s+(w.dias_obra||0), 0);
-      const totalFalta      = data.byWorker.reduce((s,w) => s+(w.dias_falta||0), 0);
-      const totalBaja       = data.byWorker.reduce((s,w) => s+(w.dias_baja||0), 0);
-      const totalHorasProd  = data.byWorker.reduce((s,w) => s+(w.horas_productivas||w.horas||0), 0);
-      const totalCoste      = data.byWorker.reduce((s,w) => s+(w.coste_real||0), 0);
-      const uniqueDates     = new Set((data.entries||[]).map(e=>e.date));
+      const totalObra      = data.byWorker.reduce((s,w) => s+(w.dias_obra||0), 0);
+      const totalFalta     = data.byWorker.reduce((s,w) => s+(w.dias_falta||0), 0);
+      const totalBaja      = data.byWorker.reduce((s,w) => s+(w.dias_baja||0), 0);
+      const totalHorasProd = data.byWorker.reduce((s,w) => s+(w.horas_productivas||w.horas||0), 0);
+      const totalCoste     = data.byWorker.reduce((s,w) => s+(w.coste_real||0), 0);
+      const uniqueDates    = new Set((data.entries||[]).map(e=>e.date));
 
       const metrics = document.getElementById('p-sum-metrics');
       if (metrics) metrics.innerHTML = `
@@ -548,7 +544,6 @@
         }).join('')}</tbody>
       </table>`;
 
-      // Clientes con días únicos — desde clientSummary del backend
       const clients = data.clientSummary || [];
       const cEl = document.getElementById('p-sum-clients');
       if (cEl) {
@@ -576,6 +571,74 @@
         }
       }
 
+      // ── Sección ayudantes externos ─────────────────────────────
+      const ayudantesMap = {};
+      (data.entries || []).forEach(e => {
+        if (!e.equipo) return;
+        e.equipo.forEach(m => {
+          if (m.tipo !== 'libre' && m.tipo !== 'externo') return;
+          const nombre = m.nombre || '?';
+          if (!ayudantesMap[nombre]) ayudantesMap[nombre] = { dias: 0, obras: {} };
+          ayudantesMap[nombre].dias++;
+          const cliente = e.clientName || 'Sin cliente';
+          ayudantesMap[nombre].obras[cliente] = (ayudantesMap[nombre].obras[cliente] || 0) + 1;
+        });
+      });
+
+      const ayudantesList = Object.entries(ayudantesMap).sort((a,b) => b[1].dias - a[1].dias);
+      const ayCard = document.getElementById('p-ayudantes-card');
+
+      if (ayCard) {
+        if (!ayudantesList.length) {
+          ayCard.style.display = 'none';
+          ayCard.innerHTML = '';
+        } else {
+          const totalDiasAy = ayudantesList.reduce((s,[,v]) => s+v.dias, 0);
+          const totalCosteAy = totalDiasAy * 8 * 10;
+          ayCard.style.display = 'block';
+          ayCard.className = 'card';
+          ayCard.innerHTML = `
+            <div class="card-title">👥 Ayudantes / Colaboradores externos</div>
+            <table>
+              <thead><tr>
+                <th>Nombre</th>
+                <th style="text-align:right">Días</th>
+                <th style="text-align:right">Horas est.</th>
+                <th>Obras / Clientes</th>
+                <th style="text-align:right">Coste est.</th>
+              </tr></thead>
+              <tbody>${ayudantesList.map(([nombre, info]) => {
+                const dias      = info.dias;
+                const horasEst  = dias * 8;
+                const costeEst  = horasEst * 10;
+                const obrasStr  = Object.entries(info.obras)
+                  .map(([c,d]) => `${c}: ${d}d`).join(' · ');
+                return `<tr>
+                  <td>
+                    <strong>👤 ${nombre}</strong>
+                    <div style="font-size:10px;color:var(--amber)">Sin alta · pago efectivo</div>
+                  </td>
+                  <td style="text-align:right;font-weight:600">${dias}</td>
+                  <td style="text-align:right">${horasEst} h</td>
+                  <td style="font-size:11px;color:var(--text2)">${obrasStr || '—'}</td>
+                  <td style="text-align:right;color:var(--amber);font-weight:600">~${eur(costeEst)}</td>
+                </tr>`;
+              }).join('')}</tbody>
+              <tfoot><tr>
+                <td><strong>Total ayudantes</strong></td>
+                <td style="text-align:right;font-weight:600">${totalDiasAy}d</td>
+                <td style="text-align:right;font-weight:600">${totalDiasAy*8} h</td>
+                <td></td>
+                <td style="text-align:right;color:var(--amber);font-weight:600">~${eur(totalCosteAy)}</td>
+              </tr></tfoot>
+            </table>
+            <div class="alert awa" style="margin-top:12px">
+              <div>⚠️</div>
+              <div>Coste estimado a <strong>10€/h por defecto</strong>. Se actualizará con el rate real cuando esté registrado en el módulo de pagos en efectivo.</div>
+            </div>`;
+        }
+      }
+
     } catch(err) { console.error('[Presencia] Error summary:', err.message); }
   }
 
@@ -587,8 +650,8 @@
     const el = document.getElementById('p-client-result');
     if (el) el.innerHTML = '<div style="color:var(--text3);font-size:12px">Buscando...</div>';
     try {
-      const data  = await api(`/api/attendance/client?clientName=${encodeURIComponent(name)}&from=${from}&to=${to}`);
-      const eur   = v => new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0);
+      const data    = await api(`/api/attendance/client?clientName=${encodeURIComponent(name)}&from=${from}&to=${to}`);
+      const eur     = v => new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0);
       const workers = Object.values(data.byWorker||{});
       if (!data.totalDias) {
         if(el) el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:10px">Sin registros para este cliente.</div>';
