@@ -2,29 +2,13 @@
 (function(CP) {
   'use strict';
 
-  const ESTADOS = {
-    pendiente:  { label:'Pendiente revisión', color:'#f59e0b', emoji:'⏳' },
-    verificado: { label:'Verificado',         color:'#22c487', emoji:'✅' },
-    facturado:  { label:'Facturado',          color:'#4d9cf8', emoji:'💰' },
-    incidencia: { label:'Con incidencia',     color:'#f05252', emoji:'⚠️' },
-  };
-  const ESTADOS_TRABAJO = {
-    completado: { label:'Completado',   emoji:'✅' },
-    continua:   { label:'Continúa',     emoji:'🔴' },
-    parcial:    { label:'Parcial',      emoji:'🟡' },
-  };
-  const TIPOS_JORNADA = {
-    NORMAL:  { label:'Normal',  emoji:'📅' },
-    EXTRA:   { label:'Extra',   emoji:'⭐' },
-    GUARDIA: { label:'Guardia', emoji:'🛡️' },
-  };
-  const WORKERS = [
-    {id:'jose',    name:'Jose Beliard'},
-    {id:'diego',   name:'Diego Campillo'},
-    {id:'abdellah',name:'Abdellah Souiri'},
-    {id:'mamadou', name:'Mamadou Barry'},
-    {id:'paula',   name:'Paula Morales'},
-  ];
+  // ── Todo desde config central ─────────────────────────────────
+  const ESTADOS         = window.CP_CONFIG.estadosPartes;
+  const ESTADOS_TRABAJO = window.CP_CONFIG.estadosTrabajo;
+  const TIPOS_JORNADA   = window.CP_CONFIG.tiposJornada;
+
+  // WORKERS se lee siempre de CP_CONFIG.workers (cargados al init)
+  function getWorkers() { return window.CP_CONFIG.workers; }
 
   let currentPage = 0;
   const PAGE = 20;
@@ -53,6 +37,7 @@
   function render(containerId) {
     const el = document.getElementById(containerId);
     if (!el) return;
+    const WORKERS = getWorkers();
     el.innerHTML = `
       <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:20px;overflow-x:auto">
         <button class="btab active" onclick="CP.PartesAdmin.showTab('lista',this)">📋 Partes</button>
@@ -237,9 +222,9 @@
 
       const metrics = document.getElementById('pa-metrics');
       if (metrics && data.partes) {
-        const pend    = data.partes.filter(p => p.status === 'pendiente').length;
-        const ver     = data.partes.filter(p => p.status === 'verificado').length;
-        const horas   = data.partes.reduce((s,p) => s + (p.horas||0), 0);
+        const pend     = data.partes.filter(p => p.status === 'pendiente').length;
+        const ver      = data.partes.filter(p => p.status === 'verificado').length;
+        const horas    = data.partes.reduce((s,p) => s + (p.horas||0), 0);
         const continua = data.partes.filter(p => p.estadoTrabajo === 'continua').length;
         metrics.innerHTML = `
           <div class="mc"><div class="ml">Total partes</div><div class="mv b">${data.total}</div></div>
@@ -395,6 +380,12 @@
           <div class="alert ada" style="margin-bottom:12px">
             <div>🔴</div>
             <div><strong>Qué queda por hacer</strong><br>${p.pendienteDetalle}</div>
+          </div>` : ''}
+
+          ${p.estadoTrabajo === 'material' && p.materialDetalle ? `
+          <div class="alert apu" style="margin-bottom:12px">
+            <div>📦</div>
+            <div><strong>Material necesario</strong><br>${p.materialDetalle}</div>
           </div>` : ''}
 
           <div class="card" style="margin-bottom:12px">
@@ -589,9 +580,9 @@
           <div>
             <span class="field-label">Tipo jornada</span>
             <select id="asig-m-jornada" class="field-input">
-              <option value="NORMAL" ${(asig?.tipoJornada||'NORMAL')==='NORMAL'?'selected':''}>📅 Normal</option>
-              <option value="EXTRA"  ${asig?.tipoJornada==='EXTRA'?'selected':''}>⭐ Extra / Sábado</option>
-              <option value="GUARDIA" ${asig?.tipoJornada==='GUARDIA'?'selected':''}>🛡️ Guardia</option>
+              ${Object.entries(TIPOS_JORNADA).map(([k,v])=>
+                `<option value="${k}" ${(asig?.tipoJornada||'NORMAL')===k?'selected':''}>${v.emoji} ${v.label}</option>`
+              ).join('')}
             </select>
           </div>
         </div>
@@ -674,19 +665,18 @@
   }
 
   window.toggleChipModal = function(btn) {
-    const sel  = btn.classList.toggle('chip-sel');
-    // Los colores los maneja el CSS con .chip-sel y data-tipo
+    btn.classList.toggle('chip-sel');
   };
 
   async function guardarAsignacion(id) {
-    const fecha    = document.getElementById('asig-m-fecha')?.value;
-    const jornada  = document.getElementById('asig-m-jornada')?.value || 'NORMAL';
-    const hinicio  = document.getElementById('asig-m-hinicio')?.value || '';
-    const hfin     = document.getElementById('asig-m-hfin')?.value   || '';
-    const cliente  = document.getElementById('asig-m-cliente')?.value?.trim() || '';
-    const desc     = document.getElementById('asig-m-desc')?.value?.trim()    || '';
-    const notas    = document.getElementById('asig-m-notas')?.value?.trim()   || '';
-    const respId   = document.getElementById('asig-m-responsable')?.value     || '';
+    const fecha   = document.getElementById('asig-m-fecha')?.value;
+    const jornada = document.getElementById('asig-m-jornada')?.value || 'NORMAL';
+    const hinicio = document.getElementById('asig-m-hinicio')?.value || '';
+    const hfin    = document.getElementById('asig-m-hfin')?.value   || '';
+    const cliente = document.getElementById('asig-m-cliente')?.value?.trim() || '';
+    const desc    = document.getElementById('asig-m-desc')?.value?.trim()    || '';
+    const notas   = document.getElementById('asig-m-notas')?.value?.trim()   || '';
+    const respId  = document.getElementById('asig-m-responsable')?.value     || '';
 
     if (!fecha || !cliente) { mostrarMsg('asig-modal-msg', '⚠️ Fecha y cliente son obligatorios', 'warn'); return; }
 
@@ -732,13 +722,14 @@
       el.innerHTML = `<div style="display:flex;flex-direction:column;gap:10px">
         ${lista.map(exp => {
           const dias = Math.floor((Date.now() - new Date(exp.fechaApertura)) / (1000*60*60*24));
+          const expEst = window.CP_CONFIG.estadosExpedientes[exp.estado] || { emoji:'❓', color:'var(--text3)' };
           return `
           <div class="card" style="margin-bottom:0">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
               <div>
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
                   <span class="exp-numero">${exp.numero}</span>
-                  <span class="exp-estado ${exp.estado}">${exp.estado==='EN_CURSO'?'🔴':exp.estado==='COMPLETADO'?'✅':'⏸️'} ${exp.estado.replace('_',' ')}</span>
+                  <span class="exp-estado ${exp.estado}">${expEst.emoji} ${exp.estado.replace('_',' ')}</span>
                 </div>
                 <div style="font-size:15px;font-weight:700">${exp.clientName}</div>
                 <div style="font-size:13px;color:var(--text2)">${exp.descripcion||'—'}</div>
@@ -783,10 +774,9 @@
 
           <div class="card-title">Hilo de partes</div>
           <div style="display:flex;flex-direction:column;gap:8px">
-            ${(exp.partes||[]).map((p,i) => {
+            ${(exp.partes||[]).map(p => {
               const etrab = ESTADOS_TRABAJO[p.estadoTrabajo] || ESTADOS_TRABAJO.completado;
               const ejor  = TIPOS_JORNADA[p.tipoJornada]    || TIPOS_JORNADA.NORMAL;
-              const esUltimo = i === exp.partes.length - 1;
               return `
               <div class="exp-hilo-item ${p.estadoTrabajo||'completado'}">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start">
@@ -799,6 +789,7 @@
                     <div style="font-size:13px;color:var(--text2)">${p.workerName}</div>
                     <div style="font-size:12px;color:var(--text3);margin-top:2px">${p.description||'—'}</div>
                     ${p.pendienteDetalle ? `<div style="font-size:12px;color:var(--red);margin-top:4px">🔴 ${p.pendienteDetalle}</div>` : ''}
+                    ${p.materialDetalle ? `<div style="font-size:12px;color:var(--purple);margin-top:4px">📦 ${p.materialDetalle}</div>` : ''}
                     ${p.equipo?.length > 1 ? `<div style="font-size:11px;color:var(--blue);margin-top:4px">👥 ${p.equipo.map(m=>m.nombre.split(' ')[0]).join(', ')}</div>` : ''}
                   </div>
                   <div style="text-align:right">
@@ -952,6 +943,7 @@
 
   // ── NUEVO PARTE (admin) ─────────────────────────────────────────
   function renderFormAdmin() {
+    const WORKERS = getWorkers();
     return `
       <div class="field-grid-2">
         <div>
@@ -968,9 +960,9 @@
       <div class="field-row">
         <span class="field-label">Tipo jornada</span>
         <select id="pa-new-jornada" class="field-input">
-          <option value="NORMAL">📅 Normal</option>
-          <option value="EXTRA">⭐ Extra / Sábado</option>
-          <option value="GUARDIA">🛡️ Guardia</option>
+          ${Object.entries(TIPOS_JORNADA).map(([k,v])=>
+            `<option value="${k}">${v.emoji} ${v.label}</option>`
+          ).join('')}
         </select>
       </div>
       <div class="field-row">
@@ -990,9 +982,9 @@
         <div>
           <span class="field-label">Estado trabajo</span>
           <select id="pa-new-estado-trabajo" class="field-input">
-            <option value="completado">✅ Completado</option>
-            <option value="continua">🔴 Continúa otro día</option>
-            <option value="parcial">🟡 Parcial</option>
+            ${Object.entries(ESTADOS_TRABAJO).map(([k,v])=>
+              `<option value="${k}">${v.emoji} ${v.label}</option>`
+            ).join('')}
           </select>
         </div>
       </div>
@@ -1011,16 +1003,16 @@
   }
 
   async function submitParte() {
-    const workerSel    = document.getElementById('pa-new-worker');
-    const workerId     = workerSel?.value;
-    const workerName   = workerSel?.options[workerSel.selectedIndex]?.dataset.name || '';
-    const date         = document.getElementById('pa-new-date')?.value;
-    const clientName   = document.getElementById('pa-new-client')?.value?.trim() || '';
-    const description  = document.getElementById('pa-new-desc')?.value?.trim()   || '';
-    const horas        = parseFloat(document.getElementById('pa-new-horas')?.value || 8);
-    const tipoJornada  = document.getElementById('pa-new-jornada')?.value        || 'NORMAL';
-    const estadoTrabajo = document.getElementById('pa-new-estado-trabajo')?.value || 'completado';
-    const notas        = document.getElementById('pa-new-notas')?.value?.trim()  || '';
+    const workerSel     = document.getElementById('pa-new-worker');
+    const workerId      = workerSel?.value;
+    const workerName    = workerSel?.options[workerSel.selectedIndex]?.dataset.name || '';
+    const date          = document.getElementById('pa-new-date')?.value;
+    const clientName    = document.getElementById('pa-new-client')?.value?.trim() || '';
+    const description   = document.getElementById('pa-new-desc')?.value?.trim()   || '';
+    const horas         = parseFloat(document.getElementById('pa-new-horas')?.value || 8);
+    const tipoJornada   = document.getElementById('pa-new-jornada')?.value        || 'NORMAL';
+    const estadoTrabajo = document.getElementById('pa-new-estado-trabajo')?.value  || 'completado';
+    const notas         = document.getElementById('pa-new-notas')?.value?.trim()  || '';
 
     if (!date || !clientName) { mostrarMsg('pa-form-msg', '⚠️ Fecha y cliente son obligatorios', 'warn'); return; }
 
@@ -1076,16 +1068,18 @@
   }
 
   window.togglePin = function(wid) {
-    const pins = { jose:'1234', diego:'2345', abdellah:'3456', mamadou:'4567', paula:'5678' };
-    const el = document.getElementById('pin-' + wid);
+    // PINs temporales hasta migrar a módulo Usuarios
+    const cfg = window.CP_CONFIG.workersFallback || [];
+    const w   = cfg.find(x => x.id === wid);
+    const el  = document.getElementById('pin-' + wid);
     if (!el) return;
-    el.textContent = el.textContent === '••••' ? (pins[wid]||'????') : '••••';
+    el.textContent = el.textContent === '••••' ? (w?.pin || '????') : '••••';
   };
 
   CP.PartesAdmin = {
     render, showTab, applyFilters, clearFilters, goPage,
     openParte, updateStatus, saveParteChanges, deleteParte,
-    addMatRow: () => {}, submitParte, resetForm, loadFacturacion,
+    submitParte, resetForm, loadFacturacion,
     loadAsignaciones, abrirModalAsignacion, guardarAsignacion, borrarAsignacion,
     loadExpedientes, verExpediente, cerrarExpediente, pausarExpediente,
     abrirModalExpediente, crearExpediente,
