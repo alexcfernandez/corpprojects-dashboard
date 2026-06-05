@@ -170,7 +170,6 @@
     el.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:10px">Cargando...</div>';
     try {
       const data = await api('/api/colaboradores/resumen');
-
       if (!data.length) {
         el.innerHTML = `<div class="empty">
           <div class="ei">👷</div>
@@ -179,11 +178,9 @@
         </div>`;
         return;
       }
-
       const totalSaldo     = data.reduce((s,c) => s + Math.max(0, c.saldoPendiente), 0);
       const totalPagado    = data.reduce((s,c) => s + c.totalPagado, 0);
       const totalDevengado = data.reduce((s,c) => s + c.totalDevengado, 0);
-
       el.innerHTML = `
         <div class="metrics-row" style="margin-bottom:16px">
           <div class="mc"><div class="ml">Colaboradores activos</div><div class="mv b">${data.length}</div></div>
@@ -248,12 +245,10 @@
       const col  = data.colaborador;
       const movs = await api(`/api/colaboradores/${id}/movimientos`);
       const saldo = data.saldoPendiente;
-
       document.getElementById('pg-col-ficha-modal')?.remove();
       const modal = document.createElement('div');
       modal.id = 'pg-col-ficha-modal';
       modal.className = 'modal-overlay';
-
       modal.innerHTML = `
         <div class="modal-box" style="max-width:700px">
           <div class="modal-header">
@@ -263,14 +258,12 @@
             </div>
             <button class="modal-close" onclick="document.getElementById('pg-col-ficha-modal').remove()">✕</button>
           </div>
-
           <div class="metrics-row" style="margin-bottom:16px">
             <div class="mc"><div class="ml">Devengado total</div><div class="mv g">${eur(data.totalDevengado)}</div></div>
             <div class="mc"><div class="ml">Total pagado</div><div class="mv b">${eur(data.totalPagado)}</div></div>
             <div class="mc"><div class="ml">Descuentos</div><div class="mv a">${eur(data.totalDescuentos)}</div></div>
             <div class="mc"><div class="ml">${saldo>0?'Le debemos':'Nos debe'}</div><div class="mv ${saldo>0?'r':'g'}">${eur(Math.abs(saldo))}</div></div>
           </div>
-
           <div style="display:flex;gap:8px;margin-bottom:16px">
             <button class="btn bp" onclick="CP.Pagos.abrirModalMovimiento('${col._id}','${col.nombre}')">+ Añadir movimiento</button>
             <div style="margin-left:auto;font-size:11px;color:var(--text3);line-height:1.4">
@@ -279,7 +272,6 @@
               <strong>${col.tarifaHora}€/h</strong>
             </div>
           </div>
-
           <div class="card" style="max-height:400px;overflow-y:auto">
             <div class="card-title">Historial de movimientos</div>
             ${!movs.length ? '<div class="empty"><div class="et">Sin movimientos</div></div>' : `
@@ -299,20 +291,16 @@
                   <td style="text-align:right;color:${esNegativo?'var(--red)':m.tipo==='devolucion'?'var(--green)':'var(--text)'};font-weight:600">
                     ${esNegativo?'-':''}${eur(m.importe)}
                   </td>
-                  <td>
-                    <button class="btn bgh" style="font-size:10px;padding:2px 7px;color:var(--red);border-color:var(--red)"
-                      onclick="CP.Pagos.deleteMovimiento('${m._id}','${col._id}')">🗑</button>
-                  </td>
+                  <td><button class="btn bgh" style="font-size:10px;padding:2px 7px;color:var(--red);border-color:var(--red)"
+                    onclick="CP.Pagos.deleteMovimiento('${m._id}','${col._id}')">🗑</button></td>
                 </tr>`;
               }).join('')}</tbody>
             </table>`}
           </div>
-
           <div class="modal-footer" style="margin-top:12px">
             <button class="btn bgh" onclick="document.getElementById('pg-col-ficha-modal').remove()">Cerrar</button>
           </div>
         </div>`;
-
       document.body.appendChild(modal);
       modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
     } catch(err) { alert('Error: ' + err.message); }
@@ -400,15 +388,12 @@
     const horas      = parseInt(document.getElementById('nc-horas')?.value    || 8);
     const fechaAlta  = document.getElementById('nc-fecha-alta')?.value        || '';
     const notas      = document.getElementById('nc-notas')?.value?.trim()     || '';
-
     if (!nombre) { mostrarMsg('nc-msg','⚠️ El nombre es obligatorio','warn'); return; }
     if (!tarifa) { mostrarMsg('nc-msg','⚠️ La tarifa es obligatoria','warn'); return; }
-
     const body = {
       nombre, oficio, telefono, tipoTarifa, diasSemanales: dias, horasDia: horas, fechaAlta, notas,
       ...(tipoTarifa==='semana' ? {tarifaSemana:tarifa} : tipoTarifa==='dia' ? {tarifaDia:tarifa} : {tarifaHora:tarifa})
     };
-
     try {
       await api('/api/colaboradores', { method:'POST', body: JSON.stringify(body) });
       document.getElementById('pg-nuevo-col-modal').remove();
@@ -507,9 +492,7 @@
     const horasExtra = parseFloat(document.getElementById('mov-horas-extra')?.value || 0);
     const obra       = document.getElementById('mov-obra')?.value?.trim()    || '';
     const concepto   = document.getElementById('mov-concepto')?.value?.trim() || '';
-
     if (!importe || importe <= 0) { mostrarMsg('mov-msg','⚠️ El importe es obligatorio','warn'); return; }
-
     try {
       await api(`/api/colaboradores/${colId}/movimientos`, {
         method: 'POST',
@@ -577,40 +560,38 @@
   }
 
   async function loadResumen() {
-  const from = document.getElementById('pg-res-from')?.value || '';
-  const to   = document.getElementById('pg-res-to')?.value   || '';
-  const el   = document.getElementById('pg-res-content');
-  if (!el) return;
-  el.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:10px">Cargando...</div>';
-  try {
-    const data    = await api(`/api/pagos/resumen?from=${from}&to=${to}`);
-    const metrics = document.getElementById('pg-res-metrics');
-    const balance = data.totales.balance;
-    if (metrics) metrics.innerHTML = `
-      <div class="mc"><div class="ml">💸 Total salidas</div><div class="mv r">${eur(data.totales.salidas)}</div></div>
-      <div class="mc"><div class="ml">⬆️ Total entradas</div><div class="mv g">${eur(data.totales.entradas)}</div></div>
-      <div class="mc"><div class="ml">⚖️ Balance cash</div><div class="mv ${balance>=0?'g':'r'}">${balance>=0?'+':''}${eur(balance)}</div></div>
-      <div class="mc"><div class="ml">📦 Materiales</div><div class="mv p">${eur(data.totales.material)}</div></div>
-      <div class="mc"><div class="ml">💰 Adelantos plantilla</div><div class="mv b">${eur(data.totales.adelantos)}</div></div>`;
+    const from = document.getElementById('pg-res-from')?.value || '';
+    const to   = document.getElementById('pg-res-to')?.value   || '';
+    const el   = document.getElementById('pg-res-content');
+    if (!el) return;
+    el.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:10px">Cargando...</div>';
+    try {
+      const data    = await api(`/api/pagos/resumen?from=${from}&to=${to}`);
+      const metrics = document.getElementById('pg-res-metrics');
+      const balance = data.totales.balance;
+      if (metrics) metrics.innerHTML = `
+        <div class="mc"><div class="ml">💸 Total salidas</div><div class="mv r">${eur(data.totales.salidas)}</div></div>
+        <div class="mc"><div class="ml">⬆️ Total entradas</div><div class="mv g">${eur(data.totales.entradas)}</div></div>
+        <div class="mc"><div class="ml">⚖️ Balance cash</div><div class="mv ${balance>=0?'g':'r'}">${balance>=0?'+':''}${eur(balance)}</div></div>
+        <div class="mc"><div class="ml">📦 Materiales</div><div class="mv p">${eur(data.totales.material)}</div></div>
+        <div class="mc"><div class="ml">💰 Adelantos plantilla</div><div class="mv b">${eur(data.totales.adelantos)}</div></div>`;
 
-    if (!data.pagos.length) {
-      el.innerHTML = '<div class="empty"><div class="ei">💵</div><div class="et">No hay pagos en este período</div></div>';
-      return;
-    }
+      if (!data.pagos.length) {
+        el.innerHTML = '<div class="empty"><div class="ei">💵</div><div class="et">No hay pagos en este período</div></div>';
+        return;
+      }
 
-    el.innerHTML = `
-      <!-- ENTRADAS -->
-      ${data.entradas.length ? `
-      <div class="card" style="margin-bottom:12px;border-left:3px solid var(--green)">
-        <div class="card-title" style="color:var(--green)">⬆️ Cobros e ingresos recibidos — ${eur(data.totales.entradas)}</div>
-        ${data.byEntrada.map(p => `
-          <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-              <div style="font-weight:700;color:var(--green)">⬆️ ${p.persona}</div>
-              <div style="font-weight:700;color:var(--green)">${eur(p.totalCobrado)}</div>
-            </div>
-            <table style="font-size:11px">
-              <tbody>${p.pagos.map(pg => {
+      el.innerHTML = `
+        ${data.entradas.length ? `
+        <div class="card" style="margin-bottom:12px;border-left:3px solid var(--green)">
+          <div class="card-title" style="color:var(--green)">⬆️ Cobros e ingresos recibidos — ${eur(data.totales.entradas)}</div>
+          ${data.byEntrada.map(p => `
+            <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                <div style="font-weight:700;color:var(--green)">⬆️ ${p.persona}</div>
+                <div style="font-weight:700;color:var(--green)">${eur(p.totalCobrado)}</div>
+              </div>
+              <table style="font-size:11px"><tbody>${p.pagos.map(pg => {
                 const t = TIPOS_PAGO[pg.tipo] || TIPOS_PAGO.ingreso;
                 return `<tr>
                   <td style="color:var(--text3);width:90px">${dt(pg.fecha)}</td>
@@ -619,23 +600,20 @@
                   <td style="text-align:right;font-weight:600;color:var(--green);white-space:nowrap">+${eur(pg.importe)}</td>
                   <td><button class="btn bgh" style="font-size:10px;padding:2px 7px;color:var(--red);border-color:var(--red)" onclick="CP.Pagos.deletePago('${pg._id}','${pg.persona?.replace(/'/g,"\\'")||''}')">🗑</button></td>
                 </tr>`;
-              }).join('')}</tbody>
-            </table>
-          </div>`).join('')}
-      </div>` : ''}
+              }).join('')}</tbody></table>
+            </div>`).join('')}
+        </div>` : ''}
 
-      <!-- SALIDAS -->
-      ${data.salidas.length ? `
-      <div class="card" style="border-left:3px solid var(--red)">
-        <div class="card-title" style="color:var(--red)">⬇️ Pagos y gastos realizados — ${eur(data.totales.salidas)}</div>
-        ${data.bySalida.map(p => `
-          <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-              <div style="font-weight:700">💵 ${p.persona}</div>
-              <div style="font-weight:700;color:var(--red)">${eur(p.totalPagado)}</div>
-            </div>
-            <table style="font-size:11px">
-              <tbody>${p.pagos.map(pg => {
+        ${data.salidas.length ? `
+        <div class="card" style="border-left:3px solid var(--red)">
+          <div class="card-title" style="color:var(--red)">⬇️ Pagos y gastos realizados — ${eur(data.totales.salidas)}</div>
+          ${data.bySalida.map(p => `
+            <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                <div style="font-weight:700">💵 ${p.persona}</div>
+                <div style="font-weight:700;color:var(--red)">${eur(p.totalPagado)}</div>
+              </div>
+              <table style="font-size:11px"><tbody>${p.pagos.map(pg => {
                 const t = TIPOS_PAGO[pg.tipo] || TIPOS_PAGO.efectivo;
                 return `<tr>
                   <td style="color:var(--text3);width:90px">${dt(pg.fecha)}</td>
@@ -644,37 +622,10 @@
                   <td style="text-align:right;font-weight:600;color:var(--red);white-space:nowrap">${eur(pg.importe)}</td>
                   <td><button class="btn bgh" style="font-size:10px;padding:2px 7px;color:var(--red);border-color:var(--red)" onclick="CP.Pagos.deletePago('${pg._id}','${pg.persona?.replace(/'/g,"\\'")||''}')">🗑</button></td>
                 </tr>`;
-              }).join('')}</tbody>
-            </table>
-          </div>`).join('')}
-      </div>` : ''}`;
+              }).join('')}</tbody></table>
+            </div>`).join('')}
+        </div>` : ''}`;
 
-  } catch(err) {
-    el.innerHTML = `<div style="color:var(--red);font-size:12px">Error: ${err.message}</div>`;
-  }
-}
-      el.innerHTML = `<div style="display:flex;flex-direction:column;gap:10px">
-        ${data.byPersona.map(p => `
-          <div class="card" style="margin-bottom:0">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-              <div style="font-weight:700">💵 ${p.persona}</div>
-              <div style="font-weight:700;color:var(--red)">${eur(p.totalPagado)}</div>
-            </div>
-            <table style="font-size:11px">
-              <thead><tr><th>Fecha</th><th>Tipo</th><th>Concepto</th><th style="text-align:right">Importe</th><th></th></tr></thead>
-              <tbody>${p.pagos.map(pg => {
-                const t = TIPOS_PAGO[pg.tipo] || TIPOS_PAGO.efectivo;
-                return `<tr>
-                  <td>${dt(pg.fecha)}</td>
-                  <td><span style="color:${t.color}">${t.emoji} ${t.label}</span></td>
-                  <td style="color:var(--text2)">${pg.concepto||pg.persona||'—'}</td>
-                  <td style="text-align:right;font-weight:600;color:var(--red)">${eur(pg.importe)}</td>
-                  <td><button class="btn bgh" style="font-size:10px;padding:2px 7px;color:var(--red);border-color:var(--red)" onclick="CP.Pagos.deletePago('${pg._id}','${pg.persona?.replace(/'/g,"\\'")||''}')">🗑</button></td>
-                </tr>`;
-              }).join('')}</tbody>
-            </table>
-          </div>`).join('')}
-      </div>`;
     } catch(err) {
       el.innerHTML = `<div style="color:var(--red);font-size:12px">Error: ${err.message}</div>`;
     }
@@ -699,12 +650,13 @@
         <thead><tr><th>Fecha</th><th>Persona</th><th>Tipo</th><th>Concepto</th><th style="text-align:right">Importe</th><th></th></tr></thead>
         <tbody>${data.pagos.map(pg => {
           const t = TIPOS_PAGO[pg.tipo] || TIPOS_PAGO.efectivo;
+          const esIngreso = pg.tipo === 'ingreso' || pg.tipo === 'devolucion';
           return `<tr>
             <td>${dt(pg.fecha)}</td>
             <td><strong>${pg.persona}</strong></td>
             <td><span style="color:${t.color}">${t.emoji} ${t.label}</span></td>
             <td style="color:var(--text2);font-size:11px">${pg.concepto||'—'}</td>
-            <td style="text-align:right;color:var(--red);font-weight:600">${eur(pg.importe)}</td>
+            <td style="text-align:right;font-weight:600;color:${esIngreso?'var(--green)':'var(--red)'}">${esIngreso?'+':''}${eur(pg.importe)}</td>
             <td><button class="btn bgh" style="font-size:10px;padding:2px 7px;color:var(--red);border-color:var(--red)" onclick="CP.Pagos.deletePago('${pg._id}','${pg.persona?.replace(/'/g,"\\'")||''}')">🗑</button></td>
           </tr>`;
         }).join('')}</tbody>
@@ -722,10 +674,8 @@
     const ref      = document.getElementById('pg-referencia')?.value?.trim() || '';
     const obra     = document.getElementById('pg-cliente-obra')?.value?.trim() || '';
     const concepto = document.getElementById('pg-concepto')?.value?.trim()   || '';
-
     if (!persona) { mostrarMsg('pg-form-msg','⚠️ El nombre/descripción es obligatorio','warn'); return; }
     if (!importe || importe <= 0) { mostrarMsg('pg-form-msg','⚠️ El importe debe ser mayor que 0','warn'); return; }
-
     try {
       await api('/api/pagos', { method:'POST', body: JSON.stringify({ tipo, fecha, persona, importe, concepto, clienteObra: obra, referencia: ref }) });
       mostrarMsg('pg-form-msg', `✅ Pago de ${eur(importe)} registrado`, 'ok');
@@ -997,10 +947,8 @@
     const banco    = parseFloat(document.getElementById('mp-banco')?.value    || 0);
     const concepto = document.getElementById('mp-concepto')?.value?.trim()    || '';
     const ref      = document.getElementById('mp-ref')?.value?.trim()         || '';
-
     if (!importe || importe <= 0) { mostrarMsg('mp-msg','⚠️ El importe es obligatorio','warn'); return; }
     if (!concepto) { mostrarMsg('mp-msg','⚠️ El concepto es obligatorio','warn'); return; }
-
     try {
       await api(`/api/proyectos/${proyId}/movimientos`, {
         method: 'POST',
