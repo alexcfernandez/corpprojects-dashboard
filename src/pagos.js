@@ -1,0 +1,122 @@
+// src/pagos.js — Pagos en efectivo y adelantos a colaboradores
+const { MongoClient, ObjectId } = require('mongodb');
+
+let db = null;
+
+async function getDB() {
+  if (db) return db;
+  const client = new MongoClient(process.env.MONGODB_URI);
+  await client.connect();
+  db = client.db('corpprojects');
+  await db.collection('pagos').createIndex({ fecha: -1 });
+  await db.collection('pagos').createIndex({ persona: 1 });
+  await db.collection('pagos').createIndex({ tipo: 1 });
+  console.log('[Pagos] MongoDB conectado');
+  return db;
+}
+
+// ── TIPOS ─────────────────────────────────────────────────────────
+// efectivo    — pago por días trabajados a colaborador sin alta
+// adelanto    — adelanto de nómina a trabajador de plantilla
+// devolucion  — devolución de adelanto
+// material    — pago de material en efectivo
+
+async function getPagos({ persona, tipo, from, to, limit = 100, skip = 0 } = {}) {
+  const db    = await getDB();
+  const query = {};
+  if (persona) query.persona = { $regex: persona, $options: 'i' };
+  if (tipo)    query.tipo    = tipo;
+  if (from || to) {
+    query.fecha = {};
+    if (from) query.fecha.$gte = from;
+    if (to)   query.fecha.$lte = to;
+  }
+  const total  = await db.collection('pagos').countDocuments(query);
+  const pagos  = await db.collection('pagos').find(query)
+    .sort({ fecha: -1 }).skip(skip).limit(limit).toArray();
+  return { pagos, total };
+}
+
+async function getPago(id) {
+  const db = await getDB();
+  return db.collection('pagos').findOne({ _id: new ObjectId(id) });
+}
+
+async function createPago(data) {
+  const db   = await getDB();
+  const pago = {
+    fecha:       data.fecha || new Date().toISOString().slice(0,10),
+    persona:     data.persona?.trim(),
+    tipo:        data.tipo || 'efectivo',
+    concepto:    data.concepto?.trim() || '',
+    importe:     parseFloat(data.importe || 0),
+    diasTrabajados: parseFloat(data.diasTrabajados || 0),
+    costeHoraReal:  parseFloat(data.costeHoraReal  || 0),
+    clienteObra:    data.clienteObra?.trim() || '',
+    notas:       data.notas?.trim() || '',
+    registradoPor: data.registradoPor || 'admin',
+    createdAt:   new Date(),
+    updatedAt:   new Date(),
+  };
+
+  if (!pago.persona)          throw new Error('El nombre de la persona es obligatorio');
+  if (!pago.importe || pago.importe <= 0) throw new Error('El importe debe ser mayor que 0');
+
+  const result = await db.collection('pagos').insertOne(pago);
+  console.log(`[Pagos] Nuevo pago: ${pago.persona} — ${pago.importe}€ (${pago.tipo})`);
+  return { id: result.insertedId, ...pago };
+}
+
+async function updatePago(id, data) {
+  const db      = await getDB();
+  const allowed = ['fecha','persona','tipo','concepto','importe','diasTrabajados','costeHoraReal','clienteObra','notas'];
+  const set     = { updatedAt: new Date() };
+  allowed.forEach(k => { if (data[k] !== undefined) set[k] = data[k]; });
+  if (set.importe)         set.importe         = parseFloat(set.importe);
+  if (set.diasTrabajados)  set.diasTrabajados  = parseFloat(set.diasTrabajados);
+  if (set.costeHoraReal)   set.costeHoraReal   = parseFloat(set.costeHoraReal);
+  return db.collection('pagos').updateOne({ _id: new ObjectId(id) }, { $set: set });
+}
+
+async function deletePago(id) {
+  const db = await getDB();
+  return db.collection('pagos').deleteOne({ _id: new ObjectId(id) });
+}
+
+async function getResumenPagos({ from, to } = {}) {
+  const db    = await getDB();
+  const query = {};
+  if (from || to) {
+    query.fecha = {};
+    if (from) query.fecha.$gte = from;
+    if (to)   query.fecha.$lte = to;
+  }
+  const pagos = await db.collection('pagos').find(query).sort({ fecha: -1 }).toArray();
+
+  // Agrupar por persona
+  const byPersona = {};
+  pagos.forEach(p => {
+    if (!byPersona[p.persona]) byPersona[p.persona] = {
+      persona: p.persona, totalPagado: 0, totalDias: 0,
+      efectivos: 0, adelantos: 0, pagos: [],
+    };
+    byPersona[p.persona].totalPagado += p.importe;
+    byPersona[p.persona].totalDias   += p.diasTrabajados || 0;
+    if (p.tipo === 'efectivo') byPersona[p.persona].efectivos += p.importe;
+    if (p.tipo === 'adelanto') byPersona[p.persona].adelantos += p.importe;
+    byPersona[p.persona].pagos.push(p);
+  });
+
+  const totalEfectivo = pagos.filter(p=>p.tipo==='efectivo').reduce((s,p)=>s+p.importe,0);
+  const totalAdelantos = pagos.filter(p=>p.tipo==='adelanto').reduce((s,p)=>s+p.importe,0);
+  const totalMaterial  = pagos.filter(p=>p.tipo==='material').reduce((s,p)=>s+p.importe,0);
+  const totalGeneral   = pagos.reduce((s,p)=>s+p.importe,0);
+
+  return {
+    pagos,
+    byPersona: Object.values(byPersona).sort((a,b) => b.totalPagado - a.totalPagado),
+    totales: { efectivo: totalEfectivo, adelantos: totalAdelantos, material: totalMaterial, total: totalGeneral },
+  };
+}
+
+module.exports = { getPagos, getPago, createPago, updatePago, deletePago, getResumenPagos };
