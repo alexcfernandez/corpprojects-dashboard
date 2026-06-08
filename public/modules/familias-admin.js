@@ -64,6 +64,10 @@
           <button class="btn ${_globalPaused?'bp':'bgh'}" style="padding:8px 16px;font-size:13px" onclick="CP.FamiliasAdmin.toggleGlobal()">${_globalPaused?'▶️ Reactivar envíos':'⏸ Pausar TODO'}</button>
         </div>
         <div class="alert ain" style="margin-bottom:14px"><div>ℹ️</div><div>Cada aviso de factura se envía al responsable de su familia. Si una familia no tiene email, el aviso va al buzón de avisos. Marca <strong>Pausada</strong> para dejar de avisar a una familia temporalmente.</div></div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+          <button class="btn bp" style="padding:8px 16px;font-size:13px" onclick="CP.FamiliasAdmin.sendSummaries()">📤 Enviar resumen ahora a cada familia</button>
+          <span id="fc-sum-msg" style="font-size:12px;color:var(--text3)">Un solo correo por familia con todas sus facturas pendientes.</span>
+        </div>
         <div style="font-size:12px;color:var(--text3);margin-bottom:10px">${conEmail} de ${total} familias con responsable asignado.</div>
         <table>
           <thead><tr><th>Familia</th><th>Email del responsable</th><th style="text-align:center">Estado</th><th></th></tr></thead>
@@ -99,6 +103,19 @@
     }
   }
 
-  CP.FamiliasAdmin = { render, save, toggleGlobal };
+  async function sendSummaries() {
+    if (!confirm('¿Enviar ahora un resumen a cada familia con responsable asignado? Cada familia recibirá un único correo con todas sus facturas pendientes.')) return;
+    const msg = document.getElementById('fc-sum-msg');
+    if (msg) { msg.textContent='Enviando...'; msg.style.color='var(--text2)'; }
+    try {
+      const r = await api('/api/send-family-summaries', { method:'POST', body: JSON.stringify({}) });
+      if (r && r.error) throw new Error(r.error);
+      if (msg) { msg.textContent = '✓ ' + (r.message || 'Hecho'); msg.style.color='var(--green)'; }
+    } catch(err) {
+      if (msg) { msg.textContent = '✗ ' + err.message; msg.style.color='var(--red)'; }
+    }
+  }
+
+  CP.FamiliasAdmin = { render, save, toggleGlobal, sendSummaries };
 
 })(window.CP = window.CP || {});
