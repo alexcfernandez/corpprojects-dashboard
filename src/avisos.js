@@ -72,7 +72,25 @@ async function markAlertSent(invoiceId, level) {
   );
 }
 
+// ── Pausa global de avisos (interruptor de emergencia) ────────────
+async function isGlobalPaused() {
+  const db = await getDB();
+  const doc = await db.collection('appSettings').findOne({ key: 'avisos' });
+  return !!(doc && doc.globalPaused);
+}
+
+async function setGlobalPaused(paused) {
+  const db = await getDB();
+  await db.collection('appSettings').updateOne(
+    { key: 'avisos' },
+    { $set: { key: 'avisos', globalPaused: !!paused, updatedAt: new Date() } },
+    { upsert: true }
+  );
+  return !!paused;
+}
+
 module.exports = {
   getFamilyContacts, getFamilyContactMap, getFamilyEmail, isFamilyPaused, setFamilyContact,
-  wasAlertSentToday, markAlertSent
+  wasAlertSentToday, markAlertSent,
+  isGlobalPaused, setGlobalPaused
 };
