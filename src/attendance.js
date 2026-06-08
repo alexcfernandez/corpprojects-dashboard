@@ -1,368 +1,989 @@
-// src/attendance.js — v5 con cálculo correcto de bajas, costes y días cliente
-const { MongoClient } = require('mongodb');
-const CONFIG = require('./config');
+// src/server.js v3
+require('dotenv').config();
+const express   = require('express');
+const cors      = require('cors');
+const helmet    = require('helmet');
+const rateLimit = require('express-rate-limit');
+const jwt       = require('jsonwebtoken');
+const path      = require('path');
+const multer    = require('multer');
+const fs        = require('fs');
+const { google } = require('googleapis');
+const { MongoClient, ObjectId } = require('mongodb');
 
-let db = null;
-let connecting = false;
+const {
+  getSummary, getPendingInvoices, getInvoices, getClients,
+  getEstimatesSummary, getFamiliesSummary, getAccountCategories
+} = require('./stelorder');
+const { sendWhatsApp, sendEmail } = require('./notifications');
+const { startScheduler, checkPendingInvoices, runDailySummary } = require('./scheduler');
 
+const app  = express();
+const PORT = process.env.PORT || 3000;
+
+// Seguridad: sin JWT_SECRET no arrancamos. Antes se firmaba con la palabra
+// 'fallback' (pública), lo que permitiría falsificar tokens de admin.
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error('[FATAL] Falta JWT_SECRET en las variables de entorno. Configúrala en Railway antes de arrancar.');
+  process.exit(1);
+}
+
+app.set('trust proxy', 1);
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(cors({
+  origin: ['https://dashboard.corpprojects.es','http://localhost:3000',
+           'https://corpprojects-dashboard-production.up.railway.app']
+}));
+app.use(express.json());
+
+const UPLOADS_DIR = path.join(__dirname, '../uploads');
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
+  filename:    (req, file, cb) => cb(null, `bank_${Date.now()}.xlsx`)
+});
+const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
+
+const uploadMemory = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 15 }
+});
+
+app.use(express.static(path.join(__dirname, '../public')));
+
+const limiter = rateLimit({ windowMs: 15*60*1000, max: 300, message: { error: 'Rate limit.' } });
+app.use('/api/', limiter);
+const loginLimiter = rateLimit({ windowMs: 15*60*1000, max: 20, message: { error: 'Demasiados intentos.' } });
+
+function requireAuth(req, res, next) {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'No autorizado' });
+  try { req.user = jwt.verify(token, JWT_SECRET); next(); }
+  catch { return res.status(401).json({ error: 'Token inválido' }); }
+}
+
+// Usa la conexión única compartida (src/db.js). Mantiene el contrato
+// { db, client } para no romper las rutas existentes; client.close() es
+// un no-op porque la conexión con pool se reutiliza, no se cierra.
+const sharedDb = require('./db');
 async function getDB() {
-  return require('./db').getDB();
+  return sharedDb.getDBLegacy();
 }
 
-const WORKERS = CONFIG.workersFallback;
-const ESTADOS = CONFIG.estadosPresencia;
+// ===== OAUTH GMAIL =====
+const oauth2Client = new google.auth.OAuth2(
+  process.env.GMAIL_CLIENT_ID,
+  process.env.GMAIL_CLIENT_SECRET,
+  process.env.GMAIL_REDIRECT_URI
+);
 
-let _workersCache     = null;
-let _workersCacheTime = 0;
+app.get('/auth/google', (req, res) => {
+  const url = oauth2Client.generateAuthUrl({
+    access_type: 'offline',
+    prompt: 'consent',
+    scope: [
+      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/gmail.modify'
+    ]
+  });
+  res.redirect(url);
+});
 
-function _invalidateWorkersCache() {
-  _workersCache     = null;
-  _workersCacheTime = 0;
-  console.log('[Attendance] Caché de workers invalidada');
-}
+app.get('/auth/google/callback', async (req, res) => {
+  try {
+    const { code } = req.query;
+    const { tokens } = await oauth2Client.getToken(code);
+    res.json(tokens);
+  } catch (err) {
+    res.json({ error: err.message });
+  }
+});
 
-async function getWorkers() {
-  if (_workersCache && Date.now() - _workersCacheTime < 5 * 60 * 1000) return _workersCache;
+// ── Públicas ──────────────────────────────────────────────────────
+app.get('/health', (req, res) => res.json({
+  status:'ok', service:'Corp Projects Dashboard',
+  timestamp: new Date().toISOString(), uptime: Math.round(process.uptime())+'s'
+}));
+
+app.post('/api/login', loginLimiter, async (req, res) => {
+  const { password } = req.body;
+  if (!password) return res.status(400).json({ error: 'Contraseña requerida' });
+  if (password !== process.env.DASHBOARD_PASSWORD)
+    return res.status(401).json({ error: 'Contraseña incorrecta' });
+  const token = jwt.sign({ user:'admin' }, JWT_SECRET, { expiresIn:'24h' });
+  res.json({ token, expiresIn:'24h' });
+});
+
+// ── StelOrder ─────────────────────────────────────────────────────
+app.get('/api/summary',            requireAuth, async (req,res) => res.json(await getSummary()));
+app.get('/api/invoices/pending',   requireAuth, async (req,res) => res.json(await getPendingInvoices()));
+app.get('/api/invoices',           requireAuth, async (req,res) => res.json(await getInvoices()));
+app.get('/api/clients',            requireAuth, async (req,res) => { const {clients} = await getClients(); res.json(clients); });
+app.get('/api/estimates',          requireAuth, async (req,res) => res.json(await getEstimatesSummary()));
+app.get('/api/families',           requireAuth, async (req,res) => res.json(await getFamiliesSummary()));
+app.get('/api/families/list',      requireAuth, async (req,res) => { const {list} = await getAccountCategories(); res.json(list); });
+
+app.get('/api/invoices/by-family/:family', requireAuth, async (req, res) => {
+  const pending = await getPendingInvoices();
+  const all     = await getInvoices();
+  const fam     = decodeURIComponent(req.params.family);
+  res.json({
+    pending: pending.filter(i => i.family === fam),
+    all:     all.filter(i => i.family === fam)
+  });
+});
+
+// ── Banco ─────────────────────────────────────────────────────────
+app.post('/api/bank/upload', requireAuth, upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
+  const metaPath = path.join(UPLOADS_DIR, 'latest.json');
+  fs.writeFileSync(metaPath, JSON.stringify({
+    filename: req.file.filename, originalname: req.file.originalname,
+    uploadedAt: new Date().toISOString(), size: req.file.size
+  }));
+  res.json({ message: 'Fichero subido correctamente.', filename: req.file.filename });
+});
+
+app.get('/api/bank/info', requireAuth, (req, res) => {
+  const metaPath = path.join(UPLOADS_DIR, 'latest.json');
+  if (!fs.existsSync(metaPath)) return res.json({ uploaded: false });
+  res.json({ uploaded: true, ...JSON.parse(fs.readFileSync(metaPath, 'utf8')) });
+});
+
+// ── Notificaciones ────────────────────────────────────────────────
+app.post('/api/check-alerts',      requireAuth, (req,res) => { checkPendingInvoices().catch(console.error); res.json({message:'Revisión iniciada.'}); });
+app.post('/api/send-summary',      requireAuth, (req,res) => { runDailySummary().catch(console.error); res.json({message:'Resumen enviado.'}); });
+app.post('/api/test-notification', requireAuth, async (req,res) => {
+  const { type } = req.body;
+  const msg = `✅ *Test Corp Projects*\nSistema OK.\n📅 ${new Date().toLocaleString('es-ES')}`;
+  if (type==='whatsapp'||!type) await sendWhatsApp(msg);
+  if (type==='email'||!type) await sendEmail({ to:process.env.EMAIL_ADMIN, subject:'✅ Test', html:`<p>${msg}</p>`, text:msg });
+  res.json({ message:'Notificación enviada.' });
+});
+
+// ── PRESENCIA ─────────────────────────────────────────────────────
+const attendance = require('./attendance');
+
+app.get('/api/workers',  requireAuth, (req, res) => res.json(attendance.WORKERS));
+app.get('/api/estados',  requireAuth, (req, res) => res.json(attendance.ESTADOS));
+
+app.post('/api/attendance', requireAuth, async (req, res) => {
+  try {
+    const result = await attendance.saveAttendance(req.body);
+    res.json({ ok: true, result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/attendance/:workerId/:date', requireAuth, async (req, res) => {
+  try {
+    await attendance.deleteAttendance(req.params.workerId, req.params.date);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/attendance', requireAuth, async (req, res) => {
+  try {
+    const { workerId, from, to, clientName } = req.query;
+    const data = await attendance.getAttendance({ workerId, from, to, clientName });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/attendance/summary/:year/:month', requireAuth, async (req, res) => {
+  try {
+    const { getMonthlySummary, buildClientSummary } = require('./attendance');
+    const summary = await getMonthlySummary(
+      parseInt(req.params.year),
+      parseInt(req.params.month)
+    );
+    summary.clientSummary = buildClientSummary(summary.byWorker);
+    res.json(summary);
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/attendance/client', requireAuth, async (req, res) => {
+  try {
+    const { clientName, from, to } = req.query;
+    const data = await attendance.getClientExtract(clientName, from, to);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── USUARIOS ──────────────────────────────────────────────────────
+const users = require('./users');
+
+users.initDefaultUsers().catch(err => console.error('[Users] Error init:', err.message));
+
+app.post('/api/users/login', async (req, res) => {
+  try {
+    const { pin } = req.body;
+    if (!pin) return res.status(400).json({ error: 'PIN requerido' });
+    const result = await users.loginWithPin(pin);
+    res.json(result);
+  } catch (err) {
+    res.status(401).json({ error: err.message });
+  }
+});
+
+app.post('/api/users/logout', async (req, res) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (token) await users.logout(token).catch(() => {});
+  res.json({ ok: true });
+});
+
+app.get('/api/users/me', async (req, res) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'No autorizado' });
+  try {
+    if (!token.startsWith('u_')) {
+      const jwt = require('jsonwebtoken');
+      jwt.verify(token, JWT_SECRET);
+      return res.json({ role: 'admin', userName: 'Admin' });
+    }
+    const session = await users.verifyUserToken(token);
+    if (!session) return res.status(401).json({ error: 'Sesión expirada' });
+    res.json({ role: session.userRole, userName: session.userName, userId: session.userId });
+  } catch (err) {
+    res.status(401).json({ error: 'Token inválido' });
+  }
+});
+
+app.get('/api/users', requireAuth, async (req, res) => {
+  try {
+    const list = await users.getUsers(true);
+    res.json(list.map(u => ({ ...u, pin: '••••' })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/users/:id', requireAuth, async (req, res) => {
+  try {
+    const u = await users.getUser(req.params.id);
+    if (!u) return res.status(404).json({ error: 'Usuario no encontrado' });
+    res.json(u);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/users', requireAuth, async (req, res) => {
+  try {
+    const user = await users.createUser(req.body);
+    res.json({ ok: true, user });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.put('/api/users/:id', requireAuth, async (req, res) => {
+  try {
+    await users.updateUser(req.params.id, req.body);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/users/:id', requireAuth, async (req, res) => {
+  try {
+    await users.deactivateUser(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/roles', requireAuth, (req, res) => res.json(users.ROLES));
+
+// ── OBRAS ─────────────────────────────────────────────────────────
+const obras = require('./obras');
+
+app.get('/api/obras', requireAuth, async (req, res) => {
+  try {
+    const { clientName, status, search } = req.query;
+    res.json(await obras.getObras({ clientName, status, search }));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/obras/resumen', requireAuth, async (req, res) => {
+  try { res.json(await obras.getResumenGeneral()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/obras/:id', requireAuth, async (req, res) => {
+  try { res.json(await obras.getObra(req.params.id)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/obras/:id/rentabilidad', requireAuth, async (req, res) => {
+  try { res.json(await obras.getRentabilidad(req.params.id)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/obras', requireAuth, async (req, res) => {
+  try {
+    const obra = await obras.createObra(req.body);
+    res.json({ ok: true, obra });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.put('/api/obras/:id', requireAuth, async (req, res) => {
+  try {
+    await obras.updateObra(req.params.id, req.body);
+    res.json({ ok: true });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// ── PARTES DE TRABAJO ─────────────────────────────────────────────
+const partes = require('./partes');
+
+app.post('/api/partes/worker-login', async (req, res) => {
+  try {
+    const { workerId, pin } = req.body;
+    const { getUsers } = require('./users');
+    const allUsers = await getUsers(false);
+    const user = allUsers.find(u => String(u._id) === workerId || u.id === workerId);
+    if (user && user.pin === pin) {
+      const crypto = require('crypto');
+      const token = `w_${crypto.randomBytes(16).toString('hex')}`;
+      const { db, client } = await getDB();
+      await db.collection('worker_tokens').insertOne({
+        token,
+        workerId: String(user._id),
+        workerName: user.name,
+        workerRole: user.role,
+        createdAt: new Date(),
+        expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000)
+      });
+      await client.close();
+      return res.json({ token, workerId: String(user._id), workerName: user.name });
+    }
+    const result = await partes.workerLogin(workerId, pin);
+    res.json(result);
+  } catch (err) {
+    res.status(401).json({ error: 'PIN incorrecto' });
+  }
+});
+
+app.get('/api/partes/workers', async (req, res) => {
   try {
     const { getUsers } = require('./users');
-    const users   = await getUsers(false);
-    const workers = users
-      .filter(u => u.role === 'tech' || u.role === 'office')
-      .map(u => ({
-        id:        String(u._id),
-        name:      u.name,
-        color:     u.color     || '#4d9cf8',
-        costeHora: u.costeHora || CONFIG.getRateForWorker(u),
-        nota:      u.nota      || '',
-      }));
-    if (workers.length > 0) {
-      _workersCache     = workers;
-      _workersCacheTime = Date.now();
-      return workers;
-    }
-  } catch(e) {
-    console.warn('[Attendance] Usando workers fallback:', e.message);
-  }
-  return CONFIG.workersFallback;
-}
-
-async function saveAttendance(entry) {
-  const db = await getDB();
-
-  // Guardamos la entrada previa para saber a quién había en el equipo antes
-  // (y poder limpiar lo que ya no corresponda).
-  const prev = await db.collection('attendance').findOne({ workerId: entry.workerId, date: entry.date });
-
-  const result = await db.collection('attendance').updateOne(
-    { workerId: entry.workerId, date: entry.date },
-    {
-      $set:   { ...entry, updatedAt: new Date() },
-      // Un guardado directo (desde el modal) marca la entrada como "propia":
-      // quitamos las banderas de autogenerada por si lo era antes.
-      $unset: { autoGenerated: '', autoFromEquipo: '' },
-    },
-    { upsert: true }
-  );
-
-  // Enlaza la presencia de los compañeros de plantilla del equipo
-  try { await syncTeamPresence(db, entry, prev); }
-  catch (e) { console.warn('[Attendance] syncTeamPresence:', e.message); }
-
-  return result;
-}
-
-// Cuando marcas a un compañero de PLANTILLA en "quién estuvo ese día", le
-// creamos/actualizamos su propia presencia ese día (mismo cliente). Reglas:
-//   · nunca pisamos una entrada que él tenga puesta a mano,
-//   · si lo quitas del equipo, borramos solo la que le habíamos autogenerado,
-//   · no encadenamos (la entrada autogenerada lleva equipo vacío).
-// Nota: el modelo permite una sola presencia por trabajador y día, así que se
-// asume que un trabajador está en un único sitio por jornada.
-async function syncTeamPresence(db, entry, prev) {
-  const date = entry.date;
-  const src  = String(entry.workerId);
-
-  const plantillaIds = e => (Array.isArray(e && e.equipo) ? e.equipo : [])
-    .filter(m => m && m.tipo === 'plantilla' && m.id && String(m.id) !== src)
-    .map(m => String(m.id));
-
-  // Si el estado no es "obra", no hay equipo que propagar: el conjunto nuevo es
-  // vacío, de modo que se limpie lo que hubiéramos generado antes.
-  const nuevos     = entry.estado === 'obra' ? new Set(plantillaIds(entry)) : new Set();
-  const anteriores = new Set(plantillaIds(prev));
-
-  // 1) Compañeros que ya no están -> borrar su presencia SOLO si la generamos
-  //    nosotros desde este mismo trabajador y él no la ha tocado.
-  for (const id of anteriores) {
-    if (nuevos.has(id)) continue;
-    const ex = await db.collection('attendance').findOne({ workerId: id, date });
-    if (ex && ex.autoGenerated && ex.autoFromEquipo === src) {
-      await db.collection('attendance').deleteOne({ workerId: id, date });
-    }
-  }
-
-  // 2) Compañeros actuales -> crear/refrescar su presencia sin pisar lo manual.
-  const equipoActual = entry.estado === 'obra' && Array.isArray(entry.equipo) ? entry.equipo : [];
-  for (const m of equipoActual) {
-    if (!m || m.tipo !== 'plantilla' || !m.id || String(m.id) === src) continue;
-    const id = String(m.id);
-    const ex = await db.collection('attendance').findOne({ workerId: id, date });
-
-    // Tiene entrada propia (manual) o generada por OTRO trabajador: no la tocamos.
-    if (ex && !(ex.autoGenerated && ex.autoFromEquipo === src)) continue;
-
-    await db.collection('attendance').updateOne(
-      { workerId: id, date },
-      { $set: {
-          workerId:     id,
-          workerName:   m.nombre || '',
-          date,
-          estado:       'obra',
-          clientName:   entry.clientName || '',
-          horas:        parseFloat(entry.horas || 8),
-          tipoJornada:  entry.tipoJornada || 'normal',
-          notas:        `Añadido automáticamente (equipo de ${entry.workerName || 'un compañero'})`,
-          equipo:       [],
-          autoGenerated: true,
-          autoFromEquipo: src,
-          updatedAt:    new Date(),
-        } },
-      { upsert: true }
-    );
-  }
-}
-
-// Une dos listas de equipo evitando duplicados (por id o, si no, por nombre).
-function mergeEquipo(a, b) {
-  const out = [];
-  const seen = new Set();
-  [...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])].forEach(m => {
-    if (!m) return;
-    const key = m.id ? 'id:' + String(m.id) : 'n:' + normName(m.nombre);
-    if (seen.has(key)) return;
-    seen.add(key);
-    out.push(m);
-  });
-  return out;
-}
-
-// Cuando un trabajador sube un parte, reflejamos su presencia de ese día.
-// No pisa lo que el admin ya tuviera puesto a mano: si ya existe presencia,
-// solo la completa (marca tieneParte y rellena cliente/horas si estaban
-// vacíos). Si no existe, la crea como "en obra" con los datos del parte.
-// Pasa por saveAttendance, así que el equipo del parte también se propaga.
-async function syncPresenceFromParte(parte) {
-  if (!parte || !parte.workerId || !parte.date) return;
-  const db = await getDB();
-  const workerId = String(parte.workerId);
-  const existing = await db.collection('attendance').findOne({ workerId, date: parte.date });
-  const equipoParte = Array.isArray(parte.equipo) ? parte.equipo : [];
-
-  let entry;
-  if (existing) {
-    // Completar sin pisar: conservamos estado, cliente y horas que ya hubiera.
-    entry = { ...existing };
-    delete entry._id;
-    entry.tieneParte = true;
-    if (existing.estado === 'obra') {
-      if (!existing.clientName && parte.clientName) entry.clientName = parte.clientName;
-      if (!existing.horas)                          entry.horas      = parseFloat(parte.horas || 8);
-      entry.equipo = mergeEquipo(existing.equipo, equipoParte);
-    }
-  } else {
-    // Crear presencia nueva a partir del parte.
-    entry = {
-      workerId,
-      workerName:  parte.workerName || '',
-      date:        parte.date,
-      estado:      'obra',
-      clientName:  parte.clientName || '',
-      horas:       parseFloat(parte.horas || 8),
-      notas:       '',
-      tieneParte:  true,
-      tipoJornada: parte.tipoJornada || 'normal',
-      equipo:      equipoParte,
-    };
-  }
-
-  await saveAttendance(entry);
-}
-
-async function deleteAttendance(workerId, date) {
-  const db = await getDB();
-  // Al borrar la presencia de un trabajador, limpiamos también las presencias
-  // que se hubieran autogenerado a partir de su equipo ese día.
-  await db.collection('attendance').deleteMany({ date, autoGenerated: true, autoFromEquipo: String(workerId) });
-  return db.collection('attendance').deleteOne({ workerId, date });
-}
-
-async function getAttendance({ workerId, from, to, clientName } = {}) {
-  const db = await getDB();
-  const query = {};
-  if (workerId)   query.workerId   = workerId;
-  if (clientName) query.clientName = { $regex: clientName, $options: 'i' };
-  if (from || to) {
-    query.date = {};
-    if (from) query.date.$gte = from;
-    if (to)   query.date.$lte = to;
-  }
-  return db.collection('attendance').find(query).sort({ date: -1 }).toArray();
-}
-
-// Normaliza un nombre para comparar (sin mayúsculas, acentos ni espacios sobrantes)
-function normName(s) {
-  return (s || '').toString().trim().toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-}
-
-async function getMonthlySummary(year, month) {
-  const db   = await getDB();
-  const from = `${year}-${String(month).padStart(2,'0')}-01`;
-  const to   = `${year}-${String(month).padStart(2,'0')}-31`;
-  const entries = await db.collection('attendance')
-    .find({ date: { $gte: from, $lte: to } })
-    .sort({ date: 1 }).toArray();
-
-  const workersList = await getWorkers();
-  // Nombres de plantilla normalizados, para no contar como "ayudante externo"
-  // a alguien de plantilla que se apuntó a mano antes de darlo de alta.
-  const registeredNames = new Set(workersList.map(w => normName(w.name)));
-  const byWorker = {};
-  workersList.forEach(w => {
-    byWorker[w.id] = {
-      ...w,
-      dias:              0,
-      horas_productivas: 0,
-      horas_coste:       0,
-      coste_real:        0,
-      dias_obra:         0,
-      dias_falta:        0,
-      dias_baja:         0,
-      dias_vacaciones:   0,
-      clientes:          {},
-      ayudantes:         {},
-    };
-  });
-
-  entries.forEach(e => {
-    const w = byWorker[e.workerId];
-    if (!w) return;
-
-    const costeHora = w.costeHora || CONFIG.getRateForWorker(w);
-    const horas     = parseFloat(e.horas || 8);
-    const estado    = e.estado;
-
-    w.dias++;
-
-    if (CONFIG.estadosSinCoste.includes(estado)) {
-      // libre — no suma nada
-
-    } else if (CONFIG.estadosSinHorasProductivas.includes(estado)) {
-      // baja / vacaciones / falta — coste real pero 0 horas productivas
-      w.horas_coste += 8;
-      w.coste_real  += 8 * costeHora;
-      if (estado === 'baja')                           w.dias_baja++;
-      if (estado === 'vacaciones')                     w.dias_vacaciones++;
-      if (estado === 'falta_i' || estado === 'falta_j') w.dias_falta++;
-
+    const allUsers = await getUsers(false);
+    const techs = allUsers.filter(u => u.role === 'tech' || u.role === 'office');
+    if (techs.length > 0) {
+      res.json(techs.map(u => ({ id: String(u._id), name: u.name, color: u.color || '#4d9cf8', role: u.role, costeHora: u.costeHora || 15 })));
     } else {
-      // obra / oficina — horas productivas reales
-      w.horas_productivas += horas;
-      w.horas_coste       += horas;
-      w.coste_real        += horas * costeHora;
+      res.json(partes.WORKERS.map(w => ({ id: w.id, name: w.name, color: '#4d9cf8', costeHora: w.costeHora || 15 })));
     }
-
-    // Clientes — solo días en obra
-    if (estado === 'obra') {
-      w.dias_obra++;
-      const k = e.clientName || 'Sin cliente';
-      if (!w.clientes[k]) w.clientes[k] = { dias: 0, horas: 0, fechas: [] };
-      w.clientes[k].dias++;
-      w.clientes[k].horas += horas;
-      if (!w.clientes[k].fechas.includes(e.date)) {
-        w.clientes[k].fechas.push(e.date);
-      }
-
-      // Ayudantes externos de este día
-      if (Array.isArray(e.equipo)) {
-        e.equipo.forEach(m => {
-          if (m.tipo === 'libre' || m.tipo === 'externo') {
-            const nombre = m.nombre || '?';
-            // Si el nombre coincide con un trabajador de plantilla, NO es un
-            // ayudante externo: es personal de plantilla apuntado a mano. Su
-            // presencia debe salir de su propia ficha, no de la lista de externos.
-            if (registeredNames.has(normName(nombre))) return;
-            if (!w.ayudantes[nombre]) w.ayudantes[nombre] = { dias: 0, costeHora: m.costeHora || 0 };
-            w.ayudantes[nombre].dias++;
-          }
-        });
-      }
-    }
-  });
-
-  const result = Object.values(byWorker).map(w => ({
-    ...w,
-    horas: w.horas_productivas, // compatibilidad con código existente
-  }));
-
-  return { year, month, byWorker: result, entries };
-}
-
-function buildClientSummary(byWorker) {
-  const clientMap = {};
-
-  byWorker.forEach(w => {
-    const costeHora = w.costeHora || CONFIG.getRateForWorker(w);
-    Object.entries(w.clientes || {}).forEach(([client, v]) => {
-      if (!clientMap[client]) {
-        clientMap[client] = {
-          horas:        0,
-          workers:      {},
-          fechas:       new Set(),
-          coste:        0,
-        };
-      }
-      clientMap[client].horas += v.horas;
-      clientMap[client].workers[w.name] = (clientMap[client].workers[w.name] || 0) + v.dias;
-      clientMap[client].coste += v.horas * costeHora;
-      (v.fechas || []).forEach(f => clientMap[client].fechas.add(f));
-    });
-  });
-
-  return Object.entries(clientMap)
-    .map(([client, v]) => ({
-      client,
-      horas:       v.horas,
-      workers:     v.workers,
-      coste:       Math.round(v.coste),
-      dias_unicos: v.fechas.size,
-      dias_persona: Object.values(v.workers).reduce((s, d) => s + d, 0),
-    }))
-    .sort((a, b) => b.horas - a.horas);
-}
-
-async function getClientExtract(clientName, from, to) {
-  const db = await getDB();
-  const query = { estado: 'obra', clientName: { $regex: clientName, $options: 'i' } };
-  if (from || to) {
-    query.date = {};
-    if (from) query.date.$gte = from;
-    if (to)   query.date.$lte = to;
+  } catch(err) {
+    res.json(partes.WORKERS.map(w => ({ id: w.id, name: w.name, color: '#4d9cf8', costeHora: w.costeHora || 15 })));
   }
-  const entries = await db.collection('attendance').find(query).sort({ date: 1 }).toArray();
-  const byWorker = {};
-  entries.forEach(e => {
-    if (!byWorker[e.workerId]) byWorker[e.workerId] = { name: e.workerName, dias: 0, horas: 0, dates: [] };
-    byWorker[e.workerId].dias++;
-    byWorker[e.workerId].horas += parseFloat(e.horas || 8);
-    byWorker[e.workerId].dates.push(e.date);
-  });
-  return { clientName, from, to, byWorker, totalDias: entries.length };
-}
+});
 
-module.exports = {
-  WORKERS, ESTADOS,
-  saveAttendance, deleteAttendance, getAttendance, syncPresenceFromParte,
-  getMonthlySummary, buildClientSummary, getClientExtract,
-  _invalidateWorkersCache,
-};
+app.post('/api/partes', uploadMemory.any(), async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    let workerInfo;
+
+    if (authHeader.startsWith('Bearer w_')) {
+      const token = authHeader.replace('Bearer ', '');
+      const workerDoc = await partes.verifyWorkerToken(token);
+      if (!workerDoc) return res.status(401).json({ error: 'Token expirado' });
+      workerInfo = { workerId: workerDoc.workerId, workerName: workerDoc.workerName, role: 'worker', ip: req.ip, userAgent: req.headers['user-agent'] };
+    } else {
+      const token = authHeader.replace('Bearer ', '');
+      jwt.verify(token, JWT_SECRET);
+      const bodyData = req.body.data ? JSON.parse(req.body.data) : req.body;
+      const worker = partes.WORKERS.find(w => w.id === bodyData.workerId);
+      workerInfo = { workerId: bodyData.workerId || 'admin', workerName: bodyData.workerName || worker?.name || 'Admin', role: 'admin', ip: req.ip, userAgent: req.headers['user-agent'] };
+    }
+
+    const bodyData = req.body.data ? JSON.parse(req.body.data) : req.body;
+    const fotosTrabajo = [];
+    const fotosAlbaran = [];
+    if (req.files && req.files.length > 0) {
+      req.files.forEach(f => {
+        const b64 = `data:${f.mimetype};base64,${f.buffer.toString('base64')}`;
+        if (f.fieldname.startsWith('foto_trabajo')) fotosTrabajo.push(b64);
+        if (f.fieldname.startsWith('foto_albaran')) fotosAlbaran.push(b64);
+      });
+    }
+    bodyData.fotosTrabajo = fotosTrabajo;
+    bodyData.fotosAlbaran = fotosAlbaran;
+
+    const parte = await partes.createParte(bodyData, workerInfo);
+
+    // Reflejar la presencia del trabajador ese día a partir del parte
+    // (no rompe el envío del parte si algo falla).
+    try { await attendance.syncPresenceFromParte(parte); }
+    catch (e) { console.warn('[Partes] syncPresenceFromParte:', e.message); }
+
+    res.json({ ok: true, id: parte.id });
+  } catch (err) {
+    console.error('[Partes] Error create:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/partes', requireAuth, async (req, res) => {
+  try {
+    const { workerId, clientName, status, from, to, limit, skip } = req.query;
+    const data = await partes.getPartes({ workerId, clientName, status, from, to, limit: parseInt(limit||50), skip: parseInt(skip||0) });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/partes/:id', requireAuth, async (req, res) => {
+  try { res.json(await partes.getParte(req.params.id)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/partes/:id', requireAuth, async (req, res) => {
+  try {
+    await partes.updateParte(req.params.id, req.body, 'admin');
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/partes/:id', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    await db.collection('partes').deleteOne({ _id: new ObjectId(req.params.id) });
+    await client.close();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/partes/resumen/facturacion', requireAuth, async (req, res) => {
+  try {
+    const { from, to, clientName } = req.query;
+    res.json(await partes.getResumenFacturacion({ from, to, clientName }));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/clients/list', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.replace('Bearer ', '');
+    let valid = false;
+    if (token.startsWith('w_') || token.startsWith('u_')) {
+      const { verifyWorkerToken } = require('./partes');
+      const { verifyUserToken } = require('./users');
+      const w = token.startsWith('w_') ? await verifyWorkerToken(token) : await verifyUserToken(token);
+      valid = !!w;
+    } else {
+      try { jwt.verify(token, JWT_SECRET); valid = true; } catch(e) {}
+    }
+    if (!valid) return res.status(401).json({ error: 'No autorizado' });
+    const { clients } = await getClients();
+    const names = [...new Set(clients.map(c => c['legal-name']||c['fiscal-name']||'').filter(n=>n))].sort();
+    res.json(names);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── ASIGNACIONES, EXTERNOS Y EXPEDIENTES ─────────────────────────
+const expedientes = require('./expedientes');
+
+app.get('/api/externos', requireAuth, async (req, res) => {
+  try { res.json(await expedientes.getExternos()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/externos', requireAuth, async (req, res) => {
+  try { res.json(await expedientes.createExterno(req.body)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.put('/api/externos/:id', requireAuth, async (req, res) => {
+  try { await expedientes.updateExterno(req.params.id, req.body); res.json({ ok: true }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.delete('/api/externos/:id', requireAuth, async (req, res) => {
+  try { await expedientes.deleteExterno(req.params.id); res.json({ ok: true }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/asignaciones', requireAuth, async (req, res) => {
+  try {
+    const { fecha, workerId } = req.query;
+    res.json(await expedientes.getAsignaciones({ fecha, workerId }));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/asignaciones/dia/:fecha', requireAuth, async (req, res) => {
+  try { res.json(await expedientes.getAsignacionesDelDia(req.params.fecha)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/asignaciones/worker/:workerId', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'No autorizado' });
+    const { verifyWorkerToken } = require('./partes');
+    const { verifyUserToken } = require('./users');
+    let valid = false;
+    if (token.startsWith('w_')) { valid = !!(await verifyWorkerToken(token)); }
+    else if (token.startsWith('u_')) { valid = !!(await verifyUserToken(token)); }
+    else { try { jwt.verify(token, JWT_SECRET); valid = true; } catch(e){} }
+    if (!valid) return res.status(401).json({ error: 'No autorizado' });
+    const fecha = req.query.fecha || new Date().toISOString().slice(0, 10);
+    res.json(await expedientes.getAsignacionesWorker(req.params.workerId, fecha));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/asignaciones', requireAuth, async (req, res) => {
+  try { res.json(await expedientes.createAsignacion(req.body)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.put('/api/asignaciones/:id', requireAuth, async (req, res) => {
+  try { await expedientes.updateAsignacion(req.params.id, req.body); res.json({ ok: true }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.delete('/api/asignaciones/:id', requireAuth, async (req, res) => {
+  try { await expedientes.deleteAsignacion(req.params.id); res.json({ ok: true }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/expedientes', requireAuth, async (req, res) => {
+  try {
+    const { estado, clientName } = req.query;
+    res.json(await expedientes.getExpedientes({ estado, clientName }));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/expedientes/:id', requireAuth, async (req, res) => {
+  try { res.json(await expedientes.getExpediente(req.params.id)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/expedientes', requireAuth, async (req, res) => {
+  try { res.json(await expedientes.createExpediente(req.body)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.put('/api/expedientes/:id', requireAuth, async (req, res) => {
+  try { await expedientes.updateExpediente(req.params.id, req.body); res.json({ ok: true }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.post('/api/expedientes/:id/cerrar', requireAuth, async (req, res) => {
+  try {
+    await expedientes.updateExpediente(req.params.id, { estado: 'COMPLETADO' });
+    const exp = await expedientes.getExpediente(req.params.id);
+    const totalHoras = await expedientes.recalcularHorasExpediente(req.params.id);
+    res.json({ ok: true, totalHoras, partes: exp.partes.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/partes/confirmar', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'No autorizado' });
+    const workerDoc = await partes.verifyWorkerToken(token);
+    if (!workerDoc) return res.status(401).json({ error: 'Token expirado' });
+
+    const workerInfo = {
+      workerId: workerDoc.workerId,
+      workerName: workerDoc.workerName,
+      role: 'worker',
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    };
+
+    const bodyData = req.body;
+    const parte = await partes.createParte(bodyData, workerInfo);
+
+    const equipo = bodyData.equipo || [];
+    let partesGenerados = [];
+    if (equipo.length > 1) {
+      partesGenerados = await expedientes.generarPartesEquipo(parte, equipo);
+    }
+
+    let expedienteId = null;
+    if (bodyData.estadoTrabajo === 'continua' || bodyData.estadoTrabajo === 'parcial' || bodyData.expedienteId) {
+      expedienteId = await expedientes.vincularOCrearExpediente(
+        String(parte._id),
+        parte.clientName,
+        parte.description,
+        bodyData.expedienteId || null
+      );
+      if (expedienteId && partesGenerados.length > 0) {
+        const { db, client } = await sharedDb.getDBLegacy();
+        for (const pg of partesGenerados) {
+          await db.collection('partes').updateOne(
+            { _id: pg.id },
+            { $set: { expedienteId } }
+          );
+        }
+        await client.close();
+      }
+    }
+
+    res.json({
+      ok: true,
+      parteId: String(parte._id),
+      partesGenerados: partesGenerados.length,
+      expedienteId
+    });
+  } catch (err) {
+    console.error('[Partes] Error confirmar:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── EMAILS INTELIGENTES ───────────────────────────────────────────
+const { pollEmails, enviarRespuesta } = require('./email-intelligence');
+
+app.get('/api/emails', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    const { categoria, estado, urgencia, limit = 50, skip = 0 } = req.query;
+    const filtro = {};
+    if (categoria && categoria !== 'TODOS') filtro.categoria = categoria;
+    if (estado && estado !== 'TODOS') filtro.estado = estado;
+    if (urgencia && urgencia !== 'TODOS') filtro.urgencia = urgencia;
+    const emails = await db.collection('emails')
+      .find(filtro).sort({ fecha: -1 }).skip(parseInt(skip)).limit(parseInt(limit)).toArray();
+    const total      = await db.collection('emails').countDocuments(filtro);
+    const pendientes = await db.collection('emails').countDocuments({ estado: 'PENDIENTE' });
+    const noLeidos   = await db.collection('emails').countDocuments({ leido: false });
+    await client.close();
+    res.json({ emails, total, pendientes, noLeidos });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/emails/:id/read', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    await db.collection('emails').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { leido: true } }
+    );
+    await client.close();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/emails/:id/archive', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    await db.collection('emails').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { estado: 'ARCHIVADO', leido: true } }
+    );
+    await client.close();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/emails/:id/nota', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    await db.collection('emails').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { notas: req.body.notas } }
+    );
+    await client.close();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/emails/:id/importante', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    await db.collection('emails').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { importante: req.body.importante } }
+    );
+    await client.close();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/emails/:id', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    await db.collection('emails').deleteOne({ _id: new ObjectId(req.params.id) });
+    await client.close();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/emails/:id/reenviar', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    const email = await db.collection('emails').findOne({ _id: new ObjectId(req.params.id) });
+    await client.close();
+    if (!email) return res.status(404).json({ error: 'No encontrado' });
+    const ok = await enviarRespuesta(
+      req.body.destino,
+      email.asunto,
+      `--- Email reenviado ---\n\nDe: ${email.de}\nAsunto: ${email.asunto}\n\n${email.cuerpo}`
+    );
+    res.json({ ok });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/emails/:id/action', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    const email = await db.collection('emails').findOne({ _id: new ObjectId(req.params.id) });
+    if (!email) { await client.close(); return res.status(404).json({ error: 'Email no encontrado' }); }
+
+    const { accion, datos } = req.body;
+    let stelOrderRef = null;
+    let mensajeRespuesta = null;
+
+    if (accion === 'CREAR_INCIDENCIA') {
+      const body = {
+        description: datos?.descripcion || email.resumen,
+        priority: email.urgencia === 'ALTA' ? 'HIGH' : email.urgencia === 'MEDIA' ? 'NORMAL' : 'LOW'
+      };
+      if (email.remitente?.id) body['account-id'] = email.remitente.id;
+      const r = await fetch('https://app.stelorder.com/app/incidents', {
+        method: 'POST',
+        headers: { 'APIKEY': process.env.STELORDER_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const inc = await r.json();
+      stelOrderRef = `INC — ID: ${inc.id || 'creada'}`;
+      mensajeRespuesta = `Hola,\n\nHemos recibido tu solicitud y hemos abierto una incidencia en nuestro sistema.\n\nReferencia: ${inc['full-reference'] || stelOrderRef}\n\nUno de nuestros operarios se encargará en breve.\n\nCorp Projects`;
+    }
+
+    if (accion === 'CREAR_PRESUPUESTO') {
+      const body = { title: datos?.titulo || email.asunto, comments: datos?.comentarios || email.resumen };
+      if (email.remitente?.id) body['account-id'] = email.remitente.id;
+      if (body['account-id']) {
+        const r = await fetch('https://app.stelorder.com/app/workEstimates', {
+          method: 'POST',
+          headers: { 'APIKEY': process.env.STELORDER_API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const est = await r.json();
+        stelOrderRef = `Presupuesto — ID: ${est.id || 'creado'}`;
+      } else {
+        stelOrderRef = 'Presupuesto pendiente — sin cliente vinculado';
+      }
+      mensajeRespuesta = `Hola,\n\nHemos recibido tu solicitud de presupuesto.\n\nEstamos preparando una propuesta y nos pondremos en contacto contigo en breve.\n\nCorp Projects`;
+    }
+
+    if (accion === 'MARCAR_PAGADO') {
+      stelOrderRef = 'Pago registrado manualmente';
+    }
+
+    if (mensajeRespuesta && datos?.enviarRespuesta !== false) {
+      const emailDe = email.de.match(/<(.+)>/)?.[1] || email.de;
+      await enviarRespuesta(emailDe, email.asunto, mensajeRespuesta);
+    }
+
+    await db.collection('emails').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { estado: 'GESTIONADO', leido: true, accionRealizada: accion, stelOrderRef, gestionadoEn: new Date() } }
+    );
+    await client.close();
+    res.json({ ok: true, stelOrderRef, mensajeRespuesta });
+  } catch (err) {
+    console.error('[Emails] Error acción:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/emails/poll', requireAuth, async (req, res) => {
+  try {
+    pollEmails().catch(err => console.error('[Emails] Error poll manual:', err.message));
+    res.json({ message: 'Poll iniciado' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/emails/stats', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    const pendientes = await db.collection('emails').countDocuments({ estado: 'PENDIENTE' });
+    const noLeidos   = await db.collection('emails').countDocuments({ leido: false });
+    const urgentes   = await db.collection('emails').countDocuments({ estado: 'PENDIENTE', urgencia: 'ALTA' });
+    await client.close();
+    res.json({ pendientes, noLeidos, urgentes });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+// ── COLABORADORES EXTERNOS ────────────────────────────────────────
+const colaboradores = require('./colaboradores');
+
+app.get('/api/colaboradores', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.getColaboradores()); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/colaboradores/resumen', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.getResumenTodosColaboradores()); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/colaboradores/:id', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.getSaldoColaborador(req.params.id)); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/colaboradores', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.createColaborador(req.body)); }
+  catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.put('/api/colaboradores/:id', requireAuth, async (req, res) => {
+  try { await colaboradores.updateColaborador(req.params.id, req.body); res.json({ ok: true }); }
+  catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.get('/api/colaboradores/:id/movimientos', requireAuth, async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    res.json(await colaboradores.getMovimientos(req.params.id, { from, to }));
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/colaboradores/:id/movimientos', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.createMovimiento(req.params.id, req.body)); }
+  catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.delete('/api/colaboradores/movimientos/:id', requireAuth, async (req, res) => {
+  try { await colaboradores.deleteMovimiento(req.params.id); res.json({ ok: true }); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/colaboradores/:id', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    await db.collection('colaborador_movimientos').deleteMany({ colaboradorId: req.params.id });
+    await db.collection('colaboradores').deleteOne({ _id: new ObjectId(req.params.id) });
+    await client.close();
+    res.json({ ok: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── PROYECTOS DE INVERSIÓN ────────────────────────────────────────
+app.get('/api/proyectos', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.getProyectos()); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/proyectos/:id', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.getProyecto(req.params.id)); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/proyectos', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.createProyecto(req.body)); }
+  catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.put('/api/proyectos/:id', requireAuth, async (req, res) => {
+  try { await colaboradores.updateProyecto(req.params.id, req.body); res.json({ ok: true }); }
+  catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.post('/api/proyectos/:id/movimientos', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.addMovimientoProyecto(req.params.id, req.body)); }
+  catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.delete('/api/proyectos/movimientos/:id', requireAuth, async (req, res) => {
+  try { await colaboradores.deleteMovimientoProyecto(req.params.id); res.json({ ok: true }); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+// ── PAGOS EN EFECTIVO ─────────────────────────────────────────────
+const pagos = require('./pagos');
+
+app.get('/api/pagos/resumen', requireAuth, async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    res.json(await pagos.getResumenPagos({ from, to }));
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/pagos', requireAuth, async (req, res) => {
+  try {
+    const { persona, tipo, from, to, limit, skip } = req.query;
+    res.json(await pagos.getPagos({ persona, tipo, from, to, limit: parseInt(limit||100), skip: parseInt(skip||0) }));
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/pagos/:id', requireAuth, async (req, res) => {
+  try { res.json(await pagos.getPago(req.params.id)); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/pagos', requireAuth, async (req, res) => {
+  try { res.json(await pagos.createPago({ ...req.body, registradoPor: 'admin' })); }
+  catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.put('/api/pagos/:id', requireAuth, async (req, res) => {
+  try { await pagos.updatePago(req.params.id, req.body); res.json({ ok: true }); }
+  catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.delete('/api/pagos/:id', requireAuth, async (req, res) => {
+  try { await pagos.deletePago(req.params.id); res.json({ ok: true }); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Rutas HTML ────────────────────────────────────────────────────
+app.get('/informe-presencia', (req, res) => res.sendFile(path.join(__dirname, '../public/informe-presencia.html')));
+app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
+app.get('*', (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
+
+app.listen(PORT, () => {
+  console.log(`\n╔════════════════════════════════════════╗`);
+  console.log(`║   Corp Projects Dashboard v3           ║`);
+  console.log(`╚════════════════════════════════════════╝`);
+  console.log(`🚀 Puerto: ${PORT}`);
+  console.log(`📊 StelOrder: ${process.env.STELORDER_API_KEY ? '✅' : '❌'}`);
+  console.log(`📧 Email: ${process.env.EMAIL_USER ? '✅' : '⚠️'}`);
+  console.log(`💬 WhatsApp: ${process.env.TWILIO_ACCOUNT_SID ? '✅' : '⚠️ Pendiente'}\n`);
+  startScheduler();
+});
+
+module.exports = app;
