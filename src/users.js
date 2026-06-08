@@ -5,18 +5,7 @@ const crypto = require('crypto');
 let db = null;
 
 async function getDB() {
-  if (db) return db;
-  const uri = process.env.MONGODB_URI;
-  if (!uri) throw new Error('MONGODB_URI no configurada');
-  const client = new MongoClient(uri);
-  await client.connect();
-  db = client.db('corpprojects');
-  await db.collection('users').createIndex({ pin: 1 });
-  await db.collection('users').createIndex({ role: 1 });
-  await db.collection('user_sessions').createIndex({ token: 1 }, { unique: true });
-  await db.collection('user_sessions').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-  console.log('[Users] MongoDB conectado');
-  return db;
+  return require('./db').getDB();
 }
 
 // ── ROLES ────────────────────────────────────────────────────────
