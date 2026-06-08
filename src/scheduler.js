@@ -52,32 +52,92 @@ async function runDailySummary() {
   }
 }
 
-// Envía UN resumen agrupado por familia (todas sus facturas pendientes en un
-// solo correo). Solo a familias con responsable asignado y no pausadas. Respeta
-// la pausa global y el dedup diario (una vez al día por familia).
-async function sendFamilySummaries() {
+// ── Motor de envíos por familia (frecuencia + formato configurables) ──
+function groupByFamily(pending) {
+  const byFam = {};
+  for (const inv of pending) {
+    const f = inv.family || 'Sin familia';
+    (byFam[f] = byFam[f] || []).push(inv);
+  }
+  return byFam;
+}
+
+// ¿Toca enviar a una familia en esta franja según su frecuencia?
+// slot: 'morning' (08:30) | 'evening' (17:00). día: 0=Dom..6=Sáb.
+function isFamilyDue(freq, slot, date = new Date()) {
+  const day = date.getDay();
+  switch (freq) {
+    case 'weekly':      return slot === 'morning' && day === 5;                 // viernes
+    case 'biweekly':    return slot === 'morning' && (day === 1 || day === 4);  // lunes y jueves
+    case 'daily':       return slot === 'morning';
+    case 'twice_daily': return slot === 'morning' || slot === 'evening';
+    default:            return false;                                           // manual
+  }
+}
+
+async function sendForFamily(family, invoices, format) {
+  if (format === 'individual') {
+    for (const inv of invoices) {
+      await sendInvoiceAlert(inv);
+      await new Promise(r => setTimeout(r, 1200));
+    }
+  } else {
+    await sendFamilySummary(family, invoices);
+  }
+}
+
+// Envío AUTOMÁTICO: recorre familias y envía solo a las que les toca en esta
+// franja según su frecuencia. Respeta pausa global, familias pausadas y dedup
+// por familia+franja+día.
+async function sendReminders(slot) {
   if (await avisos.isGlobalPaused()) {
-    console.log('[Scheduler] ⏸ Avisos en PAUSA global — no se envían resúmenes.');
+    console.log(`[Scheduler] ⏸ Pausa global — recordatorios (${slot}) omitidos.`);
     return { paused: true, sent: 0, skipped: 0 };
   }
   let sent = 0, skipped = 0;
   try {
     const pending = await getPendingInvoices();
-    const byFam = {};
-    for (const inv of pending) { (byFam[inv.family || 'Sin familia'] = byFam[inv.family || 'Sin familia'] || []).push(inv); }
+    if (!pending.length) { console.log('[Scheduler] Recordatorios: sin facturas pendientes.'); return { sent, skipped }; }
+    const byFam = groupByFamily(pending);
     for (const [family, invoices] of Object.entries(byFam)) {
-      const email = await avisos.getFamilyEmail(family);   // null si no hay o está pausada
-      if (!email) { skipped++; continue; }
-      if (await avisos.wasAlertSentToday('FAMSUM:' + family, 'summary')) { skipped++; continue; }
-      console.log(`[Scheduler] Resumen → ${family} (${invoices.length} facturas) → ${email}`);
-      await sendFamilySummary(family, invoices);
-      await avisos.markAlertSent('FAMSUM:' + family, 'summary');
+      const cfg = await avisos.getFamilyConfig(family);
+      if (!cfg.email || cfg.paused)             { skipped++; continue; }
+      if (!isFamilyDue(cfg.freq, slot))         { skipped++; continue; }
+      const key = `REM:${family}:${slot}`;
+      if (await avisos.wasAlertSentToday(key, 'auto')) { skipped++; continue; }
+      console.log(`[Scheduler] Recordatorio (${cfg.freq}/${cfg.format}) → ${family} (${invoices.length} fra.) → ${cfg.email}`);
+      await sendForFamily(family, invoices, cfg.format);
+      await avisos.markAlertSent(key, 'auto');
       sent++;
       await new Promise(r => setTimeout(r, 1500));
     }
-    console.log(`[Scheduler] Resúmenes por familia: ${sent} enviados, ${skipped} omitidos.`);
+    console.log(`[Scheduler] Recordatorios ${slot}: ${sent} familias avisadas, ${skipped} omitidas.`);
   } catch (err) {
-    console.error('[Scheduler] Error resúmenes por familia:', err.message);
+    console.error('[Scheduler] Error recordatorios:', err.message);
+  }
+  return { sent, skipped };
+}
+
+// Envío MANUAL (botones): fuerza el envío a TODAS las familias con responsable
+// (ignora frecuencia y dedup). Respeta pausa global y familias pausadas.
+// format: 'grouped' | 'individual'.
+async function sendManual(format) {
+  if (await avisos.isGlobalPaused()) return { paused: true, sent: 0, skipped: 0 };
+  let sent = 0, skipped = 0;
+  try {
+    const pending = await getPendingInvoices();
+    const byFam = groupByFamily(pending);
+    for (const [family, invoices] of Object.entries(byFam)) {
+      const cfg = await avisos.getFamilyConfig(family);
+      if (!cfg.email || cfg.paused) { skipped++; continue; }
+      console.log(`[Scheduler] Envío manual (${format}) → ${family} (${invoices.length} fra.) → ${cfg.email}`);
+      await sendForFamily(family, invoices, format);
+      sent++;
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    console.log(`[Scheduler] Envío manual (${format}): ${sent} familias, ${skipped} omitidas.`);
+  } catch (err) {
+    console.error('[Scheduler] Error envío manual:', err.message);
   }
   return { sent, skipped };
 }
@@ -85,10 +145,12 @@ async function sendFamilySummaries() {
 function startScheduler() {
   console.log('[Scheduler] Iniciando tareas...');
 
-  // Revisar facturas cada 2 horas
-  cron.schedule('0 */2 * * *', checkPendingInvoices, { timezone: 'Europe/Madrid' });
+  // Recordatorios a clientes: 08:30 (mañana) y 17:00 (tarde) todos los días.
+  // El motor decide qué familias toca según su frecuencia configurada.
+  cron.schedule('30 8 * * *', () => sendReminders('morning'), { timezone: 'Europe/Madrid' });
+  cron.schedule('0 17 * * *', () => sendReminders('evening'), { timezone: 'Europe/Madrid' });
 
-  // Resumen diario 08:30 lun–vie
+  // Resumen diario INTERNO (al admin) 08:30 lun–vie
   cron.schedule('30 8 * * 1-5', runDailySummary, { timezone: 'Europe/Madrid' });
 
   // Poll de emails cada 15 minutos
@@ -100,11 +162,7 @@ function startScheduler() {
     }
   }, { timezone: 'Europe/Madrid' });
 
-  console.log('[Scheduler] ✅ Revisión facturas: cada 2h | Resumen: 08:30 lun–vie | Emails: cada 15min');
-  console.log(`[Scheduler] ⏳ Warmup activo ${WARMUP_MS/60000} min — no se enviarán alertas hasta ${new Date(startTime + WARMUP_MS).toLocaleTimeString('es-ES')}`);
-
-  // Primera revisión facturas tras el warmup (5 min)
-  setTimeout(checkPendingInvoices, WARMUP_MS);
+  console.log('[Scheduler] ✅ Recordatorios: 08:30 y 17:00 (según frecuencia por familia) | Resumen interno: 08:30 lun–vie | Emails: cada 15min');
 
   // Primer poll de emails a los 2 minutos de arrancar
   setTimeout(async () => {
@@ -116,4 +174,4 @@ function startScheduler() {
   }, 2 * 60 * 1000);
 }
 
-module.exports = { startScheduler, checkPendingInvoices, runDailySummary, sendFamilySummaries };
+module.exports = { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual };
