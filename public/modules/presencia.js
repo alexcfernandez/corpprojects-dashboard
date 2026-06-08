@@ -229,10 +229,17 @@
         const entry       = calData[w.id + '_' + date];
         const est         = entry ? ESTADOS[entry.estado] : null;
         const tieneEquipo = entry?.equipo?.length > 0;
+        const numObras    = (entry?.obras?.length) || 0;
         const bg          = est ? est.color+'28' : weekend ? 'rgba(245,158,11,.06)' : 'var(--bg3)';
         const border      = est ? est.color+'55'  : weekend ? 'rgba(245,158,11,.25)' : 'var(--border)';
+        // Etiqueta: cliente principal + "+N" si hubo varias obras ese día
+        const clientLabel = entry?.clientName
+          ? entry.clientName.slice(0,8) + (numObras > 1 ? ' +'+(numObras-1) : '')
+          : '';
         const tooltip     = est
-          ? `${est.label}${entry.clientName?' — '+entry.clientName:''}${tieneEquipo?' · '+entry.equipo.length+' personas':''}`
+          ? (numObras > 1
+              ? `${est.label} — ${entry.obras.map(o=>o.clientName+' ('+o.horas+'h)').join(', ')}${tieneEquipo?' · '+entry.equipo.length+' personas':''}`
+              : `${est.label}${entry.clientName?' — '+entry.clientName:''}${tieneEquipo?' · '+entry.equipo.length+' personas':''}`)
           : weekend ? 'Fin de semana' : 'Sin registrar';
 
         html += `<div
@@ -240,7 +247,7 @@
           style="min-height:36px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;background:${bg};border:1px solid ${border};border-radius:3px;cursor:pointer;padding:1px;transition:opacity .15s"
           title="${tooltip}">
           <div style="font-size:11px;line-height:1">${est ? est.emoji : weekend ? '⭐' : ''}</div>
-          <div style="font-size:7px;color:var(--text3);overflow:hidden;max-width:100%;white-space:nowrap;text-overflow:ellipsis;padding:0 2px">${entry?.clientName ? entry.clientName.slice(0,8) : ''}</div>
+          <div style="font-size:7px;color:${numObras>1?'var(--blue)':'var(--text3)'};overflow:hidden;max-width:100%;white-space:nowrap;text-overflow:ellipsis;padding:0 2px">${clientLabel}</div>
           <div style="font-size:8px;line-height:1;display:flex;gap:1px">
             ${entry?.tieneParte ? '<span title="Tiene parte">📋</span>' : ''}
             ${tieneEquipo ? '<span title="Con ayudantes">👥</span>' : ''}
@@ -284,6 +291,16 @@
     const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long' });
     const WORKERS   = CFG.workers;
 
+    // Si el día tiene varias obras (desde partes), preparamos un desglose visible.
+    const _obrasDia = (entry && Array.isArray(entry.obras) && entry.obras.length > 1) ? entry.obras : null;
+    const _obrasHtml = _obrasDia ? `
+      <div style="background:rgba(77,156,248,.08);border:1px solid rgba(77,156,248,.25);border-radius:10px;padding:10px 12px;margin-bottom:12px">
+        <div style="font-size:10px;color:var(--blue);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">📋 Varias obras este día (desde partes)</div>
+        ${_obrasDia.map(o => `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);padding:2px 0"><span>${o.clientName}</span><span style="color:var(--text)">${o.horas}h</span></div>`).join('')}
+        <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600;border-top:1px solid var(--border);margin-top:5px;padding-top:5px"><span>Total</span><span>${_obrasDia.reduce((s,o)=>s+parseFloat(o.horas||0),0)}h</span></div>
+        <div style="font-size:10px;color:var(--amber);margin-top:6px">⚠️ Si guardas cambios aquí, se reemplazarán por un solo registro.</div>
+      </div>` : '';
+
     const modal = document.createElement('div');
     modal.id = 'p-modal';
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
@@ -318,6 +335,7 @@
         </div>
 
         <div id="p-obra-fields" style="display:${selectedEstado==='obra'?'block':'none'}">
+          ${_obrasHtml}
           <div style="margin-bottom:12px">
             <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Cliente / Obra</div>
             <input type="text" id="p-client-name" value="${entry?.clientName||''}" placeholder="Buscar cliente..."
