@@ -429,7 +429,7 @@ function logout() {
   showPage('login');
 }
 
-function newParte() { resetForm(); showPage('form'); }
+function newParte() { try { resetForm(); } catch(e) { console.warn('[Parte] resetForm:', e.message); } showPage('form'); }
 
 // ── DETECCIÓN DE JORNADA ─────────────────────────────────────────
 function detectarJornada() {
@@ -777,8 +777,9 @@ async function submitParte() {
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || 'Error al enviar');
 
-    // Sincronizar presencia automáticamente
-    await sincronizarPresencia(date, clientName, horas);
+    // La presencia la sincroniza ahora el servidor al confirmar el parte
+    // (soporta varias obras el mismo día). No la sincronizamos aquí para no
+    // pisar la acumulación con un único cliente.
 
     // Éxito
     const nFotos = photoStore.work.length + photoStore.albaran.length;
