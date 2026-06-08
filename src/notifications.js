@@ -242,4 +242,78 @@ async function sendDailySummary(summary) {
   ]);
 }
 
-module.exports = { sendInvoiceAlert, sendDailySummary, sendWhatsApp, sendEmail };
+// ─── Resumen agrupado por familia (un correo con todas sus pendientes) ──
+async function sendFamilySummary(family, invoices) {
+  if (!family || !invoices || !invoices.length) return false;
+  const list = [...invoices].sort((a,b) => (b.daysOverdue||0) - (a.daysOverdue||0));
+  const totalPend = list.reduce((s,i) => s + (i.pending||0), 0);
+  // Color por la factura más vencida
+  const worst = list[0];
+  const info  = LEVEL_INFO[worst.alertLevel] || { color:'#4d9cf8', emoji:'📋', label:'Resumen' };
+
+  const subject = `📋 Corp Projects — ${list.length} factura(s) pendiente(s) · ${fmtEur(totalPend)}`;
+
+  const waMsg = [
+    `📋 *Corp Projects — Facturas pendientes (${family})*`,
+    ``,
+    ...list.map(i => `• ${i.number} — ${i.client} — ${fmtEur(i.pending)} (${i.daysOverdue}d)`),
+    ``,
+    `💰 *Total pendiente: ${fmtEur(totalPend)}*`,
+    `👉 https://dashboard.corpprojects.es`
+  ].join('\n');
+
+  const filas = list.map(i => `
+    <tr>
+      <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;font-weight:600">${i.number}</td>
+      <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;color:#374151">${i.client || ''}</td>
+      <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;text-align:center;color:${(i.daysOverdue||0)>=60?'#991b1b':(i.daysOverdue||0)>=30?'#f97316':'#6b7280'}">${i.daysOverdue}d</td>
+      <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:600">${fmtEur(i.pending)}</td>
+    </tr>`).join('');
+
+  const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="font-family:Inter,Arial,sans-serif;background:#f4f4f5;padding:20px;margin:0">
+<div style="max-width:620px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1)">
+  <div style="background:${info.color};padding:24px 28px">
+    <div style="color:#fff;font-size:18px;font-weight:700">Resumen de facturas pendientes</div>
+    <div style="color:rgba(255,255,255,0.85);font-size:13px;margin-top:4px">${family} · Corp Projects Holding SL</div>
+  </div>
+  <div style="padding:24px 28px">
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr>
+        <th style="text-align:left;padding:8px 0;border-bottom:2px solid #e5e7eb;color:#6b7280;font-size:12px">Factura</th>
+        <th style="text-align:left;padding:8px 0;border-bottom:2px solid #e5e7eb;color:#6b7280;font-size:12px">Obra / Comunidad</th>
+        <th style="text-align:center;padding:8px 0;border-bottom:2px solid #e5e7eb;color:#6b7280;font-size:12px">Días</th>
+        <th style="text-align:right;padding:8px 0;border-bottom:2px solid #e5e7eb;color:#6b7280;font-size:12px">Pendiente</th>
+      </tr></thead>
+      <tbody>${filas}</tbody>
+      <tfoot><tr>
+        <td colspan="3" style="padding:12px 0;font-weight:700">Total pendiente</td>
+        <td style="padding:12px 0;text-align:right;font-weight:700;color:${info.color};font-size:16px">${fmtEur(totalPend)}</td>
+      </tr></tfoot>
+    </table>
+    <a href="https://dashboard.corpprojects.es" style="display:block;background:${info.color};color:#fff;text-align:center;padding:14px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;margin-top:20px">Ver detalle en el dashboard →</a>
+  </div>
+  <div style="background:#f9fafb;padding:14px 28px;border-top:1px solid #f0f0f0;text-align:center;font-size:11px;color:#9ca3af">
+    Corp Projects Holding SL · dashboard.corpprojects.es · ${new Date().toLocaleDateString('es-ES')}
+  </div>
+</div>
+</body>
+</html>`;
+
+  const avisos = require('./avisos');
+  const avisosBox  = process.env.EMAIL_AVISOS || process.env.EMAIL_ADMIN;
+  const familyMail = await avisos.getFamilyEmail(family);
+  const to  = familyMail || avisosBox;
+  const bcc = (avisosBox && avisosBox !== to) ? avisosBox : undefined;
+
+  await Promise.all([
+    sendWhatsApp(waMsg),
+    sendEmail({ to, bcc, subject, html: emailHtml, text: waMsg })
+  ]);
+  return true;
+}
+
+module.exports = { sendInvoiceAlert, sendDailySummary, sendFamilySummary, sendWhatsApp, sendEmail };
