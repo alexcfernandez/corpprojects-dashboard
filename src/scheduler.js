@@ -3,18 +3,11 @@ const cron = require('node-cron');
 const { getPendingInvoices, getSummary } = require('./stelorder');
 const { sendInvoiceAlert, sendDailySummary } = require('./notifications');
 const { pollEmails } = require('./email-intelligence');
-
-// Registro de alertas enviadas hoy (en memoria)
-const alertsSent = new Map();
+const avisos = require('./avisos');   // registro persistente de avisos enviados
 
 // Flag: no enviar alertas en los primeros 5 minutos tras arrancar
 const startTime  = Date.now();
 const WARMUP_MS  = 5 * 60 * 1000; // 5 minutos
-
-function getAlertKey(invoiceId, level) {
-  const today = new Date().toISOString().slice(0, 10);
-  return `${invoiceId}-${level}-${today}`;
-}
 
 async function checkPendingInvoices() {
   const isWarmup = (Date.now() - startTime) < WARMUP_MS;
@@ -25,12 +18,13 @@ async function checkPendingInvoices() {
     let alertsTriggered = 0;
     for (const invoice of pending) {
       if (invoice.alertLevel === 'ok') continue;
-      const key = getAlertKey(invoice.id, invoice.alertLevel);
-      if (alertsSent.has(key)) continue;
-      alertsSent.set(key, new Date());
-      if (isWarmup) continue;
+      if (await avisos.wasAlertSentToday(invoice.id, invoice.alertLevel)) continue;
+      // En warmup: marcamos como gestionado (sin enviar) para no disparar el
+      // backlog entero al arrancar.
+      if (isWarmup) { await avisos.markAlertSent(invoice.id, invoice.alertLevel); continue; }
       console.log(`[Scheduler] Alerta ${invoice.alertLevel} → ${invoice.number} (${invoice.client}) — ${invoice.daysOverdue}d`);
       await sendInvoiceAlert(invoice);
+      await avisos.markAlertSent(invoice.id, invoice.alertLevel);
       alertsTriggered++;
       await new Promise(r => setTimeout(r, 1500));
     }
@@ -70,12 +64,6 @@ function startScheduler() {
     } catch (err) {
       console.error('[Scheduler] Error poll emails:', err.message);
     }
-  }, { timezone: 'Europe/Madrid' });
-
-  // Limpiar registro cada lunes 00:01
-  cron.schedule('1 0 * * 1', () => {
-    console.log('[Scheduler] Limpiando registro de alertas...');
-    alertsSent.clear();
   }, { timezone: 'Europe/Madrid' });
 
   console.log('[Scheduler] ✅ Revisión facturas: cada 2h | Resumen: 08:30 lun–vie | Emails: cada 15min');
