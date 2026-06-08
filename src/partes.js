@@ -5,19 +5,7 @@ const CONFIG = require('./config');
 let db = null;
 
 async function getDB() {
-  if (db) return db;
-  const client = new MongoClient(process.env.MONGODB_URI);
-  await client.connect();
-  db = client.db('corpprojects');
-  await db.collection('partes').createIndex({ date: -1 });
-  await db.collection('partes').createIndex({ workerId: 1, date: -1 });
-  await db.collection('partes').createIndex({ clientName: 1 });
-  await db.collection('partes').createIndex({ status: 1 });
-  await db.collection('partes').createIndex({ expedienteId: 1 });
-  await db.collection('partes').createIndex({ asignacionId: 1 });
-  await db.collection('worker_tokens').createIndex({ token: 1 }, { unique: true });
-  console.log('[Partes] MongoDB conectado');
-  return db;
+  return require('./db').getDB();
 }
 
 // Exportamos desde config — un solo sitio para cambiarlos
