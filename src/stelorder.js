@@ -1,5 +1,18 @@
-// src/stelorder.js — v14 con familias de clientes + gastos banco estructurados
+// src/stelorder.js — v15: familias + gastos banco + CACHÉ (TTL + dedup en vuelo)
 const axios = require('axios');
+const { cached, invalidate } = require('./cache');
+
+// ─── TTL de caché por tipo de dato (ms). Configurable por entorno. ──────────
+// Datos que cambian poco -> TTL largo. Datos de dinero -> TTL corto.
+const MIN = 60 * 1000;
+const TTL = {
+  accountCategories: parseInt(process.env.STEL_TTL_FAMILIES  || 360) * MIN, // 6 h
+  clients:           parseInt(process.env.STEL_TTL_CLIENTS   || 60)  * MIN, // 1 h
+  receipts:          parseInt(process.env.STEL_TTL_RECEIPTS  || 10)  * MIN, // 10 min
+  workEstimates:     parseInt(process.env.STEL_TTL_ESTIMATES || 15)  * MIN, // 15 min
+  bankAccounts:      parseInt(process.env.STEL_TTL_BANK      || 360) * MIN, // 6 h
+  documentStates:    parseInt(process.env.STEL_TTL_DOCSTATES || 360) * MIN  // 6 h
+};
 
 const BASE_URL = 'https://app.stelorder.com/app';
 const API_KEY  = process.env.STELORDER_API_KEY;
@@ -80,7 +93,7 @@ function resolveClient(item, clientMap) {
 }
 
 // ─── Familias de clientes (accountCategories) ─────────────────────
-async function getAccountCategories() {
+async function _getAccountCategories() {
   try {
     const res = await client.get('/accountCategories?limit=500');
     const cats = Array.isArray(res.data) ? res.data : [];
@@ -94,23 +107,37 @@ async function getAccountCategories() {
     return { list: [], map: {} };
   }
 }
+async function getAccountCategories() {
+  return cached('accountCategories', TTL.accountCategories, _getAccountCategories);
+}
 
-async function getClients() {
+async function _getClients() {
   const { list: cats, map: familyMap } = await getAccountCategories();
   const d = await fetchAllPages('/clients');
   console.log(`[StelOrder] Clientes: ${d.length}`);
   return { clients: d, clientMap: buildClientMap(d, familyMap), families: cats, familyMap };
 }
+async function getClients() {
+  return cached('clients', TTL.clients, _getClients);
+}
 
-async function getWorkEstimates()  { const d = await fetchAllPages('/workEstimates');            console.log(`[StelOrder] WorkEstimates: ${d.length}`); return d; }
-async function getBankAccounts()   { return fetchEndpoint('/bankAccounts'); }
-async function getDocumentStates() { return fetchEndpoint('/documentStates'); }
+async function getWorkEstimates() {
+  return cached('workEstimates', TTL.workEstimates, async () => {
+    const d = await fetchAllPages('/workEstimates');
+    console.log(`[StelOrder] WorkEstimates: ${d.length}`);
+    return d;
+  });
+}
+async function getBankAccounts()   { return cached('bankAccounts',   TTL.bankAccounts,   () => fetchEndpoint('/bankAccounts')); }
+async function getDocumentStates() { return cached('documentStates', TTL.documentStates, () => fetchEndpoint('/documentStates')); }
 
 async function getAllReceipts() {
-  console.log('[StelOrder] Cargando recibos con paginación...');
-  const all = await fetchAllPages('/ordinaryInvoiceReceipts', '&sort=original-element-id:desc');
-  console.log(`[StelOrder] Total recibos: ${all.length}`);
-  return all;
+  return cached('receipts', TTL.receipts, async () => {
+    console.log('[StelOrder] Cargando recibos con paginación...');
+    const all = await fetchAllPages('/ordinaryInvoiceReceipts', '&sort=original-element-id:desc');
+    console.log(`[StelOrder] Total recibos: ${all.length}`);
+    return all;
+  });
 }
 
 // Construir facturas desde recibos agrupando por original-element-id
@@ -312,8 +339,11 @@ async function getInvoices() {
   return buildInvoicesFromReceipts(receipts, clientMap);
 }
 
+// Vaciar la caché de StelOrder (para un botón "Actualizar ahora" en el dashboard)
+function clearCache() { invalidate(); }
+
 module.exports = {
   getInvoices, getAllReceipts, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary,
-  getAlertLevel, getFamiliesSummary, getAccountCategories
+  getAlertLevel, getFamiliesSummary, getAccountCategories, clearCache
 };
