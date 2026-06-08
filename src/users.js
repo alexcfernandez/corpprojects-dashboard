@@ -137,10 +137,15 @@ async function updateUser(id, data) {
 async function deactivateUser(id) {
   const db = await getDB();
   await db.collection('user_sessions').deleteMany({ userId: id });
-  return db.collection('users').updateOne(
+  const result = await db.collection('users').updateOne(
     { _id: new ObjectId(id) },
     { $set: { active: false, updatedAt: new Date() } }
   );
+
+  // Invalidar caché de workers para que Presencia/Partes dejen de mostrarlo
+  try { require('./attendance')._invalidateWorkersCache?.(); } catch(e) {}
+
+  return result;
 }
 
 // ── AUTENTICACIÓN ─────────────────────────────────────────────────
