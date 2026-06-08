@@ -121,6 +121,7 @@
     <div class="card-title" id="famDetailTitle">Detalle</div>
     <div id="famDetailTable"></div>
   </div>
+  <div id="familias-resp-container" style="margin-top:16px"></div>
 </div>
 
 <!-- PRESUPUESTOS -->
@@ -858,6 +859,7 @@ function showTab(id, btn){
     usuarios:  ['Usuarios',    'usuarios-container'],
     obras:     ['Obras',       'obras-container'],
     pagos: ['Pagos', 'pagos-container'],
+    familias: ['FamiliasAdmin', 'familias-resp-container'],
   };
   if(moduleMap[id]){
     const [modName, containerId]=moduleMap[id];
@@ -927,5 +929,6 @@ window.addEventListener('load',()=>{
 <script src="/modules/usuarios.js"></script>
 <script src="/modules/obras.js"></script>
 <script src="/modules/emails-admin.js"></script>
+<script src="/modules/familias-admin.js"></script>
 </body>
 </html>
