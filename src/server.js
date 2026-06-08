@@ -13,7 +13,7 @@ const { MongoClient, ObjectId } = require('mongodb');
 
 const {
   getSummary, getPendingInvoices, getInvoices, getClients,
-  getEstimatesSummary, getFamiliesSummary, getAccountCategories
+  getEstimatesSummary, getFamiliesSummary, getAccountCategories, clearCache
 } = require('./stelorder');
 const { sendWhatsApp, sendEmail } = require('./notifications');
 const { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual } = require('./scheduler');
@@ -123,6 +123,9 @@ app.get('/api/clients',            requireAuth, async (req,res) => { const {clie
 app.get('/api/estimates',          requireAuth, async (req,res) => res.json(await getEstimatesSummary()));
 app.get('/api/families',           requireAuth, async (req,res) => res.json(await getFamiliesSummary()));
 app.get('/api/families/list',      requireAuth, async (req,res) => { const {list} = await getAccountCategories(); res.json(list); });
+
+// Vaciar la caché de StelOrder bajo demanda (botón "Actualizar" del dashboard)
+app.post('/api/stelorder/refresh', requireAuth, (req,res) => { clearCache(); res.json({ ok:true, message:'Datos actualizados desde StelOrder' }); });
 
 // ── Responsables por familia (a quién van los avisos de cada familia) ──
 const avisos = require('./avisos');
