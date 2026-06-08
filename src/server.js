@@ -149,6 +149,17 @@ app.put('/api/family-contacts', requireAuth, async (req, res) => {
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
+// Pausa global de avisos (interruptor de emergencia)
+app.get('/api/avisos-status', requireAuth, async (req, res) => {
+  try { res.json({ globalPaused: await avisos.isGlobalPaused() }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/avisos-status', requireAuth, async (req, res) => {
+  try { res.json({ globalPaused: await avisos.setGlobalPaused(!!req.body.paused) }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 app.get('/api/invoices/by-family/:family', requireAuth, async (req, res) => {
   const pending = await getPendingInvoices();
   const all     = await getInvoices();
