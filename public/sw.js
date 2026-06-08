@@ -1,5 +1,5 @@
 // Service Worker — Corp Projects Dashboard
-const CACHE = 'cp-v1';
+const CACHE = 'cp-v2';
 const STATIC = [
   '/',
   '/parte',
@@ -33,6 +33,10 @@ self.addEventListener('activate', e => {
 // Fetch — estrategia: Network first, cache fallback
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
+
+  // Ignora esquemas que la Cache API no admite (chrome-extension://, etc.)
+  // Esto evita los errores de extensiones de navegador (monederos cripto…).
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
 
   // API calls — siempre red, nunca cache
   if (url.pathname.startsWith('/api/')) return;
