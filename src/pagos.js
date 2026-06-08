@@ -4,15 +4,7 @@ const { MongoClient, ObjectId } = require('mongodb');
 let db = null;
 
 async function getDB() {
-  if (db) return db;
-  const client = new MongoClient(process.env.MONGODB_URI);
-  await client.connect();
-  db = client.db('corpprojects');
-  await db.collection('pagos').createIndex({ fecha: -1 });
-  await db.collection('pagos').createIndex({ persona: 1 });
-  await db.collection('pagos').createIndex({ tipo: 1 });
-  console.log('[Pagos] MongoDB conectado');
-  return db;
+  return require('./db').getDB();
 }
 
 async function getPagos({ persona, tipo, from, to, limit = 100, skip = 0 } = {}) {
