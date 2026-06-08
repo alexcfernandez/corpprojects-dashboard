@@ -4,14 +4,19 @@ const nodemailer = require('nodemailer');
 
 // ─── Email transporter ───────────────────────────────────────────
 function getTransporter() {
+  const port = parseInt(process.env.EMAIL_PORT || 587);
   return nodemailer.createTransport({
     host:   process.env.EMAIL_HOST || 'smtp.gmail.com',
-    port:   parseInt(process.env.EMAIL_PORT || 587),
-    secure: false,
+    port,
+    secure: port === 465,            // 465 = SSL directo, 587 = STARTTLS
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS
-    }
+    },
+    // Timeouts para no quedarnos colgados si el host bloquea el SMTP saliente
+    connectionTimeout: 10000,
+    greetingTimeout:   10000,
+    socketTimeout:     15000
   });
 }
 
@@ -58,18 +63,60 @@ async function sendWhatsApp(message) {
   }
 }
 
+// ─── Enviar Email por la API de Gmail (HTTPS, no lo bloquea el host) ──
+// Reutiliza las mismas credenciales OAuth que ya funcionan para LEER correo.
+async function sendViaGmail({ from, to, subject, html, text }) {
+  const { getGmailClient } = require('./email-intelligence');
+  const gmail = getGmailClient();
+  const boundary = '=_cp_' + Date.now();
+  const subjectEnc = `=?UTF-8?B?${Buffer.from(subject || '').toString('base64')}?=`;
+  const headers = [
+    `From: ${from}`,
+    `To: ${to}`,
+    `Subject: ${subjectEnc}`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/alternative; boundary="${boundary}"`
+  ].join('\r\n');
+  const body = [
+    `--${boundary}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    'Content-Transfer-Encoding: base64',
+    '',
+    Buffer.from(text || '').toString('base64'),
+    `--${boundary}`,
+    'Content-Type: text/html; charset="UTF-8"',
+    'Content-Transfer-Encoding: base64',
+    '',
+    Buffer.from(html || '').toString('base64'),
+    `--${boundary}--`
+  ].join('\r\n');
+  const raw = Buffer.from(headers + '\r\n\r\n' + body)
+    .toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
+}
+
 // ─── Enviar Email ─────────────────────────────────────────────────
 async function sendEmail({ to, subject, html, text }) {
+  if (!to) { console.warn('[Email] Sin destinatario (EMAIL_ADMIN vacío), omitiendo'); return false; }
+  const from = process.env.EMAIL_FROM || `Corp Projects <${process.env.EMAIL_USER || ''}>`;
+
+  // 1) Preferimos la API de Gmail si hay OAuth configurado (mismo canal que leer).
+  if (process.env.GMAIL_REFRESH_TOKEN && process.env.GMAIL_CLIENT_ID) {
+    try {
+      await sendViaGmail({ from, to, subject, html, text });
+      console.log(`[Email] Enviado (API Gmail) a ${to}: ${subject}`);
+      return true;
+    } catch (err) {
+      // Si falla por permisos del token (falta scope de envío), lo veremos aquí.
+      console.error('[Email] API Gmail falló, intento SMTP:', err.message);
+    }
+  }
+
+  // 2) Plan B: SMTP (con timeouts; puede fallar si el host bloquea el puerto).
   try {
     const transporter = getTransporter();
-    await transporter.sendMail({
-      from:    process.env.EMAIL_FROM || `Corp Projects <${process.env.EMAIL_USER}>`,
-      to,
-      subject,
-      html,
-      text
-    });
-    console.log(`[Email] Enviado a ${to}: ${subject}`);
+    await transporter.sendMail({ from, to, subject, html, text });
+    console.log(`[Email] Enviado (SMTP) a ${to}: ${subject}`);
     return true;
   } catch (err) {
     console.error('[Email] Error:', err.message);
