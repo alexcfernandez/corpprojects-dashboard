@@ -16,7 +16,7 @@ const {
   getEstimatesSummary, getFamiliesSummary, getAccountCategories
 } = require('./stelorder');
 const { sendWhatsApp, sendEmail } = require('./notifications');
-const { startScheduler, checkPendingInvoices, runDailySummary } = require('./scheduler');
+const { startScheduler, checkPendingInvoices, runDailySummary, sendFamilySummaries } = require('./scheduler');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -158,6 +158,17 @@ app.get('/api/avisos-status', requireAuth, async (req, res) => {
 app.put('/api/avisos-status', requireAuth, async (req, res) => {
   try { res.json({ globalPaused: await avisos.setGlobalPaused(!!req.body.paused) }); }
   catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Enviar AHORA un resumen agrupado a cada familia con responsable
+app.post('/api/send-family-summaries', requireAuth, async (req, res) => {
+  try {
+    const r = await sendFamilySummaries();
+    const message = r.paused
+      ? '⏸ Envíos en pausa global — no se ha enviado nada.'
+      : `Resúmenes enviados: ${r.sent} · omitidos: ${r.skipped}`;
+    res.json({ message, ...r });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/api/invoices/by-family/:family', requireAuth, async (req, res) => {
