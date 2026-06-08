@@ -424,6 +424,12 @@ app.post('/api/partes', uploadMemory.any(), async (req, res) => {
     bodyData.fotosAlbaran = fotosAlbaran;
 
     const parte = await partes.createParte(bodyData, workerInfo);
+
+    // Reflejar la presencia del trabajador ese día a partir del parte
+    // (no rompe el envío del parte si algo falla).
+    try { await attendance.syncPresenceFromParte(parte); }
+    catch (e) { console.warn('[Partes] syncPresenceFromParte:', e.message); }
+
     res.json({ ok: true, id: parte.id });
   } catch (err) {
     console.error('[Partes] Error create:', err.message);
