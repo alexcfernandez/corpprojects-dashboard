@@ -132,6 +132,62 @@ async function syncTeamPresence(db, entry, prev) {
   }
 }
 
+// Une dos listas de equipo evitando duplicados (por id o, si no, por nombre).
+function mergeEquipo(a, b) {
+  const out = [];
+  const seen = new Set();
+  [...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])].forEach(m => {
+    if (!m) return;
+    const key = m.id ? 'id:' + String(m.id) : 'n:' + normName(m.nombre);
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(m);
+  });
+  return out;
+}
+
+// Cuando un trabajador sube un parte, reflejamos su presencia de ese día.
+// No pisa lo que el admin ya tuviera puesto a mano: si ya existe presencia,
+// solo la completa (marca tieneParte y rellena cliente/horas si estaban
+// vacíos). Si no existe, la crea como "en obra" con los datos del parte.
+// Pasa por saveAttendance, así que el equipo del parte también se propaga.
+async function syncPresenceFromParte(parte) {
+  if (!parte || !parte.workerId || !parte.date) return;
+  const db = await getDB();
+  const workerId = String(parte.workerId);
+  const existing = await db.collection('attendance').findOne({ workerId, date: parte.date });
+  const equipoParte = Array.isArray(parte.equipo) ? parte.equipo : [];
+
+  let entry;
+  if (existing) {
+    // Completar sin pisar: conservamos estado, cliente y horas que ya hubiera.
+    entry = { ...existing };
+    delete entry._id;
+    entry.tieneParte = true;
+    if (existing.estado === 'obra') {
+      if (!existing.clientName && parte.clientName) entry.clientName = parte.clientName;
+      if (!existing.horas)                          entry.horas      = parseFloat(parte.horas || 8);
+      entry.equipo = mergeEquipo(existing.equipo, equipoParte);
+    }
+  } else {
+    // Crear presencia nueva a partir del parte.
+    entry = {
+      workerId,
+      workerName:  parte.workerName || '',
+      date:        parte.date,
+      estado:      'obra',
+      clientName:  parte.clientName || '',
+      horas:       parseFloat(parte.horas || 8),
+      notas:       '',
+      tieneParte:  true,
+      tipoJornada: parte.tipoJornada || 'normal',
+      equipo:      equipoParte,
+    };
+  }
+
+  await saveAttendance(entry);
+}
+
 async function deleteAttendance(workerId, date) {
   const db = await getDB();
   // Al borrar la presencia de un trabajador, limpiamos también las presencias
@@ -306,7 +362,7 @@ async function getClientExtract(clientName, from, to) {
 
 module.exports = {
   WORKERS, ESTADOS,
-  saveAttendance, deleteAttendance, getAttendance,
+  saveAttendance, deleteAttendance, getAttendance, syncPresenceFromParte,
   getMonthlySummary, buildClientSummary, getClientExtract,
   _invalidateWorkersCache,
 };
