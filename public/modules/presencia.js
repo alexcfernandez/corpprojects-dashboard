@@ -572,12 +572,17 @@
       }
 
       // ── Sección ayudantes externos ─────────────────────────────
+      // Nombres de plantilla normalizados (sin mayúsculas/acentos), para no
+      // listar como externo a quien ya es trabajador de plantilla.
+      const _norm = s => (s||'').toString().trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+      const registeredNames = new Set((CFG.workers || []).map(w => _norm(w.name)));
       const ayudantesMap = {};
       (data.entries || []).forEach(e => {
         if (!e.equipo) return;
         e.equipo.forEach(m => {
           if (m.tipo !== 'libre' && m.tipo !== 'externo') return;
           const nombre = m.nombre || '?';
+          if (registeredNames.has(_norm(nombre))) return;
           if (!ayudantesMap[nombre]) ayudantesMap[nombre] = { dias: 0, obras: {} };
           ayudantesMap[nombre].dias++;
           const cliente = e.clientName || 'Sin cliente';
