@@ -45,7 +45,7 @@
   <div class="header-right">
     <span style="font-size:11px;color:var(--text3)"><span class="live-dot"></span><span id="lastUpd">Cargando...</span></span>
     <button onclick="toggleTheme()" title="Cambiar tema" style="background:none;border:1px solid var(--border2);border-radius:8px;padding:5px 10px;color:var(--text2);cursor:pointer;font-size:14px;transition:all .2s" id="theme-toggle-btn">🌙</button>
-    <button class="sync-btn" onclick="loadAll()" id="syncBtn">🔄 Actualizar</button>
+    <button class="sync-btn" onclick="hardRefresh()" id="syncBtn">🔄 Actualizar</button>
     <button class="logout-btn" onclick="doLogout()">Salir</button>
   </div>
 </header>
@@ -534,6 +534,14 @@ async function loadAll(){
     loadBInfo();
     document.getElementById('lastUpd').textContent='Actualizado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
   }finally{b.classList.remove('loading');b.textContent='🔄 Actualizar';}
+}
+
+// Clic manual en "Actualizar": vacía la caché para traer datos frescos de StelOrder.
+// (La carga automática al entrar y el refresco de 15 min siguen usando loadAll a secas,
+//  que aprovecha la caché — por eso no se quema el límite diario.)
+async function hardRefresh(){
+  await af('/api/stelorder/refresh',{method:'POST'});
+  await loadAll();
 }
 
 // ── SUMMARY ───────────────────────────────────────────────────────
