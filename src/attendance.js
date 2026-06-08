@@ -73,6 +73,12 @@ async function getAttendance({ workerId, from, to, clientName } = {}) {
   return db.collection('attendance').find(query).sort({ date: -1 }).toArray();
 }
 
+// Normaliza un nombre para comparar (sin mayúsculas, acentos ni espacios sobrantes)
+function normName(s) {
+  return (s || '').toString().trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
 async function getMonthlySummary(year, month) {
   const db   = await getDB();
   const from = `${year}-${String(month).padStart(2,'0')}-01`;
@@ -82,6 +88,9 @@ async function getMonthlySummary(year, month) {
     .sort({ date: 1 }).toArray();
 
   const workersList = await getWorkers();
+  // Nombres de plantilla normalizados, para no contar como "ayudante externo"
+  // a alguien de plantilla que se apuntó a mano antes de darlo de alta.
+  const registeredNames = new Set(workersList.map(w => normName(w.name)));
   const byWorker = {};
   workersList.forEach(w => {
     byWorker[w.id] = {
@@ -143,6 +152,10 @@ async function getMonthlySummary(year, month) {
         e.equipo.forEach(m => {
           if (m.tipo === 'libre' || m.tipo === 'externo') {
             const nombre = m.nombre || '?';
+            // Si el nombre coincide con un trabajador de plantilla, NO es un
+            // ayudante externo: es personal de plantilla apuntado a mano. Su
+            // presencia debe salir de su propia ficha, no de la lista de externos.
+            if (registeredNames.has(normName(nombre))) return;
             if (!w.ayudantes[nombre]) w.ayudantes[nombre] = { dias: 0, costeHora: m.costeHora || 0 };
             w.ayudantes[nombre].dias++;
           }
