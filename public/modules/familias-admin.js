@@ -38,11 +38,25 @@
     if (!el) return;
     const conEmail = _contacts.filter(c => c.email).length;
     const total = _contacts.length;
+    const freqOpts = (sel) => [
+      ['manual','Manual (solo a mano)'],
+      ['weekly','Semanal (viernes)'],
+      ['biweekly','2/semana (lun y jue)'],
+      ['daily','Diaria'],
+      ['twice_daily','2 veces/día']
+    ].map(([v,l]) => `<option value="${v}" ${sel===v?'selected':''}>${l}</option>`).join('');
+    const fmtOpts = (sel) => [
+      ['grouped','Agrupado'],
+      ['individual','Individual']
+    ].map(([v,l]) => `<option value="${v}" ${sel===v?'selected':''}>${l}</option>`).join('');
+    const selStyle = "background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:7px 8px;color:var(--text);font-size:12px;outline:none;font-family:'Inter',sans-serif";
     const rows = _contacts.map((c,i) => `
       <tr>
         <td><strong>${esc(c.family)}</strong></td>
         <td><input type="email" id="fc-email-${i}" value="${esc(c.email)}" placeholder="responsable@empresa.com"
-            style="width:100%;min-width:220px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:7px 10px;color:var(--text);font-size:13px;outline:none;font-family:'Inter',sans-serif"></td>
+            style="width:100%;min-width:200px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:7px 10px;color:var(--text);font-size:13px;outline:none;font-family:'Inter',sans-serif"></td>
+        <td><select id="fc-freq-${i}" style="${selStyle}">${freqOpts(c.freq||'manual')}</select></td>
+        <td><select id="fc-format-${i}" style="${selStyle}">${fmtOpts(c.format||'grouped')}</select></td>
         <td style="text-align:center">
           <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text2)">
             <input type="checkbox" id="fc-paused-${i}" ${c.paused?'checked':''} style="width:16px;height:16px;cursor:pointer;accent-color:var(--amber)"> Pausada
@@ -64,14 +78,15 @@
           <button class="btn ${_globalPaused?'bp':'bgh'}" style="padding:8px 16px;font-size:13px" onclick="CP.FamiliasAdmin.toggleGlobal()">${_globalPaused?'▶️ Reactivar envíos':'⏸ Pausar TODO'}</button>
         </div>
         <div class="alert ain" style="margin-bottom:14px"><div>ℹ️</div><div>Cada aviso de factura se envía al responsable de su familia. Si una familia no tiene email, el aviso va al buzón de avisos. Marca <strong>Pausada</strong> para dejar de avisar a una familia temporalmente.</div></div>
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
-          <button class="btn bp" style="padding:8px 16px;font-size:13px" onclick="CP.FamiliasAdmin.sendSummaries()">📤 Enviar resumen ahora a cada familia</button>
-          <span id="fc-sum-msg" style="font-size:12px;color:var(--text3)">Un solo correo por familia con todas sus facturas pendientes.</span>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+          <button class="btn bp" style="padding:8px 16px;font-size:13px" onclick="CP.FamiliasAdmin.sendNow('grouped')">📤 Enviar resumen ahora</button>
+          <button class="btn bgh" style="padding:8px 16px;font-size:13px" onclick="CP.FamiliasAdmin.sendNow('individual')">📨 Enviar una por factura</button>
+          <span id="fc-sum-msg" style="font-size:12px;color:var(--text3)">Fuerza el envío ahora a todas las familias con responsable.</span>
         </div>
         <div style="font-size:12px;color:var(--text3);margin-bottom:10px">${conEmail} de ${total} familias con responsable asignado.</div>
         <table>
-          <thead><tr><th>Familia</th><th>Email del responsable</th><th style="text-align:center">Estado</th><th></th></tr></thead>
-          <tbody>${rows || '<tr><td colspan="4"><div class="empty"><div class="et">No hay familias.</div></div></td></tr>'}</tbody>
+          <thead><tr><th>Familia</th><th>Email del responsable</th><th>Frecuencia</th><th>Formato</th><th style="text-align:center">Estado</th><th></th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="6"><div class="empty"><div class="et">No hay familias.</div></div></td></tr>'}</tbody>
         </table>
       </div>`;
   }
@@ -91,24 +106,28 @@
     if (!c) return;
     const email  = document.getElementById('fc-email-'+i)?.value?.trim() || '';
     const paused = document.getElementById('fc-paused-'+i)?.checked || false;
+    const freq   = document.getElementById('fc-freq-'+i)?.value || 'manual';
+    const format = document.getElementById('fc-format-'+i)?.value || 'grouped';
     const msg = document.getElementById('fc-msg-'+i);
     if (msg) { msg.textContent='Guardando...'; msg.style.color='var(--text3)'; }
     try {
-      const r = await api('/api/family-contacts', { method:'PUT', body: JSON.stringify({ family: c.family, email, paused }) });
+      const r = await api('/api/family-contacts', { method:'PUT', body: JSON.stringify({ family: c.family, email, paused, freq, format }) });
       if (r && r.error) throw new Error(r.error);
-      c.email = email; c.paused = paused;
+      c.email = email; c.paused = paused; c.freq = freq; c.format = format;
       if (msg) { msg.textContent='✓ Guardado'; msg.style.color='var(--green)'; setTimeout(()=>{ if(msg && msg.textContent==='✓ Guardado') msg.textContent=''; }, 2500); }
     } catch(err) {
       if (msg) { msg.textContent='✗ '+err.message; msg.style.color='var(--red)'; }
     }
   }
 
-  async function sendSummaries() {
-    if (!confirm('¿Enviar ahora un resumen a cada familia con responsable asignado? Cada familia recibirá un único correo con todas sus facturas pendientes.')) return;
+  async function sendNow(format) {
+    const label = format === 'individual' ? 'una por factura (individual)' : 'un resumen agrupado';
+    if (!confirm(`¿Enviar AHORA ${label} a cada familia con responsable asignado? Ignora la frecuencia configurada y envía ya.`)) return;
     const msg = document.getElementById('fc-sum-msg');
     if (msg) { msg.textContent='Enviando...'; msg.style.color='var(--text2)'; }
     try {
-      const r = await api('/api/send-family-summaries', { method:'POST', body: JSON.stringify({}) });
+      const url = format === 'individual' ? '/api/send-family-individual' : '/api/send-family-summaries';
+      const r = await api(url, { method:'POST', body: JSON.stringify({}) });
       if (r && r.error) throw new Error(r.error);
       if (msg) { msg.textContent = '✓ ' + (r.message || 'Hecho'); msg.style.color='var(--green)'; }
     } catch(err) {
@@ -116,6 +135,6 @@
     }
   }
 
-  CP.FamiliasAdmin = { render, save, toggleGlobal, sendSummaries };
+  CP.FamiliasAdmin = { render, save, toggleGlobal, sendNow };
 
 })(window.CP = window.CP || {});
