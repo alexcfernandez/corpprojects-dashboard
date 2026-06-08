@@ -16,9 +16,7 @@ function getGmailClient() {
 
 // ── MongoDB ───────────────────────────────────────────────────────
 async function getDB() {
-  const client = new MongoClient(process.env.MONGODB_URI);
-  await client.connect();
-  return { db: client.db('corpprojects'), client };
+  return require('./db').getDBLegacy();
 }
 
 // ── Decodificar base64 de Gmail ───────────────────────────────────
