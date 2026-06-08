@@ -204,7 +204,9 @@
             <div style="display:flex;gap:6px;flex-shrink:0">
               ${(u.role==='tech'||u.role==='office')?`<button class="btn bgh" style="padding:5px 10px;font-size:11px" onclick="copyWorkerLink('${u._id}','${u.name}')">🔗 Enlace</button>`:''}
               <button class="btn bgh" style="padding:5px 10px;font-size:11px" onclick="CP.Usuarios.editUser('${u._id}')">✏️ Editar</button>
-              ${u.active!==false?`<button class="btn bgh" style="padding:5px 10px;font-size:11px;color:var(--red);border-color:var(--red)" onclick="CP.Usuarios.deactivateUser('${u._id}','${u.name}')">⏸️</button>`:''}
+              ${u.active!==false
+                ? `<button class="btn bgh" style="padding:5px 10px;font-size:11px;color:var(--red);border-color:var(--red)" onclick="CP.Usuarios.deactivateUser('${u._id}','${u.name}')" title="Desactivar">⏸️</button>`
+                : `<button class="btn bgh" style="padding:5px 10px;font-size:11px;color:var(--green);border-color:var(--green)" onclick="CP.Usuarios.reactivateUser('${u._id}','${u.name}')" title="Reactivar">▶️</button>`}
             </div>
           </div>`).join('')}
       </div>`;
@@ -254,6 +256,7 @@
       const result = await api(`/api/users/${id}`, { method:'PUT', body:JSON.stringify(data) });
       if (result.error) throw new Error(result.error);
       if (msg) { msg.textContent='✅ Usuario actualizado'; msg.style.display='block'; msg.style.color='var(--green)'; }
+      await refreshWorkers();
       setTimeout(() => { loadUsers(); showTab('lista', document.querySelector('#usuarios-container .btab')); }, 1000);
     } catch(err) {
       if (msg) { msg.textContent='❌ '+err.message; msg.style.display='block'; msg.style.color='var(--red)'; }
@@ -261,11 +264,28 @@
   }
 
   async function deactivateUser(id, name) {
-    if (!confirm(`¿Desactivar a ${name}? Perderá acceso inmediatamente.`)) return;
+    if (!confirm(`¿Desactivar a ${name}? Perderá acceso inmediatamente, pero NO se borra: podrás reactivarlo cuando quieras marcando "Mostrar inactivos".`)) return;
     try {
       await api(`/api/users/${id}`, { method:'DELETE' });
+      await refreshWorkers();
       loadUsers();
     } catch(err) { alert('Error: '+err.message); }
+  }
+
+  async function reactivateUser(id, name) {
+    if (!confirm(`¿Reactivar a ${name}? Volverá a aparecer en Partes y Presencia.`)) return;
+    try {
+      const result = await api(`/api/users/${id}`, { method:'PUT', body:JSON.stringify({ active:true }) });
+      if (result && result.error) throw new Error(result.error);
+      await refreshWorkers();
+      loadUsers();
+    } catch(err) { alert('Error: '+err.message); }
+  }
+
+  // Recarga la lista global de trabajadores para que Partes y Presencia
+  // se actualicen al cambiar de pestaña, sin tener que recargar la página.
+  async function refreshWorkers() {
+    try { await window.CP_CONFIG?.loadWorkers?.(); } catch(e) {}
   }
 
   function getFormData() {
@@ -291,6 +311,7 @@
       const result = await api('/api/users', { method:'POST', body:JSON.stringify(data) });
       if (result.error) throw new Error(result.error);
       if (msg) { msg.textContent=`✅ Usuario ${data.name} creado correctamente`; msg.style.display='block'; msg.style.color='var(--green)'; }
+      await refreshWorkers();
       resetForm();
       setTimeout(() => showTab('lista', null), 1500);
     } catch(err) {
@@ -339,6 +360,6 @@
     el.textContent = el.textContent === '••••' ? (pins[wid] || '????') : '••••';
   };
 
-  CP.Usuarios = { render, showTab, loadUsers, editUser, deactivateUser, submitUser, resetForm };
+  CP.Usuarios = { render, showTab, loadUsers, editUser, deactivateUser, reactivateUser, submitUser, resetForm };
 
 })(window.CP = window.CP || {});
