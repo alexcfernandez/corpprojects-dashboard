@@ -6,20 +6,7 @@ let db = null;
 let connecting = false;
 
 async function getDB() {
-  if (db) return db;
-  if (connecting) {
-    await new Promise(r => setTimeout(r, 2000));
-    if (db) return db;
-  }
-  connecting = true;
-  console.log('[MongoDB] Iniciando conexión...');
-  const client = new MongoClient(process.env.MONGODB_URI);
-  await client.connect();
-  await client.db('admin').command({ ping: 1 });
-  db = client.db('corpprojects');
-  connecting = false;
-  console.log('[MongoDB] ✅ Conectado');
-  return db;
+  return require('./db').getDB();
 }
 
 const WORKERS = CONFIG.workersFallback;
