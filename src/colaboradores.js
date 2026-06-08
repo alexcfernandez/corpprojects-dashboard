@@ -4,15 +4,7 @@ const { MongoClient, ObjectId } = require('mongodb');
 let db = null;
 
 async function getDB() {
-  if (db) return db;
-  const client = new MongoClient(process.env.MONGODB_URI);
-  await client.connect();
-  db = client.db('corpprojects');
-  await db.collection('colaboradores').createIndex({ nombre: 1 });
-  await db.collection('colaborador_movimientos').createIndex({ colaboradorId: 1, fecha: -1 });
-  await db.collection('colaborador_movimientos').createIndex({ fecha: -1 });
-  console.log('[Colaboradores] MongoDB conectado');
-  return db;
+  return require('./db').getDB();
 }
 
 async function getColaboradores(soloActivos = false) {
