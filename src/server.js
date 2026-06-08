@@ -16,7 +16,7 @@ const {
   getEstimatesSummary, getFamiliesSummary, getAccountCategories
 } = require('./stelorder');
 const { sendWhatsApp, sendEmail } = require('./notifications');
-const { startScheduler, checkPendingInvoices, runDailySummary, sendFamilySummaries } = require('./scheduler');
+const { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual } = require('./scheduler');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -135,16 +135,22 @@ app.get('/api/family-contacts', requireAuth, async (req, res) => {
     if (!names.includes('Sin familia')) names.push('Sin familia');
     res.json(names.map(name => {
       const c = map[name] || {};
-      return { family: name, email: c.email || '', paused: !!c.paused };
+      return {
+        family: name,
+        email:  c.email || '',
+        paused: !!c.paused,
+        freq:   c.freq   || 'manual',
+        format: c.format || 'grouped'
+      };
     }));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.put('/api/family-contacts', requireAuth, async (req, res) => {
   try {
-    const { family, email, paused } = req.body;
+    const { family, email, paused, freq, format } = req.body;
     if (!family) return res.status(400).json({ error: 'Falta la familia' });
-    const saved = await avisos.setFamilyContact(family, { email, paused });
+    const saved = await avisos.setFamilyContact(family, { email, paused, freq, format });
     res.json(saved);
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
@@ -163,10 +169,21 @@ app.put('/api/avisos-status', requireAuth, async (req, res) => {
 // Enviar AHORA un resumen agrupado a cada familia con responsable
 app.post('/api/send-family-summaries', requireAuth, async (req, res) => {
   try {
-    const r = await sendFamilySummaries();
+    const r = await sendManual('grouped');
     const message = r.paused
       ? '⏸ Envíos en pausa global — no se ha enviado nada.'
       : `Resúmenes enviados: ${r.sent} · omitidos: ${r.skipped}`;
+    res.json({ message, ...r });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Enviar AHORA las facturas una a una (individual) a cada familia con responsable
+app.post('/api/send-family-individual', requireAuth, async (req, res) => {
+  try {
+    const r = await sendManual('individual');
+    const message = r.paused
+      ? '⏸ Envíos en pausa global — no se ha enviado nada.'
+      : `Familias avisadas (individual): ${r.sent} · omitidas: ${r.skipped}`;
     res.json({ message, ...r });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
