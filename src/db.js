@@ -89,8 +89,9 @@ async function ensureIndexes(db) {
     ['obras',                  { clientName: 1 }],
     ['obras',                  { status: 1 }],
     ['obras',                  { createdAt: -1 }],
-    // nuevo: acelera las búsquedas y upserts de presencia (no único, sin riesgo)
-    ['attendance',             { workerId: 1, date: 1 }],
+    // attendance ya tiene un índice ÚNICO {workerId, date} creado de antes
+    // (garantiza un solo registro por trabajador y día). No lo recreamos.
+    // Añadimos solo este para acelerar las consultas por fecha del calendario:
     ['attendance',             { date: 1 }],
   ];
 
