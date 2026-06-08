@@ -165,7 +165,6 @@ app.post('/api/test-notification', requireAuth, async (req,res) => {
 // ── PRESENCIA ─────────────────────────────────────────────────────
 const attendance = require('./attendance');
 
-app.get('/api/workers',  requireAuth, (req, res) => res.json(attendance.WORKERS));
 app.get('/api/estados',  requireAuth, (req, res) => res.json(attendance.ESTADOS));
 
 app.post('/api/attendance', requireAuth, async (req, res) => {
