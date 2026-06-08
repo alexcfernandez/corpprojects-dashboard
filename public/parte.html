@@ -194,8 +194,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       </div>
 
       <div class="field">
-        <label>Horas trabajadas</label>
-        <input type="number" id="f-horas" value="8" min="0.5" max="16" step="0.5" inputmode="decimal">
+        <label>Horas trabajadas en este sitio</label>
+        <input type="number" id="f-horas" placeholder="Ej: 4" min="0.5" max="16" step="0.5" inputmode="decimal">
       </div>
 
       <!-- EQUIPO -->
@@ -717,7 +717,7 @@ async function submitParte() {
   const date        = document.getElementById('f-date').value;
   const clientName  = document.getElementById('f-client').value.trim();
   const description = document.getElementById('f-desc').value.trim();
-  const horas       = parseFloat(document.getElementById('f-horas').value || 8);
+  const horas       = parseFloat(document.getElementById('f-horas').value);
   const notas       = document.getElementById('f-notas').value.trim();
   const pendienteDetalle = document.getElementById('f-pendiente')?.value?.trim() || '';
   const materialDetalle  = document.getElementById('f-material')?.value?.trim()  || '';
@@ -725,6 +725,7 @@ async function submitParte() {
   if (!date)        { showMsg('form-msg','⚠️ La fecha es obligatoria','warn'); return; }
   if (!clientName)  { showMsg('form-msg','⚠️ El cliente es obligatorio','warn'); return; }
   if (!description) { showMsg('form-msg','⚠️ Describe el trabajo realizado','warn'); return; }
+  if (!horas || isNaN(horas) || horas <= 0) { showMsg('form-msg','⚠️ Indica cuántas horas trabajaste en este sitio','warn'); return; }
   if ((estadoTrabajoSel==='continua'||estadoTrabajoSel==='parcial') && !pendienteDetalle) {
     showMsg('form-msg','⚠️ Indica qué queda por hacer','warn'); return;
   }
@@ -834,7 +835,7 @@ function resetForm() {
   ['f-client','f-desc','f-notas','f-pendiente','f-material'].forEach(id => {
     const e=document.getElementById(id); if(e) e.value='';
   });
-  document.getElementById('f-horas').value = '8';
+  document.getElementById('f-horas').value = '';
   document.getElementById('f-mat-rows').innerHTML = '';
   photoStore.work=[]; photoStore.albaran=[];
   ['f-fotos-preview','f-albaranes-preview'].forEach(id => { const e=document.getElementById(id); if(e) e.innerHTML=''; });
