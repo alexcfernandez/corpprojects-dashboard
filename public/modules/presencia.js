@@ -14,6 +14,7 @@
   let modalWorker = null, modalDate = null;
   let _equipoPresencia = [];
   let _libresPresencia = [];
+  let _obrasModal = [];   // [{clientName, horas}] — obras del día (estado 'obra'), editable a mano
 
   async function api(url, opts = {}) {
     const tok = localStorage.getItem('cp_token');
@@ -291,15 +292,16 @@
     const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long' });
     const WORKERS   = CFG.workers;
 
-    // Si el día tiene varias obras (desde partes), preparamos un desglose visible.
-    const _obrasDia = (entry && Array.isArray(entry.obras) && entry.obras.length > 1) ? entry.obras : null;
-    const _obrasHtml = _obrasDia ? `
-      <div style="background:rgba(77,156,248,.08);border:1px solid rgba(77,156,248,.25);border-radius:10px;padding:10px 12px;margin-bottom:12px">
-        <div style="font-size:10px;color:var(--blue);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">📋 Varias obras este día (desde partes)</div>
-        ${_obrasDia.map(o => `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);padding:2px 0"><span>${o.clientName}</span><span style="color:var(--text)">${o.horas}h</span></div>`).join('')}
-        <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600;border-top:1px solid var(--border);margin-top:5px;padding-top:5px"><span>Total</span><span>${_obrasDia.reduce((s,o)=>s+parseFloat(o.horas||0),0)}h</span></div>
-        <div style="font-size:10px;color:var(--amber);margin-top:6px">⚠️ Si guardas cambios aquí, se reemplazarán por un solo registro.</div>
-      </div>` : '';
+    // Obras del día (estado 'obra'): lista editable cliente+horas.
+    // Se rellena desde entry.obras (multi), o desde clientName/horas (single), o una fila vacía.
+    if (entry && Array.isArray(entry.obras) && entry.obras.length) {
+      _obrasModal = entry.obras.map(o => ({ clientName: o.clientName || '', horas: o.horas }));
+    } else if (entry && entry.estado === 'obra' && entry.clientName) {
+      _obrasModal = [{ clientName: entry.clientName, horas: entry.horas }];
+    } else {
+      _obrasModal = [{ clientName: '', horas: '' }];
+    }
+
 
     const modal = document.createElement('div');
     modal.id = 'p-modal';
@@ -335,12 +337,14 @@
         </div>
 
         <div id="p-obra-fields" style="display:${selectedEstado==='obra'?'block':'none'}">
-          ${_obrasHtml}
           <div style="margin-bottom:12px">
-            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Cliente / Obra</div>
-            <input type="text" id="p-client-name" value="${entry?.clientName||''}" placeholder="Buscar cliente..."
-              list="p-clients-datalist" autocomplete="off"
-              style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;color:var(--text);font-size:13px;outline:none;font-family:'Inter',sans-serif">
+            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Cliente / Obra · Horas</div>
+            <div id="p-obras-rows">${_obrasModal.map((o,i)=>_obraRowHtml(o,i)).join('')}</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px">
+              <button type="button" onclick="CP.Presencia._addObraRow()"
+                style="background:none;border:1px dashed var(--border2);border-radius:8px;color:var(--text2);cursor:pointer;padding:6px 12px;font-size:12px;font-family:'Inter',sans-serif">+ Añadir obra</button>
+              <span id="p-obras-total" style="font-size:11px;color:var(--text3)"></span>
+            </div>
             <datalist id="p-clients-datalist"></datalist>
           </div>
           <div style="margin-bottom:10px">
@@ -378,7 +382,7 @@
         </div>
 
         <div style="display:flex;gap:10px;margin-bottom:16px">
-          <div style="flex:1">
+          <div style="flex:1;display:${selectedEstado==='obra'?'none':'block'}" id="p-horas-wrap">
             <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Horas</div>
             <input type="number" id="p-horas" value="${entry?.horas||8}" min="1" max="16"
               style="width:80px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none">
@@ -400,6 +404,8 @@
 
     document.body.appendChild(modal);
     modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
+
+    _renderObrasRows();
 
     _libresPresencia.forEach((m, i) => {
       const cont = document.getElementById('p-libres-chips');
@@ -445,6 +451,9 @@
     });
     const obraFields = document.getElementById('p-obra-fields');
     if (obraFields) obraFields.style.display = k==='obra' ? 'block' : 'none';
+    const horasWrap = document.getElementById('p-horas-wrap');
+    if (horasWrap) horasWrap.style.display = k==='obra' ? 'none' : 'block';
+    if (k==='obra') _updateObrasTotal();
   }
 
   function _toggleChipEquipo(btn) {
@@ -468,6 +477,60 @@
     cont.appendChild(chip);
   }
 
+  // ── OBRAS DEL DÍA (lista editable cliente+horas) ──────────────────
+  function _obraRowHtml(o, i) {
+    const cli = String(o.clientName || '').replace(/"/g, '&quot;');
+    const h   = (o.horas != null && o.horas !== '') ? o.horas : '';
+    return `<div class="p-obra-row" data-i="${i}" style="display:flex;gap:6px;margin-bottom:6px">
+      <input type="text" class="p-obra-cli" value="${cli}" placeholder="Buscar cliente / obra..." list="p-clients-datalist" autocomplete="off"
+        style="flex:1;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;color:var(--text);font-size:13px;outline:none;font-family:'Inter',sans-serif">
+      <input type="number" class="p-obra-h" value="${h}" placeholder="h" min="0.5" max="16" step="0.5"
+        oninput="CP.Presencia._updateObrasTotal()"
+        style="width:62px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px 6px;color:var(--text);font-size:13px;outline:none;text-align:center">
+      <button type="button" onclick="CP.Presencia._removeObraRow(${i})" title="Quitar obra"
+        style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;color:var(--text3);cursor:pointer;padding:0 11px;font-size:13px">✕</button>
+    </div>`;
+  }
+
+  function _readObrasFromDOM() {
+    const rows = document.querySelectorAll('#p-obras-rows .p-obra-row');
+    const arr = [];
+    rows.forEach(r => {
+      const clientName = r.querySelector('.p-obra-cli')?.value?.trim() || '';
+      const raw = r.querySelector('.p-obra-h')?.value;
+      const horas = (raw === '' || raw == null) ? '' : parseFloat(raw);
+      arr.push({ clientName, horas: isNaN(horas) ? '' : horas });
+    });
+    return arr;
+  }
+
+  function _renderObrasRows() {
+    const cont = document.getElementById('p-obras-rows');
+    if (!cont) return;
+    cont.innerHTML = _obrasModal.map((o,i) => _obraRowHtml(o,i)).join('');
+    _updateObrasTotal();
+  }
+
+  function _updateObrasTotal() {
+    const el = document.getElementById('p-obras-total');
+    if (!el) return;
+    const total = _readObrasFromDOM().reduce((s,o) => s + (parseFloat(o.horas)||0), 0);
+    el.textContent = total > 0 ? `Total: ${total} h` : '';
+  }
+
+  function _addObraRow() {
+    _obrasModal = _readObrasFromDOM();
+    _obrasModal.push({ clientName: '', horas: '' });
+    _renderObrasRows();
+  }
+
+  function _removeObraRow(i) {
+    _obrasModal = _readObrasFromDOM();
+    _obrasModal.splice(i, 1);
+    if (!_obrasModal.length) _obrasModal.push({ clientName: '', horas: '' });
+    _renderObrasRows();
+  }
+
   async function _saveEntry() {
     if (!selectedEstado) {
       const msg = document.getElementById('p-modal-msg');
@@ -475,19 +538,36 @@
       return;
     }
     const workerInfo = CFG.workers.find(w => w.id === modalWorker);
+    const msg = document.getElementById('p-modal-msg');
+
+    // En estado 'obra' las horas y el cliente salen de la lista de obras.
+    let clientName = '', horas = 0, obras = null;
+    if (selectedEstado === 'obra') {
+      const valid = _readObrasFromDOM().filter(o => o.clientName);
+      if (!valid.length) {
+        if (msg) { msg.textContent='⚠️ Añade al menos una obra con cliente'; msg.style.display='block'; msg.style.color='var(--amber)'; }
+        return;
+      }
+      obras      = valid.map(o => ({ clientName: o.clientName, horas: parseFloat(o.horas) || 0 }));
+      clientName = obras[0].clientName;
+      horas      = obras.reduce((s,o) => s + o.horas, 0);
+    } else {
+      horas = parseFloat(document.getElementById('p-horas')?.value || 8);
+    }
+
     const entry = {
       workerId:    modalWorker,
       workerName:  workerInfo?.name || '',
       date:        modalDate,
       estado:      selectedEstado,
-      clientName:  selectedEstado==='obra' ? (document.getElementById('p-client-name')?.value?.trim()||'') : '',
-      horas:       parseFloat(document.getElementById('p-horas')?.value || 8),
+      clientName,
+      horas,
       notas:       document.getElementById('p-notas')?.value?.trim() || '',
       tieneParte:  document.getElementById('p-tiene-parte')?.checked || false,
       tipoJornada: CFG.tipoJornadaPorFecha(modalDate),
       equipo:      [..._equipoPresencia, ..._libresPresencia],
     };
-    const msg = document.getElementById('p-modal-msg');
+    if (obras) entry.obras = obras;
     if (msg) { msg.textContent='⏳ Guardando...'; msg.style.display='block'; msg.style.color='var(--text2)'; }
     try {
       await api('/api/attendance', { method:'POST', body: JSON.stringify(entry) });
@@ -790,6 +870,7 @@
     addMatRow, calcObra,
     _selectEstado, _saveEntry, _deleteEntry,
     _toggleChipEquipo, _addExternoPresencia, _removeLibre,
+    _addObraRow, _removeObraRow, _updateObrasTotal,
   };
 
 })(window.CP = window.CP || {});
