@@ -124,6 +124,31 @@ app.get('/api/estimates',          requireAuth, async (req,res) => res.json(awai
 app.get('/api/families',           requireAuth, async (req,res) => res.json(await getFamiliesSummary()));
 app.get('/api/families/list',      requireAuth, async (req,res) => { const {list} = await getAccountCategories(); res.json(list); });
 
+// ── Responsables por familia (a quién van los avisos de cada familia) ──
+const avisos = require('./avisos');
+
+app.get('/api/family-contacts', requireAuth, async (req, res) => {
+  try {
+    const { list } = await getAccountCategories();
+    const map = await avisos.getFamilyContactMap();
+    const names = (list || []).map(f => f.name).filter(Boolean);
+    if (!names.includes('Sin familia')) names.push('Sin familia');
+    res.json(names.map(name => {
+      const c = map[name] || {};
+      return { family: name, email: c.email || '', paused: !!c.paused };
+    }));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/family-contacts', requireAuth, async (req, res) => {
+  try {
+    const { family, email, paused } = req.body;
+    if (!family) return res.status(400).json({ error: 'Falta la familia' });
+    const saved = await avisos.setFamilyContact(family, { email, paused });
+    res.json(saved);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 app.get('/api/invoices/by-family/:family', requireAuth, async (req, res) => {
   const pending = await getPendingInvoices();
   const all     = await getInvoices();
