@@ -38,15 +38,33 @@ async function isFamilyPaused(family) {
   return !!(doc && doc.paused);
 }
 
-// upsert de un responsable. email y/o paused.
-async function setFamilyContact(family, { email, paused } = {}) {
+const FREQS   = ['manual', 'weekly', 'biweekly', 'daily', 'twice_daily'];
+const FORMATS = ['grouped', 'individual'];
+
+// upsert de un responsable. email, paused, freq y/o format.
+async function setFamilyContact(family, { email, paused, freq, format } = {}) {
   if (!family) throw new Error('Falta la familia');
   const db = await getDB();
   const set = { family, updatedAt: new Date() };
   if (email  !== undefined) set.email  = String(email || '').trim();
   if (paused !== undefined) set.paused = !!paused;
+  if (freq   !== undefined) set.freq   = FREQS.includes(freq)     ? freq   : 'manual';
+  if (format !== undefined) set.format = FORMATS.includes(format) ? format : 'grouped';
   await db.collection('familyContacts').updateOne({ family }, { $set: set }, { upsert: true });
   return db.collection('familyContacts').findOne({ family });
+}
+
+// Config completa de una familia, con valores por defecto seguros.
+async function getFamilyConfig(family) {
+  const db = await getDB();
+  const doc = (await db.collection('familyContacts').findOne({ family })) || {};
+  return {
+    family,
+    email:  (doc.email || '').trim(),
+    paused: !!doc.paused,
+    freq:   FREQS.includes(doc.freq)     ? doc.freq   : 'manual',
+    format: FORMATS.includes(doc.format) ? doc.format : 'grouped'
+  };
 }
 
 // ── Registro persistente de avisos enviados ───────────────────────
@@ -90,7 +108,7 @@ async function setGlobalPaused(paused) {
 }
 
 module.exports = {
-  getFamilyContacts, getFamilyContactMap, getFamilyEmail, isFamilyPaused, setFamilyContact,
+  getFamilyContacts, getFamilyContactMap, getFamilyEmail, isFamilyPaused, setFamilyContact, getFamilyConfig,
   wasAlertSentToday, markAlertSent,
   isGlobalPaused, setGlobalPaused
 };
