@@ -65,18 +65,22 @@ async function sendWhatsApp(message) {
 
 // ─── Enviar Email por la API de Gmail (HTTPS, no lo bloquea el host) ──
 // Reutiliza las mismas credenciales OAuth que ya funcionan para LEER correo.
-async function sendViaGmail({ from, to, subject, html, text }) {
+async function sendViaGmail({ from, to, bcc, subject, html, text }) {
   const { getGmailClient } = require('./email-intelligence');
   const gmail = getGmailClient();
   const boundary = '=_cp_' + Date.now();
   const subjectEnc = `=?UTF-8?B?${Buffer.from(subject || '').toString('base64')}?=`;
-  const headers = [
+  const headerLines = [
     `From: ${from}`,
-    `To: ${to}`,
+    `To: ${to}`
+  ];
+  if (bcc) headerLines.push(`Bcc: ${bcc}`);
+  headerLines.push(
     `Subject: ${subjectEnc}`,
     'MIME-Version: 1.0',
     `Content-Type: multipart/alternative; boundary="${boundary}"`
-  ].join('\r\n');
+  );
+  const headers = headerLines.join('\r\n');
   const body = [
     `--${boundary}`,
     'Content-Type: text/plain; charset="UTF-8"',
@@ -96,15 +100,15 @@ async function sendViaGmail({ from, to, subject, html, text }) {
 }
 
 // ─── Enviar Email ─────────────────────────────────────────────────
-async function sendEmail({ to, subject, html, text }) {
-  if (!to) { console.warn('[Email] Sin destinatario (EMAIL_ADMIN vacío), omitiendo'); return false; }
+async function sendEmail({ to, bcc, subject, html, text }) {
+  if (!to) { console.warn('[Email] Sin destinatario, omitiendo'); return false; }
   const from = process.env.EMAIL_FROM || `Corp Projects <${process.env.EMAIL_USER || ''}>`;
 
   // 1) Preferimos la API de Gmail si hay OAuth configurado (mismo canal que leer).
   if (process.env.GMAIL_REFRESH_TOKEN && process.env.GMAIL_CLIENT_ID) {
     try {
-      await sendViaGmail({ from, to, subject, html, text });
-      console.log(`[Email] Enviado (API Gmail) a ${to}: ${subject}`);
+      await sendViaGmail({ from, to, bcc, subject, html, text });
+      console.log(`[Email] Enviado (API Gmail) a ${to}${bcc ? ' (bcc '+bcc+')' : ''}: ${subject}`);
       return true;
     } catch (err) {
       // Si falla por permisos del token (falta scope de envío), lo veremos aquí.
@@ -115,8 +119,8 @@ async function sendEmail({ to, subject, html, text }) {
   // 2) Plan B: SMTP (con timeouts; puede fallar si el host bloquea el puerto).
   try {
     const transporter = getTransporter();
-    await transporter.sendMail({ from, to, subject, html, text });
-    console.log(`[Email] Enviado (SMTP) a ${to}: ${subject}`);
+    await transporter.sendMail({ from, to, bcc, subject, html, text });
+    console.log(`[Email] Enviado (SMTP) a ${to}${bcc ? ' (bcc '+bcc+')' : ''}: ${subject}`);
     return true;
   } catch (err) {
     console.error('[Email] Error:', err.message);
@@ -190,11 +194,20 @@ async function sendInvoiceAlert(invoice) {
 </body>
 </html>`;
 
+  // Destinatario: responsable de la familia; si no hay, el buzón de avisos.
+  // Copia oculta (BCC) siempre al buzón de avisos para tener constancia.
+  const avisos = require('./avisos');
+  const avisosBox  = process.env.EMAIL_AVISOS || process.env.EMAIL_ADMIN;
+  const familyMail = await avisos.getFamilyEmail(invoice.family);
+  const to  = familyMail || avisosBox;
+  const bcc = (avisosBox && avisosBox !== to) ? avisosBox : undefined;
+
   // Enviar ambos en paralelo
   await Promise.all([
     sendWhatsApp(waMsg),
     sendEmail({
-      to:      process.env.EMAIL_ADMIN,
+      to,
+      bcc,
       subject,
       html:    emailHtml,
       text:    waMsg
