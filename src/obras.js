@@ -4,15 +4,7 @@ const { MongoClient, ObjectId } = require('mongodb');
 let db = null;
 
 async function getDB() {
-  if (db) return db;
-  const client = new MongoClient(process.env.MONGODB_URI);
-  await client.connect();
-  db = client.db('corpprojects');
-  await db.collection('obras').createIndex({ clientName: 1 });
-  await db.collection('obras').createIndex({ status: 1 });
-  await db.collection('obras').createIndex({ createdAt: -1 });
-  console.log('[Obras] MongoDB conectado');
-  return db;
+  return require('./db').getDB();
 }
 
 const ESTADOS_OBRA = {
