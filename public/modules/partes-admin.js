@@ -145,23 +145,6 @@
         <div class="alert ain" style="margin-bottom:14px"><div>🔑</div><div><strong>Acceso de trabajadores</strong> — entran con PIN en <strong>/parte</strong></div></div>
         <div class="g2">
           <div class="card">
-            <div class="card-title">PINs de acceso</div>
-            <table>
-              <thead><tr><th>Trabajador</th><th style="text-align:center">PIN</th><th>Enlace</th></tr></thead>
-              <tbody>
-                ${WORKERS.map(w=>`<tr>
-                  <td><strong>${w.name}</strong></td>
-                  <td style="text-align:center">
-                    <span style="font-family:monospace;background:var(--bg3);padding:3px 10px;border-radius:6px" id="pin-${w.id}">••••</span>
-                    <button onclick="togglePin('${w.id}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px;margin-left:6px">👁</button>
-                  </td>
-                  <td><a href="/parte?w=${w.id}" target="_blank" style="color:var(--blue);font-size:11px">Abrir →</a></td>
-                </tr>`).join('')}
-              </tbody>
-            </table>
-            <div class="alert awa" style="margin-top:12px"><div>⚠️</div><div>PINs pendientes de mover a módulo Usuarios en próxima actualización.</div></div>
-          </div>
-          <div class="card">
             <div class="card-title">Externos / colaboradores</div>
             <div id="externos-admin-lista"><div class="empty"><div class="et">Cargando...</div></div></div>
             <button class="btn bp" style="margin-top:10px" onclick="CP.PartesAdmin.abrirModalExterno()">+ Añadir externo</button>
@@ -1066,15 +1049,6 @@
         </div>`;
     } catch(err) { el.innerHTML = `<div style="color:var(--red);font-size:12px">Error: ${err.message}</div>`; }
   }
-
-  window.togglePin = function(wid) {
-    // PINs temporales hasta migrar a módulo Usuarios
-    const cfg = window.CP_CONFIG.workersFallback || [];
-    const w   = cfg.find(x => x.id === wid);
-    const el  = document.getElementById('pin-' + wid);
-    if (!el) return;
-    el.textContent = el.textContent === '••••' ? (w?.pin || '????') : '••••';
-  };
 
   CP.PartesAdmin = {
     render, showTab, applyFilters, clearFilters, goPage,
