@@ -15,6 +15,7 @@
 
   let _contacts = [];
   let _containerId = null;
+  let _globalPaused = false;
 
   async function render(containerId) {
     _containerId = containerId;
@@ -22,8 +23,12 @@
     if (!el) return;
     el.innerHTML = `<div class="card"><div class="card-title">📧 Responsables de avisos por familia</div><div class="empty"><div class="et">Cargando...</div></div></div>`;
     try {
-      const data = await api('/api/family-contacts');
+      const [data, status] = await Promise.all([
+        api('/api/family-contacts'),
+        api('/api/avisos-status')
+      ]);
       _contacts = Array.isArray(data) ? data : [];
+      _globalPaused = !!(status && status.globalPaused);
     } catch(e) { _contacts = []; }
     _draw();
   }
@@ -51,6 +56,13 @@
     el.innerHTML = `
       <div class="card">
         <div class="card-title">📧 Responsables de avisos por familia</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:${_globalPaused?'rgba(239,68,68,.12)':'rgba(34,197,94,.10)'};border:1px solid ${_globalPaused?'rgba(239,68,68,.4)':'rgba(34,197,94,.3)'};border-radius:10px;padding:12px 14px;margin-bottom:14px">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:${_globalPaused?'var(--red)':'var(--green)'}">${_globalPaused?'⏸ ENVÍOS PAUSADOS':'▶️ Envíos activos'}</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">${_globalPaused?'No se está enviando ningún aviso (ni a clientes ni al buzón de avisos).':'Los avisos de factura se están enviando con normalidad.'}</div>
+          </div>
+          <button class="btn ${_globalPaused?'bp':'bgh'}" style="padding:8px 16px;font-size:13px" onclick="CP.FamiliasAdmin.toggleGlobal()">${_globalPaused?'▶️ Reactivar envíos':'⏸ Pausar TODO'}</button>
+        </div>
         <div class="alert ain" style="margin-bottom:14px"><div>ℹ️</div><div>Cada aviso de factura se envía al responsable de su familia. Si una familia no tiene email, el aviso va al buzón de avisos. Marca <strong>Pausada</strong> para dejar de avisar a una familia temporalmente.</div></div>
         <div style="font-size:12px;color:var(--text3);margin-bottom:10px">${conEmail} de ${total} familias con responsable asignado.</div>
         <table>
@@ -58,6 +70,16 @@
           <tbody>${rows || '<tr><td colspan="4"><div class="empty"><div class="et">No hay familias.</div></div></td></tr>'}</tbody>
         </table>
       </div>`;
+  }
+
+  async function toggleGlobal() {
+    const next = !_globalPaused;
+    if (next && !confirm('¿Pausar TODOS los envíos de avisos? No se enviará ningún aviso (ni a clientes ni al buzón) hasta que lo reactives.')) return;
+    try {
+      const r = await api('/api/avisos-status', { method:'PUT', body: JSON.stringify({ paused: next }) });
+      _globalPaused = !!(r && r.globalPaused);
+      _draw();
+    } catch(err) { alert('No se pudo cambiar: ' + err.message); }
   }
 
   async function save(i) {
@@ -77,6 +99,6 @@
     }
   }
 
-  CP.FamiliasAdmin = { render, save };
+  CP.FamiliasAdmin = { render, save, toggleGlobal };
 
 })(window.CP = window.CP || {});
