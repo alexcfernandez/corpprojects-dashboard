@@ -1,7 +1,7 @@
 // src/scheduler.js — con protección contra alertas al arrancar
 const cron = require('node-cron');
 const { getPendingInvoices, getSummary } = require('./stelorder');
-const { sendInvoiceAlert, sendDailySummary } = require('./notifications');
+const { sendInvoiceAlert, sendDailySummary, sendFamilySummary } = require('./notifications');
 const { pollEmails } = require('./email-intelligence');
 const avisos = require('./avisos');   // registro persistente de avisos enviados
 
@@ -52,6 +52,36 @@ async function runDailySummary() {
   }
 }
 
+// Envía UN resumen agrupado por familia (todas sus facturas pendientes en un
+// solo correo). Solo a familias con responsable asignado y no pausadas. Respeta
+// la pausa global y el dedup diario (una vez al día por familia).
+async function sendFamilySummaries() {
+  if (await avisos.isGlobalPaused()) {
+    console.log('[Scheduler] ⏸ Avisos en PAUSA global — no se envían resúmenes.');
+    return { paused: true, sent: 0, skipped: 0 };
+  }
+  let sent = 0, skipped = 0;
+  try {
+    const pending = await getPendingInvoices();
+    const byFam = {};
+    for (const inv of pending) { (byFam[inv.family || 'Sin familia'] = byFam[inv.family || 'Sin familia'] || []).push(inv); }
+    for (const [family, invoices] of Object.entries(byFam)) {
+      const email = await avisos.getFamilyEmail(family);   // null si no hay o está pausada
+      if (!email) { skipped++; continue; }
+      if (await avisos.wasAlertSentToday('FAMSUM:' + family, 'summary')) { skipped++; continue; }
+      console.log(`[Scheduler] Resumen → ${family} (${invoices.length} facturas) → ${email}`);
+      await sendFamilySummary(family, invoices);
+      await avisos.markAlertSent('FAMSUM:' + family, 'summary');
+      sent++;
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    console.log(`[Scheduler] Resúmenes por familia: ${sent} enviados, ${skipped} omitidos.`);
+  } catch (err) {
+    console.error('[Scheduler] Error resúmenes por familia:', err.message);
+  }
+  return { sent, skipped };
+}
+
 function startScheduler() {
   console.log('[Scheduler] Iniciando tareas...');
 
@@ -86,4 +116,4 @@ function startScheduler() {
   }, 2 * 60 * 1000);
 }
 
-module.exports = { startScheduler, checkPendingInvoices, runDailySummary };
+module.exports = { startScheduler, checkPendingInvoices, runDailySummary, sendFamilySummaries };
