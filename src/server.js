@@ -506,9 +506,17 @@ app.get('/api/clients/list', async (req, res) => {
 // ── ASIGNACIONES, EXTERNOS Y EXPEDIENTES ─────────────────────────
 const expedientes = require('./expedientes');
 
-app.get('/api/externos', requireAuth, async (req, res) => {
-  try { res.json(await expedientes.getExternos()); }
-  catch (err) { res.status(500).json({ error: err.message }); }
+app.get('/api/externos', async (req, res) => {
+  try {
+    // Lectura permitida a admin (JWT) o trabajador (token de parte)
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'No autorizado' });
+    let ok = false;
+    try { jwt.verify(token, JWT_SECRET); ok = true; } catch {}
+    if (!ok) { const w = await partes.verifyWorkerToken(token); ok = !!w; }
+    if (!ok) return res.status(401).json({ error: 'No autorizado' });
+    res.json(await expedientes.getExternos());
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/externos', requireAuth, async (req, res) => {
