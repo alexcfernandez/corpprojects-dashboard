@@ -21,6 +21,14 @@ const { startScheduler, checkPendingInvoices, runDailySummary } = require('./sch
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
+// Seguridad: sin JWT_SECRET no arrancamos. Antes se firmaba con la palabra
+// 'fallback' (pública), lo que permitiría falsificar tokens de admin.
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error('[FATAL] Falta JWT_SECRET en las variables de entorno. Configúrala en Railway antes de arrancar.');
+  process.exit(1);
+}
+
 app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({
@@ -51,14 +59,16 @@ const loginLimiter = rateLimit({ windowMs: 15*60*1000, max: 20, message: { error
 function requireAuth(req, res, next) {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) return res.status(401).json({ error: 'No autorizado' });
-  try { req.user = jwt.verify(token, process.env.JWT_SECRET || 'fallback'); next(); }
+  try { req.user = jwt.verify(token, JWT_SECRET); next(); }
   catch { return res.status(401).json({ error: 'Token inválido' }); }
 }
 
+// Usa la conexión única compartida (src/db.js). Mantiene el contrato
+// { db, client } para no romper las rutas existentes; client.close() es
+// un no-op porque la conexión con pool se reutiliza, no se cierra.
+const sharedDb = require('./db');
 async function getDB() {
-  const client = new MongoClient(process.env.MONGODB_URI);
-  await client.connect();
-  return { db: client.db('corpprojects'), client };
+  return sharedDb.getDBLegacy();
 }
 
 // ===== OAUTH GMAIL =====
@@ -101,7 +111,7 @@ app.post('/api/login', loginLimiter, async (req, res) => {
   if (!password) return res.status(400).json({ error: 'Contraseña requerida' });
   if (password !== process.env.DASHBOARD_PASSWORD)
     return res.status(401).json({ error: 'Contraseña incorrecta' });
-  const token = jwt.sign({ user:'admin' }, process.env.JWT_SECRET||'fallback', { expiresIn:'24h' });
+  const token = jwt.sign({ user:'admin' }, JWT_SECRET, { expiresIn:'24h' });
   res.json({ token, expiresIn:'24h' });
 });
 
@@ -238,7 +248,7 @@ app.get('/api/users/me', async (req, res) => {
   try {
     if (!token.startsWith('u_')) {
       const jwt = require('jsonwebtoken');
-      jwt.verify(token, process.env.JWT_SECRET || 'fallback');
+      jwt.verify(token, JWT_SECRET);
       return res.json({ role: 'admin', userName: 'Admin' });
     }
     const session = await users.verifyUserToken(token);
@@ -394,7 +404,7 @@ app.post('/api/partes', uploadMemory.any(), async (req, res) => {
       workerInfo = { workerId: workerDoc.workerId, workerName: workerDoc.workerName, role: 'worker', ip: req.ip, userAgent: req.headers['user-agent'] };
     } else {
       const token = authHeader.replace('Bearer ', '');
-      jwt.verify(token, process.env.JWT_SECRET || 'fallback');
+      jwt.verify(token, JWT_SECRET);
       const bodyData = req.body.data ? JSON.parse(req.body.data) : req.body;
       const worker = partes.WORKERS.find(w => w.id === bodyData.workerId);
       workerInfo = { workerId: bodyData.workerId || 'admin', workerName: bodyData.workerName || worker?.name || 'Admin', role: 'admin', ip: req.ip, userAgent: req.headers['user-agent'] };
@@ -476,7 +486,7 @@ app.get('/api/clients/list', async (req, res) => {
       const w = token.startsWith('w_') ? await verifyWorkerToken(token) : await verifyUserToken(token);
       valid = !!w;
     } else {
-      try { jwt.verify(token, process.env.JWT_SECRET||'fallback'); valid = true; } catch(e) {}
+      try { jwt.verify(token, JWT_SECRET); valid = true; } catch(e) {}
     }
     if (!valid) return res.status(401).json({ error: 'No autorizado' });
     const { clients } = await getClients();
@@ -531,7 +541,7 @@ app.get('/api/asignaciones/worker/:workerId', async (req, res) => {
     let valid = false;
     if (token.startsWith('w_')) { valid = !!(await verifyWorkerToken(token)); }
     else if (token.startsWith('u_')) { valid = !!(await verifyUserToken(token)); }
-    else { try { jwt.verify(token, process.env.JWT_SECRET||'fallback'); valid = true; } catch(e){} }
+    else { try { jwt.verify(token, JWT_SECRET); valid = true; } catch(e){} }
     if (!valid) return res.status(401).json({ error: 'No autorizado' });
     const fecha = req.query.fecha || new Date().toISOString().slice(0, 10);
     res.json(await expedientes.getAsignacionesWorker(req.params.workerId, fecha));
@@ -617,12 +627,7 @@ app.post('/api/partes/confirmar', async (req, res) => {
         bodyData.expedienteId || null
       );
       if (expedienteId && partesGenerados.length > 0) {
-        const { db, client } = await (async () => {
-          const { MongoClient } = require('mongodb');
-          const c = new MongoClient(process.env.MONGODB_URI);
-          await c.connect();
-          return { db: c.db('corpprojects'), client: c };
-        })();
+        const { db, client } = await sharedDb.getDBLegacy();
         for (const pg of partesGenerados) {
           await db.collection('partes').updateOne(
             { _id: pg.id },
