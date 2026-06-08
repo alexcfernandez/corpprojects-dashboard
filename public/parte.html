@@ -529,7 +529,9 @@ async function buscarExpediente() {
 async function loadExternos() {
   try {
     const r = await fetch('/api/externos', { headers:{'Authorization':`Bearer ${workerToken}`} });
-    todosExternos = await r.json();
+    const data = await r.json();
+    // Blindaje: si la respuesta no es una lista (p.ej. un error), usamos []
+    todosExternos = Array.isArray(data) ? data : [];
   } catch(e) { todosExternos = []; }
 }
 
