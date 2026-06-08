@@ -13,6 +13,10 @@ async function checkPendingInvoices() {
   const isWarmup = (Date.now() - startTime) < WARMUP_MS;
   console.log(`[Scheduler] Revisando facturas — ${new Date().toLocaleString('es-ES')}${isWarmup ? ' (modo warmup, sin alertas)' : ''}`);
   try {
+    if (await avisos.isGlobalPaused()) {
+      console.log('[Scheduler] ⏸ Avisos en PAUSA global — no se envía nada.');
+      return;
+    }
     const pending = await getPendingInvoices();
     if (!pending.length) { console.log('[Scheduler] Sin facturas pendientes de alerta.'); return; }
     let alertsTriggered = 0;
