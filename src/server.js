@@ -600,7 +600,7 @@ app.post('/api/expedientes/:id/cerrar', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/partes/confirmar', async (req, res) => {
+app.post('/api/partes/confirmar', uploadMemory.any(), async (req, res) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
     if (!token) return res.status(401).json({ error: 'No autorizado' });
@@ -615,8 +615,29 @@ app.post('/api/partes/confirmar', async (req, res) => {
       userAgent: req.headers['user-agent']
     };
 
-    const bodyData = req.body;
+    // El formulario envía multipart/form-data: los datos del parte van en el
+    // campo 'data' (JSON) y las fotos como ficheros. Antes se leía req.body
+    // directamente (sin multer) y llegaba VACÍO, por eso el parte salía sin
+    // cliente, con 8 h por defecto y sin descripción, fotos ni GPS.
+    const bodyData = req.body.data ? JSON.parse(req.body.data) : req.body;
+    const fotosTrabajo = [];
+    const fotosAlbaran = [];
+    if (req.files && req.files.length > 0) {
+      req.files.forEach(f => {
+        const b64 = `data:${f.mimetype};base64,${f.buffer.toString('base64')}`;
+        if (f.fieldname.startsWith('foto_trabajo')) fotosTrabajo.push(b64);
+        if (f.fieldname.startsWith('foto_albaran')) fotosAlbaran.push(b64);
+      });
+    }
+    bodyData.fotosTrabajo = fotosTrabajo;
+    bodyData.fotosAlbaran = fotosAlbaran;
+
     const parte = await partes.createParte(bodyData, workerInfo);
+
+    // Reflejar la presencia del trabajador ese día (multi-obra). Lo hace el
+    // servidor para que se acumulen varias obras; el formulario ya no sincroniza.
+    try { await attendance.syncPresenceFromParte(parte); }
+    catch (e) { console.warn('[Partes] syncPresenceFromParte:', e.message); }
 
     const equipo = bodyData.equipo || [];
     let partesGenerados = [];
