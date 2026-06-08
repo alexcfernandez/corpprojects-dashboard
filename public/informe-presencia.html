@@ -147,6 +147,13 @@ function buildRates() {
 const RATES       = buildRates();
 const DEFAULT_RATE = window.CP_CONFIG?.defaultRate || 15;
 let   WORKER_COLORS = {};
+let   REGISTERED_NAMES = new Set();
+
+// Misma normalización que el backend: sin mayúsculas, acentos ni espacios.
+function normName(s){
+  return (s||'').toString().trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+}
 
 function eur(v){ return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0); }
 function pct(a,b){ return b>0?Math.round(a/b*100):0; }
@@ -162,7 +169,10 @@ async function load() {
       fetch(`/api/attendance/summary/${yr}/${mo}`, { headers:{ Authorization:`Bearer ${tok}` } }).then(r=>r.json()),
       fetch('/api/partes/workers',                  { headers:{ Authorization:`Bearer ${tok}` } }).then(r=>r.json()),
     ]);
-    if (Array.isArray(workers)) workers.forEach(w => { WORKER_COLORS[w.name] = w.color || '#4d9cf8'; });
+    if (Array.isArray(workers)) workers.forEach(w => {
+      WORKER_COLORS[w.name] = w.color || '#4d9cf8';
+      REGISTERED_NAMES.add(normName(w.name));
+    });
     render(summary, yr, mo);
   } catch(e) {
     document.getElementById('loading').innerHTML = `❌ Error: ${e.message}<br><small>Abre desde el dashboard → Presencia → Resumen mensual → Informe PDF</small>`;
@@ -216,6 +226,8 @@ function render(data, yr, mo) {
     e.equipo.forEach(m => {
       if (m.tipo !== 'libre' && m.tipo !== 'externo') return;
       const nombre = m.nombre || '?';
+      // No listar como externo a quien ya es plantilla (apuntado a mano antes del alta)
+      if (REGISTERED_NAMES.has(normName(nombre))) return;
       if (!ayudantesMap[nombre]) ayudantesMap[nombre] = { dias: 0, obras: {} };
       ayudantesMap[nombre].dias++;
       const cliente = e.clientName || 'Sin cliente';
