@@ -361,10 +361,23 @@ async function getInvoiceRaw(invoiceId) {
 // Devuelve el enlace público al PDF de una factura (campo pdf-path de StelOrder).
 // Es estable (no caduca), así que lo cacheamos con TTL largo: 1 llamada por factura y a correr.
 const PDF_TTL = parseInt(process.env.STEL_TTL_PDFPATH || 10080) * MIN; // 7 días
+
+// Throttle anti-pico: separa las llamadas REALES a StelOrder para PDFs ~1.1s
+// (StelOrder limita a 60/min). Solo afecta a llamadas reales; las cacheadas no esperan.
+let _lastDocFetch = 0;
+const PDF_GAP_MS = parseInt(process.env.STEL_PDF_GAP_MS || 1100);
+async function _throttleDoc() {
+  const now = Date.now();
+  const wait = Math.max(0, _lastDocFetch + PDF_GAP_MS - now);
+  if (wait) await new Promise(r => setTimeout(r, wait));
+  _lastDocFetch = Date.now();
+}
+
 async function getInvoicePdfPath(invoiceId) {
   if (!invoiceId) return null;
   return cached(`pdfPath:${invoiceId}`, PDF_TTL, async () => {
     try {
+      await _throttleDoc();   // solo se ejecuta en llamada real (cache miss)
       const res = await client.get(`/ordinaryInvoices/${invoiceId}`);
       const inv = Array.isArray(res.data) ? res.data[0] : res.data;
       return (inv && inv['pdf-path']) ? inv['pdf-path'] : null;
