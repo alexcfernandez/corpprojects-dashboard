@@ -57,6 +57,7 @@
   <button class="nav-btn" onclick="showTab('banco',this)">🏦 Banco y gastos</button>
   <button class="nav-btn" onclick="showTab('presencia',this)">📅 Presencia</button>
   <button class="nav-btn" onclick="showTab('partes',this)">📋 Partes</button>
+  <button class="nav-btn" onclick="showTab('pedidos',this)">🔧 Pedidos trabajo</button>
   <button class="nav-btn" onclick="showTab('obras',this)">📊 Obras</button>
   <button class="nav-btn" onclick="showTab('usuarios',this)">⚙️ Usuarios</button>
   <button class="nav-btn" onclick="showTab('pagos',this)">💵 Pagos</button>
@@ -367,6 +368,17 @@
   <div id="partes-container">
     <div style="text-align:center;padding:40px;color:var(--text3)"><div style="font-size:32px;margin-bottom:10px">📋</div><div>Cargando módulo de partes...</div></div>
   </div>
+</div>
+
+<!-- PEDIDOS DE TRABAJO -->
+<div id="tab-pedidos" class="panel">
+  <div class="alert ain" style="margin-bottom:16px"><div>ℹ️</div><div><strong>Pedidos de trabajo en curso</strong> — los que siguen Pendientes o En curso en StelOrder, con los días que llevan abiertos. Las Actuaciones (urgentes) avisan antes; los Presupuestos tienen más margen.</div></div>
+  <div class="metrics-row">
+    <div class="mc"><div class="ml">En curso</div><div class="mv b sk" id="pd-m1"> </div></div>
+    <div class="mc"><div class="ml">En atención (ámbar)</div><div class="mv g sk" id="pd-m2"> </div></div>
+    <div class="mc"><div class="ml">Críticos (rojo)</div><div class="mv r sk" id="pd-m3"> </div></div>
+  </div>
+  <div id="pedidos-container" style="margin-top:16px"></div>
 </div>
 
 <!-- USUARIOS -->
@@ -868,6 +880,7 @@ function showTab(id, btn){
     obras:     ['Obras',       'obras-container'],
     pagos: ['Pagos', 'pagos-container'],
     familias: ['FamiliasAdmin', 'familias-resp-container'],
+    pedidos: ['PedidosAdmin', 'pedidos-container'],
   };
   if(moduleMap[id]){
     const [modName, containerId]=moduleMap[id];
@@ -938,5 +951,6 @@ window.addEventListener('load',()=>{
 <script src="/modules/obras.js"></script>
 <script src="/modules/emails-admin.js"></script>
 <script src="/modules/familias-admin.js"></script>
+<script src="/modules/pedidos-admin.js"></script>
 </body>
 </html>
