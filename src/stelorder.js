@@ -11,7 +11,10 @@ const TTL = {
   receipts:          parseInt(process.env.STEL_TTL_RECEIPTS  || 10)  * MIN, // 10 min
   workEstimates:     parseInt(process.env.STEL_TTL_ESTIMATES || 15)  * MIN, // 15 min
   bankAccounts:      parseInt(process.env.STEL_TTL_BANK      || 360) * MIN, // 6 h
-  documentStates:    parseInt(process.env.STEL_TTL_DOCSTATES || 360) * MIN  // 6 h
+  documentStates:    parseInt(process.env.STEL_TTL_DOCSTATES || 360) * MIN, // 6 h
+  workOrders:        parseInt(process.env.STEL_TTL_WORKORDERS || 10)  * MIN, // 10 min
+  incidents:         parseInt(process.env.STEL_TTL_INCIDENTS  || 30)  * MIN, // 30 min
+  incidentTypes:     parseInt(process.env.STEL_TTL_INCTYPES   || 360) * MIN  // 6 h
 };
 
 const BASE_URL = 'https://app.stelorder.com/app';
@@ -388,7 +391,103 @@ async function getInvoicePdfPath(invoiceId) {
   });
 }
 
-// DEBUG: trae una entidad (factura, incidencia o pedido de trabajo) por su referencia
+// ── PEDIDOS DE TRABAJO (Fase 1: ver y vigilar) ───────────────────────────
+// Nivel de alerta de un pedido según días abiertos y tipo de incidencia.
+// Actuación (urgente) avisa antes; Presupuesto tiene más margen.
+function getWorkOrderAlertLevel(days, typeName) {
+  const isActuacion = /actuaci/i.test(typeName || '');
+  const amber = isActuacion
+    ? parseInt(process.env.WO_ACT_AMBER || 2)
+    : parseInt(process.env.WO_PRE_AMBER || 8);
+  const red = isActuacion
+    ? parseInt(process.env.WO_ACT_RED || 3)
+    : parseInt(process.env.WO_PRE_RED || 15);
+  if (days >= red)   return { level: 'red',   color: '#dc2626', label: 'Crítico' };
+  if (days >= amber) return { level: 'amber', color: '#f97316', label: 'Atención' };
+  return { level: 'green', color: '#16a34a', label: 'En plazo' };
+}
+
+// Mapa estado-de-documento (solo WORKORDER): id -> nombre
+async function getWorkOrderStateMap() {
+  const states = await getDocumentStates();
+  const map = {};
+  (Array.isArray(states) ? states : []).forEach(s => {
+    if (s.type === 'WORKORDER') map[String(s.id)] = s.name;
+  });
+  return map;
+}
+
+// Mapa incidencia -> tipo (para heredar Actuación/Presupuesto en el pedido)
+async function getIncidentTypeMaps() {
+  const [incidents, types] = await Promise.all([
+    cached('incidents',     TTL.incidents,     () => fetchAllPages('/incidents')),
+    cached('incidentTypes', TTL.incidentTypes, () => fetchAllPages('/incidentTypes'))
+  ]);
+  const typeName = {};
+  (Array.isArray(types) ? types : []).forEach(t => { typeName[String(t.id)] = t.name; });
+  const incToType = {};
+  (Array.isArray(incidents) ? incidents : []).forEach(i => {
+    incToType[String(i.id)] = typeName[String(i['incident-type-id'])] || 'Sin tipo';
+  });
+  return { incToType, typeName };
+}
+
+function daysSince(dateStr) {
+  if (!dateStr) return 0;
+  const d = new Date(dateStr);
+  if (isNaN(d)) return 0;
+  return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86400000));
+}
+
+// Devuelve los pedidos de trabajo "vivos" (Pendiente o En curso) con días, tipo,
+// cliente y nivel de alerta. NO escribe nada en StelOrder.
+async function getWorkOrdersLive() {
+  const [orders, stateMap, { incToType }, { clientMap }] = await Promise.all([
+    cached('workOrders', TTL.workOrders, () => fetchAllPages('/workOrders')),
+    getWorkOrderStateMap(),
+    getIncidentTypeMaps(),
+    getClients()
+  ]);
+
+  const live = [];
+  (Array.isArray(orders) ? orders : []).forEach(o => {
+    if (o.deleted) return;
+    const stateName = stateMap[String(o['document-state-id'])] || '';
+    // Vivos = Pendiente o En curso. Fuera: Cerrado, Rechazado.
+    if (!/pendiente|en curso/i.test(stateName)) return;
+
+    const accId = String(o['account-id'] || '');
+    const cli   = clientMap[accId] || { name: 'Sin nombre', family: 'Sin familia' };
+    const incId = String(o['parent-incident-id'] || '');
+    const typeName = incId ? (incToType[incId] || 'Sin tipo') : 'Sin tipo';
+    const startRef = o['assigned-date'] || o['creation-date'] || o.date;
+    const days = daysSince(startRef);
+    const alert = getWorkOrderAlertLevel(days, typeName);
+
+    live.push({
+      id:          o.id,
+      number:      o['full-reference'] || `PDT #${o.id}`,
+      client:      cli.name,
+      family:      cli.family,
+      type:        typeName,
+      state:       stateName,
+      days,
+      since:       startRef,
+      incidentId:  incId || null,
+      pdfPath:     o['pdf-path'] || null,
+      alertLevel:  alert.level,
+      alertColor:  alert.color,
+      alertLabel:  alert.label
+    });
+  });
+
+  // Más urgentes primero (rojo, luego ámbar, luego verde; y dentro, más días arriba)
+  const rank = { red: 0, amber: 1, green: 2 };
+  live.sort((a, b) => (rank[a.alertLevel] - rank[b.alertLevel]) || (b.days - a.days));
+  return live;
+}
+
+
 // (FAC..., INC..., PDT...) o una lista de catálogo por palabra clave
 // (ESTADOS-INC, TIPOS-INC, ESTADOS-DOC) para inspeccionar campos y relaciones.
 async function getEntityRawByRef(ref) {
@@ -398,6 +497,7 @@ async function getEntityRawByRef(ref) {
   if (r === 'ESTADOS-INC') return await fetchAllPages('/incidentStates');
   if (r === 'TIPOS-INC')   return await fetchAllPages('/incidentTypes');
   if (r === 'ESTADOS-DOC') return await fetchAllPages('/documentStates');
+  if (r === 'EMPLEADOS')   return await fetchAllPages('/employees');
 
   let endpoint;
   if      (r.startsWith('FAC')) endpoint = '/ordinaryInvoices';
@@ -427,5 +527,6 @@ module.exports = {
   getInvoices, getAllReceipts, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary,
   getAlertLevel, getFamiliesSummary, getAccountCategories, clearCache,
-  sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw, getInvoicePdfPath, getEntityRawByRef
+  sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw, getInvoicePdfPath, getEntityRawByRef,
+  getWorkOrdersLive, getWorkOrderAlertLevel
 };
