@@ -207,9 +207,32 @@ app.post('/api/debug/raw', requireAuth, async (req, res) => {
 app.get('/api/workorders/live', requireAuth, async (req, res) => {
   try {
     const list = await getWorkOrdersLive();
+    await require('./asignaciones').attachAssignments(list);
     res.json({ list, count: list.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Usuarios asignables (activos) para el desplegable de asignación.
+app.get('/api/workorders/assignable-users', requireAuth, async (req, res) => {
+  try {
+    const { getUsers } = require('./users');
+    const all = await getUsers(false); // solo activos
+    res.json({ users: all.map(u => ({ id: String(u._id), name: u.name, role: u.role, color: u.color || '#6b7280' })) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Asignar / desasignar un pedido a un trabajador (userId vacío = desasignar).
+app.put('/api/workorders/assign', requireAuth, async (req, res) => {
+  try {
+    const { workOrderId, userId } = req.body;
+    const r = await require('./asignaciones').setAssignment(workOrderId, userId || null, req.user?.username || null);
+    res.json(r);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 
