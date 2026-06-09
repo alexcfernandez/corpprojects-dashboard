@@ -344,7 +344,8 @@ async function getInvoices() {
 async function sendInvoiceByEmail(invoiceId, email) {
   if (!invoiceId) throw new Error('Falta el ID de la factura');
   if (!email)     throw new Error('Falta el email de destino');
-  const res = await client.put(`/sendDocument/${invoiceId}`, { email });
+  // sendDocument es lento (>25s). Le damos 60s solo a esta llamada.
+  const res = await client.put(`/sendDocument/${invoiceId}`, { email }, { timeout: 60000 });
   return { ok: true, status: res.status, data: res.data };
 }
 
