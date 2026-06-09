@@ -17,7 +17,7 @@ const {
   sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw
 } = require('./stelorder');
 const { sendWhatsApp, sendEmail } = require('./notifications');
-const { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual } = require('./scheduler');
+const { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail } = require('./scheduler');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -224,6 +224,16 @@ app.post('/api/send-family-individual', requireAuth, async (req, res) => {
       ? '⏸ Envíos en pausa global — no se ha enviado nada.'
       : `Familias avisadas (individual): ${r.sent} · omitidas: ${r.skipped}`;
     res.json({ message, ...r });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Previsualizar el resumen agrupado: se envía SOLO al email indicado, ignora pausa.
+app.post('/api/avisos/preview', requireAuth, async (req, res) => {
+  try {
+    const { email, family } = req.body;
+    if (!email) return res.status(400).json({ error: 'Falta el email' });
+    const r = await previewToEmail(email, family);
+    res.json({ message: `✓ Previsualización (${r.family}, ${r.count} fra.) enviada a ${r.to}`, ...r });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
