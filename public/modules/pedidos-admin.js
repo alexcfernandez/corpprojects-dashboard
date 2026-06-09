@@ -37,6 +37,7 @@
     const el = document.getElementById(containerId);
     if (!el) return;
     el.innerHTML = `
+      <div id="pd-alert-panel" class="card" style="margin-bottom:16px"></div>
       <div class="card">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px">
           <div class="card-title" style="margin:0;flex:1">Pedidos de trabajo en curso</div>
@@ -45,7 +46,62 @@
         </div>
         <div id="pd-table">Cargando…</div>
       </div>`;
+    loadAlertStatus();
     load();
+  }
+
+  async function loadAlertStatus() {
+    const panel = document.getElementById('pd-alert-panel');
+    if (!panel) return;
+    try {
+      const r = await api('/api/workorders/alert-status');
+      const paused = !!(r && r.paused);
+      panel.innerHTML = `
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <div style="flex:1;min-width:220px">
+            <div style="font-weight:700;color:${paused ? 'var(--red)' : 'var(--green)'}">
+              ${paused ? '⏸ Avisos de pedidos PAUSADOS' : '▶ Avisos de pedidos ACTIVOS'}
+            </div>
+            <div style="font-size:12px;color:var(--text3);margin-top:2px">
+              Resumen diario (rojos + ámbar) a las 08:00 a hola@corpprojects.es.
+            </div>
+          </div>
+          <button class="btn ${paused ? 'bp' : 'bgh'}" style="padding:8px 16px;font-size:13px" onclick="CP.PedidosAdmin.togglePause(${paused})">
+            ${paused ? '▶ Activar avisos' : '⏸ Pausar avisos'}
+          </button>
+          <button class="btn bgh" id="pd-send-btn" style="padding:8px 16px;font-size:13px" onclick="CP.PedidosAdmin.sendNow()">📧 Enviar ahora</button>
+          <span id="pd-alert-msg" style="font-size:12px;color:var(--text3)"></span>
+        </div>`;
+    } catch (err) {
+      panel.innerHTML = `<div style="color:var(--red);font-size:13px">No se pudo cargar el estado de avisos: ${esc(err.message)}</div>`;
+    }
+  }
+
+  async function togglePause(currentlyPaused) {
+    try {
+      await api('/api/workorders/alert-status', { method:'PUT', body: JSON.stringify({ paused: !currentlyPaused }) });
+      loadAlertStatus();
+    } catch (err) {
+      const m = document.getElementById('pd-alert-msg');
+      if (m) { m.textContent = '✗ ' + err.message; m.style.color = 'var(--red)'; }
+    }
+  }
+
+  async function sendNow() {
+    const m = document.getElementById('pd-alert-msg');
+    const btn = document.getElementById('pd-send-btn');
+    if (btn && btn.disabled) return;
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; btn.textContent = 'Enviando…'; }
+    if (m) { m.textContent = 'Enviando…'; m.style.color = 'var(--text2)'; }
+    try {
+      const r = await api('/api/workorders/send-now', { method:'POST', body: JSON.stringify({}) });
+      if (r && r.error) throw new Error(r.error);
+      if (m) { m.textContent = '✓ ' + (r.message || 'Enviado'); m.style.color = 'var(--green)'; }
+    } catch (err) {
+      if (m) { m.textContent = '✗ ' + err.message; m.style.color = 'var(--red)'; }
+    } finally {
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.textContent = '📧 Enviar ahora'; }
+    }
   }
 
   async function load() {
@@ -140,5 +196,5 @@
     paint();
   }
 
-  CP.PedidosAdmin = { render, load, setFilter, toggleSort };
+  CP.PedidosAdmin = { render, load, setFilter, toggleSort, togglePause, sendNow };
 })(window.CP = window.CP || {});
