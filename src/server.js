@@ -14,7 +14,7 @@ const { MongoClient, ObjectId } = require('mongodb');
 const {
   getSummary, getPendingInvoices, getInvoices, getClients,
   getEstimatesSummary, getFamiliesSummary, getAccountCategories, clearCache,
-  sendInvoiceByEmail, findInvoiceIdByNumber
+  sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw
 } = require('./stelorder');
 const { sendWhatsApp, sendEmail } = require('./notifications');
 const { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual } = require('./scheduler');
@@ -181,6 +181,23 @@ app.post('/api/invoice/send-official', requireAuth, async (req, res) => {
     if (!id) return res.status(404).json({ error: `No se encontró la factura ${number || ''}`.trim() });
     const r = await sendInvoiceByEmail(id, email);
     res.json({ message: `✓ StelOrder envió la factura (ID ${id}) a ${email}`, ...r });
+  } catch (err) {
+    const status = err.response?.status;
+    const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+    res.status(500).json({ error: `StelOrder respondió ${status || ''}: ${detail}`.trim() });
+  }
+});
+
+// DEBUG: volcar el objeto crudo de una factura para inspeccionar sus campos.
+// Acepta { number } o { invoiceId }. Devuelve el JSON tal cual de StelOrder.
+app.post('/api/invoice/raw', requireAuth, async (req, res) => {
+  try {
+    const { number, invoiceId } = req.body;
+    let id = invoiceId;
+    if (!id && number) id = await findInvoiceIdByNumber(number);
+    if (!id) return res.status(404).json({ error: `No se encontró la factura ${number || ''}`.trim() });
+    const data = await getInvoiceRaw(id);
+    res.json({ id, data });
   } catch (err) {
     const status = err.response?.status;
     const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
