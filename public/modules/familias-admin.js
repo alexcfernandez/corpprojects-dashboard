@@ -83,7 +83,10 @@
           <button class="btn bgh" style="padding:8px 16px;font-size:13px" onclick="CP.FamiliasAdmin.sendNow('individual')">📨 Enviar una por factura</button>
           <span id="fc-sum-msg" style="font-size:12px;color:var(--text3)">Fuerza el envío ahora a todas las familias con responsable.</span>
         </div>
-        <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:12px 14px;margin-bottom:14px">
+        <details style="margin-bottom:14px;background:var(--bg3);border:1px solid var(--border2);border-radius:10px">
+          <summary style="cursor:pointer;padding:12px 14px;font-size:13px;font-weight:700;color:var(--text2);user-select:none">🧪 Herramientas de prueba y previsualización</summary>
+          <div style="padding:0 14px 14px">
+        <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:10px;padding:12px 14px;margin-bottom:14px">
           <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:8px">👁 Previsualizar resumen agrupado (solo a tu correo)</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
             <input type="email" id="fc-prev-email" placeholder="tu-email@de-prueba.com" style="background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;outline:none;width:240px">
@@ -92,7 +95,7 @@
           </div>
           <div style="font-size:11px;color:var(--text3);margin-top:6px">Coge la familia con más facturas pendientes y te manda el resumen SOLO a ti (ignora la pausa). No se envía a ningún cliente.</div>
         </div>
-        <div style="background:var(--bg3);border:1px dashed var(--border2);border-radius:10px;padding:12px 14px;margin-bottom:14px">
+        <div style="background:var(--bg2);border:1px dashed var(--border2);border-radius:10px;padding:12px 14px">
           <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:8px">🧪 Prueba: enviar factura OFICIAL por StelOrder</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
             <input type="text" id="fc-test-num" placeholder="Nº factura (ej. FAC00791)" style="background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;outline:none;width:200px">
@@ -104,6 +107,8 @@
           <div style="font-size:11px;color:var(--text3);margin-top:6px">StelOrder enviará su factura oficial (PDF) al email que pongas. "Ver datos crudos" vuelca el JSON de la factura para inspeccionar si hay alguna URL del documento.</div>
           <pre id="fc-debug-out" style="display:none;background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:10px;margin-top:8px;font-size:11px;color:var(--text2);max-height:320px;overflow:auto;white-space:pre-wrap;word-break:break-word"></pre>
         </div>
+          </div>
+        </details>
         <div style="font-size:12px;color:var(--text3);margin-bottom:10px">${conEmail} de ${total} familias con responsable asignado.</div>
         <table>
           <thead><tr><th>Familia</th><th>Email del responsable</th><th>Frecuencia</th><th>Formato</th><th style="text-align:center">Estado</th><th></th></tr></thead>
