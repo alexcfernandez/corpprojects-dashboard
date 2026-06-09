@@ -89,9 +89,11 @@
             <input type="text" id="fc-test-num" placeholder="Nº factura (ej. FAC00791)" style="background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;outline:none;width:200px">
             <input type="email" id="fc-test-email" placeholder="tu-email@de-prueba.com" style="background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;outline:none;width:240px">
             <button class="btn bp" id="fc-test-btn" style="padding:8px 16px;font-size:13px" onclick="CP.FamiliasAdmin.testOfficial()">Enviar prueba</button>
+            <button class="btn bgh" id="fc-raw-btn" style="padding:8px 16px;font-size:13px" onclick="CP.FamiliasAdmin.inspectRaw()">🔍 Ver datos crudos</button>
             <span id="fc-test-msg" style="font-size:12px;color:var(--text3)"></span>
           </div>
-          <div style="font-size:11px;color:var(--text3);margin-top:6px">StelOrder enviará su factura oficial (PDF) al email que pongas. Pruébalo con tu propio correo.</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:6px">StelOrder enviará su factura oficial (PDF) al email que pongas. "Ver datos crudos" vuelca el JSON de la factura para inspeccionar si hay alguna URL del documento.</div>
+          <pre id="fc-debug-out" style="display:none;background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:10px;margin-top:8px;font-size:11px;color:var(--text2);max-height:320px;overflow:auto;white-space:pre-wrap;word-break:break-word"></pre>
         </div>
         <div style="font-size:12px;color:var(--text3);margin-bottom:10px">${conEmail} de ${total} familias con responsable asignado.</div>
         <table>
@@ -158,6 +160,8 @@
       const r = await api('/api/invoice/send-official', { method:'POST', body: JSON.stringify({ number, email }) });
       if (r && r.error) throw new Error(r.error);
       if (msg) { msg.textContent = '✓ ' + (r.message || 'Enviada'); msg.style.color='var(--green)'; }
+      const out = document.getElementById('fc-debug-out');
+      if (out) { out.style.display='block'; out.textContent = 'RESPUESTA de sendDocument:\n' + JSON.stringify(r.data, null, 2); }
     } catch(err) {
       if (msg) { msg.textContent = '✗ ' + err.message; msg.style.color='var(--red)'; }
     } finally {
@@ -165,6 +169,22 @@
     }
   }
 
-  CP.FamiliasAdmin = { render, save, toggleGlobal, sendNow, testOfficial };
+  async function inspectRaw() {
+    const number = document.getElementById('fc-test-num')?.value?.trim();
+    const msg = document.getElementById('fc-test-msg');
+    const out = document.getElementById('fc-debug-out');
+    if (!number) { if (msg) { msg.textContent='Pon el nº de factura'; msg.style.color='var(--amber)'; } return; }
+    if (msg) { msg.textContent='Consultando datos…'; msg.style.color='var(--text2)'; }
+    try {
+      const r = await api('/api/invoice/raw', { method:'POST', body: JSON.stringify({ number }) });
+      if (r && r.error) throw new Error(r.error);
+      if (msg) { msg.textContent = '✓ Datos cargados (revisa abajo)'; msg.style.color='var(--green)'; }
+      if (out) { out.style.display='block'; out.textContent = 'FACTURA CRUDA (ID ' + r.id + '):\n' + JSON.stringify(r.data, null, 2); }
+    } catch(err) {
+      if (msg) { msg.textContent = '✗ ' + err.message; msg.style.color='var(--red)'; }
+    }
+  }
+
+  CP.FamiliasAdmin = { render, save, toggleGlobal, sendNow, testOfficial, inspectRaw };
 
 })(window.CP = window.CP || {});
