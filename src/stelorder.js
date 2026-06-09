@@ -358,6 +358,23 @@ async function getInvoiceRaw(invoiceId) {
   return res.data;
 }
 
+// Devuelve el enlace público al PDF de una factura (campo pdf-path de StelOrder).
+// Es estable (no caduca), así que lo cacheamos con TTL largo: 1 llamada por factura y a correr.
+const PDF_TTL = parseInt(process.env.STEL_TTL_PDFPATH || 10080) * MIN; // 7 días
+async function getInvoicePdfPath(invoiceId) {
+  if (!invoiceId) return null;
+  return cached(`pdfPath:${invoiceId}`, PDF_TTL, async () => {
+    try {
+      const res = await client.get(`/ordinaryInvoices/${invoiceId}`);
+      const inv = Array.isArray(res.data) ? res.data[0] : res.data;
+      return (inv && inv['pdf-path']) ? inv['pdf-path'] : null;
+    } catch (err) {
+      console.error('[pdfPath] error factura', invoiceId, err.response?.status, err.message);
+      return null;
+    }
+  });
+}
+
 // Resuelve el ID interno de una factura a partir de su número (ej. "FAC00791").
 async function findInvoiceIdByNumber(number) {
   const invoices = await getInvoices();
@@ -373,5 +390,5 @@ module.exports = {
   getInvoices, getAllReceipts, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary,
   getAlertLevel, getFamiliesSummary, getAccountCategories, clearCache,
-  sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw
+  sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw, getInvoicePdfPath
 };
