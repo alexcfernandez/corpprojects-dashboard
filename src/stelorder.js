@@ -389,14 +389,21 @@ async function getInvoicePdfPath(invoiceId) {
 }
 
 // DEBUG: trae una entidad (factura, incidencia o pedido de trabajo) por su referencia
-// (FAC..., INC..., PDT...) para inspeccionar sus campos y relaciones.
+// (FAC..., INC..., PDT...) o una lista de catálogo por palabra clave
+// (ESTADOS-INC, TIPOS-INC, ESTADOS-DOC) para inspeccionar campos y relaciones.
 async function getEntityRawByRef(ref) {
   const r = String(ref || '').trim().toUpperCase();
+
+  // Catálogos completos (diccionarios de estados/tipos)
+  if (r === 'ESTADOS-INC') return await fetchAllPages('/incidentStates');
+  if (r === 'TIPOS-INC')   return await fetchAllPages('/incidentTypes');
+  if (r === 'ESTADOS-DOC') return await fetchAllPages('/documentStates');
+
   let endpoint;
   if      (r.startsWith('FAC')) endpoint = '/ordinaryInvoices';
   else if (r.startsWith('INC')) endpoint = '/incidents';
   else if (r.startsWith('PDT')) endpoint = '/workOrders';
-  else throw new Error('Referencia no reconocida. Usa FAC..., INC... o PDT...');
+  else throw new Error('Referencia no reconocida. Usa FAC.../INC.../PDT... o ESTADOS-INC, TIPOS-INC, ESTADOS-DOC');
   const list = await fetchAllPages(endpoint);
   const numPart = r.replace(/^[A-Z]+/, '');  // "00560"
   const found = list.find(x => String(x['full-reference'] || '').toUpperCase() === r)
