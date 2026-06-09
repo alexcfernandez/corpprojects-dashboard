@@ -191,10 +191,6 @@ async function sendInvoiceAlert(invoice) {
     </div>
 
     ${verFacturaBtn}
-    <a href="https://dashboard.corpprojects.es" 
-       style="display:block;background:${info.color};color:#fff;text-align:center;padding:14px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">
-      Ver en el dashboard →
-    </a>
   </div>
 
   <div style="background:#f9fafb;padding:14px 28px;border-top:1px solid #f0f0f0;text-align:center;font-size:11px;color:#9ca3af">
@@ -315,7 +311,6 @@ async function buildFamilySummaryEmail(family, invoices) {
         <td></td>
       </tr></tfoot>
     </table>
-    <a href="https://dashboard.corpprojects.es" style="display:block;background:${info.color};color:#fff;text-align:center;padding:14px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;margin-top:20px">Ver detalle en el dashboard →</a>
   </div>
   <div style="background:#f9fafb;padding:14px 28px;border-top:1px solid #f0f0f0;text-align:center;font-size:11px;color:#9ca3af">
     Corp Projects Holding SL · dashboard.corpprojects.es · ${new Date().toLocaleDateString('es-ES')}
