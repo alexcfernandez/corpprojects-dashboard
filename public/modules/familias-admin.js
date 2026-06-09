@@ -83,6 +83,15 @@
           <button class="btn bgh" style="padding:8px 16px;font-size:13px" onclick="CP.FamiliasAdmin.sendNow('individual')">📨 Enviar una por factura</button>
           <span id="fc-sum-msg" style="font-size:12px;color:var(--text3)">Fuerza el envío ahora a todas las familias con responsable.</span>
         </div>
+        <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:12px 14px;margin-bottom:14px">
+          <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:8px">👁 Previsualizar resumen agrupado (solo a tu correo)</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <input type="email" id="fc-prev-email" placeholder="tu-email@de-prueba.com" style="background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;outline:none;width:240px">
+            <button class="btn bp" id="fc-prev-btn" style="padding:8px 16px;font-size:13px" onclick="CP.FamiliasAdmin.preview()">Enviarme previsualización</button>
+            <span id="fc-prev-msg" style="font-size:12px;color:var(--text3)"></span>
+          </div>
+          <div style="font-size:11px;color:var(--text3);margin-top:6px">Coge la familia con más facturas pendientes y te manda el resumen SOLO a ti (ignora la pausa). No se envía a ningún cliente.</div>
+        </div>
         <div style="background:var(--bg3);border:1px dashed var(--border2);border-radius:10px;padding:12px 14px;margin-bottom:14px">
           <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:8px">🧪 Prueba: enviar factura OFICIAL por StelOrder</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -185,6 +194,25 @@
     }
   }
 
-  CP.FamiliasAdmin = { render, save, toggleGlobal, sendNow, testOfficial, inspectRaw };
+  async function preview() {
+    const email = document.getElementById('fc-prev-email')?.value?.trim();
+    const msg = document.getElementById('fc-prev-msg');
+    const btn = document.getElementById('fc-prev-btn');
+    if (!email) { if (msg) { msg.textContent='Pon tu email'; msg.style.color='var(--amber)'; } return; }
+    if (btn && btn.disabled) return;
+    if (btn) { btn.disabled = true; btn.style.opacity='0.5'; btn.textContent='Generando…'; }
+    if (msg) { msg.textContent='Generando previsualización (puede tardar unos segundos)…'; msg.style.color='var(--text2)'; }
+    try {
+      const r = await api('/api/avisos/preview', { method:'POST', body: JSON.stringify({ email }) });
+      if (r && r.error) throw new Error(r.error);
+      if (msg) { msg.textContent = '✓ ' + (r.message || 'Enviada'); msg.style.color='var(--green)'; }
+    } catch(err) {
+      if (msg) { msg.textContent = '✗ ' + err.message; msg.style.color='var(--red)'; }
+    } finally {
+      if (btn) { btn.disabled = false; btn.style.opacity='1'; btn.textContent='Enviarme previsualización'; }
+    }
+  }
+
+  CP.FamiliasAdmin = { render, save, toggleGlobal, sendNow, testOfficial, inspectRaw, preview };
 
 })(window.CP = window.CP || {});
