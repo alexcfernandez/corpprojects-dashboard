@@ -14,7 +14,8 @@ const { MongoClient, ObjectId } = require('mongodb');
 const {
   getSummary, getPendingInvoices, getInvoices, getClients,
   getEstimatesSummary, getFamiliesSummary, getAccountCategories, clearCache,
-  sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw, getEntityRawByRef
+  sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw, getEntityRawByRef,
+  getWorkOrdersLive
 } = require('./stelorder');
 const { sendWhatsApp, sendEmail } = require('./notifications');
 const { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail } = require('./scheduler');
@@ -201,6 +202,17 @@ app.post('/api/debug/raw', requireAuth, async (req, res) => {
     res.status(500).json({ error: `${err.message || ''} ${status ? '(StelOrder '+status+')' : ''}`.trim() });
   }
 });
+
+// PEDIDOS DE TRABAJO vivos (Pendiente / En curso) con días y nivel de alerta.
+app.get('/api/workorders/live', requireAuth, async (req, res) => {
+  try {
+    const list = await getWorkOrdersLive();
+    res.json({ list, count: list.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // DEBUG: volcar el objeto crudo de una factura por su número.
 app.post('/api/invoice/raw', requireAuth, async (req, res) => {
