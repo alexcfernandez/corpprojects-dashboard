@@ -339,11 +339,29 @@ async function getInvoices() {
   return buildInvoicesFromReceipts(receipts, clientMap);
 }
 
+// Pide a StelOrder que ENVÍE la factura oficial (su PDF) por email al destinatario indicado.
+// Usa PUT /sendDocument/{ID} con body { email }. Devuelve { ok, status } o lanza error.
+async function sendInvoiceByEmail(invoiceId, email) {
+  if (!invoiceId) throw new Error('Falta el ID de la factura');
+  if (!email)     throw new Error('Falta el email de destino');
+  const res = await client.put(`/sendDocument/${invoiceId}`, { email });
+  return { ok: true, status: res.status, data: res.data };
+}
+
+// Resuelve el ID interno de una factura a partir de su número (ej. "FAC00791").
+async function findInvoiceIdByNumber(number) {
+  const invoices = await getInvoices();
+  const norm = String(number || '').trim().toLowerCase();
+  const found = invoices.find(i => String(i.number || '').trim().toLowerCase() === norm);
+  return found ? found.id : null;
+}
+
 // Vaciar la caché de StelOrder (para un botón "Actualizar ahora" en el dashboard)
 function clearCache() { invalidate(); }
 
 module.exports = {
   getInvoices, getAllReceipts, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary,
-  getAlertLevel, getFamiliesSummary, getAccountCategories, clearCache
+  getAlertLevel, getFamiliesSummary, getAccountCategories, clearCache,
+  sendInvoiceByEmail, findInvoiceIdByNumber
 };
