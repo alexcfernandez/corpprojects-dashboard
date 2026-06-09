@@ -339,4 +339,71 @@ async function sendFamilySummary(family, invoices) {
   return true;
 }
 
-module.exports = { sendInvoiceAlert, sendDailySummary, sendFamilySummary, buildFamilySummaryEmail, sendWhatsApp, sendEmail };
+// ── AVISO DIARIO DE PEDIDOS DE TRABAJO (rojos + ámbar) ───────────────────
+function buildWorkOrdersEmail(orders) {
+  const list = [...orders].sort((a, b) => (b.days || 0) - (a.days || 0));
+  const rojos  = list.filter(o => o.alertLevel === 'red').length;
+  const ambar  = list.filter(o => o.alertLevel === 'amber').length;
+  const headColor = rojos > 0 ? '#dc2626' : '#f97316';
+
+  const subject = `🔧 Pedidos de trabajo a revisar — ${rojos} críticos, ${ambar} en atención`;
+
+  const waMsg = [
+    `🔧 *Pedidos de trabajo a revisar*`,
+    ``,
+    ...list.map(o => `• ${o.number} — ${o.client} — ${o.type} — ${o.days}d (${o.alertLabel})`),
+    ``,
+    `🔴 ${rojos} críticos · 🟠 ${ambar} en atención`
+  ].join('\n');
+
+  const filas = list.map(o => `
+    <tr>
+      <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;font-weight:600">${o.number}</td>
+      <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;color:#374151">${o.client || ''}</td>
+      <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;color:#6b7280">${o.type || ''}</td>
+      <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;color:#6b7280">${o.state || ''}</td>
+      <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;text-align:center;font-weight:700;color:${o.alertColor}">${o.days}d</td>
+      <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;text-align:center">${o.pdfPath ? `<a href="${o.pdfPath}" style="color:#2563eb;text-decoration:none;font-weight:600">Ver</a>` : '—'}</td>
+    </tr>`).join('');
+
+  const html = `
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="font-family:Inter,Arial,sans-serif;background:#f4f4f5;padding:20px;margin:0">
+<div style="max-width:640px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1)">
+  <div style="background:${headColor};padding:22px 28px">
+    <div style="color:#fff;font-size:18px;font-weight:700">Pedidos de trabajo a revisar</div>
+    <div style="color:rgba(255,255,255,0.85);font-size:13px;margin-top:4px">${rojos} críticos · ${ambar} en atención · Corp Projects Holding SL</div>
+  </div>
+  <div style="padding:24px 28px">
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr>
+        <th style="text-align:left;padding:8px 0;border-bottom:2px solid #e5e7eb;color:#6b7280;font-size:12px">Pedido</th>
+        <th style="text-align:left;padding:8px 0;border-bottom:2px solid #e5e7eb;color:#6b7280;font-size:12px">Cliente / Comunidad</th>
+        <th style="text-align:left;padding:8px 0;border-bottom:2px solid #e5e7eb;color:#6b7280;font-size:12px">Tipo</th>
+        <th style="text-align:left;padding:8px 0;border-bottom:2px solid #e5e7eb;color:#6b7280;font-size:12px">Estado</th>
+        <th style="text-align:center;padding:8px 0;border-bottom:2px solid #e5e7eb;color:#6b7280;font-size:12px">Días</th>
+        <th style="text-align:center;padding:8px 0;border-bottom:2px solid #e5e7eb;color:#6b7280;font-size:12px">Doc</th>
+      </tr></thead>
+      <tbody>${filas}</tbody>
+    </table>
+  </div>
+  <div style="background:#f9fafb;padding:14px 28px;border-top:1px solid #f0f0f0;text-align:center;font-size:11px;color:#9ca3af">
+    Corp Projects Holding SL · ${new Date().toLocaleDateString('es-ES')}
+  </div>
+</div>
+</body></html>`;
+
+  return { subject, html, waMsg };
+}
+
+// Envía el resumen de pedidos a revisar al email indicado (solo email).
+async function sendWorkOrdersSummary(orders, to) {
+  if (!orders || !orders.length) return { sent: false, reason: 'sin pedidos' };
+  const dest = to || process.env.EMAIL_PEDIDOS || process.env.EMAIL_AVISOS || 'hola@corpprojects.es';
+  const { subject, html, waMsg } = buildWorkOrdersEmail(orders);
+  await sendEmail({ to: dest, subject, html, text: waMsg });
+  return { sent: true, to: dest, count: orders.length };
+}
+
+module.exports = { sendInvoiceAlert, sendDailySummary, sendFamilySummary, buildFamilySummaryEmail, buildWorkOrdersEmail, sendWorkOrdersSummary, sendWhatsApp, sendEmail };
