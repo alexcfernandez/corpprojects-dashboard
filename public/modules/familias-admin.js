@@ -98,13 +98,13 @@
         <div style="background:var(--bg2);border:1px dashed var(--border2);border-radius:10px;padding:12px 14px">
           <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:8px">🧪 Prueba: enviar factura OFICIAL por StelOrder</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <input type="text" id="fc-test-num" placeholder="Nº factura (ej. FAC00791)" style="background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;outline:none;width:200px">
+            <input type="text" id="fc-test-num" placeholder="Ref. (FAC.../INC.../PDT...)" style="background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;outline:none;width:200px">
             <input type="email" id="fc-test-email" placeholder="tu-email@de-prueba.com" style="background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;outline:none;width:240px">
             <button class="btn bp" id="fc-test-btn" style="padding:8px 16px;font-size:13px" onclick="CP.FamiliasAdmin.testOfficial()">Enviar prueba</button>
             <button class="btn bgh" id="fc-raw-btn" style="padding:8px 16px;font-size:13px" onclick="CP.FamiliasAdmin.inspectRaw()">🔍 Ver datos crudos</button>
             <span id="fc-test-msg" style="font-size:12px;color:var(--text3)"></span>
           </div>
-          <div style="font-size:11px;color:var(--text3);margin-top:6px">StelOrder enviará su factura oficial (PDF) al email que pongas. "Ver datos crudos" vuelca el JSON de la factura para inspeccionar si hay alguna URL del documento.</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:6px">"Enviar prueba" usa el nº de factura (FAC...) y manda el PDF oficial al email. "Ver datos crudos" acepta factura (FAC...), incidencia (INC...) o pedido de trabajo (PDT...) y vuelca su JSON para inspeccionar campos y relaciones.</div>
           <pre id="fc-debug-out" style="display:none;background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:10px;margin-top:8px;font-size:11px;color:var(--text2);max-height:320px;overflow:auto;white-space:pre-wrap;word-break:break-word"></pre>
         </div>
           </div>
@@ -184,16 +184,16 @@
   }
 
   async function inspectRaw() {
-    const number = document.getElementById('fc-test-num')?.value?.trim();
+    const ref = document.getElementById('fc-test-num')?.value?.trim();
     const msg = document.getElementById('fc-test-msg');
     const out = document.getElementById('fc-debug-out');
-    if (!number) { if (msg) { msg.textContent='Pon el nº de factura'; msg.style.color='var(--amber)'; } return; }
-    if (msg) { msg.textContent='Consultando datos…'; msg.style.color='var(--text2)'; }
+    if (!ref) { if (msg) { msg.textContent='Pon una referencia (FAC.../INC.../PDT...)'; msg.style.color='var(--amber)'; } return; }
+    if (msg) { msg.textContent='Consultando datos… (puede tardar)'; msg.style.color='var(--text2)'; }
     try {
-      const r = await api('/api/invoice/raw', { method:'POST', body: JSON.stringify({ number }) });
+      const r = await api('/api/debug/raw', { method:'POST', body: JSON.stringify({ ref }) });
       if (r && r.error) throw new Error(r.error);
       if (msg) { msg.textContent = '✓ Datos cargados (revisa abajo)'; msg.style.color='var(--green)'; }
-      if (out) { out.style.display='block'; out.textContent = 'FACTURA CRUDA (ID ' + r.id + '):\n' + JSON.stringify(r.data, null, 2); }
+      if (out) { out.style.display='block'; out.textContent = ref.toUpperCase() + ':\n' + JSON.stringify(r.data, null, 2); }
     } catch(err) {
       if (msg) { msg.textContent = '✗ ' + err.message; msg.style.color='var(--red)'; }
     }
