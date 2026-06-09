@@ -361,7 +361,7 @@ function buildWorkOrdersEmail(orders) {
       <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;font-weight:600">${o.number}</td>
       <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;color:#374151">${o.client || ''}</td>
       <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;color:#6b7280">${o.type || ''}</td>
-      <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;color:#6b7280">${o.state || ''}</td>
+      <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;color:#374151">${o.assignedUserName || '<span style="color:#dc2626">Sin asignar</span>'}</td>
       <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;text-align:center;font-weight:700;color:${o.alertColor}">${o.days}d</td>
       <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;text-align:center">${o.pdfPath ? `<a href="${o.pdfPath}" style="color:#2563eb;text-decoration:none;font-weight:600">Ver</a>` : '—'}</td>
     </tr>`).join('');
@@ -381,7 +381,7 @@ function buildWorkOrdersEmail(orders) {
         <th style="text-align:left;padding:8px 0;border-bottom:2px solid #e5e7eb;color:#6b7280;font-size:12px">Pedido</th>
         <th style="text-align:left;padding:8px 0;border-bottom:2px solid #e5e7eb;color:#6b7280;font-size:12px">Cliente / Comunidad</th>
         <th style="text-align:left;padding:8px 0;border-bottom:2px solid #e5e7eb;color:#6b7280;font-size:12px">Tipo</th>
-        <th style="text-align:left;padding:8px 0;border-bottom:2px solid #e5e7eb;color:#6b7280;font-size:12px">Estado</th>
+        <th style="text-align:left;padding:8px 0;border-bottom:2px solid #e5e7eb;color:#6b7280;font-size:12px">Asignado</th>
         <th style="text-align:center;padding:8px 0;border-bottom:2px solid #e5e7eb;color:#6b7280;font-size:12px">Días</th>
         <th style="text-align:center;padding:8px 0;border-bottom:2px solid #e5e7eb;color:#6b7280;font-size:12px">Doc</th>
       </tr></thead>
