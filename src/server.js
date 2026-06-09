@@ -18,7 +18,7 @@ const {
   getWorkOrdersLive
 } = require('./stelorder');
 const { sendWhatsApp, sendEmail } = require('./notifications');
-const { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail } = require('./scheduler');
+const { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail, sendWorkOrdersAlert } = require('./scheduler');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -208,6 +208,30 @@ app.get('/api/workorders/live', requireAuth, async (req, res) => {
   try {
     const list = await getWorkOrdersLive();
     res.json({ list, count: list.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Estado de pausa de los avisos de pedidos.
+app.get('/api/workorders/alert-status', requireAuth, async (req, res) => {
+  try { res.json({ paused: await avisos.isPedidosPaused() }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Cambiar pausa de los avisos de pedidos.
+app.put('/api/workorders/alert-status', requireAuth, async (req, res) => {
+  try { res.json({ paused: await avisos.setPedidosPaused(!!req.body.paused) }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Enviar AHORA el resumen de pedidos (ignora la pausa). Opcional { email }.
+app.post('/api/workorders/send-now', requireAuth, async (req, res) => {
+  try {
+    const r = await sendWorkOrdersAlert({ force: true, to: req.body.email || null });
+    if (r.error) throw new Error(r.error);
+    if (!r.count) return res.json({ message: 'No hay pedidos en rojo/ámbar ahora mismo.' });
+    res.json({ message: `✓ Aviso enviado a ${r.to} (${r.count} pedidos)`, ...r });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
