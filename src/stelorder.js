@@ -346,7 +346,16 @@ async function sendInvoiceByEmail(invoiceId, email) {
   if (!email)     throw new Error('Falta el email de destino');
   // sendDocument es lento (>25s). Le damos 60s solo a esta llamada.
   const res = await client.put(`/sendDocument/${invoiceId}`, { email }, { timeout: 60000 });
+  console.log('[sendDocument] respuesta StelOrder:', res.status, JSON.stringify(res.data));
   return { ok: true, status: res.status, data: res.data };
+}
+
+// DEBUG: devuelve el objeto completo de una factura ordinaria (para inspeccionar campos,
+// p.ej. si hay alguna URL/token del documento). GET /ordinaryInvoices/{id}
+async function getInvoiceRaw(invoiceId) {
+  if (!invoiceId) throw new Error('Falta el ID de la factura');
+  const res = await client.get(`/ordinaryInvoices/${invoiceId}`);
+  return res.data;
 }
 
 // Resuelve el ID interno de una factura a partir de su número (ej. "FAC00791").
@@ -364,5 +373,5 @@ module.exports = {
   getInvoices, getAllReceipts, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary,
   getAlertLevel, getFamiliesSummary, getAccountCategories, clearCache,
-  sendInvoiceByEmail, findInvoiceIdByNumber
+  sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw
 };
