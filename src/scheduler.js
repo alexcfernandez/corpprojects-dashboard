@@ -1,7 +1,7 @@
 // src/scheduler.js — con protección contra alertas al arrancar
 const cron = require('node-cron');
 const { getPendingInvoices, getSummary } = require('./stelorder');
-const { sendInvoiceAlert, sendDailySummary, sendFamilySummary } = require('./notifications');
+const { sendInvoiceAlert, sendDailySummary, sendFamilySummary, buildFamilySummaryEmail, sendEmail } = require('./notifications');
 const { pollEmails } = require('./email-intelligence');
 const avisos = require('./avisos');   // registro persistente de avisos enviados
 
@@ -142,6 +142,34 @@ async function sendManual(format) {
   return { sent, skipped };
 }
 
+// PREVISUALIZACIÓN: arma el resumen agrupado y lo envía SOLO al email indicado.
+// Ignora la pausa global y no manda WhatsApp ni BCC. Sirve para que el admin
+// vea cómo queda el correo (con los enlaces "Ver factura") antes de soltarlo.
+// Si no se indica familia, coge la que tenga más facturas pendientes.
+async function previewToEmail(email, family) {
+  if (!email) throw new Error('Falta el email de previsualización');
+  const pending = await getPendingInvoices();
+  if (!pending.length) throw new Error('No hay facturas pendientes para previsualizar');
+  const byFam = groupByFamily(pending);
+
+  let fam = family;
+  let invoices = fam ? byFam[fam] : null;
+  if (!invoices || !invoices.length) {
+    // elegir la familia con más facturas pendientes
+    let best = null, bestN = -1;
+    for (const [f, list] of Object.entries(byFam)) {
+      if (list.length > bestN) { best = f; bestN = list.length; }
+    }
+    fam = best;
+    invoices = byFam[fam] || [];
+  }
+  if (!invoices.length) throw new Error('No hay facturas para esa familia');
+
+  const { subject, html, waMsg } = await buildFamilySummaryEmail(fam, invoices);
+  await sendEmail({ to: email, subject: `[PRUEBA] ${subject}`, html, text: waMsg });
+  return { family: fam, count: invoices.length, to: email };
+}
+
 function startScheduler() {
   console.log('[Scheduler] Iniciando tareas...');
 
@@ -174,4 +202,4 @@ function startScheduler() {
   }, 2 * 60 * 1000);
 }
 
-module.exports = { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual };
+module.exports = { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail };
