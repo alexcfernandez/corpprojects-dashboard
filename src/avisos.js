@@ -107,8 +107,28 @@ async function setGlobalPaused(paused) {
   return !!paused;
 }
 
+// Pausa independiente para los avisos de PEDIDOS DE TRABAJO.
+// Por defecto PAUSADO (true) hasta que el usuario lo active.
+async function isPedidosPaused() {
+  const db = await getDB();
+  const doc = await db.collection('appSettings').findOne({ key: 'pedidosAvisos' });
+  if (!doc) return true;            // sin configurar = pausado por seguridad
+  return !!doc.paused;
+}
+
+async function setPedidosPaused(paused) {
+  const db = await getDB();
+  await db.collection('appSettings').updateOne(
+    { key: 'pedidosAvisos' },
+    { $set: { key: 'pedidosAvisos', paused: !!paused, updatedAt: new Date() } },
+    { upsert: true }
+  );
+  return !!paused;
+}
+
 module.exports = {
   getFamilyContacts, getFamilyContactMap, getFamilyEmail, isFamilyPaused, setFamilyContact, getFamilyConfig,
   wasAlertSentToday, markAlertSent,
-  isGlobalPaused, setGlobalPaused
+  isGlobalPaused, setGlobalPaused,
+  isPedidosPaused, setPedidosPaused
 };
