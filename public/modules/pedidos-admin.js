@@ -13,7 +13,7 @@
   ));
 
   // Estado interno de la vista
-  const state = { all: [], filter: 'todos', sortDir: 'desc' };
+  const state = { all: [], filter: 'todos', sortDir: 'desc', users: [] };
 
   // Color por tipo de incidencia (mismos que StelOrder)
   function typeColor(type) {
@@ -108,9 +108,13 @@
     const box = document.getElementById('pd-table');
     if (box) box.innerHTML = 'Cargando…';
     try {
-      const r = await api('/api/workorders/live');
+      const [r, ru] = await Promise.all([
+        api('/api/workorders/live'),
+        api('/api/workorders/assignable-users')
+      ]);
       if (r && r.error) throw new Error(r.error);
       state.all = (r && r.list) || [];
+      state.users = (ru && ru.users) || [];
       paintMetrics(state.all);
       paintFilters();
       paint();
@@ -153,16 +157,22 @@
 
     if (!list.length) { box.innerHTML = '<div style="padding:20px;color:var(--text3)">No hay pedidos en esta vista.</div>'; return; }
 
-    const filas = list.map(p => `
+    const filas = list.map(p => {
+      const opts = ['<option value="">— Sin asignar —</option>']
+        .concat(state.users.map(u => `<option value="${u.id}" ${u.id === p.assignedUserId ? 'selected' : ''}>${esc(u.name)}</option>`))
+        .join('');
+      const sel = `<select onchange="CP.PedidosAdmin.assign('${p.id}', this.value)" style="background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:5px 8px;color:var(--text);font-size:12px;max-width:150px">${opts}</select>`;
+      return `
       <tr>
         <td style="padding:10px 8px;border-bottom:1px solid var(--border2);font-weight:600">${esc(p.number)}</td>
         <td style="padding:10px 8px;border-bottom:1px solid var(--border2)">${esc(p.client)}</td>
         <td style="padding:10px 8px;border-bottom:1px solid var(--border2)">${typePill(p.type)}</td>
-        <td style="padding:10px 8px;border-bottom:1px solid var(--border2);color:var(--text3)">${esc(p.state)}</td>
+        <td style="padding:10px 8px;border-bottom:1px solid var(--border2)">${sel}</td>
         <td style="padding:10px 8px;border-bottom:1px solid var(--border2);text-align:center;font-weight:700;color:${p.alertColor}">${p.days}d</td>
         <td style="padding:10px 8px;border-bottom:1px solid var(--border2)">${dot(p.alertColor)}${esc(p.alertLabel)}</td>
         <td style="padding:10px 8px;border-bottom:1px solid var(--border2);text-align:center">${p.pdfPath ? `<a href="${esc(p.pdfPath)}" target="_blank" style="color:var(--accent,#4d9cf8);text-decoration:none;font-weight:600">Ver</a>` : '—'}</td>
-      </tr>`).join('');
+      </tr>`;
+    }).join('');
 
     box.innerHTML = `
       <table style="width:100%;border-collapse:collapse;font-size:13px">
@@ -170,7 +180,7 @@
           <th style="text-align:left;padding:8px;border-bottom:2px solid var(--border2);color:var(--text3);font-size:12px">Pedido</th>
           <th style="text-align:left;padding:8px;border-bottom:2px solid var(--border2);color:var(--text3);font-size:12px">Cliente / Comunidad</th>
           <th style="text-align:left;padding:8px;border-bottom:2px solid var(--border2);color:var(--text3);font-size:12px">Tipo</th>
-          <th style="text-align:left;padding:8px;border-bottom:2px solid var(--border2);color:var(--text3);font-size:12px">Estado</th>
+          <th style="text-align:left;padding:8px;border-bottom:2px solid var(--border2);color:var(--text3);font-size:12px">Asignado a</th>
           <th style="text-align:center;padding:8px;border-bottom:2px solid var(--border2);color:var(--text3);font-size:12px">Días</th>
           <th style="text-align:left;padding:8px;border-bottom:2px solid var(--border2);color:var(--text3);font-size:12px">Situación</th>
           <th style="text-align:center;padding:8px;border-bottom:2px solid var(--border2);color:var(--text3);font-size:12px">Doc</th>
@@ -196,5 +206,18 @@
     paint();
   }
 
-  CP.PedidosAdmin = { render, load, setFilter, toggleSort, togglePause, sendNow };
+  async function assign(workOrderId, userId) {
+    try {
+      const r = await api('/api/workorders/assign', { method:'PUT', body: JSON.stringify({ workOrderId, userId }) });
+      if (r && r.error) throw new Error(r.error);
+      // Actualizar el estado local sin recargar todo
+      const p = state.all.find(x => String(x.id) === String(workOrderId));
+      if (p) { p.assignedUserId = userId || null; p.assignedUserName = r.userName || null; }
+    } catch (err) {
+      alert('No se pudo asignar: ' + err.message);
+      load(); // recargar para volver al estado real
+    }
+  }
+
+  CP.PedidosAdmin = { render, load, setFilter, toggleSort, togglePause, sendNow, assign };
 })(window.CP = window.CP || {});
