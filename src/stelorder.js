@@ -388,6 +388,23 @@ async function getInvoicePdfPath(invoiceId) {
   });
 }
 
+// DEBUG: trae una entidad (factura, incidencia o pedido de trabajo) por su referencia
+// (FAC..., INC..., PDT...) para inspeccionar sus campos y relaciones.
+async function getEntityRawByRef(ref) {
+  const r = String(ref || '').trim().toUpperCase();
+  let endpoint;
+  if      (r.startsWith('FAC')) endpoint = '/ordinaryInvoices';
+  else if (r.startsWith('INC')) endpoint = '/incidents';
+  else if (r.startsWith('PDT')) endpoint = '/workOrders';
+  else throw new Error('Referencia no reconocida. Usa FAC..., INC... o PDT...');
+  const list = await fetchAllPages(endpoint);
+  const numPart = r.replace(/^[A-Z]+/, '');  // "00560"
+  const found = list.find(x => String(x['full-reference'] || '').toUpperCase() === r)
+             || list.find(x => String(x['reference'] || '').toUpperCase() === numPart);
+  if (!found) return { notFound: true, endpoint, total: list.length };
+  return found;
+}
+
 // Resuelve el ID interno de una factura a partir de su número (ej. "FAC00791").
 async function findInvoiceIdByNumber(number) {
   const invoices = await getInvoices();
@@ -403,5 +420,5 @@ module.exports = {
   getInvoices, getAllReceipts, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary,
   getAlertLevel, getFamiliesSummary, getAccountCategories, clearCache,
-  sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw, getInvoicePdfPath
+  sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw, getInvoicePdfPath, getEntityRawByRef
 };
