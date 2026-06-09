@@ -253,8 +253,9 @@ async function sendDailySummary(summary) {
 }
 
 // ─── Resumen agrupado por familia (un correo con todas sus pendientes) ──
-async function sendFamilySummary(family, invoices) {
-  if (!family || !invoices || !invoices.length) return false;
+// Construye el correo de resumen agrupado (subject + html + texto WhatsApp).
+// Lo usan tanto el envío real como la previsualización.
+async function buildFamilySummaryEmail(family, invoices) {
   const list = [...invoices].sort((a,b) => (b.daysOverdue||0) - (a.daysOverdue||0));
   const totalPend = list.reduce((s,i) => s + (i.pending||0), 0);
   // Color por la factura más vencida
@@ -288,7 +289,7 @@ async function sendFamilySummary(family, invoices) {
       <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;text-align:center">${i.pdfPath ? `<a href="${i.pdfPath}" style="color:#2563eb;text-decoration:none;font-weight:600">Ver&nbsp;factura</a>` : '—'}</td>
     </tr>`).join('');
 
-  const emailHtml = `
+  const html = `
 <!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"></head>
@@ -323,6 +324,13 @@ async function sendFamilySummary(family, invoices) {
 </body>
 </html>`;
 
+  return { subject, html, waMsg };
+}
+
+async function sendFamilySummary(family, invoices) {
+  if (!family || !invoices || !invoices.length) return false;
+  const { subject, html, waMsg } = await buildFamilySummaryEmail(family, invoices);
+
   const avisos = require('./avisos');
   const avisosBox  = process.env.EMAIL_AVISOS || process.env.EMAIL_ADMIN;
   const familyMail = await avisos.getFamilyEmail(family);
@@ -331,9 +339,9 @@ async function sendFamilySummary(family, invoices) {
 
   await Promise.all([
     sendWhatsApp(waMsg),
-    sendEmail({ to, bcc, subject, html: emailHtml, text: waMsg })
+    sendEmail({ to, bcc, subject, html, text: waMsg })
   ]);
   return true;
 }
 
-module.exports = { sendInvoiceAlert, sendDailySummary, sendFamilySummary, sendWhatsApp, sendEmail };
+module.exports = { sendInvoiceAlert, sendDailySummary, sendFamilySummary, buildFamilySummaryEmail, sendWhatsApp, sendEmail };
