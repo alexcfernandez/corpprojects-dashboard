@@ -135,6 +135,15 @@ async function sendInvoiceAlert(invoice) {
 
   const subject = `${info.emoji} Factura ${invoice.number} — ${invoice.daysOverdue} días sin cobrar`;
 
+  // Enlace al PDF oficial de la factura (cacheado; estable).
+  let pdfPath = null;
+  try { pdfPath = await require('./stelorder').getInvoicePdfPath(invoice.id); } catch { pdfPath = null; }
+  const verFacturaBtn = pdfPath ? `
+    <a href="${pdfPath}"
+       style="display:block;background:#1f2937;color:#fff;text-align:center;padding:14px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;margin-bottom:10px">
+      📄 Ver factura
+    </a>` : '';
+
   // WhatsApp (mensaje corto)
   const waMsg = [
     `${info.emoji} *Corp Projects — ${info.label}*`,
@@ -181,6 +190,7 @@ async function sendInvoiceAlert(invoice) {
       <div style="font-size:13px;color:#6b7280;margin-top:2px">sin cobrar desde la fecha de emisión</div>
     </div>
 
+    ${verFacturaBtn}
     <a href="https://dashboard.corpprojects.es" 
        style="display:block;background:${info.color};color:#fff;text-align:center;padding:14px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">
       Ver en el dashboard →
@@ -262,12 +272,20 @@ async function sendFamilySummary(family, invoices) {
     `👉 https://dashboard.corpprojects.es`
   ].join('\n');
 
+  // Adjuntar el enlace al PDF oficial de cada factura (cacheado; estable).
+  const stel = require('./stelorder');
+  for (const i of list) {
+    try { i.pdfPath = await stel.getInvoicePdfPath(i.id); }
+    catch { i.pdfPath = null; }
+  }
+
   const filas = list.map(i => `
     <tr>
       <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;font-weight:600">${i.number}</td>
       <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;color:#374151">${i.client || ''}</td>
       <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;text-align:center;color:${(i.daysOverdue||0)>=60?'#991b1b':(i.daysOverdue||0)>=30?'#f97316':'#6b7280'}">${i.daysOverdue}d</td>
       <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:600">${fmtEur(i.pending)}</td>
+      <td style="padding:9px 0;border-bottom:1px solid #f0f0f0;text-align:center">${i.pdfPath ? `<a href="${i.pdfPath}" style="color:#2563eb;text-decoration:none;font-weight:600">Ver&nbsp;factura</a>` : '—'}</td>
     </tr>`).join('');
 
   const emailHtml = `
@@ -287,11 +305,13 @@ async function sendFamilySummary(family, invoices) {
         <th style="text-align:left;padding:8px 0;border-bottom:2px solid #e5e7eb;color:#6b7280;font-size:12px">Obra / Comunidad</th>
         <th style="text-align:center;padding:8px 0;border-bottom:2px solid #e5e7eb;color:#6b7280;font-size:12px">Días</th>
         <th style="text-align:right;padding:8px 0;border-bottom:2px solid #e5e7eb;color:#6b7280;font-size:12px">Pendiente</th>
+        <th style="text-align:center;padding:8px 0;border-bottom:2px solid #e5e7eb;color:#6b7280;font-size:12px">Documento</th>
       </tr></thead>
       <tbody>${filas}</tbody>
       <tfoot><tr>
         <td colspan="3" style="padding:12px 0;font-weight:700">Total pendiente</td>
         <td style="padding:12px 0;text-align:right;font-weight:700;color:${info.color};font-size:16px">${fmtEur(totalPend)}</td>
+        <td></td>
       </tr></tfoot>
     </table>
     <a href="https://dashboard.corpprojects.es" style="display:block;background:${info.color};color:#fff;text-align:center;padding:14px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;margin-top:20px">Ver detalle en el dashboard →</a>
