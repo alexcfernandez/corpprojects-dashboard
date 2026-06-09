@@ -88,7 +88,7 @@
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
             <input type="text" id="fc-test-num" placeholder="Nº factura (ej. FAC00791)" style="background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;outline:none;width:200px">
             <input type="email" id="fc-test-email" placeholder="tu-email@de-prueba.com" style="background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;outline:none;width:240px">
-            <button class="btn bp" style="padding:8px 16px;font-size:13px" onclick="CP.FamiliasAdmin.testOfficial()">Enviar prueba</button>
+            <button class="btn bp" id="fc-test-btn" style="padding:8px 16px;font-size:13px" onclick="CP.FamiliasAdmin.testOfficial()">Enviar prueba</button>
             <span id="fc-test-msg" style="font-size:12px;color:var(--text3)"></span>
           </div>
           <div style="font-size:11px;color:var(--text3);margin-top:6px">StelOrder enviará su factura oficial (PDF) al email que pongas. Pruébalo con tu propio correo.</div>
@@ -149,14 +149,19 @@
     const number = document.getElementById('fc-test-num')?.value?.trim();
     const email  = document.getElementById('fc-test-email')?.value?.trim();
     const msg = document.getElementById('fc-test-msg');
+    const btn = document.getElementById('fc-test-btn');
     if (!number || !email) { if (msg) { msg.textContent='Pon nº de factura y email'; msg.style.color='var(--amber)'; } return; }
-    if (msg) { msg.textContent='Enviando...'; msg.style.color='var(--text2)'; }
+    if (btn && btn.disabled) return;                 // ya hay un envío en curso
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; btn.textContent = 'Enviando…'; }
+    if (msg) { msg.textContent='StelOrder está enviando (puede tardar ~30s)…'; msg.style.color='var(--text2)'; }
     try {
       const r = await api('/api/invoice/send-official', { method:'POST', body: JSON.stringify({ number, email }) });
       if (r && r.error) throw new Error(r.error);
       if (msg) { msg.textContent = '✓ ' + (r.message || 'Enviada'); msg.style.color='var(--green)'; }
     } catch(err) {
       if (msg) { msg.textContent = '✗ ' + err.message; msg.style.color='var(--red)'; }
+    } finally {
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.textContent = 'Enviar prueba'; }
     }
   }
 
