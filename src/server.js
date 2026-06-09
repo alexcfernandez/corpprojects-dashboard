@@ -14,7 +14,7 @@ const { MongoClient, ObjectId } = require('mongodb');
 const {
   getSummary, getPendingInvoices, getInvoices, getClients,
   getEstimatesSummary, getFamiliesSummary, getAccountCategories, clearCache,
-  sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw
+  sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw, getEntityRawByRef
 } = require('./stelorder');
 const { sendWhatsApp, sendEmail } = require('./notifications');
 const { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail } = require('./scheduler');
@@ -188,8 +188,21 @@ app.post('/api/invoice/send-official', requireAuth, async (req, res) => {
   }
 });
 
-// DEBUG: volcar el objeto crudo de una factura para inspeccionar sus campos.
-// Acepta { number } o { invoiceId }. Devuelve el JSON tal cual de StelOrder.
+// DEBUG genérico: vuelca factura/incidencia/pedido por su referencia (FAC/INC/PDT).
+app.post('/api/debug/raw', requireAuth, async (req, res) => {
+  try {
+    const { ref } = req.body;
+    if (!ref) return res.status(400).json({ error: 'Falta la referencia (FAC.../INC.../PDT...)' });
+    const data = await getEntityRawByRef(ref);
+    res.json({ ref, data });
+  } catch (err) {
+    const status = err.response?.status;
+    const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+    res.status(500).json({ error: `${err.message || ''} ${status ? '(StelOrder '+status+')' : ''}`.trim() });
+  }
+});
+
+// DEBUG: volcar el objeto crudo de una factura por su número.
 app.post('/api/invoice/raw', requireAuth, async (req, res) => {
   try {
     const { number, invoiceId } = req.body;
