@@ -1,7 +1,7 @@
 // src/scheduler.js — con protección contra alertas al arrancar
 const cron = require('node-cron');
-const { getPendingInvoices, getSummary } = require('./stelorder');
-const { sendInvoiceAlert, sendDailySummary, sendFamilySummary, buildFamilySummaryEmail, sendEmail } = require('./notifications');
+const { getPendingInvoices, getSummary, getWorkOrdersLive } = require('./stelorder');
+const { sendInvoiceAlert, sendDailySummary, sendFamilySummary, buildFamilySummaryEmail, sendWorkOrdersSummary, sendEmail } = require('./notifications');
 const { pollEmails } = require('./email-intelligence');
 const avisos = require('./avisos');   // registro persistente de avisos enviados
 
@@ -170,6 +170,28 @@ async function previewToEmail(email, family) {
   return { family: fam, count: invoices.length, to: email };
 }
 
+// AVISO DIARIO DE PEDIDOS DE TRABAJO: rojos + ámbar a hola@corpprojects.es.
+// Respeta su propia pausa (independiente del cobro). force=true ignora la pausa
+// (para el botón "enviar/previsualizar ahora").
+async function sendWorkOrdersAlert(opts = {}) {
+  const { force = false, to = null } = opts;
+  if (!force && await avisos.isPedidosPaused()) {
+    console.log('[Scheduler] ⏸ Avisos de pedidos en pausa — omitido.');
+    return { paused: true, sent: 0 };
+  }
+  try {
+    const all = await getWorkOrdersLive();
+    const toAlert = all.filter(o => o.alertLevel === 'red' || o.alertLevel === 'amber');
+    if (!toAlert.length) { console.log('[Scheduler] Pedidos: nada en rojo/ámbar.'); return { sent: 0, count: 0 }; }
+    const r = await sendWorkOrdersSummary(toAlert, to);
+    console.log(`[Scheduler] Aviso de pedidos enviado a ${r.to} (${toAlert.length} pedidos).`);
+    return { sent: 1, count: toAlert.length, to: r.to };
+  } catch (err) {
+    console.error('[Scheduler] Error aviso pedidos:', err.message);
+    return { sent: 0, error: err.message };
+  }
+}
+
 function startScheduler() {
   console.log('[Scheduler] Iniciando tareas...');
 
@@ -180,6 +202,9 @@ function startScheduler() {
 
   // Resumen diario INTERNO (al admin) 08:30 lun–vie
   cron.schedule('30 8 * * 1-5', runDailySummary, { timezone: 'Europe/Madrid' });
+
+  // Aviso diario de PEDIDOS DE TRABAJO (rojos + ámbar) a las 08:00. Respeta su pausa.
+  cron.schedule('0 8 * * *', () => sendWorkOrdersAlert(), { timezone: 'Europe/Madrid' });
 
   // Poll de emails cada 15 minutos
   cron.schedule('*/15 * * * *', async () => {
@@ -202,4 +227,4 @@ function startScheduler() {
   }, 2 * 60 * 1000);
 }
 
-module.exports = { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail };
+module.exports = { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail, sendWorkOrdersAlert };
