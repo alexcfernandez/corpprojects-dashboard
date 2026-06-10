@@ -41,7 +41,7 @@
       <details class="card" style="margin-bottom:16px">
         <summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--text2)">🧪 Prueba Fase 4 — cambiar estado de un pedido en StelOrder</summary>
         <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <input id="pd-st-id" placeholder="ID del pedido (ej. 56563025)" style="background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;width:220px">
+          <input id="pd-st-id" placeholder="PDT00434 o ID numérico" style="background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;width:220px">
           <select id="pd-st-state" style="background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px">
             <option value="1120645">En curso</option>
             <option value="1120638">Cerrado</option>
@@ -50,7 +50,7 @@
           </select>
           <button class="btn bgh" id="pd-st-btn" style="padding:8px 14px;font-size:13px" onclick="CP.PedidosAdmin.testStelState()">Ejecutar con verificación</button>
         </div>
-        <div style="font-size:11px;color:var(--text3);margin-top:6px">Lee el pedido, guarda copia de seguridad, escribe SOLO el estado, relee y compara líneas/cliente/referencia. El ID numérico sale en la columna Doc → enlace "Ver" o en los datos crudos (PDT).</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:6px">Lee el pedido, guarda copia de seguridad, escribe SOLO el estado, relee y compara líneas/cliente/referencia. Puedes poner la referencia (PDT00434) o el ID numérico.</div>
         <pre id="pd-st-out" style="margin-top:10px;background:var(--bg2);border-radius:8px;padding:10px;font-size:12px;white-space:pre-wrap;display:none"></pre>
       </details>
       <div class="card">
