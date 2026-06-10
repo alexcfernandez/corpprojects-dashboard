@@ -236,6 +236,16 @@ app.put('/api/workorders/assign', requireAuth, async (req, res) => {
   }
 });
 
+// Interruptor de escritura en StelOrder (Fase 4).
+app.get('/api/workorders/stelwrite', requireAuth, async (req, res) => {
+  try { res.json({ enabled: await avisos.isStelWriteEnabled() }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.put('/api/workorders/stelwrite', requireAuth, async (req, res) => {
+  try { res.json({ enabled: await avisos.setStelWriteEnabled(!!req.body.enabled) }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 // FASE 4 (prueba controlada): cambiar el estado de UN pedido en StelOrder.
 // Lee→backup→escribe→relee→compara. Devuelve el informe de verificación.
 app.post('/api/workorders/:id/stel-state', requireAuth, async (req, res) => {
@@ -281,6 +291,15 @@ app.post('/api/workorders/:id/start', async (req, res) => {
     const workerDoc = await verifyWorkerToken(token);
     if (!workerDoc) return res.status(401).json({ error: 'Token expirado' });
     const r = await require('./asignaciones').startWork(req.params.id, workerDoc.workerId, workerDoc.workerName);
+
+    // Fase 4: reflejar "En curso" en StelOrder (si el interruptor está activo y es un inicio nuevo)
+    if (!r.alreadyRunning) {
+      try {
+        if (await require('./avisos').isStelWriteEnabled()) {
+          await require('./stelorder').setWorkOrderStateLight(req.params.id, 1120645, `start:${workerDoc.workerName || workerDoc.workerId}`);
+        }
+      } catch (e) { console.warn('[Fase4] start→En curso:', e.message); }
+    }
     res.json(r);
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
