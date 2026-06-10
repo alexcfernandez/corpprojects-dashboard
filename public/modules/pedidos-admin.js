@@ -38,6 +38,21 @@
     if (!el) return;
     el.innerHTML = `
       <div id="pd-alert-panel" class="card" style="margin-bottom:16px"></div>
+      <details class="card" style="margin-bottom:16px">
+        <summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--text2)">🧪 Prueba Fase 4 — cambiar estado de un pedido en StelOrder</summary>
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input id="pd-st-id" placeholder="ID del pedido (ej. 56563025)" style="background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;width:220px">
+          <select id="pd-st-state" style="background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px">
+            <option value="1120645">En curso</option>
+            <option value="1120638">Cerrado</option>
+            <option value="1120651">Pendiente</option>
+            <option value="1120630">Rechazado</option>
+          </select>
+          <button class="btn bgh" id="pd-st-btn" style="padding:8px 14px;font-size:13px" onclick="CP.PedidosAdmin.testStelState()">Ejecutar con verificación</button>
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-top:6px">Lee el pedido, guarda copia de seguridad, escribe SOLO el estado, relee y compara líneas/cliente/referencia. El ID numérico sale en la columna Doc → enlace "Ver" o en los datos crudos (PDT).</div>
+        <pre id="pd-st-out" style="margin-top:10px;background:var(--bg2);border-radius:8px;padding:10px;font-size:12px;white-space:pre-wrap;display:none"></pre>
+      </details>
       <div class="card">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px">
           <div class="card-title" style="margin:0;flex:1">Pedidos de trabajo en curso</div>
@@ -239,5 +254,35 @@
     }
   }
 
-  CP.PedidosAdmin = { render, load, setFilter, toggleSort, togglePause, sendNow, assignRow };
+  async function testStelState() {
+    const id = (document.getElementById('pd-st-id') || {}).value?.trim();
+    const stateId = (document.getElementById('pd-st-state') || {}).value;
+    const out = document.getElementById('pd-st-out');
+    const btn = document.getElementById('pd-st-btn');
+    if (!id) { alert('Pon el ID numérico del pedido'); return; }
+    if (!confirm(`Vas a cambiar el estado del pedido ${id} EN STELORDER. Se guarda copia de seguridad y se verifica. ¿Continuar?`)) return;
+    if (btn) { btn.disabled = true; btn.textContent = 'Ejecutando…'; }
+    if (out) { out.style.display = 'block'; out.textContent = 'Leyendo, escribiendo y verificando…'; }
+    try {
+      const r = await api(`/api/workorders/${encodeURIComponent(id)}/stel-state`, {
+        method:'POST', body: JSON.stringify({ stateId })
+      });
+      if (r && r.error) throw new Error(r.error);
+      const c = r.checks || {};
+      out.textContent =
+        (c.todoOk ? '✅ TODO OK' : '⚠️ REVISAR — algo no cuadra') + '\n' +
+        `Estado: ${c.estadoAntes} → ${c.estadoDespues} (cambiado: ${c.estadoCambiado ? 'sí' : 'NO'})\n` +
+        `Líneas: ${c.lineasAntes} → ${c.lineasDespues} (intactas: ${c.lineasIntactas ? 'sí' : 'NO'})\n` +
+        `Cliente intacto: ${c.clienteIntacto ? 'sí' : 'NO'} · Referencia intacta: ${c.referenciaIntacta ? 'sí' : 'NO'}\n` +
+        `Total: ${c.totalAntes} → ${c.totalDespues}\n` +
+        `Copia de seguridad guardada en stelWriteLog.`;
+      load(); // refrescar la tabla (caché ya invalidada en el servidor)
+    } catch (e) {
+      if (out) out.textContent = '✗ Error: ' + e.message + '\n(No se ha verificado el cambio; revisa stelWriteLog y el pedido en StelOrder.)';
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Ejecutar con verificación'; }
+    }
+  }
+
+  CP.PedidosAdmin = { render, load, setFilter, toggleSort, togglePause, sendNow, assignRow, testStelState };
 })(window.CP = window.CP || {});
