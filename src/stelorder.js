@@ -530,10 +530,75 @@ async function findInvoiceIdByNumber(number) {
 // Vaciar la caché de StelOrder (para un botón "Actualizar ahora" en el dashboard)
 function clearCache() { invalidate(); }
 
+// ── FASE 4: ESCRIBIR ESTADO DE UN PEDIDO EN STELORDER (con red de seguridad) ──
+// Patrón: LEER → COPIA DE SEGURIDAD en Mongo → PUT solo del estado → RELEER →
+// COMPARAR campos clave. Si algo más cambió, lo reporta. Todo queda en stelWriteLog.
+async function setWorkOrderState(workOrderId, stateId, requestedBy) {
+  if (!workOrderId || !stateId) throw new Error('Faltan datos (pedido o estado)');
+  const id = String(workOrderId);
+
+  // 1) Leer el pedido completo ANTES (sin caché)
+  const beforeRes = await client.get(`/workOrders/${id}`);
+  const before = beforeRes.data;
+  if (!before || !before.id) throw new Error('No se pudo leer el pedido en StelOrder');
+
+  // 2) Copia de seguridad en nuestra base de datos
+  const db = await require('./db').getDB();
+  const logDoc = {
+    workOrderId: id,
+    reference: before['full-reference'] || null,
+    requestedState: stateId,
+    requestedBy: requestedBy || null,
+    before,
+    at: new Date(),
+    result: 'pending'
+  };
+  const ins = await db.collection('stelWriteLog').insertOne(logDoc);
+
+  // 3) Escribir SOLO el estado
+  let putStatus = null;
+  try {
+    const putRes = await client.put(`/workOrders/${id}`, { 'document-state-id': Number(stateId) },
+      { headers: { 'Content-Type': 'application/json' } });
+    putStatus = putRes.status;
+  } catch (err) {
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId },
+      { $set: { result: 'error', error: `${err.response?.status || ''} ${err.message}`, errorBody: err.response?.data || null } });
+    throw new Error(`StelOrder rechazó la escritura: ${err.response?.status || ''} ${err.message}`);
+  }
+
+  // 4) Releer y 5) comparar campos clave
+  const afterRes = await client.get(`/workOrders/${id}`);
+  const after = afterRes.data || {};
+  const linesBefore = (before.lines || []).filter(l => !l.deleted).length;
+  const linesAfter  = (after.lines  || []).filter(l => !l.deleted).length;
+  const checks = {
+    estadoCambiado:  Number(after['document-state-id']) === Number(stateId),
+    estadoAntes:     before['document-state-id'],
+    estadoDespues:   after['document-state-id'],
+    lineasAntes:     linesBefore,
+    lineasDespues:   linesAfter,
+    lineasIntactas:  linesBefore === linesAfter,
+    clienteIntacto:  String(before['account-id']) === String(after['account-id']),
+    referenciaIntacta: before['full-reference'] === after['full-reference'],
+    totalAntes:      before['total'] ?? before['total-amount'] ?? null,
+    totalDespues:    after['total']  ?? after['total-amount']  ?? null
+  };
+  checks.todoOk = checks.estadoCambiado && checks.lineasIntactas && checks.clienteIntacto && checks.referenciaIntacta;
+
+  await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId },
+    { $set: { result: checks.todoOk ? 'ok' : 'review', putStatus, after, checks } });
+
+  // Invalidar caché de pedidos para que el dashboard refleje el cambio
+  try { invalidate('workOrders'); } catch (e) { try { invalidate(); } catch (e2) {} }
+
+  return { putStatus, checks };
+}
+
 module.exports = {
   getInvoices, getAllReceipts, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary,
   getAlertLevel, getFamiliesSummary, getAccountCategories, clearCache,
   sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw, getInvoicePdfPath, getEntityRawByRef,
-  getWorkOrdersLive, getWorkOrderAlertLevel
+  getWorkOrdersLive, getWorkOrderAlertLevel, setWorkOrderState
 };
