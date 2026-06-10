@@ -248,7 +248,7 @@ app.get('/api/workorders/mine', async (req, res) => {
     const asig = require('./asignaciones');
     const list = await getWorkOrdersLive();
     await asig.attachAssignments(list);
-    const mine = list.filter(p => String(p.assignedUserId || '') === String(workerDoc.workerId) && p.workStatus !== 'done');
+    const mine = list.filter(p => String(p.assignedUserId || '') === String(workerDoc.workerId) && p.workStatus !== 'done' && p.workStatus !== 'invoiced');
     // Adjuntar la sesión abierta (cronómetro) de cada pedido, si la hay
     const open = await asig.getOpenTimers(workerDoc.workerId);
     mine.forEach(p => { p.activeStartedAt = open[String(p.id)] || null; });
