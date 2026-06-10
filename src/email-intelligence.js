@@ -150,9 +150,13 @@ JSON a devolver (todos los campos obligatorios):
     });
 
     const data = await response.json();
+    if (!response.ok) {
+      throw new Error(`API ${response.status}: ${JSON.stringify(data).slice(0, 200)}`);
+    }
     const texto = data.content?.[0]?.text || '{}';
     const limpio = texto.replace(/```json|```/g, '').trim();
     const result = JSON.parse(limpio);
+    if (!result.categoria) throw new Error('La IA no devolvió categoría');
 
     // Validar campos obligatorios
     if (!result.resumen || result.resumen.length < 3) {
@@ -171,7 +175,8 @@ JSON a devolver (todos los campos obligatorios):
       resumen: `Email sobre: ${asunto.slice(0, 80)}`,
       clienteDetectado: null,
       accionSugerida: 'Revisar manualmente',
-      confianza: 0.1
+      confianza: 0.1,
+      iaError: err.message
     };
   }
 }
@@ -339,4 +344,38 @@ async function enviarRespuesta(emailDestino, asuntoOriginal, mensaje) {
   }
 }
 
-module.exports = { pollEmails, enviarRespuesta, getGmailClient };
+// ── Diagnóstico de la IA (para el botón del admin) ────────────────
+async function diagnosticoIA() {
+  const hasKey = !!process.env.ANTHROPIC_API_KEY;
+  if (!hasKey) return { hasKey, ok: false, error: 'ANTHROPIC_API_KEY no está configurada en Railway → Variables' };
+  const r = await clasificarEmail(
+    'pruebas@ejemplo.com',
+    'Oferta especial: 50% de descuento en herramientas',
+    'Aproveche nuestra promoción de verano en taladros y amoladoras. Compre ahora.'
+  );
+  if (r.iaError) return { hasKey, ok: false, error: r.iaError };
+  return { hasKey, ok: true, resultado: r };
+}
+
+// ── Reclasificar los emails que cayeron en el fallback (confianza <= 0.1) ──
+async function reclasificarPendientes(limit = 150) {
+  const db = await getDB();
+  const malos = await db.collection('emails')
+    .find({ confianza: { $lte: 0.1 } })
+    .sort({ fecha: -1 }).limit(limit).toArray();
+  let ok = 0, fallos = 0, primerError = null;
+  for (const e of malos) {
+    const c = await clasificarEmail(e.de || '', e.asunto || '', e.cuerpo || '');
+    if (c.iaError) { fallos++; if (!primerError) primerError = c.iaError; continue; }
+    await db.collection('emails').updateOne({ _id: e._id }, { $set: {
+      categoria: c.categoria, urgencia: c.urgencia, resumen: c.resumen,
+      accionSugerida: c.accionSugerida, clienteDetectado: c.clienteDetectado || null,
+      confianza: c.confianza || 0.5, iaError: null, reclasificadoEn: new Date()
+    }});
+    ok++;
+    await new Promise(r => setTimeout(r, 350));   // ritmo suave para la API
+  }
+  return { encontrados: malos.length, reclasificados: ok, fallos, primerError };
+}
+
+module.exports = { pollEmails, enviarRespuesta, getGmailClient, diagnosticoIA, reclasificarPendientes };
