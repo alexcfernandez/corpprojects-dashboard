@@ -182,7 +182,7 @@ async function sendWorkOrdersAlert(opts = {}) {
   try {
     const all = await getWorkOrdersLive();
     await require('./asignaciones').attachAssignments(all);
-    const toAlert = all.filter(o => o.alertLevel === 'red' || o.alertLevel === 'amber');
+    const toAlert = all.filter(o => o.workStatus !== 'done' && (o.alertLevel === 'red' || o.alertLevel === 'amber'));
     if (!toAlert.length) { console.log('[Scheduler] Pedidos: nada en rojo/ámbar.'); return { sent: 0, count: 0 }; }
     const r = await sendWorkOrdersSummary(toAlert, to);
     console.log(`[Scheduler] Aviso de pedidos enviado a ${r.to} (${toAlert.length} pedidos).`);
