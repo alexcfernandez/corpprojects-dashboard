@@ -236,6 +236,24 @@ app.put('/api/workorders/assign', requireAuth, async (req, res) => {
   }
 });
 
+// MIS PEDIDOS (para el trabajador en parte.html, con su token w_).
+app.get('/api/workorders/mine', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'No autorizado' });
+    const { verifyWorkerToken } = require('./partes');
+    const workerDoc = await verifyWorkerToken(token);
+    if (!workerDoc) return res.status(401).json({ error: 'Token expirado' });
+
+    const list = await getWorkOrdersLive();
+    await require('./asignaciones').attachAssignments(list);
+    const mine = list.filter(p => String(p.assignedUserId || '') === String(workerDoc.workerId));
+    res.json({ list: mine, count: mine.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Estado de pausa de los avisos de pedidos.
 app.get('/api/workorders/alert-status', requireAuth, async (req, res) => {
   try { res.json({ paused: await avisos.isPedidosPaused() }); }
