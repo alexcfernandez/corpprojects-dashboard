@@ -236,6 +236,18 @@ app.put('/api/workorders/assign', requireAuth, async (req, res) => {
   }
 });
 
+// Validar sesión de trabajador guardada (para no pedir PIN cada vez).
+app.get('/api/partes/worker-session', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'Sin sesión' });
+    const { verifyWorkerToken } = require('./partes');
+    const w = await verifyWorkerToken(token);
+    if (!w) return res.status(401).json({ error: 'Sesión caducada' });
+    res.json({ workerId: w.workerId, workerName: w.workerName });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Interruptor de escritura en StelOrder (Fase 4).
 app.get('/api/workorders/stelwrite', requireAuth, async (req, res) => {
   try { res.json({ enabled: await avisos.isStelWriteEnabled() }); }
