@@ -333,6 +333,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
 <script>
 const WORKER_COLORS = {jose:'#4d9cf8',diego:'#22c487',abdellah:'#f59e0b',mamadou:'#a78bfa',paula:'#f05252'};
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual'; // no restaurar scroll al reabrir
 let workerToken = null, workerInfo = null, workerDirect = null;
 let gpsData = { lat:null, lng:null, accuracy:null };
 let todosWorkers = [];
@@ -495,7 +496,13 @@ async function loadMisPedidos() {
     misPedidos = (data && data.list) || [];
     if (!misPedidos.length) { if (section) section.style.display='none'; return; }
     section.style.display = 'block';
-    ul.innerHTML = misPedidos.map((p, i) => {
+
+    // Prioridad efectiva: la asignada en el admin, o por tipo si no hay
+    const prioDe = p => p.assignedPriority || (/actuaci/i.test(p.type||'') ? 'urgent' : 'normal');
+    const urgentes = misPedidos.map((p,i)=>({p,i})).filter(x => prioDe(x.p) === 'urgent');
+    const otros    = misPedidos.map((p,i)=>({p,i})).filter(x => prioDe(x.p) !== 'urgent');
+
+    const tarjeta = ({p, i}) => {
       const tipoColor = /actuaci/i.test(p.type||'') ? 'var(--blue)' : (/presupuesto/i.test(p.type||'') ? '#9463fb' : 'var(--text3)');
       const enCurso = !!p.activeStartedAt;
       const horaIni = enCurso ? new Date(p.activeStartedAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) : '';
@@ -515,7 +522,15 @@ async function loadMisPedidos() {
         </div>
         ${boton}
       </div>`;
-    }).join('');
+    };
+
+    const bloque = (titulo, color, items) => !items.length ? '' :
+      `<div style="font-size:12px;font-weight:700;color:${color};margin:12px 0 8px">${titulo}</div>` +
+      items.map(tarjeta).join('');
+
+    ul.innerHTML =
+      bloque('🔴 URGENTE', '#ef4444', urgentes) +
+      bloque('🔵 OTROS TRABAJOS', 'var(--text3)', otros);
   } catch(e) {}
 }
 
@@ -960,6 +975,7 @@ function resetForm() {
 function showPage(id) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-'+id).classList.add('active');
+  window.scrollTo(0, 0);   // siempre arrancar arriba del todo
 }
 
 function showMsg(id, text, type) {
