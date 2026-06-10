@@ -69,8 +69,12 @@
     const panel = document.getElementById('pd-alert-panel');
     if (!panel) return;
     try {
-      const r = await api('/api/workorders/alert-status');
+      const [r, w] = await Promise.all([
+        api('/api/workorders/alert-status'),
+        api('/api/workorders/stelwrite')
+      ]);
       const paused = !!(r && r.paused);
+      const writeOn = !!(w && w.enabled);
       panel.innerHTML = `
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
           <div style="flex:1;min-width:220px">
@@ -86,10 +90,30 @@
           </button>
           <button class="btn bgh" id="pd-send-btn" style="padding:8px 16px;font-size:13px" onclick="CP.PedidosAdmin.sendNow()">📧 Enviar ahora</button>
           <span id="pd-alert-msg" style="font-size:12px;color:var(--text3)"></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--border2)">
+          <div style="flex:1;min-width:220px">
+            <div style="font-weight:700;color:${writeOn ? 'var(--green)' : 'var(--text3)'}">
+              ${writeOn ? '✍️ Escritura en StelOrder ACTIVADA' : '✍️ Escritura en StelOrder desactivada'}
+            </div>
+            <div style="font-size:12px;color:var(--text3);margin-top:2px">
+              David inicia → "En curso" · Parte facturado → "Cerrado". Todo queda registrado en stelWriteLog.
+            </div>
+          </div>
+          <button class="btn ${writeOn ? 'bgh' : 'bp'}" style="padding:8px 16px;font-size:13px" onclick="CP.PedidosAdmin.toggleStelWrite(${writeOn})">
+            ${writeOn ? '⏸ Desactivar escritura' : '▶ Activar escritura'}
+          </button>
         </div>`;
     } catch (err) {
       panel.innerHTML = `<div style="color:var(--red);font-size:13px">No se pudo cargar el estado de avisos: ${esc(err.message)}</div>`;
     }
+  }
+
+  async function toggleStelWrite(currentlyOn) {
+    try {
+      await api('/api/workorders/stelwrite', { method:'PUT', body: JSON.stringify({ enabled: !currentlyOn }) });
+      loadAlertStatus();
+    } catch (err) { alert('No se pudo cambiar: ' + err.message); }
   }
 
   async function togglePause(currentlyPaused) {
@@ -284,5 +308,5 @@
     }
   }
 
-  CP.PedidosAdmin = { render, load, setFilter, toggleSort, togglePause, sendNow, assignRow, testStelState };
+  CP.PedidosAdmin = { render, load, setFilter, toggleSort, togglePause, sendNow, assignRow, testStelState, toggleStelWrite };
 })(window.CP = window.CP || {});
