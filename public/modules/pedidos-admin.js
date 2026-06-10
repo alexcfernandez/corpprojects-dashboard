@@ -133,7 +133,7 @@
   function paintFilters() {
     const cont = document.getElementById('pd-filters');
     if (!cont) return;
-    const abiertos = state.all.filter(p => p.workStatus !== 'done');
+    const abiertos = state.all.filter(p => p.workStatus !== 'done' && p.workStatus !== 'invoiced');
     const counts = { todos: abiertos.length, actuacion: 0, presupuesto: 0, otros: 0,
                      completados: state.all.filter(p => p.workStatus === 'done').length };
     abiertos.forEach(p => { counts[bucket(p.type)]++; });
@@ -158,7 +158,7 @@
     if (state.filter === 'completados') {
       list = list.filter(p => p.workStatus === 'done');
     } else {
-      list = list.filter(p => p.workStatus !== 'done');
+      list = list.filter(p => p.workStatus !== 'done' && p.workStatus !== 'invoiced');
       if (state.filter !== 'todos') list = list.filter(p => bucket(p.type) === state.filter);
     }
     list.sort((a, b) => state.sortDir === 'desc' ? (b.days - a.days) : (a.days - b.days));
