@@ -133,13 +133,16 @@
   function paintFilters() {
     const cont = document.getElementById('pd-filters');
     if (!cont) return;
-    const counts = { todos: state.all.length, actuacion: 0, presupuesto: 0, otros: 0 };
-    state.all.forEach(p => { counts[bucket(p.type)]++; });
+    const abiertos = state.all.filter(p => p.workStatus !== 'done');
+    const counts = { todos: abiertos.length, actuacion: 0, presupuesto: 0, otros: 0,
+                     completados: state.all.filter(p => p.workStatus === 'done').length };
+    abiertos.forEach(p => { counts[bucket(p.type)]++; });
     const defs = [
       ['todos', 'Todos'],
       ['actuacion', 'Actuación'],
       ['presupuesto', 'Presupuesto'],
-      ['otros', 'Otros']
+      ['otros', 'Otros'],
+      ['completados', '✅ Pte. facturar']
     ];
     cont.innerHTML = defs.map(([k, label]) => {
       const active = state.filter === k;
@@ -152,7 +155,12 @@
     const box = document.getElementById('pd-table');
     if (!box) return;
     let list = state.all.slice();
-    if (state.filter !== 'todos') list = list.filter(p => bucket(p.type) === state.filter);
+    if (state.filter === 'completados') {
+      list = list.filter(p => p.workStatus === 'done');
+    } else {
+      list = list.filter(p => p.workStatus !== 'done');
+      if (state.filter !== 'todos') list = list.filter(p => bucket(p.type) === state.filter);
+    }
     list.sort((a, b) => state.sortDir === 'desc' ? (b.days - a.days) : (a.days - b.days));
 
     if (!list.length) { box.innerHTML = '<div style="padding:20px;color:var(--text3)">No hay pedidos en esta vista.</div>'; return; }
@@ -176,7 +184,7 @@
         <td style="padding:10px 8px;border-bottom:1px solid var(--border2)">${sel}</td>
         <td style="padding:10px 8px;border-bottom:1px solid var(--border2)">${selPrio}</td>
         <td style="padding:10px 8px;border-bottom:1px solid var(--border2);text-align:center;font-weight:700;color:${p.alertColor}">${p.days}d</td>
-        <td style="padding:10px 8px;border-bottom:1px solid var(--border2)">${dot(p.alertColor)}${esc(p.alertLabel)}</td>
+        <td style="padding:10px 8px;border-bottom:1px solid var(--border2)">${dot(p.alertColor)}${esc(p.alertLabel)}${p.workStatus==='done' ? '<div style="font-size:11px;color:var(--green);margin-top:2px">✅ Completado — pte. facturar</div>' : (p.lastWorkerStatus ? `<div style="font-size:11px;color:var(--amber);margin-top:2px">${p.lastWorkerStatus==='material'?'📦 Falta material':(p.lastWorkerStatus==='continua'?'🔴 Continúa otro día':'🟡 Parcialmente hecho')}</div>` : '')}</td>
         <td style="padding:10px 8px;border-bottom:1px solid var(--border2);text-align:center">${p.pdfPath ? `<a href="${esc(p.pdfPath)}" target="_blank" style="color:var(--accent,#4d9cf8);text-decoration:none;font-weight:600">Ver</a>` : '—'}</td>
       </tr>`;
     }).join('');
