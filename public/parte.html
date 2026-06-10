@@ -165,6 +165,9 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <div id="pedidos-lista"></div>
     </div>
 
+    <!-- Banner: el parte quedará vinculado a un pedido (3C) -->
+    <div id="vinculo-pedido" style="display:none;background:rgba(77,156,248,.1);border:1px solid rgba(77,156,248,.4);border-radius:12px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:var(--text2)"></div>
+
     <!-- ASIGNACIONES DEL DÍA -->
     <div id="asignaciones-section" style="display:none;margin-bottom:20px">
       <div style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">📋 Tus trabajos de hoy</div>
@@ -485,6 +488,7 @@ const escPedido = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => (
 ));
 
 let misPedidos = [];
+let pedidoVinculado = null;   // pedido enlazado al próximo parte (3C)
 
 async function loadMisPedidos() {
   if (!workerToken) return;
@@ -568,6 +572,11 @@ async function finalizarPedido(i) {
     });
     const data = await r.json();
     if (data && data.error) throw new Error(data.error);
+
+    // Vincular este pedido al parte que viene a continuación (3C)
+    pedidoVinculado = { id: p.id, number: p.number, client: p.client };
+    const vb = document.getElementById('vinculo-pedido');
+    if (vb) { vb.style.display = 'block'; vb.innerHTML = `🔗 Este parte quedará vinculado al pedido <strong>${escPedido(p.number)}</strong>. Si marcas <strong>Trabajo completado</strong>, el pedido se cerrará y desaparecerá de tu lista.`; }
 
     // Pre-rellenar el parte: cliente + horas reales (redondeo a media hora, mínimo 0.5)
     const horasReales = Math.max(0.5, Math.round((data.minutes / 60) * 2) / 2);
@@ -880,6 +889,8 @@ async function submitParte() {
       equipo:           equipoCompleto,
       asignacionId:     asignacionSeleccionada?._id || null,
       expedienteId:     expedienteActivo ? String(expedienteActivo._id) : null,
+      workOrderId:      pedidoVinculado ? String(pedidoVinculado.id) : null,
+      workOrderNumber:  pedidoVinculado ? pedidoVinculado.number : null,
       gpsLat: gpsData.lat, gpsLng: gpsData.lng, gpsAccuracy: gpsData.accuracy,
     };
     formData.append('data', JSON.stringify(parteData));
@@ -893,6 +904,9 @@ async function submitParte() {
     });
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || 'Error al enviar');
+
+    // Refrescar "Mis pedidos": si el parte cerró un pedido, desaparece de la lista
+    try { loadMisPedidos(); } catch(e) {}
 
     // La presencia la sincroniza ahora el servidor al confirmar el parte
     // (soporta varias obras el mismo día). No la sincronizamos aquí para no
@@ -959,6 +973,8 @@ function resetForm() {
   ['f-fotos-preview','f-albaranes-preview'].forEach(id => { const e=document.getElementById(id); if(e) e.innerHTML=''; });
   ['work-count','albaran-count'].forEach(id => { const e=document.getElementById(id); if(e) e.textContent=`(0/${id==='work-count'?10:5})`; });
   equipoSeleccionado=[]; externosLibres=[];
+  pedidoVinculado = null;
+  const vb = document.getElementById('vinculo-pedido'); if (vb) { vb.style.display='none'; vb.innerHTML=''; }
   estadoTrabajoSel='completado'; tipoJornadaSel='NORMAL';
   asignacionSeleccionada=null; expedienteActivo=null;
   document.getElementById('campo-pendiente').style.display='none';
