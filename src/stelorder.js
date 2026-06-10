@@ -606,10 +606,33 @@ async function setWorkOrderState(workOrderId, stateId, requestedBy) {
   return { putStatus, checks };
 }
 
+// Versión LIGERA para automatismos: PUT directo (seguridad ya demostrada en las
+// pruebas manuales) + registro en stelWriteLog. Sin verificación pesada.
+async function setWorkOrderStateLight(workOrderId, stateId, trigger) {
+  const id = String(workOrderId);
+  const db = await require('./db').getDB();
+  try {
+    const putRes = await client.put(`/workOrders/${id}`, { 'document-state-id': Number(stateId) },
+      { headers: { 'Content-Type': 'application/json' } });
+    await db.collection('stelWriteLog').insertOne({
+      workOrderId: id, requestedState: Number(stateId), trigger: trigger || 'auto',
+      mode: 'light', putStatus: putRes.status, result: 'ok', at: new Date()
+    });
+    try { invalidate('workOrders'); } catch (e) {}
+    return { ok: true, putStatus: putRes.status };
+  } catch (err) {
+    await db.collection('stelWriteLog').insertOne({
+      workOrderId: id, requestedState: Number(stateId), trigger: trigger || 'auto',
+      mode: 'light', result: 'error', error: `${err.response?.status || ''} ${err.message}`, at: new Date()
+    });
+    return { ok: false, error: err.message };
+  }
+}
+
 module.exports = {
   getInvoices, getAllReceipts, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary,
   getAlertLevel, getFamiliesSummary, getAccountCategories, clearCache,
   sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw, getInvoicePdfPath, getEntityRawByRef,
-  getWorkOrdersLive, getWorkOrderAlertLevel, setWorkOrderState
+  getWorkOrdersLive, getWorkOrderAlertLevel, setWorkOrderState, setWorkOrderStateLight
 };
