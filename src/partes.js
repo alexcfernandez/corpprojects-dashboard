@@ -53,6 +53,8 @@ async function createParte(data, workerInfo) {
     equipo:       data.equipo || [],
     asignacionId: data.asignacionId || null,
     expedienteId: data.expedienteId || null,
+    workOrderId:     data.workOrderId || null,      // pedido de trabajo vinculado (3C)
+    workOrderNumber: data.workOrderNumber || null,
     generadoAuto: false,
     _meta: {
       submittedAt:  new Date(),
