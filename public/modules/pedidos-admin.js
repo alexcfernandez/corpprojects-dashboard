@@ -161,13 +161,20 @@
       const opts = ['<option value="">— Sin asignar —</option>']
         .concat(state.users.map(u => `<option value="${u.id}" ${u.id === p.assignedUserId ? 'selected' : ''}>${esc(u.name)}</option>`))
         .join('');
-      const sel = `<select onchange="CP.PedidosAdmin.assign('${p.id}', this.value)" style="background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:5px 8px;color:var(--text);font-size:12px;max-width:150px">${opts}</select>`;
+      // Prioridad: la guardada, o por defecto según tipo (Actuación→urgente)
+      const prio = p.assignedPriority || (/actuaci/i.test(p.type || '') ? 'urgent' : 'normal');
+      const sel = `<select id="pd-user-${p.id}" onchange="CP.PedidosAdmin.assignRow('${p.id}')" style="background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:5px 8px;color:var(--text);font-size:12px;max-width:140px">${opts}</select>`;
+      const selPrio = `<select id="pd-prio-${p.id}" onchange="CP.PedidosAdmin.assignRow('${p.id}')" style="background:var(--bg2);border:1px solid ${prio==='urgent'?'rgba(220,38,38,.5)':'var(--border2)'};border-radius:6px;padding:5px 8px;color:${prio==='urgent'?'#ef4444':'var(--text)'};font-size:12px">
+          <option value="urgent" ${prio==='urgent'?'selected':''}>🔴 Urgente</option>
+          <option value="normal" ${prio==='normal'?'selected':''}>🔵 Normal</option>
+        </select>`;
       return `
       <tr>
         <td style="padding:10px 8px;border-bottom:1px solid var(--border2);font-weight:600">${esc(p.number)}</td>
         <td style="padding:10px 8px;border-bottom:1px solid var(--border2)">${esc(p.client)}</td>
         <td style="padding:10px 8px;border-bottom:1px solid var(--border2)">${typePill(p.type)}</td>
         <td style="padding:10px 8px;border-bottom:1px solid var(--border2)">${sel}</td>
+        <td style="padding:10px 8px;border-bottom:1px solid var(--border2)">${selPrio}</td>
         <td style="padding:10px 8px;border-bottom:1px solid var(--border2);text-align:center;font-weight:700;color:${p.alertColor}">${p.days}d</td>
         <td style="padding:10px 8px;border-bottom:1px solid var(--border2)">${dot(p.alertColor)}${esc(p.alertLabel)}</td>
         <td style="padding:10px 8px;border-bottom:1px solid var(--border2);text-align:center">${p.pdfPath ? `<a href="${esc(p.pdfPath)}" target="_blank" style="color:var(--accent,#4d9cf8);text-decoration:none;font-weight:600">Ver</a>` : '—'}</td>
@@ -181,6 +188,7 @@
           <th style="text-align:left;padding:8px;border-bottom:2px solid var(--border2);color:var(--text3);font-size:12px">Cliente / Comunidad</th>
           <th style="text-align:left;padding:8px;border-bottom:2px solid var(--border2);color:var(--text3);font-size:12px">Tipo</th>
           <th style="text-align:left;padding:8px;border-bottom:2px solid var(--border2);color:var(--text3);font-size:12px">Asignado a</th>
+          <th style="text-align:left;padding:8px;border-bottom:2px solid var(--border2);color:var(--text3);font-size:12px">Prioridad</th>
           <th style="text-align:center;padding:8px;border-bottom:2px solid var(--border2);color:var(--text3);font-size:12px">Días</th>
           <th style="text-align:left;padding:8px;border-bottom:2px solid var(--border2);color:var(--text3);font-size:12px">Situación</th>
           <th style="text-align:center;padding:8px;border-bottom:2px solid var(--border2);color:var(--text3);font-size:12px">Doc</th>
@@ -206,18 +214,22 @@
     paint();
   }
 
-  async function assign(workOrderId, userId) {
+  async function assignRow(workOrderId) {
+    const userSel = document.getElementById('pd-user-' + workOrderId);
+    const prioSel = document.getElementById('pd-prio-' + workOrderId);
+    const userId = userSel ? userSel.value : '';
+    const priority = prioSel ? prioSel.value : 'normal';
     try {
-      const r = await api('/api/workorders/assign', { method:'PUT', body: JSON.stringify({ workOrderId, userId }) });
+      const r = await api('/api/workorders/assign', { method:'PUT', body: JSON.stringify({ workOrderId, userId, priority }) });
       if (r && r.error) throw new Error(r.error);
-      // Actualizar el estado local sin recargar todo
       const p = state.all.find(x => String(x.id) === String(workOrderId));
-      if (p) { p.assignedUserId = userId || null; p.assignedUserName = r.userName || null; }
+      if (p) { p.assignedUserId = userId || null; p.assignedUserName = r.userName || null; p.assignedPriority = r.priority || null; }
+      paint(); // repintar para reflejar el color de la prioridad
     } catch (err) {
-      alert('No se pudo asignar: ' + err.message);
-      load(); // recargar para volver al estado real
+      alert('No se pudo guardar: ' + err.message);
+      load();
     }
   }
 
-  CP.PedidosAdmin = { render, load, setFilter, toggleSort, togglePause, sendNow, assign };
+  CP.PedidosAdmin = { render, load, setFilter, toggleSort, togglePause, sendNow, assignRow };
 })(window.CP = window.CP || {});
