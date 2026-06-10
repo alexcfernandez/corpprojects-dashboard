@@ -985,6 +985,22 @@ app.post('/api/partes/confirmar', uploadMemory.any(), async (req, res) => {
 // ── EMAILS INTELIGENTES ───────────────────────────────────────────
 const { pollEmails, enviarRespuesta } = require('./email-intelligence');
 
+// Diagnóstico de la clasificación IA de emails.
+app.get('/api/emails/diag', requireAuth, async (req, res) => {
+  try {
+    const { diagnosticoIA } = require('./email-intelligence');
+    res.json(await diagnosticoIA());
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Reclasificar los emails que quedaron sin clasificar (fallback).
+app.post('/api/emails/reclassify', requireAuth, async (req, res) => {
+  try {
+    const { reclasificarPendientes } = require('./email-intelligence');
+    res.json(await reclasificarPendientes(parseInt(req.body.limit) || 150));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/emails', requireAuth, async (req, res) => {
   try {
     const { db, client } = await getDB();
