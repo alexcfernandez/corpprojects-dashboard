@@ -236,6 +236,20 @@ app.put('/api/workorders/assign', requireAuth, async (req, res) => {
   }
 });
 
+// FASE 4 (prueba controlada): cambiar el estado de UN pedido en StelOrder.
+// Lee→backup→escribe→relee→compara. Devuelve el informe de verificación.
+app.post('/api/workorders/:id/stel-state', requireAuth, async (req, res) => {
+  try {
+    const { stateId } = req.body;
+    if (!stateId) return res.status(400).json({ error: 'Falta stateId' });
+    const { setWorkOrderState } = require('./stelorder');
+    const r = await setWorkOrderState(req.params.id, stateId, req.user?.username || 'admin');
+    res.json(r);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // MIS PEDIDOS (para el trabajador en parte.html, con su token w_).
 app.get('/api/workorders/mine', async (req, res) => {
   try {
