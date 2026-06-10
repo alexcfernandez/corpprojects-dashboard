@@ -245,13 +245,43 @@ app.get('/api/workorders/mine', async (req, res) => {
     const workerDoc = await verifyWorkerToken(token);
     if (!workerDoc) return res.status(401).json({ error: 'Token expirado' });
 
+    const asig = require('./asignaciones');
     const list = await getWorkOrdersLive();
-    await require('./asignaciones').attachAssignments(list);
+    await asig.attachAssignments(list);
     const mine = list.filter(p => String(p.assignedUserId || '') === String(workerDoc.workerId));
+    // Adjuntar la sesión abierta (cronómetro) de cada pedido, si la hay
+    const open = await asig.getOpenTimers(workerDoc.workerId);
+    mine.forEach(p => { p.activeStartedAt = open[String(p.id)] || null; });
     res.json({ list: mine, count: mine.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// INICIAR trabajo en un pedido (trabajador). Guarda hora de inicio en servidor.
+app.post('/api/workorders/:id/start', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'No autorizado' });
+    const { verifyWorkerToken } = require('./partes');
+    const workerDoc = await verifyWorkerToken(token);
+    if (!workerDoc) return res.status(401).json({ error: 'Token expirado' });
+    const r = await require('./asignaciones').startWork(req.params.id, workerDoc.workerId, workerDoc.workerName);
+    res.json(r);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// FINALIZAR trabajo en un pedido (trabajador). Devuelve la duración real.
+app.post('/api/workorders/:id/finish', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'No autorizado' });
+    const { verifyWorkerToken } = require('./partes');
+    const workerDoc = await verifyWorkerToken(token);
+    if (!workerDoc) return res.status(401).json({ error: 'Token expirado' });
+    const r = await require('./asignaciones').finishWork(req.params.id, workerDoc.workerId);
+    res.json(r);
+  } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
 // Estado de pausa de los avisos de pedidos.
