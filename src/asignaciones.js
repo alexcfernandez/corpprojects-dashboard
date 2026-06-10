@@ -46,14 +46,44 @@ async function setAssignment(workOrderId, userId, assignedBy, priority) {
   return { workOrderId: woId, userId: String(userId), userName, priority: prio };
 }
 
+// Registra el resultado del parte vinculado a un pedido (Fase 3C).
+// 'completado' → el pedido queda DONE en nuestra app (pendiente de facturar).
+// Otros estados (continua/parcial/material) → sigue abierto, guardamos la última señal.
+async function recordParteResult(workOrderId, { workerId, parteId, estadoTrabajo }) {
+  if (!workOrderId) throw new Error('Falta el pedido');
+  const db = await getDB();
+  const woId = String(workOrderId);
+  if (estadoTrabajo === 'completado') {
+    await db.collection('workOrderAssignments').updateOne(
+      { workOrderId: woId },
+      { $set: { workOrderId: woId, status: 'done', doneAt: new Date(), doneBy: String(workerId || ''), parteId: String(parteId || '') } },
+      { upsert: true }
+    );
+    return { status: 'done' };
+  }
+  await db.collection('workOrderAssignments').updateOne(
+    { workOrderId: woId },
+    { $set: { workOrderId: woId, lastWorkerStatus: estadoTrabajo || '', lastWorkerStatusAt: new Date(), parteId: String(parteId || '') } },
+    { upsert: true }
+  );
+  return { status: 'open', lastWorkerStatus: estadoTrabajo };
+}
+
 // Fusiona la info de asignación en una lista de pedidos.
 async function attachAssignments(list) {
-  const map = await getAssignmentMap();
+  const db = await getDB();
+  const rows = await db.collection('workOrderAssignments').find({}).toArray();
+  const map = {};
+  rows.forEach(r => { map[String(r.workOrderId)] = r; });
   (Array.isArray(list) ? list : []).forEach(p => {
     const a = map[String(p.id)];
-    p.assignedUserId   = a ? a.userId : null;
-    p.assignedUserName = a ? a.userName : null;
+    p.assignedUserId   = a ? (a.userId || null) : null;
+    p.assignedUserName = a ? (a.userName || null) : null;
     p.assignedPriority = a ? (a.priority || 'normal') : null;
+    p.workStatus       = a ? (a.status || 'open') : 'open';      // 'open' | 'done'
+    p.doneAt           = a ? (a.doneAt || null) : null;
+    p.parteId          = a ? (a.parteId || null) : null;
+    p.lastWorkerStatus = a ? (a.lastWorkerStatus || null) : null; // 'continua'|'parcial'|'material'
   });
   return list;
 }
@@ -104,4 +134,4 @@ async function getOpenTimers(workerId) {
   return map;
 }
 
-module.exports = { getAssignmentMap, setAssignment, attachAssignments, startWork, finishWork, getOpenTimers };
+module.exports = { getAssignmentMap, setAssignment, attachAssignments, startWork, finishWork, getOpenTimers, recordParteResult };
