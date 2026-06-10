@@ -22,7 +22,7 @@ async function workerLogin(workerId, pin) {
   await db.collection('worker_tokens').insertOne({
     token, workerId, workerName: worker.name,
     createdAt: new Date(),
-    expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000)
+    expiresAt: new Date(Date.now() + parseInt(process.env.WORKER_TOKEN_HOURS || 168) * 60 * 60 * 1000)  // 7 días por defecto
   });
   return { token, workerName: worker.name, workerId };
 }
