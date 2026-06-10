@@ -228,8 +228,8 @@ app.get('/api/workorders/assignable-users', requireAuth, async (req, res) => {
 // Asignar / desasignar un pedido a un trabajador (userId vacío = desasignar).
 app.put('/api/workorders/assign', requireAuth, async (req, res) => {
   try {
-    const { workOrderId, userId } = req.body;
-    const r = await require('./asignaciones').setAssignment(workOrderId, userId || null, req.user?.username || null);
+    const { workOrderId, userId, priority } = req.body;
+    const r = await require('./asignaciones').setAssignment(workOrderId, userId || null, req.user?.username || null, priority);
     res.json(r);
   } catch (err) {
     res.status(400).json({ error: err.message });
