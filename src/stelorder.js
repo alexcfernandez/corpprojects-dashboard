@@ -533,14 +533,25 @@ function clearCache() { invalidate(); }
 // ── FASE 4: ESCRIBIR ESTADO DE UN PEDIDO EN STELORDER (con red de seguridad) ──
 // Patrón: LEER → COPIA DE SEGURIDAD en Mongo → PUT solo del estado → RELEER →
 // COMPARAR campos clave. Si algo más cambió, lo reporta. Todo queda en stelWriteLog.
+// Nota: la API de StelOrder no permite GET /workOrders/{id} individual, así que
+// leemos la lista completa y filtramos (mismo método probado que la herramienta raw).
+
+async function _findWorkOrderRaw(idOrRef) {
+  const list = await fetchAllPages('/workOrders');
+  const s = String(idOrRef || '').trim().toUpperCase();
+  if (s.startsWith('PDT')) {
+    return list.find(x => String(x['full-reference'] || '').toUpperCase() === s) || null;
+  }
+  return list.find(x => String(x.id) === s) || null;
+}
+
 async function setWorkOrderState(workOrderId, stateId, requestedBy) {
   if (!workOrderId || !stateId) throw new Error('Faltan datos (pedido o estado)');
-  const id = String(workOrderId);
 
-  // 1) Leer el pedido completo ANTES (sin caché)
-  const beforeRes = await client.get(`/workOrders/${id}`);
-  const before = beforeRes.data;
-  if (!before || !before.id) throw new Error('No se pudo leer el pedido en StelOrder');
+  // 1) Leer el pedido completo ANTES (de la lista, sin caché)
+  const before = await _findWorkOrderRaw(workOrderId);
+  if (!before || !before.id) throw new Error(`No se encontró el pedido "${workOrderId}" en StelOrder (prueba con el ID numérico o la referencia PDT)`);
+  const id = String(before.id);
 
   // 2) Copia de seguridad en nuestra base de datos
   const db = await require('./db').getDB();
@@ -567,9 +578,9 @@ async function setWorkOrderState(workOrderId, stateId, requestedBy) {
     throw new Error(`StelOrder rechazó la escritura: ${err.response?.status || ''} ${err.message}`);
   }
 
-  // 4) Releer y 5) comparar campos clave
-  const afterRes = await client.get(`/workOrders/${id}`);
-  const after = afterRes.data || {};
+  // 4) Releer (de la lista de nuevo) y 5) comparar campos clave
+  await new Promise(r => setTimeout(r, 1200));   // respiro para la API
+  const after = (await _findWorkOrderRaw(id)) || {};
   const linesBefore = (before.lines || []).filter(l => !l.deleted).length;
   const linesAfter  = (after.lines  || []).filter(l => !l.deleted).length;
   const checks = {
