@@ -119,7 +119,21 @@ async function updateParte(id, updates, adminName) {
     set.verifiedAt = new Date();
     set.verifiedBy = adminName;
   }
-  return db.collection('partes').updateOne({ _id: new ObjectId(id) }, { $set: set });
+  const result = await db.collection('partes').updateOne({ _id: new ObjectId(id) }, { $set: set });
+
+  // Cierre del ciclo (3C): si el parte pasa a FACTURADO y está vinculado a un
+  // pedido de trabajo, el pedido se da por facturado y sale de la vista de pedidos.
+  // En try/catch: nunca debe afectar al guardado del parte.
+  if (updates.status === 'facturado') {
+    try {
+      const parte = await db.collection('partes').findOne({ _id: new ObjectId(id) });
+      if (parte && parte.workOrderId) {
+        await require('./asignaciones').markInvoiced(parte.workOrderId, parte.facturaRef || updates.facturaRef || null);
+      }
+    } catch (e) { console.warn('[Partes] markInvoiced:', e.message); }
+  }
+
+  return result;
 }
 
 async function getResumenFacturacion({ from, to, clientName } = {}) {
