@@ -126,9 +126,27 @@ async function setPedidosPaused(paused) {
   return !!paused;
 }
 
+// Interruptor de ESCRITURA EN STELORDER (Fase 4). Por defecto APAGADO.
+async function isStelWriteEnabled() {
+  const db = await getDB();
+  const doc = await db.collection('appSettings').findOne({ key: 'stelWrite' });
+  return !!(doc && doc.enabled);
+}
+
+async function setStelWriteEnabled(enabled) {
+  const db = await getDB();
+  await db.collection('appSettings').updateOne(
+    { key: 'stelWrite' },
+    { $set: { key: 'stelWrite', enabled: !!enabled, updatedAt: new Date() } },
+    { upsert: true }
+  );
+  return !!enabled;
+}
+
 module.exports = {
   getFamilyContacts, getFamilyContactMap, getFamilyEmail, isFamilyPaused, setFamilyContact, getFamilyConfig,
   wasAlertSentToday, markAlertSent,
   isGlobalPaused, setGlobalPaused,
-  isPedidosPaused, setPedidosPaused
+  isPedidosPaused, setPedidosPaused,
+  isStelWriteEnabled, setStelWriteEnabled
 };
