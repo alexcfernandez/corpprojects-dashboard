@@ -143,6 +143,14 @@ async function markInvoiced(workOrderId, facturaRef) {
     { $set: { workOrderId: String(workOrderId), status: 'invoiced', invoicedAt: new Date(), facturaRef: facturaRef || null } },
     { upsert: true }
   );
+
+  // Fase 4: reflejar "Cerrado" en StelOrder (si el interruptor está activo)
+  try {
+    if (await require('./avisos').isStelWriteEnabled()) {
+      await require('./stelorder').setWorkOrderStateLight(workOrderId, 1120638, `invoiced:${facturaRef || ''}`);
+    }
+  } catch (e) { console.warn('[Fase4] invoiced→Cerrado:', e.message); }
+
   return { status: 'invoiced' };
 }
 
