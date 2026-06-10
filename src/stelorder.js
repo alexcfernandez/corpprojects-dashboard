@@ -464,6 +464,12 @@ async function getWorkOrdersLive() {
     const days = daysSince(startRef);
     const alert = getWorkOrderAlertLevel(days, typeName);
 
+    // Descripción del trabajo (lo que pidió el cliente): nombre + detalle de las líneas
+    const lines = Array.isArray(o.lines) ? o.lines.filter(l => !l.deleted) : [];
+    const description = lines
+      .map(l => [l['item-name'], l['item-description']].filter(Boolean).join(' — '))
+      .filter(Boolean).join('\n') || (o['private-comments'] || '');
+
     live.push({
       id:          o.id,
       number:      o['full-reference'] || `PDT #${o.id}`,
@@ -473,6 +479,7 @@ async function getWorkOrdersLive() {
       state:       stateName,
       days,
       since:       startRef,
+      description,
       incidentId:  incId || null,
       pdfPath:     o['pdf-path'] || null,
       alertLevel:  alert.level,
