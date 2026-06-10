@@ -134,4 +134,16 @@ async function getOpenTimers(workerId) {
   return map;
 }
 
-module.exports = { getAssignmentMap, setAssignment, attachAssignments, startWork, finishWork, getOpenTimers, recordParteResult };
+// El parte vinculado se facturó: el pedido queda FACTURADO (sale de la vista de pedidos).
+async function markInvoiced(workOrderId, facturaRef) {
+  if (!workOrderId) throw new Error('Falta el pedido');
+  const db = await getDB();
+  await db.collection('workOrderAssignments').updateOne(
+    { workOrderId: String(workOrderId) },
+    { $set: { workOrderId: String(workOrderId), status: 'invoiced', invoicedAt: new Date(), facturaRef: facturaRef || null } },
+    { upsert: true }
+  );
+  return { status: 'invoiced' };
+}
+
+module.exports = { getAssignmentMap, setAssignment, attachAssignments, startWork, finishWork, getOpenTimers, recordParteResult, markInvoiced };
