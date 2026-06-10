@@ -357,6 +357,7 @@ window.onload = async function() {
   const hoy = new Date().toISOString().slice(0,10);
   document.getElementById('f-date').value = hoy;
   detectarJornada();
+  await tryRestoreSession();   // si hay sesión guardada válida, entra sin PIN
 };
 
 // ── LOGIN ─────────────────────────────────────────────────────────
@@ -400,9 +401,37 @@ function selectWorker(btn, id) {
   document.getElementById('pin-input').focus();
 }
 
+async function enterApp(token, info) {
+  workerToken = token;
+  workerInfo  = info;
+  localStorage.setItem('cpWT', token);
+  localStorage.setItem('cpWN', info.workerName || '');
+  localStorage.setItem('cpWI', String(info.workerId || ''));
+  document.getElementById('header-sub').textContent = info.workerName || '';
+  showPage('form');
+  await Promise.all([loadClientSuggestions(), loadAsignacionesHoy(), loadExternos(), loadMisPedidos()]);
+  renderEquipo();
+}
+
+// Restaurar sesión guardada (si el token sigue vivo, entra sin PIN)
+async function tryRestoreSession() {
+  const t = localStorage.getItem('cpWT');
+  if (!t) return false;
+  try {
+    const r = await fetch('/api/partes/worker-session', { headers:{'Authorization':`Bearer ${t}`} });
+    if (!r.ok) throw new Error('caducada');
+    const data = await r.json();
+    await enterApp(t, { workerId: data.workerId, workerName: data.workerName });
+    return true;
+  } catch(e) {
+    localStorage.removeItem('cpWT'); localStorage.removeItem('cpWN'); localStorage.removeItem('cpWI');
+    return false;
+  }
+}
+
 async function doLogin() {
   const sel = document.querySelector('.worker-btn.selected');
-  if (!sel) { showMsg('login-msg','⚠️ Selecciona tu nombre','warn'); return; }
+  if (!sel && !workerDirect) { showMsg('login-msg','⚠️ Selecciona tu nombre','warn'); return; }
   const workerId = workerDirect ? String(workerDirect.id) : sel.dataset.id;
   const pin = document.getElementById('pin-input').value;
   if (pin.length < 4) return;
@@ -418,12 +447,7 @@ async function doLogin() {
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || 'PIN incorrecto');
 
-    workerToken = data.token;
-    workerInfo  = { workerId: data.workerId, workerName: data.workerName };
-    document.getElementById('header-sub').textContent = data.workerName;
-    showPage('form');
-    await Promise.all([loadClientSuggestions(), loadAsignacionesHoy(), loadExternos(), loadMisPedidos()]);
-    renderEquipo();
+    await enterApp(data.token, { workerId: data.workerId, workerName: data.workerName });
   } catch(err) {
     showMsg('login-msg','❌ ' + err.message,'error');
     document.getElementById('pin-input').value = '';
@@ -434,8 +458,10 @@ async function doLogin() {
 
 function logout() {
   workerToken = null; workerInfo = null;
+  localStorage.removeItem('cpWT'); localStorage.removeItem('cpWN'); localStorage.removeItem('cpWI');
   document.getElementById('pin-input').value = '';
-  document.querySelectorAll('.worker-btn').forEach(b => b.classList.remove('selected'));
+  // Con enlace directo, el trabajador queda seleccionado para volver a entrar sin el bug
+  if (!workerDirect) document.querySelectorAll('.worker-btn').forEach(b => b.classList.remove('selected'));
   showPage('login');
 }
 
