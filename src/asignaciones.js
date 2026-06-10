@@ -55,4 +55,50 @@ async function attachAssignments(list) {
   return list;
 }
 
-module.exports = { getAssignmentMap, setAssignment, attachAssignments };
+// ── CRONÓMETRO DE TRABAJO (Fase 3B) ─────────────────────────────────────
+// workOrderTimers: { workOrderId, workerId, workerName, startedAt, finishedAt }
+// Una "sesión" por inicio. Si el trabajo continúa otro día, habrá varias sesiones.
+
+// Inicia una sesión (si ya hay una abierta para este pedido+trabajador, la devuelve tal cual).
+async function startWork(workOrderId, workerId, workerName) {
+  if (!workOrderId || !workerId) throw new Error('Faltan datos');
+  const db = await getDB();
+  const open = await db.collection('workOrderTimers').findOne({
+    workOrderId: String(workOrderId), workerId: String(workerId), finishedAt: null
+  });
+  if (open) return { startedAt: open.startedAt, alreadyRunning: true };
+  const startedAt = new Date();
+  await db.collection('workOrderTimers').insertOne({
+    workOrderId: String(workOrderId), workerId: String(workerId),
+    workerName: workerName || '', startedAt, finishedAt: null
+  });
+  return { startedAt, alreadyRunning: false };
+}
+
+// Finaliza la sesión abierta. Devuelve duración en minutos.
+async function finishWork(workOrderId, workerId) {
+  if (!workOrderId || !workerId) throw new Error('Faltan datos');
+  const db = await getDB();
+  const open = await db.collection('workOrderTimers').findOne({
+    workOrderId: String(workOrderId), workerId: String(workerId), finishedAt: null
+  });
+  if (!open) throw new Error('No hay un trabajo iniciado en este pedido');
+  const finishedAt = new Date();
+  await db.collection('workOrderTimers').updateOne(
+    { _id: open._id }, { $set: { finishedAt } }
+  );
+  const minutes = Math.max(1, Math.round((finishedAt - open.startedAt) / 60000));
+  return { startedAt: open.startedAt, finishedAt, minutes };
+}
+
+// Mapa { workOrderId: startedAt } de las sesiones ABIERTAS de un trabajador.
+async function getOpenTimers(workerId) {
+  const db = await getDB();
+  const rows = await db.collection('workOrderTimers')
+    .find({ workerId: String(workerId), finishedAt: null }).toArray();
+  const map = {};
+  rows.forEach(r => { map[String(r.workOrderId)] = r.startedAt; });
+  return map;
+}
+
+module.exports = { getAssignmentMap, setAssignment, attachAssignments, startWork, finishWork, getOpenTimers };
