@@ -248,7 +248,7 @@ app.get('/api/workorders/mine', async (req, res) => {
     const asig = require('./asignaciones');
     const list = await getWorkOrdersLive();
     await asig.attachAssignments(list);
-    const mine = list.filter(p => String(p.assignedUserId || '') === String(workerDoc.workerId));
+    const mine = list.filter(p => String(p.assignedUserId || '') === String(workerDoc.workerId) && p.workStatus !== 'done');
     // Adjuntar la sesión abierta (cronómetro) de cada pedido, si la hay
     const open = await asig.getOpenTimers(workerDoc.workerId);
     mine.forEach(p => { p.activeStartedAt = open[String(p.id)] || null; });
@@ -657,6 +657,16 @@ app.post('/api/partes', uploadMemory.any(), async (req, res) => {
 
     const parte = await partes.createParte(bodyData, workerInfo);
 
+    // Cierre del ciclo pedido→parte (3C)
+    if (bodyData.workOrderId) {
+      try {
+        await require('./asignaciones').recordParteResult(bodyData.workOrderId, {
+          workerId: workerInfo.workerId, parteId: String(parte._id || parte.id),
+          estadoTrabajo: bodyData.estadoTrabajo || 'completado'
+        });
+      } catch (e) { console.warn('[Partes] recordParteResult:', e.message); }
+    }
+
     // Reflejar la presencia del trabajador ese día a partir del parte
     // (no rompe el envío del parte si algo falla).
     try { await attendance.syncPresenceFromParte(parte); }
@@ -873,6 +883,16 @@ app.post('/api/partes/confirmar', uploadMemory.any(), async (req, res) => {
     bodyData.fotosAlbaran = fotosAlbaran;
 
     const parte = await partes.createParte(bodyData, workerInfo);
+
+    // Cierre del ciclo pedido→parte (3C)
+    if (bodyData.workOrderId) {
+      try {
+        await require('./asignaciones').recordParteResult(bodyData.workOrderId, {
+          workerId: workerInfo.workerId, parteId: String(parte._id || parte.id),
+          estadoTrabajo: bodyData.estadoTrabajo || 'completado'
+        });
+      } catch (e) { console.warn('[Partes] recordParteResult:', e.message); }
+    }
 
     // Reflejar la presencia del trabajador ese día (multi-obra). Lo hace el
     // servidor para que se acumulen varias obras; el formulario ya no sincroniza.
