@@ -453,24 +453,44 @@ async function reclasificarPendientes(limit = 150) {
 }
 
 // Reenviar un adjunto al buzón OCR de StelOrder (consume tokens de OCR → solo manual).
+// Envío por la API de Gmail (HTTPS): Railway bloquea el SMTP saliente.
 async function reenviarAdjuntoOCR(gmailId, attachmentId, filename, mimeType, asuntoOriginal) {
   const destino = process.env.STEL_OCR_EMAIL || 'hola4@in.stelorder.com';
   const buf = await getAttachment(gmailId, attachmentId);
-  const nodemailer = require('nodemailer');
-  const transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
-    port: parseInt(process.env.EMAIL_PORT || 587),
-    secure: false,
-    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
-  });
-  await transporter.sendMail({
-    from: `Corp Projects <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
-    to: destino,
-    subject: asuntoOriginal || filename,
-    text: `Documento reenviado al OCR desde el dashboard: ${filename}`,
-    attachments: [{ filename, content: buf, contentType: mimeType }]
-  });
-  console.log(`[Email] Adjunto "${filename}" enviado al OCR (${destino})`);
+  const gmail = getGmailClient();
+
+  const from = process.env.EMAIL_FROM || `Corp Projects <${process.env.EMAIL_USER || 'hola@corpprojects.es'}>`;
+  const subjectEnc = `=?UTF-8?B?${Buffer.from(asuntoOriginal || filename).toString('base64')}?=`;
+  const boundary = '=_cp_ocr_' + Date.now();
+
+  // Base64 del adjunto en líneas de 76 caracteres (formato MIME estándar)
+  const attB64 = buf.toString('base64').replace(/(.{76})/g, '$1\r\n');
+
+  const mime = [
+    `From: ${from}`,
+    `To: ${destino}`,
+    `Subject: ${subjectEnc}`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    'Content-Transfer-Encoding: base64',
+    '',
+    Buffer.from(`Documento reenviado al OCR desde el dashboard: ${filename}`).toString('base64'),
+    `--${boundary}`,
+    `Content-Type: ${mimeType || 'application/octet-stream'}; name="${filename}"`,
+    `Content-Disposition: attachment; filename="${filename}"`,
+    'Content-Transfer-Encoding: base64',
+    '',
+    attB64,
+    `--${boundary}--`
+  ].join('\r\n');
+
+  const raw = Buffer.from(mime)
+    .toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
+  console.log(`[Email] Adjunto "${filename}" enviado al OCR (${destino}) vía API Gmail`);
   return { destino };
 }
 
