@@ -1011,8 +1011,8 @@ app.get('/api/emails/:id/attachments', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Descargar un adjunto concreto.
-app.get('/api/emails/:id/attachments/:attId/download', requireAuth, async (req, res) => {
+// Descargar un adjunto concreto (por posición + nombre: los attachmentId de Gmail rotan).
+app.get('/api/emails/:id/attachments/:idx/download', requireAuth, async (req, res) => {
   try {
     const { db } = await require('./db').getDBLegacy();
     const { ObjectId } = require('mongodb');
@@ -1020,7 +1020,12 @@ app.get('/api/emails/:id/attachments/:attId/download', requireAuth, async (req, 
     if (!doc) return res.status(404).json({ error: 'Email no encontrado' });
     const { listAttachments, getAttachment } = require('./email-intelligence');
     const atts = await listAttachments(doc.gmailId);
-    const att = atts.find(a => a.attachmentId === req.params.attId);
+    const idx = parseInt(req.params.idx);
+    let att = atts[idx];
+    // Verificación por nombre: si la posición no coincide, buscar por filename
+    if (req.query.fn && (!att || att.filename !== req.query.fn)) {
+      att = atts.find(a => a.filename === req.query.fn) || att;
+    }
     if (!att) return res.status(404).json({ error: 'Adjunto no encontrado' });
     const buf = await getAttachment(doc.gmailId, att.attachmentId);
     res.set('Content-Type', att.mimeType);
@@ -1030,7 +1035,7 @@ app.get('/api/emails/:id/attachments/:attId/download', requireAuth, async (req, 
 });
 
 // Reenviar un adjunto al OCR de StelOrder (manual: consume tokens de OCR).
-app.post('/api/emails/:id/attachments/:attId/ocr', requireAuth, async (req, res) => {
+app.post('/api/emails/:id/attachments/:idx/ocr', requireAuth, async (req, res) => {
   try {
     const { db } = await require('./db').getDBLegacy();
     const { ObjectId } = require('mongodb');
@@ -1038,12 +1043,16 @@ app.post('/api/emails/:id/attachments/:attId/ocr', requireAuth, async (req, res)
     if (!doc) return res.status(404).json({ error: 'Email no encontrado' });
     const { listAttachments, reenviarAdjuntoOCR } = require('./email-intelligence');
     const atts = await listAttachments(doc.gmailId);
-    const att = atts.find(a => a.attachmentId === req.params.attId);
+    const idx = parseInt(req.params.idx);
+    let att = atts[idx];
+    if (req.body.fn && (!att || att.filename !== req.body.fn)) {
+      att = atts.find(a => a.filename === req.body.fn) || att;
+    }
     if (!att) return res.status(404).json({ error: 'Adjunto no encontrado' });
     const r = await reenviarAdjuntoOCR(doc.gmailId, att.attachmentId, att.filename, att.mimeType, doc.asunto);
     await db.collection('emails').updateOne(
       { _id: doc._id },
-      { $addToSet: { ocrEnviados: att.attachmentId }, $set: { ocrUltimoEnvio: new Date() } }
+      { $addToSet: { ocrEnviados: att.filename }, $set: { ocrUltimoEnvio: new Date() } }
     );
     res.json({ ok: true, destino: r.destino, filename: att.filename });
   } catch (err) { res.status(500).json({ error: err.message }); }
