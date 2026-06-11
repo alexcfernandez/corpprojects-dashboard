@@ -452,4 +452,26 @@ async function reclasificarPendientes(limit = 150) {
   return { encontrados: malos.length, reclasificados: ok, fallos, primerError };
 }
 
-module.exports = { pollEmails, enviarRespuesta, getGmailClient, diagnosticoIA, reclasificarPendientes, usoIAHoy, listAttachments, getAttachment };
+// Reenviar un adjunto al buzón OCR de StelOrder (consume tokens de OCR → solo manual).
+async function reenviarAdjuntoOCR(gmailId, attachmentId, filename, mimeType, asuntoOriginal) {
+  const destino = process.env.STEL_OCR_EMAIL || 'hola4@in.stelorder.com';
+  const buf = await getAttachment(gmailId, attachmentId);
+  const nodemailer = require('nodemailer');
+  const transporter = nodemailer.createTransport({
+    host: process.env.EMAIL_HOST,
+    port: parseInt(process.env.EMAIL_PORT || 587),
+    secure: false,
+    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+  });
+  await transporter.sendMail({
+    from: `Corp Projects <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+    to: destino,
+    subject: asuntoOriginal || filename,
+    text: `Documento reenviado al OCR desde el dashboard: ${filename}`,
+    attachments: [{ filename, content: buf, contentType: mimeType }]
+  });
+  console.log(`[Email] Adjunto "${filename}" enviado al OCR (${destino})`);
+  return { destino };
+}
+
+module.exports = { pollEmails, enviarRespuesta, getGmailClient, diagnosticoIA, reclasificarPendientes, usoIAHoy, listAttachments, getAttachment, reenviarAdjuntoOCR };
