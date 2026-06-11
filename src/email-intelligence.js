@@ -359,7 +359,7 @@ async function diagnosticoIA() {
 
 // ── Reclasificar los emails que cayeron en el fallback (confianza <= 0.1) ──
 async function reclasificarPendientes(limit = 150) {
-  const db = await getDB();
+  const { db } = await getDB();
   const malos = await db.collection('emails')
     .find({ confianza: { $lte: 0.1 } })
     .sort({ fecha: -1 }).limit(limit).toArray();
