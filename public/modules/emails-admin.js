@@ -211,6 +211,54 @@ async function abrirEmail(id) {
   emailsState.emailAbierto = email;
   if (!email.leido) await marcarLeido(id);
   renderDetalle();
+  cargarAdjuntos(id);
+}
+
+function fmtBytes(n) {
+  if (!n) return '';
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(0) + ' KB';
+  return (n / 1048576).toFixed(1) + ' MB';
+}
+
+async function cargarAdjuntos(emailId) {
+  const box = document.getElementById('email-adjuntos-lista');
+  if (!box) return;
+  try {
+    const r = await apiCall(`/api/emails/${emailId}/attachments`);
+    const atts = (r && r.attachments) || [];
+    if (!atts.length) {
+      const wrap = document.getElementById('email-adjuntos');
+      if (wrap) wrap.style.display = 'none';
+      return;
+    }
+    box.innerHTML = atts.map(a => `
+      <div style="display:inline-flex;align-items:center;gap:8px;background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;margin:0 8px 8px 0">
+        <span style="font-size:13px;color:var(--text)">📄 ${escE(a.filename)}</span>
+        <span style="font-size:11px;color:var(--text3)">${fmtBytes(a.size)}</span>
+        <button class="btn bp" style="padding:4px 10px;font-size:12px"
+          onclick="descargarAdjunto('${emailId}', '${escE(a.attachmentId)}', '${escE(a.filename).replace(/'/g, "\\'")}')">⬇ Descargar</button>
+      </div>`).join('');
+  } catch (e) {
+    box.innerHTML = `<span style="color:var(--red)">No se pudieron cargar los adjuntos: ${escE(e.message)}</span>`;
+  }
+}
+
+async function descargarAdjunto(emailId, attId, filename) {
+  try {
+    const resp = await fetch(`${API}/api/emails/${emailId}/attachments/${encodeURIComponent(attId)}/download`, {
+      headers: { 'Authorization': `Bearer ${tok}` }
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename || 'adjunto';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  } catch (e) {
+    alert('No se pudo descargar el adjunto: ' + e.message);
+  }
 }
 
 function cerrarDetalle() {
@@ -352,7 +400,7 @@ function renderEmails() {
                 ${addr ? `<span style="opacity:.7"> · ${escE(addr)}</span>` : ''}
               </div>
               <div style="font-size:15px;font-weight:${esNuevo?'700':'500'};margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-                ${escE(email.asunto)}
+                ${email.tieneAdjuntos ? '📎 ' : ''}${escE(email.asunto)}
               </div>
               <div style="font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
                 💡 ${escE(email.resumen || '—')}
@@ -477,6 +525,12 @@ function renderDetalle() {
           <div style="font-size:13px;color:var(--text2);white-space:pre-wrap;line-height:1.7;max-height:260px;overflow-y:auto">
             ${cuerpoLimpio ? escE(cuerpoLimpio) : '<span style="color:var(--text3);font-style:italic">Sin contenido de texto</span>'}
           </div>
+        </div>
+
+        <!-- ADJUNTOS (se cargan al abrir, en vivo desde Gmail) -->
+        <div id="email-adjuntos" style="background:var(--bg3);border-radius:10px;padding:14px 16px">
+          <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">📎 Adjuntos</div>
+          <div id="email-adjuntos-lista" style="font-size:13px;color:var(--text3)">Buscando adjuntos…</div>
         </div>
 
         ${email.stelOrderRef ? `
