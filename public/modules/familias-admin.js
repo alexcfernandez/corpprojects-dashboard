@@ -114,7 +114,61 @@
           <thead><tr><th>Familia</th><th>Email del responsable</th><th>Frecuencia</th><th>Formato</th><th style="text-align:center">Estado</th><th></th></tr></thead>
           <tbody>${rows || '<tr><td colspan="6"><div class="empty"><div class="et">No hay familias.</div></div></td></tr>'}</tbody>
         </table>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="card-title">🗺 Gestores por comunidad <span style="font-weight:400;font-size:12px;color:var(--text3)">(aprendido de las respuestas a los avisos)</span></div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:10px">Cuando alguien responde a un aviso (RE: Factura FAC...), el sistema asocia el remitente a la comunidad de esa factura. Confirma los que sean correctos: las futuras notificaciones usarán SOLO los confirmados.</div>
+        <div id="fc-managers">Cargando…</div>
       </div>`;
+    _loadManagers();
+  }
+
+  async function _loadManagers() {
+    const box = document.getElementById('fc-managers');
+    if (!box) return;
+    try {
+      const r = await api('/api/managers');
+      const list = (r && r.managers) || [];
+      if (!list.length) { box.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:8px 0">Aún no se ha aprendido ningún gestor. Se irá llenando solo según respondan a los avisos.</div>'; return; }
+      box.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr>
+          <th style="text-align:left;padding:6px;color:var(--text3);font-size:11px;border-bottom:2px solid var(--border2)">Comunidad</th>
+          <th style="text-align:left;padding:6px;color:var(--text3);font-size:11px;border-bottom:2px solid var(--border2)">Familia</th>
+          <th style="text-align:left;padding:6px;color:var(--text3);font-size:11px;border-bottom:2px solid var(--border2)">Gestor/a</th>
+          <th style="text-align:center;padding:6px;color:var(--text3);font-size:11px;border-bottom:2px solid var(--border2)">Respuestas</th>
+          <th style="text-align:left;padding:6px;color:var(--text3);font-size:11px;border-bottom:2px solid var(--border2)">Refs</th>
+          <th style="text-align:center;padding:6px;color:var(--text3);font-size:11px;border-bottom:2px solid var(--border2)">Estado</th>
+          <th style="border-bottom:2px solid var(--border2)"></th>
+        </tr></thead>
+        <tbody>${list.map(m => `<tr>
+          <td style="padding:8px 6px;border-bottom:1px solid var(--border2)">${esc(m.communityName || m.accountId)}</td>
+          <td style="padding:8px 6px;border-bottom:1px solid var(--border2);color:var(--text3)">${esc(m.family || '—')}</td>
+          <td style="padding:8px 6px;border-bottom:1px solid var(--border2)"><strong>${esc(m.managerName || '')}</strong><div style="font-size:11px;color:var(--text3)">${esc(m.managerEmail)}</div></td>
+          <td style="padding:8px 6px;border-bottom:1px solid var(--border2);text-align:center;font-weight:700">${m.hits || 1}</td>
+          <td style="padding:8px 6px;border-bottom:1px solid var(--border2);font-size:11px;color:var(--text3)">${esc((m.refs || []).slice(-3).join(', '))}</td>
+          <td style="padding:8px 6px;border-bottom:1px solid var(--border2);text-align:center">${m.confirmed
+            ? '<span style="color:var(--green);font-weight:700;font-size:12px">✓ Confirmado</span>'
+            : '<span style="color:var(--amber);font-size:12px">Pendiente</span>'}</td>
+          <td style="padding:8px 6px;border-bottom:1px solid var(--border2);text-align:right;white-space:nowrap">
+            <button class="btn ${m.confirmed ? 'bgh' : 'bp'}" style="padding:4px 10px;font-size:11px" onclick="CP.FamiliasAdmin.confirmManager('${m._id}', ${m.confirmed ? 'false' : 'true'})">${m.confirmed ? 'Quitar confirmación' : '✓ Confirmar'}</button>
+            <button class="btn bgh" style="padding:4px 8px;font-size:11px;color:var(--red);border-color:var(--red)" onclick="CP.FamiliasAdmin.deleteManager('${m._id}', '${esc(m.managerEmail).replace(/'/g, "\\'")}')">🗑</button>
+          </td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+    } catch (e) {
+      box.innerHTML = `<div style="color:var(--red);font-size:13px">Error: ${esc(e.message)}</div>`;
+    }
+  }
+
+  async function confirmManager(id, confirmed) {
+    try { await api('/api/managers/' + id, { method:'PUT', body: JSON.stringify({ confirmed }) }); _loadManagers(); }
+    catch (e) { alert('No se pudo: ' + e.message); }
+  }
+
+  async function deleteManager(id, email) {
+    if (!confirm(`¿Borrar la asociación de ${email}? Si vuelve a responder a un aviso, se aprenderá de nuevo.`)) return;
+    try { await api('/api/managers/' + id, { method:'DELETE' }); _loadManagers(); }
+    catch (e) { alert('No se pudo: ' + e.message); }
   }
 
   async function toggleGlobal() {
@@ -218,6 +272,6 @@
     }
   }
 
-  CP.FamiliasAdmin = { render, save, toggleGlobal, sendNow, testOfficial, inspectRaw, preview };
+  CP.FamiliasAdmin = { render, save, toggleGlobal, sendNow, testOfficial, inspectRaw, preview, confirmManager, deleteManager };
 
 })(window.CP = window.CP || {});
