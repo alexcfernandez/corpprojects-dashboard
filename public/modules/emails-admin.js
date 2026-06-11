@@ -234,10 +234,13 @@ async function diagIA() {
   try {
     const r = await apiCall('/api/emails/diag');
     if (!r || r.error || !r.ok) {
-      out.textContent = '✗ La IA NO está funcionando.\nCausa: ' + ((r && r.error) || 'desconocida');
+      out.textContent = '✗ La IA NO está funcionando.\nCausa: ' + ((r && r.error) || 'desconocida') +
+        (r && r.uso ? `\nLlamadas hoy: ${r.uso.usadas}/${r.uso.limite}` : '');
     } else {
-      out.textContent = '✅ La IA funciona. Prueba clasificada como: ' + (r.resultado?.categoria || '?') +
-        ' / ' + (r.resultado?.urgencia || '?') + '\nPulsa "Reclasificar" para arreglar los emails ya guardados.';
+      out.textContent = '✅ La IA funciona (' + (r.modelo || '') + '). Prueba: ' + (r.resultado?.categoria || '?') +
+        ' / ' + (r.resultado?.urgencia || '?') +
+        (r.uso ? `\nLlamadas hoy: ${r.uso.usadas}/${r.uso.limite}` : '') +
+        '\nPulsa "Reclasificar" para arreglar los emails ya guardados.';
     }
   } catch (e) { if (out) out.textContent = '✗ Error: ' + e.message; }
 }
