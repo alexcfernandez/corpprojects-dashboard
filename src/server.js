@@ -1029,6 +1029,26 @@ app.get('/api/emails/:id/attachments/:attId/download', requireAuth, async (req, 
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Reenviar un adjunto al OCR de StelOrder (manual: consume tokens de OCR).
+app.post('/api/emails/:id/attachments/:attId/ocr', requireAuth, async (req, res) => {
+  try {
+    const { db } = await require('./db').getDBLegacy();
+    const { ObjectId } = require('mongodb');
+    const doc = await db.collection('emails').findOne({ _id: new ObjectId(req.params.id) });
+    if (!doc) return res.status(404).json({ error: 'Email no encontrado' });
+    const { listAttachments, reenviarAdjuntoOCR } = require('./email-intelligence');
+    const atts = await listAttachments(doc.gmailId);
+    const att = atts.find(a => a.attachmentId === req.params.attId);
+    if (!att) return res.status(404).json({ error: 'Adjunto no encontrado' });
+    const r = await reenviarAdjuntoOCR(doc.gmailId, att.attachmentId, att.filename, att.mimeType, doc.asunto);
+    await db.collection('emails').updateOne(
+      { _id: doc._id },
+      { $addToSet: { ocrEnviados: att.attachmentId }, $set: { ocrUltimoEnvio: new Date() } }
+    );
+    res.json({ ok: true, destino: r.destino, filename: att.filename });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Diagnóstico de la clasificación IA de emails.
 app.get('/api/emails/diag', requireAuth, async (req, res) => {
   try {
