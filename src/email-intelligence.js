@@ -79,6 +79,43 @@ function extractBody(payload) {
   return '';
 }
 
+// ── Adjuntos ──────────────────────────────────────────────────────
+// Recorre las partes del mensaje y devuelve los adjuntos reales
+// (con nombre de archivo y attachmentId para poder descargarlos).
+function extractAttachments(payload) {
+  const out = [];
+  function walk(parts) {
+    for (const part of parts || []) {
+      if (part.filename && part.body?.attachmentId) {
+        out.push({
+          filename: part.filename,
+          mimeType: part.mimeType || 'application/octet-stream',
+          size: part.body.size || 0,
+          attachmentId: part.body.attachmentId
+        });
+      }
+      if (part.parts) walk(part.parts);
+    }
+  }
+  walk(payload?.parts);
+  return out;
+}
+
+// Lista los adjuntos de un mensaje EN VIVO desde Gmail (vale para emails antiguos).
+async function listAttachments(gmailId) {
+  const gmail = getGmailClient();
+  const msg = await gmail.users.messages.get({ userId: 'me', id: gmailId, format: 'full' });
+  return extractAttachments(msg.data.payload);
+}
+
+// Descarga un adjunto concreto (devuelve Buffer).
+async function getAttachment(gmailId, attachmentId) {
+  const gmail = getGmailClient();
+  const att = await gmail.users.messages.attachments.get({ userId: 'me', messageId: gmailId, id: attachmentId });
+  const data = att.data.data || '';
+  return Buffer.from(data.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+}
+
 // ── Extraer email limpio del campo "De:" ──────────────────────────
 function parsearRemitente(de) {
   // Formato: "Nombre Apellido <email@dominio.com>" o solo "email@dominio.com"
@@ -280,6 +317,7 @@ async function procesarEmail(gmail, messageId) {
     const asunto = headers.find(h => h.name === 'Subject')?.value || '(sin asunto)';
     const fecha  = new Date(parseInt(msg.data.internalDate));
     const cuerpo = extractBody(msg.data.payload);
+    const adjuntos = extractAttachments(msg.data.payload);
 
     console.log(`[Email] Procesando: ${asunto} de ${de}`);
 
@@ -293,6 +331,8 @@ async function procesarEmail(gmail, messageId) {
       de,
       asunto,
       cuerpo: cuerpo.slice(0, 3000),
+      adjuntos: adjuntos.map(a => ({ filename: a.filename, mimeType: a.mimeType, size: a.size })),
+      tieneAdjuntos: adjuntos.length > 0,
       categoria:        clasificacion.categoria   || 'OTRO',
       urgencia:         clasificacion.urgencia    || 'BAJA',
       resumen:          clasificacion.resumen     || `Email de ${de} — ${asunto}`,
@@ -412,4 +452,4 @@ async function reclasificarPendientes(limit = 150) {
   return { encontrados: malos.length, reclasificados: ok, fallos, primerError };
 }
 
-module.exports = { pollEmails, enviarRespuesta, getGmailClient, diagnosticoIA, reclasificarPendientes, usoIAHoy };
+module.exports = { pollEmails, enviarRespuesta, getGmailClient, diagnosticoIA, reclasificarPendientes, usoIAHoy, listAttachments, getAttachment };
