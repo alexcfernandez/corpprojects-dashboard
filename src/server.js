@@ -985,6 +985,20 @@ app.post('/api/partes/confirmar', uploadMemory.any(), async (req, res) => {
 // ── EMAILS INTELIGENTES ───────────────────────────────────────────
 const { pollEmails, enviarRespuesta } = require('./email-intelligence');
 
+// Mapa comunidad → gestor (aprendido pasivamente de las respuestas a avisos).
+app.get('/api/managers', requireAuth, async (req, res) => {
+  try { res.json({ managers: await require('./gestores').getManagers() }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.put('/api/managers/:id', requireAuth, async (req, res) => {
+  try { res.json(await require('./gestores').setConfirmed(req.params.id, !!req.body.confirmed)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.delete('/api/managers/:id', requireAuth, async (req, res) => {
+  try { res.json(await require('./gestores').removeManager(req.params.id)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 // Diagnóstico de la clasificación IA de emails.
 app.get('/api/emails/diag', requireAuth, async (req, res) => {
   try {
