@@ -312,6 +312,11 @@ async function procesarEmail(gmail, messageId) {
 
     console.log(`[Email] Guardado: ${clasificacion.categoria} — ${clasificacion.resumen}`);
 
+    // Aprendizaje pasivo: si responde a un aviso (FAC/PDT en el asunto),
+    // asociar remitente → comunidad. Nunca afecta al procesado del email.
+    try { await require('./gestores').aprenderDeEmail(de, asunto); }
+    catch (e) { console.warn('[Gestores] aprender:', e.message); }
+
     await gmail.users.messages.modify({
       userId: 'me',
       id: messageId,
