@@ -226,6 +226,7 @@ async function cargarAdjuntos(emailId) {
   if (!box) return;
   try {
     const r = await apiCall(`/api/emails/${emailId}/attachments`);
+    if (r && r.error) throw new Error(r.error);
     const atts = (r && r.attachments) || [];
     if (!atts.length) {
       const wrap = document.getElementById('email-adjuntos');
@@ -233,24 +234,25 @@ async function cargarAdjuntos(emailId) {
       return;
     }
     const enviados = (emailsState.emailAbierto && emailsState.emailAbierto.ocrEnviados) || [];
-    box.innerHTML = atts.map(a => `
+    box.innerHTML = atts.map((a, i) => `
       <div style="display:inline-flex;align-items:center;gap:8px;background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;margin:0 8px 8px 0">
         <span style="font-size:13px;color:var(--text)">📄 ${escE(a.filename)}</span>
         <span style="font-size:11px;color:var(--text3)">${fmtBytes(a.size)}</span>
-        ${enviados.includes(a.attachmentId) ? '<span style="font-size:11px;color:var(--green);font-weight:700">✓ OCR</span>' : ''}
+        ${enviados.includes(a.filename) ? '<span style="font-size:11px;color:var(--green);font-weight:700">✓ OCR</span>' : ''}
         <button class="btn bp" style="padding:4px 10px;font-size:12px"
-          onclick="descargarAdjunto('${emailId}', '${escE(a.attachmentId)}', '${escE(a.filename).replace(/'/g, "\\'")}')">⬇ Descargar</button>
+          onclick="descargarAdjunto('${emailId}', ${i}, '${escE(a.filename).replace(/'/g, "\\'")}')">⬇ Descargar</button>
         <button class="btn bgh" style="padding:4px 10px;font-size:12px"
-          onclick="enviarAdjuntoOCR('${emailId}', '${escE(a.attachmentId)}', '${escE(a.filename).replace(/'/g, "\\'")}')">📤 Al OCR</button>
+          onclick="enviarAdjuntoOCR('${emailId}', ${i}, '${escE(a.filename).replace(/'/g, "\\'")}')">📤 Al OCR</button>
       </div>`).join('');
   } catch (e) {
-    box.innerHTML = `<span style="color:var(--red)">No se pudieron cargar los adjuntos: ${escE(e.message)}</span>`;
+    box.innerHTML = `<span style="color:var(--red)">No se pudieron cargar los adjuntos: ${escE(e.message)}</span>
+      <button class="btn bgh" style="padding:4px 10px;font-size:12px;margin-left:8px" onclick="cargarAdjuntos('${emailId}')">Reintentar</button>`;
   }
 }
 
-async function descargarAdjunto(emailId, attId, filename) {
+async function descargarAdjunto(emailId, idx, filename) {
   try {
-    const resp = await fetch(`${API}/api/emails/${emailId}/attachments/${encodeURIComponent(attId)}/download`, {
+    const resp = await fetch(`${API}/api/emails/${emailId}/attachments/${idx}/download?fn=${encodeURIComponent(filename)}`, {
       headers: { 'Authorization': `Bearer ${tok}` }
     });
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -265,14 +267,14 @@ async function descargarAdjunto(emailId, attId, filename) {
   }
 }
 
-async function enviarAdjuntoOCR(emailId, attId, filename) {
+async function enviarAdjuntoOCR(emailId, idx, filename) {
   if (!confirm(`Enviar "${filename}" al OCR de StelOrder.\n\n⚠️ El OCR consume tokens de tu plan de StelOrder. ¿Continuar?`)) return;
   try {
-    const r = await apiCall(`/api/emails/${emailId}/attachments/${encodeURIComponent(attId)}/ocr`, 'POST', {});
+    const r = await apiCall(`/api/emails/${emailId}/attachments/${idx}/ocr`, 'POST', { fn: filename });
     if (!r || r.error) throw new Error((r && r.error) || 'sin respuesta');
     if (emailsState.emailAbierto) {
       emailsState.emailAbierto.ocrEnviados = emailsState.emailAbierto.ocrEnviados || [];
-      if (!emailsState.emailAbierto.ocrEnviados.includes(attId)) emailsState.emailAbierto.ocrEnviados.push(attId);
+      if (!emailsState.emailAbierto.ocrEnviados.includes(filename)) emailsState.emailAbierto.ocrEnviados.push(filename);
     }
     cargarAdjuntos(emailId);
     alert(`✓ "${r.filename}" enviado al OCR (${r.destino}).\nEn unos minutos aparecerá en StelOrder → Compras para validar.`);
