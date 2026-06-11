@@ -283,7 +283,22 @@
           <td colspan="7" style="background:${est.color}18;color:${est.color};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:8px 10px;border-top:2px solid ${est.color}44">
             ${sectionLabels[status]} <span style="font-weight:400;opacity:.7">(${partes.length})</span>
           </td></tr>`;
-        rows += partes.map(renderRow).join('');
+
+        // Dentro de cada estado: agrupar por día + trabajador (más reciente primero)
+        const ordenados = [...partes].sort((a, b) =>
+          (b.date || '').localeCompare(a.date || '') || (a.workerName || '').localeCompare(b.workerName || ''));
+        let claveAnterior = null;
+        ordenados.forEach(p => {
+          const clave = `${p.date}|${p.workerName}`;
+          if (clave !== claveAnterior) {
+            const n = ordenados.filter(x => `${x.date}|${x.workerName}` === clave).length;
+            rows += `<tr><td colspan="7" style="background:var(--bg2);color:var(--text3);font-size:11px;font-weight:600;padding:5px 10px 5px 18px">
+              📅 ${dt(p.date)} — ${p.workerName}${n > 1 ? ` <span style="font-weight:400;opacity:.7">(${n} partes)</span>` : ''}
+            </td></tr>`;
+            claveAnterior = clave;
+          }
+          rows += renderRow(p);
+        });
       });
 
       el.innerHTML = `<table>
