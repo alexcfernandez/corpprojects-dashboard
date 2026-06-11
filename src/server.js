@@ -999,6 +999,36 @@ app.delete('/api/managers/:id', requireAuth, async (req, res) => {
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 
+// Adjuntos de un email: listar (en vivo desde Gmail, vale para emails antiguos).
+app.get('/api/emails/:id/attachments', requireAuth, async (req, res) => {
+  try {
+    const { db } = await require('./db').getDBLegacy();
+    const { ObjectId } = require('mongodb');
+    const doc = await db.collection('emails').findOne({ _id: new ObjectId(req.params.id) });
+    if (!doc) return res.status(404).json({ error: 'Email no encontrado' });
+    const { listAttachments } = require('./email-intelligence');
+    res.json({ attachments: await listAttachments(doc.gmailId) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Descargar un adjunto concreto.
+app.get('/api/emails/:id/attachments/:attId/download', requireAuth, async (req, res) => {
+  try {
+    const { db } = await require('./db').getDBLegacy();
+    const { ObjectId } = require('mongodb');
+    const doc = await db.collection('emails').findOne({ _id: new ObjectId(req.params.id) });
+    if (!doc) return res.status(404).json({ error: 'Email no encontrado' });
+    const { listAttachments, getAttachment } = require('./email-intelligence');
+    const atts = await listAttachments(doc.gmailId);
+    const att = atts.find(a => a.attachmentId === req.params.attId);
+    if (!att) return res.status(404).json({ error: 'Adjunto no encontrado' });
+    const buf = await getAttachment(doc.gmailId, att.attachmentId);
+    res.set('Content-Type', att.mimeType);
+    res.set('Content-Disposition', `attachment; filename="${encodeURIComponent(att.filename)}"`);
+    res.send(buf);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Diagnóstico de la clasificación IA de emails.
 app.get('/api/emails/diag', requireAuth, async (req, res) => {
   try {
