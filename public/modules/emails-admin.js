@@ -232,12 +232,16 @@ async function cargarAdjuntos(emailId) {
       if (wrap) wrap.style.display = 'none';
       return;
     }
+    const enviados = (emailsState.emailAbierto && emailsState.emailAbierto.ocrEnviados) || [];
     box.innerHTML = atts.map(a => `
       <div style="display:inline-flex;align-items:center;gap:8px;background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;margin:0 8px 8px 0">
         <span style="font-size:13px;color:var(--text)">📄 ${escE(a.filename)}</span>
         <span style="font-size:11px;color:var(--text3)">${fmtBytes(a.size)}</span>
+        ${enviados.includes(a.attachmentId) ? '<span style="font-size:11px;color:var(--green);font-weight:700">✓ OCR</span>' : ''}
         <button class="btn bp" style="padding:4px 10px;font-size:12px"
           onclick="descargarAdjunto('${emailId}', '${escE(a.attachmentId)}', '${escE(a.filename).replace(/'/g, "\\'")}')">⬇ Descargar</button>
+        <button class="btn bgh" style="padding:4px 10px;font-size:12px"
+          onclick="enviarAdjuntoOCR('${emailId}', '${escE(a.attachmentId)}', '${escE(a.filename).replace(/'/g, "\\'")}')">📤 Al OCR</button>
       </div>`).join('');
   } catch (e) {
     box.innerHTML = `<span style="color:var(--red)">No se pudieron cargar los adjuntos: ${escE(e.message)}</span>`;
@@ -258,6 +262,22 @@ async function descargarAdjunto(emailId, attId, filename) {
     setTimeout(() => URL.revokeObjectURL(url), 4000);
   } catch (e) {
     alert('No se pudo descargar el adjunto: ' + e.message);
+  }
+}
+
+async function enviarAdjuntoOCR(emailId, attId, filename) {
+  if (!confirm(`Enviar "${filename}" al OCR de StelOrder.\n\n⚠️ El OCR consume tokens de tu plan de StelOrder. ¿Continuar?`)) return;
+  try {
+    const r = await apiCall(`/api/emails/${emailId}/attachments/${encodeURIComponent(attId)}/ocr`, 'POST', {});
+    if (!r || r.error) throw new Error((r && r.error) || 'sin respuesta');
+    if (emailsState.emailAbierto) {
+      emailsState.emailAbierto.ocrEnviados = emailsState.emailAbierto.ocrEnviados || [];
+      if (!emailsState.emailAbierto.ocrEnviados.includes(attId)) emailsState.emailAbierto.ocrEnviados.push(attId);
+    }
+    cargarAdjuntos(emailId);
+    alert(`✓ "${r.filename}" enviado al OCR (${r.destino}).\nEn unos minutos aparecerá en StelOrder → Compras para validar.`);
+  } catch (e) {
+    alert('No se pudo enviar al OCR: ' + e.message);
   }
 }
 
