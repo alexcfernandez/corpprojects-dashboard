@@ -97,10 +97,59 @@ function parsearRemitente(de) {
   };
 }
 
+// ── Pre-filtro GRATIS (sin IA): publicidad/newsletters obvias ─────
+function esPublicidadObvia(de, asunto, cuerpo) {
+  const d = String(de || '').toLowerCase();
+  const t = (String(asunto || '') + ' ' + String(cuerpo || '').slice(0, 1500)).toLowerCase();
+  if (/no-?reply|noreply|newsletter|marketing|promo|mailing|news@|info@b\./.test(d)) return true;
+  if (/darse de baja|unsubscribe|cancelar suscripci|ver en el navegador|view in browser/.test(t)) return true;
+  return false;
+}
+
+// ── Límite diario de llamadas a la IA (techo de gasto) ────────────
+async function consumirCupoIA() {
+  const limite = parseInt(process.env.EMAIL_IA_DAILY_LIMIT || 150);
+  const { db } = await getDB();
+  const day = new Date().toISOString().slice(0, 10);
+  const r = await db.collection('iaUsage').findOneAndUpdate(
+    { day }, { $inc: { count: 1 } }, { upsert: true, returnDocument: 'after' }
+  );
+  const count = (r && (r.count ?? r.value?.count)) || 1;
+  return { permitido: count <= limite, usadas: count, limite };
+}
+
+async function usoIAHoy() {
+  const { db } = await getDB();
+  const day = new Date().toISOString().slice(0, 10);
+  const doc = await db.collection('iaUsage').findOne({ day });
+  return { day, usadas: doc?.count || 0, limite: parseInt(process.env.EMAIL_IA_DAILY_LIMIT || 150) };
+}
+
 // ── Clasificar con Claude API ─────────────────────────────────────
 async function clasificarEmail(de, asunto, cuerpo) {
+  // 1) Publicidad obvia: gratis, sin IA
+  if (esPublicidadObvia(de, asunto, cuerpo)) {
+    return {
+      categoria: 'PUBLICIDAD', urgencia: 'BAJA',
+      resumen: `Publicidad/newsletter: ${String(asunto).slice(0, 70)}`,
+      clienteDetectado: null, accionSugerida: 'Archivar — publicidad', confianza: 0.9
+    };
+  }
+  // 2) Techo diario de gasto
   try {
-    const cuerpoLimpio = cuerpo.slice(0, 2000);
+    const cupo = await consumirCupoIA();
+    if (!cupo.permitido) {
+      return {
+        categoria: 'OTRO', urgencia: 'BAJA',
+        resumen: `Email sobre: ${String(asunto).slice(0, 80)}`,
+        clienteDetectado: null, accionSugerida: 'Revisar manualmente',
+        confianza: 0.1, iaError: `Límite diario de IA alcanzado (${cupo.limite})`
+      };
+    }
+  } catch (e) { /* si falla el contador, seguimos */ }
+
+  try {
+    const cuerpoLimpio = cuerpo.slice(0, 800);
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -109,42 +158,20 @@ async function clasificarEmail(de, asunto, cuerpo) {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 500,
+        model: process.env.EMAIL_IA_MODEL || 'claude-haiku-4-5-20251001',
+        max_tokens: 250,
         messages: [{
           role: 'user',
-          content: `Eres el asistente de Corp Projects, empresa de administración de fincas y mantenimiento en España.
-Analiza este email y responde ÚNICAMENTE con un objeto JSON válido, sin texto antes ni después, sin markdown.
+          content: `Clasifica este email de una empresa española de mantenimiento de fincas. Responde SOLO un JSON válido, sin markdown.
 
 De: ${de}
 Asunto: ${asunto}
 Cuerpo: ${cuerpoLimpio}
 
-CATEGORÍAS disponibles:
-- INCIDENCIA: avería, reparación, urgencia, problema técnico
-- PRESUPUESTO: solicitud de presupuesto o precio
-- FACTURA_PROVEEDOR: factura de un proveedor o suministrador
-- PAGO_RECIBIDO: confirmación de pago o transferencia
-- COMUNICACION: comunicación de comunidad de vecinos, administración
-- PEDIDO_ALBARAN: pedido de material o albarán de entrega
-- PUBLICIDAD: email comercial, newsletter, oferta, promoción, infojobs, marketing
-- SPAM: spam, phishing, no solicitado
-- OTRO: no encaja en ninguna categoría anterior
+Categorías: INCIDENCIA (avería/urgencia) | PRESUPUESTO | FACTURA_PROVEEDOR | PAGO_RECIBIDO | COMUNICACION (comunidad/administración) | PEDIDO_ALBARAN | PUBLICIDAD | SPAM | OTRO
+Urgencia: ALTA (avería grave, agua, gas, plazo) | MEDIA | BAJA
 
-URGENCIA:
-- ALTA: avería grave, urgencia, agua, gas, seguridad, plazo inminente
-- MEDIA: solicitud normal con cierta prioridad
-- BAJA: informativo, publicidad, newsletters, sin acción requerida
-
-JSON a devolver (todos los campos obligatorios):
-{
-  "categoria": "una de las categorías de arriba",
-  "urgencia": "ALTA|MEDIA|BAJA",
-  "resumen": "frase corta en español explicando de qué trata el email (máx 100 chars)",
-  "clienteDetectado": "nombre de empresa o persona mencionada, o null",
-  "accionSugerida": "qué debe hacer el admin con este email (máx 80 chars)",
-  "confianza": 0.85
-}`
+{"categoria":"...","urgencia":"...","resumen":"frase corta en español (máx 100 chars)","clienteDetectado":"nombre o null","accionSugerida":"máx 80 chars","confianza":0.85}`
         }]
       })
     });
@@ -348,13 +375,15 @@ async function enviarRespuesta(emailDestino, asuntoOriginal, mensaje) {
 async function diagnosticoIA() {
   const hasKey = !!process.env.ANTHROPIC_API_KEY;
   if (!hasKey) return { hasKey, ok: false, error: 'ANTHROPIC_API_KEY no está configurada en Railway → Variables' };
+  let uso = null;
+  try { uso = await usoIAHoy(); } catch (e) {}
   const r = await clasificarEmail(
-    'pruebas@ejemplo.com',
-    'Oferta especial: 50% de descuento en herramientas',
-    'Aproveche nuestra promoción de verano en taladros y amoladoras. Compre ahora.'
+    'comercial@empresa-prueba.com',
+    'Consulta sobre presupuesto de reforma',
+    'Buenos días, querría pedir presupuesto para reformar el portal de nuestra comunidad. Gracias.'
   );
-  if (r.iaError) return { hasKey, ok: false, error: r.iaError };
-  return { hasKey, ok: true, resultado: r };
+  if (r.iaError) return { hasKey, ok: false, error: r.iaError, uso };
+  return { hasKey, ok: true, resultado: r, uso, modelo: process.env.EMAIL_IA_MODEL || 'claude-haiku-4-5-20251001' };
 }
 
 // ── Reclasificar los emails que cayeron en el fallback (confianza <= 0.1) ──
@@ -378,4 +407,4 @@ async function reclasificarPendientes(limit = 150) {
   return { encontrados: malos.length, reclasificados: ok, fallos, primerError };
 }
 
-module.exports = { pollEmails, enviarRespuesta, getGmailClient, diagnosticoIA, reclasificarPendientes };
+module.exports = { pollEmails, enviarRespuesta, getGmailClient, diagnosticoIA, reclasificarPendientes, usoIAHoy };
