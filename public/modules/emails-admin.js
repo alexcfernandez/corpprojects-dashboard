@@ -42,12 +42,11 @@ function extraerEmailMostrado(de) {
 function limpiarMensaje(cuerpo) {
   if (!cuerpo) return '';
   return cuerpo
-    // CSS residual de emails HTML (bloques @media/@font-face y declaraciones sueltas)
-    .replace(/@(media|font-face|import|charset)[^{]*\{[\s\S]{0,3000}?\}\s*\}?/g, ' ')
-    .replace(/^[\s]*[\w.#-]+\s*\{[^}]*\}?\s*$/gm, '')
-    .replace(/^[\s]*[\w-]+\s*:\s*[^;\n]{1,120};?\s*$/gm, '')
-    .replace(/^[\s]*[{}*\/]+\s*$/gm, '')
-    // URLs muy largas → reemplazar por texto legible
+    // CSS suelto que sobrevivió en emails ya guardados (selector { props })
+    .replace(/[^{}\n]{0,80}\{[^{}]*\}/g, ' ')
+    .replace(/^[\s]*[^{}\n]{0,80}\{\s*$/gm, '')
+    .replace(/@(media|font-face|import|charset)[^\n]*/g, '')
+    // URLs muy largas (tracking) → texto legible; las cortas se conservan
     .replace(/https?:\/\/\S{80,}/g, '[ver enlace]')
     // Quitar líneas que son solo URL corta
     .replace(/^https?:\/\/\S+$/gm, '')
