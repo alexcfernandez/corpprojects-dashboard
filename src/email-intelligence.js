@@ -72,9 +72,17 @@ function extractBody(payload) {
   const plain = buscarTexto(payload.parts, 'text/plain');
   if (plain) return limpiarCuerpo(plain);
 
-  // 3. text/html como fallback
+  // 3. text/html como fallback (quitando style/script/head ANTES del strip de etiquetas,
+  //    si no, el CSS interno del email aparece como si fuera el mensaje)
   const html = buscarTexto(payload.parts, 'text/html');
-  if (html) return limpiarCuerpo(html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '));
+  if (html) {
+    const sinBloques = html
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<head[\s\S]*?<\/head>/gi, ' ')
+      .replace(/<!--[\s\S]*?-->/g, ' ');
+    return limpiarCuerpo(sinBloques.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '));
+  }
 
   return '';
 }
