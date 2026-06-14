@@ -629,10 +629,38 @@ async function setWorkOrderStateLight(workOrderId, stateId, trigger) {
   }
 }
 
+// Serie de facturación de los últimos N meses (para la gráfica de Inicio).
+async function getMonthlyBilling(months = 6) {
+  const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  try {
+    const [receipts, { clientMap }] = await Promise.all([getAllReceipts(), getClients()]);
+    const allInvoices = buildInvoicesFromReceipts(receipts, clientMap);
+    const now = new Date();
+    const buckets = [];
+    for (let i = months - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      buckets.push({ year: d.getFullYear(), month: d.getMonth(),
+        label: MESES[d.getMonth()], total: 0, count: 0 });
+    }
+    for (const inv of allInvoices) {
+      if (!inv || inv.totalAmount <= 0 || !inv.date) continue;
+      const d = new Date(inv.date);
+      if (isNaN(d)) continue;
+      const b = buckets.find(x => x.year === d.getFullYear() && x.month === d.getMonth());
+      if (b) { b.total += inv.totalAmount; b.count++; }
+    }
+    return buckets.map(b => ({ label: b.label, total: parseFloat(b.total.toFixed(2)), count: b.count }));
+  } catch (err) {
+    console.error('[StelOrder] Error getMonthlyBilling:', err.message);
+    throw err;
+  }
+}
+
 module.exports = {
   getInvoices, getAllReceipts, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary,
   getAlertLevel, getFamiliesSummary, getAccountCategories, clearCache,
   sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw, getInvoicePdfPath, getEntityRawByRef,
-  getWorkOrdersLive, getWorkOrderAlertLevel, setWorkOrderState, setWorkOrderStateLight
+  getWorkOrdersLive, getWorkOrderAlertLevel, setWorkOrderState, setWorkOrderStateLight,
+  getMonthlyBilling
 };
