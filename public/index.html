@@ -49,25 +49,45 @@
     <button class="logout-btn" onclick="doLogout()">Salir</button>
   </div>
 </header>
-<nav class="nav">
-  <button class="nav-btn active" onclick="showTab('facturas',this)">📊 Facturación</button>
-  <button class="nav-btn" onclick="showTab('pendientes',this)">🔴 Pendientes cobro</button>
-  <button class="nav-btn" onclick="showTab('familias',this)">👥 Familias</button>
-  <button class="nav-btn" onclick="showTab('presupuestos',this)">📋 Presupuestos</button>
-  <button class="nav-btn" onclick="showTab('banco',this)">🏦 Banco y gastos</button>
-  <button class="nav-btn" onclick="showTab('presencia',this)">📅 Presencia</button>
-  <button class="nav-btn" onclick="showTab('partes',this)">📋 Partes</button>
-  <button class="nav-btn" onclick="showTab('pedidos',this)">🔧 Pedidos trabajo</button>
-  <button class="nav-btn" onclick="showTab('obras',this)">📊 Obras</button>
-  <button class="nav-btn" onclick="showTab('usuarios',this)">⚙️ Usuarios</button>
-  <button class="nav-btn" onclick="showTab('pagos',this)">💵 Pagos</button>
-  <button class="nav-btn" onclick="showTab('emails',this)" id="nav-emails">📧 Emails <span id="badge-emails" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:2px">0</span></button>
-  <button class="nav-btn" onclick="showTab('alertas',this)">🔔 Alertas</button>
+<nav class="nav" id="nav-grupos" style="gap:4px">
+  <button class="nav-btn active" onclick="showTab('inicio',this)" style="font-weight:700">🏠 Inicio</button>
+  <button class="nav-grp" onclick="showGrupo('dinero',this)">💰 Dinero ▾</button>
+  <button class="nav-grp" onclick="showGrupo('operacion',this)">🔧 Operación ▾</button>
+  <button class="nav-grp" onclick="showGrupo('gestion',this)">⚙️ Gestión ▾</button>
+</nav>
+<nav class="nav" id="subnav" style="display:none;background:var(--bg3)">
+  <!-- DINERO -->
+  <span class="subgrp" data-grp="dinero" style="display:none">
+    <button class="nav-btn" onclick="showTab('facturas',this)">📊 Facturación</button>
+    <button class="nav-btn" onclick="showTab('pendientes',this)">🔴 Pendientes cobro</button>
+    <button class="nav-btn" onclick="showTab('presupuestos',this)">📋 Presupuestos</button>
+    <button class="nav-btn" onclick="showTab('banco',this)">🏦 Banco y gastos</button>
+    <button class="nav-btn" onclick="showTab('pagos',this)">💵 Pagos</button>
+  </span>
+  <!-- OPERACIÓN -->
+  <span class="subgrp" data-grp="operacion" style="display:none">
+    <button class="nav-btn" onclick="showTab('pedidos',this)">🔧 Pedidos trabajo</button>
+    <button class="nav-btn" onclick="showTab('partes',this)">📋 Partes</button>
+    <button class="nav-btn" onclick="showTab('obras',this)">📊 Obras</button>
+    <button class="nav-btn" onclick="showTab('presencia',this)">📅 Presencia</button>
+  </span>
+  <!-- GESTIÓN -->
+  <span class="subgrp" data-grp="gestion" style="display:none">
+    <button class="nav-btn" onclick="showTab('familias',this)">👥 Familias</button>
+    <button class="nav-btn" onclick="showTab('emails',this)" id="nav-emails">📧 Emails <span id="badge-emails" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:2px">0</span></button>
+    <button class="nav-btn" onclick="showTab('usuarios',this)">⚙️ Usuarios</button>
+    <button class="nav-btn" onclick="showTab('alertas',this)">🔔 Alertas</button>
+  </span>
 </nav>
 <main class="main">
 
+<!-- INICIO -->
+<div id="tab-inicio" class="panel active">
+  <div id="inicio-container"><div style="text-align:center;padding:60px;color:var(--text3)">Cargando resumen…</div></div>
+</div>
+
 <!-- FACTURACIÓN -->
-<div id="tab-facturas" class="panel active">
+<div id="tab-facturas" class="panel">
   <div class="metrics-row">
     <div class="mc"><div class="ml">Facturas este mes</div><div class="mv b sk" id="m1"> </div><div class="ms">Emitidas mes actual</div></div>
     <div class="mc"><div class="ml">Facturado este mes</div><div class="mv g sk" id="m2"> </div><div class="ms">Importe bruto</div></div>
@@ -523,6 +543,7 @@ function showApp(){
   document.getElementById('app').style.display='block';
   document.getElementById('theme-toggle-fixed').style.display='flex';
   loadAll();
+  renderInicio();
 }
 
 // ── API HELPERS ───────────────────────────────────────────────────
@@ -862,11 +883,142 @@ async function testN(t){const d=await af('/api/test-notification',{method:'POST'
 function showNR(m){const el=document.getElementById('nRes');if(el){el.textContent='✅ '+m;el.style.display='block';setTimeout(()=>el.style.display='none',4000);}}
 
 // ── TABS ──────────────────────────────────────────────────────────
+function eur(n){ return (n||0).toLocaleString('es-ES',{maximumFractionDigits:0})+' €'; }
+
+async function renderInicio(){
+  const c=document.getElementById('inicio-container');
+  if(!c) return;
+  let d;
+  try{ d=await apiCall('/api/inicio'); }
+  catch(e){ c.innerHTML='<div style="color:var(--red);padding:40px;text-align:center">No se pudo cargar el resumen: '+e.message+'</div>'; return; }
+  if(!d){ return; }
+
+  const f=d.facturacion||{}, ped=d.pedidos||{}, par=d.partes||{}, em=d.emails||{}, pre=d.presencia||{};
+
+  // — KPIs grandes —
+  const kpi=(label,val,sub,color)=>`
+    <div class="card" style="margin:0;flex:1;min-width:200px">
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:600">${label}</div>
+      <div style="font-size:28px;font-weight:800;color:${color||'var(--text)'};margin-top:6px;line-height:1.1">${val}</div>
+      <div style="font-size:12px;color:var(--text3);margin-top:4px">${sub||''}</div>
+    </div>`;
+
+  // — Gráfica de barras (SVG, 6 meses) —
+  const serie=d.serieMensual||[];
+  const maxV=Math.max(1,...serie.map(s=>s.total));
+  const barW=100/(serie.length||1);
+  const barras=serie.map((s,i)=>{
+    const h=(s.total/maxV)*120;
+    const x=i*barW;
+    return `
+      <g>
+        <rect x="${x+barW*0.18}%" y="${150-h}" width="${barW*0.64}%" height="${h}" rx="4" fill="var(--blue)" opacity="0.85"></rect>
+        <text x="${x+barW*0.5}%" y="148" text-anchor="middle" font-size="10" fill="var(--text3)">${s.label}</text>
+        <text x="${x+barW*0.5}%" y="${150-h-6}" text-anchor="middle" font-size="9" fill="var(--text2)" font-weight="600">${s.total>=1000?(s.total/1000).toFixed(0)+'k':Math.round(s.total)}</text>
+      </g>`;
+  }).join('');
+
+  // — Módulos de atención (clicables) —
+  const att=(emoji,titulo,valor,detalle,grupo,tab,color)=>`
+    <div class="card" style="margin:0;cursor:pointer;flex:1;min-width:180px;border-left:3px solid ${color}" onclick="irA('${grupo}','${tab}')">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:20px">${emoji}</span>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:700;color:var(--text)">${titulo}</div>
+          <div style="font-size:11px;color:var(--text3)">${detalle}</div>
+        </div>
+        <div style="font-size:22px;font-weight:800;color:${color}">${valor}</div>
+      </div>
+    </div>`;
+
+  c.innerHTML=`
+    <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:6px">
+      ${kpi('Facturado este mes',eur(f.mes),`${f.mesCount||0} facturas`,'var(--green)')}
+      ${kpi('Pendiente de cobro',eur(f.pendiente),`${f.pendienteCount||0} facturas`,'var(--red)')}
+      ${kpi('Pedidos activos',ped.total||0,`${ped.rojo||0} 🔴 · ${ped.ambar||0} 🟠`,'var(--blue)')}
+      ${kpi('Pte. de facturar',par.porFacturar||0,'partes verificados','var(--amber)')}
+    </div>
+
+    <div class="card">
+      <div class="card-title">📈 Facturación últimos 6 meses</div>
+      <svg viewBox="0 0 100 160" preserveAspectRatio="none" style="width:100%;height:200px">${barras}</svg>
+    </div>
+
+    <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin:10px 2px 8px">Requiere tu atención</div>
+    <div style="display:flex;flex-wrap:wrap;gap:12px">
+      ${att('🔧','Pedidos urgentes',(ped.rojo||0),`${ped.rojo||0} en rojo · ${ped.ambar||0} en ámbar`,'operacion','pedidos','var(--red)')}
+      ${att('📋','Partes por revisar',(par.porRevisar||0),'pendientes de verificar','operacion','partes','var(--amber)')}
+      ${att('💰','Facturas críticas',(f.criticas||0),`${f.avisos||0} en aviso`,'dinero','pendientes','var(--red)')}
+      ${att('📧','Emails urgentes',(em.urgentes||0),`${em.sinLeer||0} sin leer`,'gestion','emails','var(--blue)')}
+      ${pre.hoy!=null?att('👷','Presencia hoy',(pre.hoy||0),'han fichado','operacion','presencia','var(--green)'):''}
+    </div>
+
+    ${(f.topPendientes&&f.topPendientes.length)?`
+    <div class="card" style="margin-top:14px">
+      <div class="card-title">🔴 Cobros más urgentes</div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <tbody>${f.topPendientes.map(p=>`<tr>
+          <td style="padding:8px 6px;border-bottom:1px solid var(--border2)"><strong>${p.number||''}</strong></td>
+          <td style="padding:8px 6px;border-bottom:1px solid var(--border2);color:var(--text2)">${p.client||''}</td>
+          <td style="padding:8px 6px;border-bottom:1px solid var(--border2);text-align:right;font-weight:700;color:var(--red)">${eur(p.pending)}</td>
+          <td style="padding:8px 6px;border-bottom:1px solid var(--border2);text-align:right;color:var(--text3)">${p.days||0} días</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>`:''}
+
+    <div style="text-align:center;font-size:11px;color:var(--text3);margin-top:14px">Actualizado ${new Date(d.lastUpdated).toLocaleString('es-ES')}</div>
+  `;
+}
+
+function showGrupo(grp, btn){
+  // Activar el grupo y mostrar su subnav
+  document.querySelectorAll('.nav-grp').forEach(b=>b.classList.remove('active'));
+  document.querySelector('#nav-grupos .nav-btn')?.classList.remove('active');
+  if(btn) btn.classList.add('active');
+  const subnav=document.getElementById('subnav');
+  subnav.style.display='flex';
+  document.querySelectorAll('.subgrp').forEach(s=>s.style.display='none');
+  const target=document.querySelector(`.subgrp[data-grp="${grp}"]`);
+  if(target){
+    target.style.display='contents';
+    // Abrir la primera pestaña del grupo automáticamente
+    const firstBtn=target.querySelector('.nav-btn');
+    if(firstBtn) firstBtn.click();
+  }
+}
+
+// Navegar desde una tarjeta de Inicio a una pestaña concreta de un grupo.
+function irA(grupo, tab){
+  const grpBtn=document.querySelector(`.nav-grp[onclick*="${grupo}"]`);
+  if(grpBtn){
+    // abrir el grupo sin auto-abrir su primera pestaña
+    document.querySelectorAll('.nav-grp').forEach(b=>b.classList.remove('active'));
+    document.querySelector('#nav-grupos .nav-btn')?.classList.remove('active');
+    grpBtn.classList.add('active');
+    document.getElementById('subnav').style.display='flex';
+    document.querySelectorAll('.subgrp').forEach(s=>s.style.display='none');
+    const target=document.querySelector(`.subgrp[data-grp="${grupo}"]`);
+    if(target) target.style.display='contents';
+  }
+  // clic en la pestaña exacta
+  const tabBtn=document.querySelector(`.subgrp[data-grp="${grupo}"] .nav-btn[onclick*="'${tab}'"]`);
+  if(tabBtn) tabBtn.click();
+}
+
 function showTab(id, btn){
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
-  document.getElementById('tab-'+id).classList.add('active');
+  const panel=document.getElementById('tab-'+id);
+  if(panel) panel.classList.add('active');
   if(btn) btn.classList.add('active');
+  // Inicio: ocultar subnav y resaltar el botón Inicio
+  if(id==='inicio'){
+    document.getElementById('subnav').style.display='none';
+    document.querySelectorAll('.nav-grp').forEach(b=>b.classList.remove('active'));
+    document.querySelector('#nav-grupos .nav-btn')?.classList.add('active');
+    renderInicio();
+    return;
+  }
   if(id==='banco') showBTab('resumen', document.querySelector('.btab'));
   startAutoRefresh(id);
   if(id==='emails'){
