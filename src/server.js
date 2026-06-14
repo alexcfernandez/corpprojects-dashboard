@@ -119,6 +119,72 @@ app.post('/api/login', loginLimiter, async (req, res) => {
 
 // ── StelOrder ─────────────────────────────────────────────────────
 app.get('/api/summary',            requireAuth, async (req,res) => res.json(await getSummary()));
+
+// INICIO: resumen visual del negocio (cifras + gráficas + qué requiere atención).
+// Cada bloque va en su try/catch: si una fuente falla, las demás se muestran igual.
+app.get('/api/inicio', requireAuth, async (req, res) => {
+  const out = { lastUpdated: new Date().toISOString() };
+
+  // 1) Facturación (mes, total, pendientes) — reutiliza getSummary
+  try {
+    const s = await getSummary();
+    out.facturacion = {
+      mes: s.totalBilledMonth, mesCount: s.totalInvoicesMonth,
+      pendiente: s.totalPending, pendienteCount: s.pendingInvoices,
+      criticas: s.criticalCount, avisos: s.overdueCount + s.warningCount,
+      topPendientes: (s.pendingList || []).slice(0, 5).map(p => ({
+        number: p.number, client: p.client, pending: p.pending, days: p.daysOverdue, alert: p.alertLevel
+      }))
+    };
+  } catch (e) { out.facturacion = { error: e.message }; }
+
+  // 2) Serie mensual (6 meses) para la gráfica de barras
+  try { out.serieMensual = await require('./stelorder').getMonthlyBilling(6); }
+  catch (e) { out.serieMensual = []; }
+
+  // 3) Pedidos de trabajo vivos por nivel de alerta
+  try {
+    const list = await getWorkOrdersLive();
+    let rojo = 0, ambar = 0;
+    for (const p of list) {
+      const lvl = p.alertLevel || (require('./stelorder').getWorkOrderAlertLevel
+        ? require('./stelorder').getWorkOrderAlertLevel(p) : null);
+      if (lvl === 'red' || lvl === 'rojo') rojo++;
+      else if (lvl === 'amber' || lvl === 'ambar') ambar++;
+    }
+    out.pedidos = { total: list.length, rojo, ambar };
+  } catch (e) { out.pedidos = { total: 0, rojo: 0, ambar: 0, error: e.message }; }
+
+  // 4) Partes por estado (pendientes de revisar / de facturar)
+  try {
+    const { db } = await getDB();
+    const porRevisar = await db.collection('partes').countDocuments({ status: 'pendiente' });
+    const porFacturar = await db.collection('partes').countDocuments({ status: 'verificado' });
+    out.partes = { porRevisar, porFacturar };
+  } catch (e) { out.partes = { porRevisar: 0, porFacturar: 0, error: e.message }; }
+
+  // 5) Emails urgentes sin gestionar (excluye publicidad/spam)
+  try {
+    const { db } = await getDB();
+    const urgentes = await db.collection('emails').countDocuments({
+      estado: 'PENDIENTE', urgencia: 'ALTA', categoria: { $nin: ['PUBLICIDAD', 'SPAM'] }
+    });
+    const sinLeer = await db.collection('emails').countDocuments({
+      leido: false, categoria: { $nin: ['PUBLICIDAD', 'SPAM'] }
+    });
+    out.emails = { urgentes, sinLeer };
+  } catch (e) { out.emails = { urgentes: 0, sinLeer: 0, error: e.message }; }
+
+  // 6) Presencia de hoy (quién ha fichado)
+  try {
+    const { db } = await getDB();
+    const hoy = new Date().toISOString().slice(0, 10);
+    const presentes = await db.collection('attendance').countDocuments({ date: hoy });
+    out.presencia = { hoy: presentes };
+  } catch (e) { out.presencia = { hoy: null }; }
+
+  res.json(out);
+});
 app.get('/api/invoices/pending',   requireAuth, async (req,res) => res.json(await getPendingInvoices()));
 app.get('/api/invoices',           requireAuth, async (req,res) => res.json(await getInvoices()));
 app.get('/api/clients',            requireAuth, async (req,res) => { const {clients} = await getClients(); res.json(clients); });
