@@ -1082,13 +1082,18 @@ app.get('/api/emails', requireAuth, async (req, res) => {
     if (categoria && categoria !== 'TODOS') filtro.categoria = categoria;
     if (estado && estado !== 'TODOS') filtro.estado = estado;
     if (urgencia && urgencia !== 'TODOS') filtro.urgencia = urgencia;
+    // La publicidad/spam no estorba en la bandeja: solo aparece si se filtra su categoría
+    if ((!categoria || categoria === 'TODOS') && estado === 'PENDIENTE') {
+      filtro.categoria = { $nin: ['PUBLICIDAD', 'SPAM'] };
+    }
     const emails = await db.collection('emails')
       .find(filtro).sort({ fecha: -1 }).skip(parseInt(skip)).limit(parseInt(limit)).toArray();
     const total      = await db.collection('emails').countDocuments(filtro);
-    const pendientes = await db.collection('emails').countDocuments({ estado: 'PENDIENTE' });
-    const noLeidos   = await db.collection('emails').countDocuments({ leido: false });
+    const pendientes = await db.collection('emails').countDocuments({ estado: 'PENDIENTE', categoria: { $nin: ['PUBLICIDAD', 'SPAM'] } });
+    const publicidad = await db.collection('emails').countDocuments({ estado: 'PENDIENTE', categoria: { $in: ['PUBLICIDAD', 'SPAM'] } });
+    const noLeidos   = await db.collection('emails').countDocuments({ leido: false, categoria: { $nin: ['PUBLICIDAD', 'SPAM'] } });
     await client.close();
-    res.json({ emails, total, pendientes, noLeidos });
+    res.json({ emails, total, pendientes, noLeidos, publicidad });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
