@@ -42,6 +42,11 @@ function extraerEmailMostrado(de) {
 function limpiarMensaje(cuerpo) {
   if (!cuerpo) return '';
   return cuerpo
+    // CSS residual de emails HTML (bloques @media/@font-face y declaraciones sueltas)
+    .replace(/@(media|font-face|import|charset)[^{]*\{[\s\S]{0,3000}?\}\s*\}?/g, ' ')
+    .replace(/^[\s]*[\w.#-]+\s*\{[^}]*\}?\s*$/gm, '')
+    .replace(/^[\s]*[\w-]+\s*:\s*[^;\n]{1,120};?\s*$/gm, '')
+    .replace(/^[\s]*[{}*\/]+\s*$/gm, '')
     // URLs muy largas → reemplazar por texto legible
     .replace(/https?:\/\/\S{80,}/g, '[ver enlace]')
     // Quitar líneas que son solo URL corta
@@ -90,6 +95,7 @@ async function cargarEmails() {
     emailsState.total      = data.total || 0;
     emailsState.pendientes = data.pendientes || 0;
     emailsState.noLeidos   = data.noLeidos || 0;
+    emailsState.publicidad = data.publicidad || 0;
   } catch (err) {
     console.error('[Emails] Error cargando:', err.message);
   }
@@ -337,7 +343,7 @@ function renderEmails() {
       <div>
         <h2 style="font-size:20px;font-weight:700;margin:0">📧 Emails</h2>
         <div style="font-size:13px;color:var(--text3);margin-top:4px">
-          ${emailsState.noLeidos} sin leer · ${emailsState.pendientes} pendientes
+          ${emailsState.noLeidos} sin leer · ${emailsState.pendientes} pendientes${emailsState.publicidad ? ` · ${emailsState.publicidad} publicidad apartada` : ''}
         </div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -414,7 +420,7 @@ function renderEmails() {
                 ${esNuevo ? '<span style="background:var(--blue);color:#fff;border-radius:6px;padding:2px 7px;font-size:11px;font-weight:700">NUEVO</span>' : ''}
                 ${email.importante ? '<span style="color:#f59e0b;font-size:14px">⭐</span>' : ''}
                 ${email.estado === 'GESTIONADO' ? '<span style="background:rgba(34,196,135,.15);color:var(--green);border-radius:6px;padding:2px 7px;font-size:11px;font-weight:600">✅ GESTIONADO</span>' : ''}
-                ${!remVerif ? '<span style="background:rgba(240,82,82,.1);color:var(--red);border-radius:6px;padding:2px 7px;font-size:11px">❌ Desconocido</span>'
+                ${(!remVerif && !['PUBLICIDAD','SPAM'].includes(email.categoria)) ? '<span style="background:rgba(240,82,82,.1);color:var(--red);border-radius:6px;padding:2px 7px;font-size:11px">❌ Desconocido</span>'
                             : '<span style="background:rgba(34,196,135,.1);color:var(--green);border-radius:6px;padding:2px 7px;font-size:11px">✅ Verificado</span>'}
               </div>
               <div style="font-size:13px;color:var(--text3);margin-bottom:3px">
@@ -509,7 +515,8 @@ function renderDetalle() {
 
       <div style="padding:20px 22px;display:flex;flex-direction:column;gap:14px">
 
-        <!-- REMITENTE -->
+        <!-- REMITENTE (oculto para publicidad/spam: no aplica gestión en StelOrder) -->
+        ${['PUBLICIDAD','SPAM'].includes(email.categoria) ? '' : `
         <div style="background:${remitente.encontrado ? 'rgba(34,196,135,.08)' : 'rgba(240,82,82,.08)'};border:1px solid ${remitente.encontrado ? 'rgba(34,196,135,.3)' : 'rgba(240,82,82,.3)'};border-radius:10px;padding:12px 16px">
           <div style="font-size:13px;font-weight:700;color:${remitente.encontrado ? 'var(--green)' : 'var(--red)'};margin-bottom:6px">
             ${remitente.encontrado ? '✅ Remitente verificado en StelOrder' : '❌ Remitente desconocido'}
@@ -528,7 +535,7 @@ function renderDetalle() {
                </div>`
           }
           <div style="font-size:12px;color:var(--text3);margin-top:4px">${permisos.razon || ''}</div>
-        </div>
+        </div>`}
 
         <!-- RESUMEN IA -->
         <div style="background:var(--bg3);border-radius:10px;padding:14px 16px">
@@ -562,7 +569,7 @@ function renderDetalle() {
         ` : ''}
 
         <!-- ACCIONES STELORDER -->
-        ${email.estado !== 'GESTIONADO' && email.estado !== 'ARCHIVADO' ? `
+        ${email.estado !== 'GESTIONADO' && email.estado !== 'ARCHIVADO' && !['PUBLICIDAD','SPAM'].includes(email.categoria) ? `
           <div>
             <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">⚡ Acciones en StelOrder</div>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
