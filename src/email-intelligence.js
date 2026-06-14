@@ -81,7 +81,12 @@ function extractBody(payload) {
       .replace(/<script[\s\S]*?<\/script>/gi, ' ')
       .replace(/<head[\s\S]*?<\/head>/gi, ' ')
       .replace(/<!--[\s\S]*?-->/g, ' ');
-    return limpiarCuerpo(sinBloques.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '));
+    const sinTags = sinBloques.replace(/<[^>]+>/g, ' ');
+    // CSS suelto que sobrevive (selector { props }) — frecuente en emails de marketing
+    const sinCss = sinTags
+      .replace(/[^{}]{0,80}\{[^{}]*\}/g, ' ')
+      .replace(/[^{}]{0,80}\{\s*/g, ' ');
+    return limpiarCuerpo(sinCss.replace(/\s+/g, ' '));
   }
 
   return '';
