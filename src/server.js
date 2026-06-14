@@ -139,8 +139,12 @@ app.get('/api/inicio', requireAuth, async (req, res) => {
   } catch (e) { out.facturacion = { error: e.message }; }
 
   // 2) Serie mensual (6 meses) para la gráfica de barras
-  try { out.serieMensual = await require('./stelorder').getMonthlyBilling(6); }
-  catch (e) { out.serieMensual = []; }
+  try {
+    out.serieMensual = await require('./stelorder').getMonthlyBilling(6);
+  } catch (e) {
+    out.serieMensual = [];
+    out.serieMensualError = e.message;
+  }
 
   // 3) Pedidos de trabajo vivos por nivel de alerta
   try {
