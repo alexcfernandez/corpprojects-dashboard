@@ -67,6 +67,7 @@
   <!-- OPERACIÓN -->
   <span class="subgrp" data-grp="operacion" style="display:none">
     <button class="nav-btn" onclick="showTab('pedidos',this)">🔧 Pedidos trabajo</button>
+    <button class="nav-btn" onclick="showTab('planning',this)">🗓 Planificación</button>
     <button class="nav-btn" onclick="showTab('partes',this)">📋 Partes</button>
     <button class="nav-btn" onclick="showTab('obras',this)">📊 Obras</button>
     <button class="nav-btn" onclick="showTab('presencia',this)">📅 Presencia</button>
@@ -380,6 +381,13 @@
 <div id="tab-presencia" class="panel">
   <div id="presencia-container">
     <div style="text-align:center;padding:40px;color:var(--text3)"><div style="font-size:32px;margin-bottom:10px">📅</div><div>Cargando módulo de presencia...</div></div>
+  </div>
+</div>
+
+<!-- PLANIFICACIÓN -->
+<div id="tab-planning" class="panel">
+  <div id="planning-container">
+    <div style="text-align:center;padding:40px;color:var(--text3)"><div style="font-size:32px;margin-bottom:10px">🗓</div><div>Cargando calendario...</div></div>
   </div>
 </div>
 
@@ -1038,6 +1046,7 @@ function showTab(id, btn){
     pagos: ['Pagos', 'pagos-container'],
     familias: ['FamiliasAdmin', 'familias-resp-container'],
     pedidos: ['PedidosAdmin', 'pedidos-container'],
+    planning: ['Planning', 'planning-container'],
   };
   if(moduleMap[id]){
     const [modName, containerId]=moduleMap[id];
@@ -1109,5 +1118,6 @@ window.addEventListener('load',()=>{
 <script src="/modules/emails-admin.js"></script>
 <script src="/modules/familias-admin.js"></script>
 <script src="/modules/pedidos-admin.js"></script>
+<script src="/modules/planning.js"></script>
 </body>
 </html>
