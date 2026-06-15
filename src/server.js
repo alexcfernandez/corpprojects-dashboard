@@ -187,6 +187,26 @@ app.get('/api/inicio', requireAuth, async (req, res) => {
     out.presencia = { hoy: presentes };
   } catch (e) { out.presencia = { hoy: null }; }
 
+  // 7) Planificación: lo de hoy y el conteo de esta semana
+  try {
+    const { getPlanning } = require('./planning');
+    const now = new Date();
+    const hoy = now.toISOString().slice(0, 10);
+    // lunes..domingo de la semana actual
+    const dow = (now.getDay() + 6) % 7;
+    const lunes = new Date(now); lunes.setDate(now.getDate() - dow);
+    const domingo = new Date(lunes); domingo.setDate(lunes.getDate() + 6);
+    const fmt = d => d.toISOString().slice(0, 10);
+    const semana = await getPlanning(fmt(lunes), fmt(domingo));
+    out.planning = {
+      hoy: semana.filter(p => p.date === hoy).map(p => ({
+        workerName: p.workerName, color: p.color, client: p.client,
+        tipo: p.tipo, horaInicio: p.horaInicio, workOrderNumber: p.workOrderNumber
+      })),
+      semanaTotal: semana.length
+    };
+  } catch (e) { out.planning = { hoy: [], semanaTotal: 0 }; }
+
   res.json(out);
 });
 app.get('/api/invoices/pending',   requireAuth, async (req,res) => res.json(await getPendingInvoices()));
