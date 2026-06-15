@@ -957,6 +957,23 @@ async function renderInicio(){
       ${chartSvg}
     </div>
 
+    <div class="card" style="cursor:pointer" onclick="irA('operacion','planning')">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div class="card-title" style="margin:0">🗓 Planificación de hoy</div>
+        <span style="font-size:11px;color:var(--text3)">${(d.planning&&d.planning.semanaTotal)||0} esta semana ›</span>
+      </div>
+      ${(d.planning&&d.planning.hoy&&d.planning.hoy.length)
+        ? `<div style="display:flex;flex-direction:column;gap:6px">${d.planning.hoy.map(p=>`
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 8px;background:${p.color}14;border-left:3px solid ${p.color};border-radius:5px">
+              <span>${p.tipo==='visita'?'👤':'🔧'}</span>
+              <strong>${(p.workerName||'').split(' ')[0]||'—'}</strong>
+              ${p.client?`<span style="color:var(--text2)">· ${p.client}</span>`:''}
+              ${p.workOrderNumber?`<span style="color:var(--text3);font-size:11px">${p.workOrderNumber}</span>`:''}
+              ${p.horaInicio?`<span style="margin-left:auto;color:var(--text3);font-size:12px">${p.horaInicio}</span>`:''}
+            </div>`).join('')}</div>`
+        : `<div style="color:var(--text3);font-size:13px;padding:8px 0">No hay nada planificado para hoy. Pulsa para abrir el calendario.</div>`}
+    </div>
+
     <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin:10px 2px 8px">Requiere tu atención</div>
     <div style="display:flex;flex-wrap:wrap;gap:12px">
       ${att('🔧','Pedidos urgentes',(ped.rojo||0),`${ped.rojo||0} en rojo · ${ped.ambar||0} en ámbar`,'operacion','pedidos','var(--red)')}
