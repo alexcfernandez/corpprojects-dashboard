@@ -4,7 +4,7 @@
   const tok = () => localStorage.getItem('cp_token');
   const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-  let _cid=null, _workers=[], _items=[], _ref=new Date();
+  let _cid=null, _workers=[], _items=[], _ref=new Date(), _clientes=[];
 
   async function api(path, opts={}){
     const r = await fetch(`${API}${path}`,{...opts,headers:{'Authorization':`Bearer ${tok()}`,'Content-Type':'application/json',...(opts.headers||{})}});
@@ -111,7 +111,8 @@
                 <option value="">— Sin asignar —</option>${opts}
               </select></div>
             <div><label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600">Cliente / Obra</label>
-              <input id="pl-client" type="text" value="${esc(it.client||'')}" placeholder="Ej: Joan Maragall 44-46" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px;color:var(--text);margin-top:5px"></div>
+              <input id="pl-client" type="text" value="${esc(it.client||'')}" placeholder="Buscar cliente / obra..." list="pl-clients-datalist" autocomplete="off" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px;color:var(--text);margin-top:5px">
+              <datalist id="pl-clients-datalist"></datalist></div>
             <div><label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:600">Nº pedido (opcional)</label>
               <input id="pl-wo" type="text" value="${esc(it.workOrderNumber||'')}" placeholder="Ej: PDT00467" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px;color:var(--text);margin-top:5px"></div>
             <div style="display:flex;gap:10px">
@@ -128,6 +129,16 @@
         </div>
       </div>`;
     window._planTipo=it.tipo||'trabajo';
+    _fillClientes();
+  }
+
+  async function _fillClientes(){
+    const dl=document.getElementById('pl-clients-datalist');
+    if(!dl) return;
+    try{
+      if(!_clientes.length) _clientes = await api('/api/clients/list');
+      dl.innerHTML=_clientes.map(n=>`<option value="${esc(n)}"></option>`).join('');
+    }catch(e){ /* sin autocompletado si falla, se puede escribir igual */ }
   }
 
   const Planning={
