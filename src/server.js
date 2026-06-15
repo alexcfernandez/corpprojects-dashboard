@@ -513,6 +513,32 @@ app.post('/api/test-notification', requireAuth, async (req,res) => {
 // ── PRESENCIA ─────────────────────────────────────────────────────
 const attendance = require('./attendance');
 
+// PLANIFICACIÓN (agenda de lo previsto) ──────────────────────────
+app.get('/api/planning', requireAuth, async (req, res) => {
+  try {
+    const { getPlanning } = require('./planning');
+    res.json({ items: await getPlanning(req.query.from, req.query.to) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/planning', requireAuth, async (req, res) => {
+  try {
+    const { createPlanning } = require('./planning');
+    res.json(await createPlanning(req.body || {}));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.put('/api/planning/:id', requireAuth, async (req, res) => {
+  try {
+    const { updatePlanning } = require('./planning');
+    res.json(await updatePlanning(req.params.id, req.body || {}));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.delete('/api/planning/:id', requireAuth, async (req, res) => {
+  try {
+    const { deletePlanning } = require('./planning');
+    res.json(await deletePlanning(req.params.id));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 app.get('/api/estados',  requireAuth, (req, res) => res.json(attendance.ESTADOS));
 
 app.post('/api/attendance', requireAuth, async (req, res) => {
