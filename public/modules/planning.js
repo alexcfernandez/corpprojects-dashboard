@@ -75,6 +75,7 @@
           <button class="btn bgh" style="padding:6px 12px" onclick="CP.Planning.mover(1)">›</button>
           <button class="btn bgh" style="padding:6px 12px;font-size:12px" onclick="CP.Planning.hoy()">Hoy</button>
           <button class="btn bgh" style="padding:6px 12px;font-size:12px" onclick="CP.Planning.diagGoogle()">🔌 Google</button>
+          <button class="btn bgh" style="padding:6px 12px;font-size:12px" onclick="CP.Planning.sincronizar()">🔄 Sincronizar</button>
         </div>
         <button class="btn bp" style="padding:8px 16px" onclick="CP.Planning.nuevo('${ymd(new Date())}')">+ Planificar</button>
       </div>
@@ -154,6 +155,20 @@
       document.getElementById('pl-t-visita').className='btn '+(t==='visita'?'bp':'bgh');
     },
     syncColor(){ /* el color se toma del operario al guardar */ },
+    async sincronizar(){
+      const box=document.getElementById('plan-modal');
+      const shell=(inner)=>`<div onclick="if(event.target===this)CP.Planning.cerrar()" style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px"><div style="background:var(--bg);border-radius:14px;padding:22px;width:100%;max-width:460px">${inner}</div></div>`;
+      if(box) box.innerHTML=shell('<p style="margin:0">🔄 Trayendo cambios de Google…</p>');
+      let r;
+      try{ r=await api('/api/calendar/pull',{method:'POST'}); }
+      catch(e){ if(box) box.innerHTML=shell('<p style="color:var(--red);margin:0 0 12px">Error: '+esc(e.message)+'</p><button class="btn bgh" style="padding:9px 14px" onclick="CP.Planning.cerrar()">Cerrar</button>'); return; }
+      this.cerrar();
+      await _load();
+      const txt = r.error
+        ? 'Sincronizado con avisos: '+r.error
+        : `Sincronizado ✓  (nuevos ${r.created||0} · actualizados ${r.updated||0} · borrados ${r.deleted||0})`;
+      if(box) box.innerHTML=shell(`<p style="margin:0 0 12px">${esc(txt)}</p><button class="btn bp" style="padding:9px 16px" onclick="CP.Planning.cerrar()">Cerrar</button>`);
+    },
     async diagGoogle(){
       const box=document.getElementById('plan-modal');
       const shell=(inner)=>`<div onclick="if(event.target===this)CP.Planning.cerrar()" style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px"><div style="background:var(--bg);border-radius:14px;padding:22px;width:100%;max-width:540px;max-height:90vh;overflow-y:auto">${inner}</div></div>`;
