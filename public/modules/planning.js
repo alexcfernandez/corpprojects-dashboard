@@ -74,6 +74,7 @@
           <h2 style="font-size:19px;font-weight:700;margin:0">${MESES[m]} ${y}</h2>
           <button class="btn bgh" style="padding:6px 12px" onclick="CP.Planning.mover(1)">›</button>
           <button class="btn bgh" style="padding:6px 12px;font-size:12px" onclick="CP.Planning.hoy()">Hoy</button>
+          <button class="btn bgh" style="padding:6px 12px;font-size:12px" onclick="CP.Planning.diagGoogle()">🔌 Google</button>
         </div>
         <button class="btn bp" style="padding:8px 16px" onclick="CP.Planning.nuevo('${ymd(new Date())}')">+ Planificar</button>
       </div>
@@ -153,6 +154,31 @@
       document.getElementById('pl-t-visita').className='btn '+(t==='visita'?'bp':'bgh');
     },
     syncColor(){ /* el color se toma del operario al guardar */ },
+    async diagGoogle(){
+      const box=document.getElementById('plan-modal');
+      const shell=(inner)=>`<div onclick="if(event.target===this)CP.Planning.cerrar()" style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px"><div style="background:var(--bg);border-radius:14px;padding:22px;width:100%;max-width:540px;max-height:90vh;overflow-y:auto">${inner}</div></div>`;
+      if(box) box.innerHTML=shell('<p style="margin:0">⏳ Comprobando Google Calendar…</p>');
+      let r;
+      try{ r=await api('/api/calendar/diag'); }
+      catch(e){ if(box) box.innerHTML=shell('<h3 style="margin:0 0 10px">Diagnóstico Google Calendar</h3><p style="color:var(--red)">Error de red: '+esc(e.message)+'</p><button class="btn bgh" style="padding:9px 14px" onclick="CP.Planning.cerrar()">Cerrar</button>'); return; }
+      const estado = r.ok
+        ? '<span style="color:#16a34a;font-weight:700">✅ Token con acceso a Calendar</span>'
+        : '<span style="color:var(--red);font-weight:700">❌ Sin acceso a Calendar</span>';
+      const hint = r.hint?`<p style="font-size:13px;color:var(--text2);margin:8px 0;line-height:1.4">${esc(r.hint)}</p>`:'';
+      const errln = r.error?`<p style="font-size:12px;color:var(--red);margin:6px 0;word-break:break-word">${esc(r.error)}</p>`:'';
+      const cals=(r.calendars||[]).map(c=>`<div style="border:1px solid var(--border2);border-radius:8px;padding:8px 10px;margin-bottom:6px">
+        <div style="font-weight:600;font-size:13px">${esc(c.summary||'(sin nombre)')} ${c.primary?"<span style='font-size:11px;color:var(--text3)'>· principal</span>":""} <span style="font-size:11px;color:var(--text3)">· ${esc(c.accessRole||'')}</span></div>
+        <code style="font-size:11px;color:var(--text3);word-break:break-all;user-select:all">${esc(c.id||'')}</code>
+      </div>`).join('') || '<p style="font-size:13px;color:var(--text3)">— Sin calendarios visibles —</p>';
+      if(box) box.innerHTML=shell(`
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <h3 style="margin:0;font-size:17px">Diagnóstico Google Calendar</h3>
+          <button onclick="CP.Planning.cerrar()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3)">✕</button>
+        </div>
+        <p style="margin:0 0 4px">${estado}</p>
+        ${hint}${errln}
+        <div style="margin-top:12px">${cals}</div>`);
+    },
     async guardar(id){
       const sel=document.getElementById('pl-worker');
       const opt=sel.options[sel.selectedIndex];
