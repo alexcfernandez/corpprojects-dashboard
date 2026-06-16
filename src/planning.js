@@ -45,6 +45,14 @@ async function createPlanning(data) {
   if (!doc.date) throw new Error('Falta la fecha');
   const r = await db.collection('planning').insertOne(doc);
   doc._id = r.insertedId;
+  // Reflejar en Google Calendar (best-effort: si falla, el guardado sigue OK).
+  try {
+    const eid = await require('./calendar').upsertEvent(doc);
+    if (eid) {
+      doc.gcalEventId = eid;
+      await db.collection('planning').updateOne({ _id: doc._id }, { $set: { gcalEventId: eid, gcalSyncedAt: new Date() } });
+    }
+  } catch (e) { console.error('[GCal] sync crear falló:', e.message); }
   return doc;
 }
 
@@ -57,13 +65,30 @@ async function updatePlanning(id, data) {
   for (const k of allowed) if (k in data) set[k] = data[k];
   if (set.date) set.date = String(set.date).slice(0, 10);
   await db.collection('planning').updateOne({ _id: new ObjectId(id) }, { $set: set });
+  // Reflejar el cambio en Google Calendar (best-effort).
+  try {
+    const doc = await db.collection('planning').findOne({ _id: new ObjectId(id) });
+    if (doc) {
+      const eid = await require('./calendar').upsertEvent(doc);
+      const upd = { gcalSyncedAt: new Date() };
+      if (eid && eid !== doc.gcalEventId) upd.gcalEventId = eid;
+      await db.collection('planning').updateOne({ _id: doc._id }, { $set: upd });
+    }
+  } catch (e) { console.error('[GCal] sync editar falló:', e.message); }
   return { ok: true };
 }
 
 async function deletePlanning(id) {
   const db = await getDB();
   const { ObjectId } = require('mongodb');
-  await db.collection('planning').deleteOne({ _id: new ObjectId(id) });
+  const _id = new ObjectId(id);
+  // Leemos el doc ANTES de borrar para conocer su evento de Google.
+  const doc = await db.collection('planning').findOne({ _id });
+  await db.collection('planning').deleteOne({ _id });
+  // Borrar también en Google Calendar (best-effort).
+  try {
+    if (doc && doc.gcalEventId) await require('./calendar').deleteEvent(doc.gcalEventId);
+  } catch (e) { console.error('[GCal] sync borrar falló:', e.message); }
   return { deleted: true };
 }
 
