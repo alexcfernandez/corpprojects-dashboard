@@ -570,6 +570,15 @@ app.get('/api/calendar/diag', requireAuth, async (req, res) => {
   }
 });
 
+// Sondeo manual ("sincronizar ahora"): trae de Google los cambios.
+app.post('/api/calendar/pull', requireAuth, async (req, res) => {
+  try {
+    res.json(await calendarSync.pullChanges());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/estados',  requireAuth, (req, res) => res.json(attendance.ESTADOS));
 
 app.post('/api/attendance', requireAuth, async (req, res) => {
