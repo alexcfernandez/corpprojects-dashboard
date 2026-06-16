@@ -174,3 +174,141 @@ async function deleteEvent(eventId) {
 }
 
 module.exports = { getAuth, getCalendar, diagnose, buildEventBody, upsertEvent, deleteEvent, targetCalendarId };
+
+// ─────────────────────────────────────────────────────────────────
+// LECTURA / SONDEO: traer de Google los cambios y aplicarlos a MongoDB.
+// Estrategia: sync token incremental + "último cambio gana".
+// La PRIMERA pasada (sin token) solo fija el punto de partida y enlaza
+// eventos que ya tienen su doc; NO importa eventos antiguos (evita duplicar).
+// ─────────────────────────────────────────────────────────────────
+
+async function _db() {
+  const { db } = await require('./db').getDBLegacy();
+  return db;
+}
+
+// Extrae fecha (YYYY-MM-DD) y hora (HH:MM, zona Madrid) de un evento.
+function parseStart(ev) {
+  if (ev.start && ev.start.date) {
+    return { date: String(ev.start.date).slice(0, 10), horaInicio: '' };
+  }
+  if (ev.start && ev.start.dateTime) {
+    const d = new Date(ev.start.dateTime);
+    const f = new Intl.DateTimeFormat('en-CA', {
+      timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false
+    });
+    const p = {};
+    for (const part of f.formatToParts(d)) p[part.type] = part.value;
+    const hh = (p.hour === '24') ? '00' : p.hour;
+    return { date: `${p.year}-${p.month}-${p.day}`, horaInicio: `${hh}:${p.minute}` };
+  }
+  return { date: '', horaInicio: '' };
+}
+
+// Aplica un evento de Google a la colección planning.
+// allowForeignCreate=false en la pasada inicial: no crea altas de eventos ajenos.
+async function applyEvent(db, ev, allowForeignCreate) {
+  const { ObjectId } = require('mongodb');
+  const eventId = ev.id;
+  const priv = (ev.extendedProperties && ev.extendedProperties.private) || {};
+  let doc = await db.collection('planning').findOne({ gcalEventId: eventId });
+  if (!doc && priv.cpPlanId) {
+    try { doc = await db.collection('planning').findOne({ _id: new ObjectId(priv.cpPlanId) }); } catch (e) {}
+  }
+
+  // Borrado en Google → borrado en el dashboard (último cambio gana).
+  if (ev.status === 'cancelled') {
+    if (doc) { await db.collection('planning').deleteOne({ _id: doc._id }); return 'deleted'; }
+    return 'skip';
+  }
+
+  const { date, horaInicio } = parseStart(ev);
+  if (!date) return 'skip';
+
+  if (doc) {
+    // Solo sincronizamos fecha y hora (lo que se mueve en el móvil).
+    // Operario/obra los gestiona el dashboard y no se tocan desde el título.
+    await db.collection('planning').updateOne(
+      { _id: doc._id },
+      { $set: { date, horaInicio, gcalEventId: eventId, gcalSyncedAt: new Date(), updatedAt: new Date() } }
+    );
+    return 'updated';
+  }
+
+  if (!allowForeignCreate) return 'skip';
+
+  // Evento creado directamente en el calendario (móvil) → alta best-effort.
+  const title = String(ev.summary || '(sin título)').trim();
+  await db.collection('planning').insertOne({
+    date, horaInicio,
+    workerId: null, workerName: '', color: '#6b7280',
+    tipo: 'trabajo', client: title, address: '',
+    workOrderId: null, workOrderNumber: '', nota: '',
+    gcalEventId: eventId, gcalSyncedAt: new Date(),
+    createdAt: new Date(), updatedAt: new Date()
+  });
+  return 'created';
+}
+
+// Sondea Google y aplica los cambios. Devuelve un resumen.
+async function pullChanges() {
+  const summary = { created: 0, updated: 0, deleted: 0, skipped: 0, pages: 0, mode: null, error: null };
+  let db, cal, calendarId, stateCol;
+  try {
+    db = await _db();
+    cal = getCalendar();
+    calendarId = targetCalendarId();
+    stateCol = db.collection('syncState');
+  } catch (err) { summary.error = err.message; return summary; }
+
+  let state = null;
+  try { state = await stateCol.findOne({ _id: 'gcal_planning' }); } catch (e) {}
+  let syncToken = (state && state.syncToken) || null;
+  const allowForeignCreate = !!syncToken;        // la baseline no importa ajenos
+  summary.mode = syncToken ? 'incremental' : 'baseline';
+
+  try {
+    let pageToken = null, nextSyncToken = null, safety = 0;
+    do {
+      if (++safety > 60) { summary.error = 'Tope de páginas alcanzado'; break; }
+      const params = { calendarId, singleEvents: true, maxResults: 250 };
+      if (syncToken) { params.syncToken = syncToken; params.showDeleted = true; }
+      else { params.timeMin = new Date(Date.now() - 60 * 86400000).toISOString(); }
+      if (pageToken) params.pageToken = pageToken;
+
+      let resp;
+      try {
+        resp = await cal.events.list(params);
+      } catch (err) {
+        if (err && err.code === 410) {           // token caducado → resync completo
+          syncToken = null; pageToken = null; nextSyncToken = null;
+          summary.mode = 'baseline (resync)';
+          await stateCol.updateOne({ _id: 'gcal_planning' }, { $set: { syncToken: null } }, { upsert: true });
+          continue;
+        }
+        throw err;
+      }
+
+      for (const ev of (resp.data.items || [])) {
+        const res = await applyEvent(db, ev, !!syncToken);
+        if (res === 'created') summary.created++;
+        else if (res === 'updated') summary.updated++;
+        else if (res === 'deleted') summary.deleted++;
+        else summary.skipped++;
+      }
+      summary.pages++;
+      pageToken = resp.data.nextPageToken || null;
+      if (resp.data.nextSyncToken) nextSyncToken = resp.data.nextSyncToken;
+    } while (pageToken);
+
+    if (nextSyncToken) {
+      await stateCol.updateOne({ _id: 'gcal_planning' }, { $set: { syncToken: nextSyncToken, updatedAt: new Date() } }, { upsert: true });
+    }
+  } catch (err) {
+    summary.error = err.message;
+  }
+  return summary;
+}
+
+module.exports = { getAuth, getCalendar, diagnose, buildEventBody, upsertEvent, deleteEvent, targetCalendarId, pullChanges };
