@@ -73,3 +73,104 @@ async function diagnose() {
 }
 
 module.exports = { getAuth, getCalendar, diagnose };
+
+// ─────────────────────────────────────────────────────────────────
+// ESCRITURA: reflejar la planificación en Google Calendar.
+// Calendario destino: GCAL_CALENDAR_ID (por defecto 'primary' = el principal
+// de la cuenta, que es "Planificación Corp Projects").
+// ─────────────────────────────────────────────────────────────────
+
+const TZ = 'Europe/Madrid';
+
+function targetCalendarId() {
+  return process.env.GCAL_CALENDAR_ID || 'primary';
+}
+
+// Duración por defecto de un evento con hora (minutos). Configurable.
+function eventMinutes() {
+  const n = parseInt(process.env.GCAL_EVENT_MINUTES || '60', 10);
+  return (n > 0 && n < 1440) ? n : 60;
+}
+
+const _pad = n => String(n).padStart(2, '0');
+
+// Construye el cuerpo del evento de Google a partir de un doc de planning.
+function buildEventBody(plan) {
+  const emoji  = plan.tipo === 'visita' ? '👤' : '🔧';
+  const titulo = String(plan.client || plan.address || 'Planificación').trim();
+  const worker = String(plan.workerName || 'Sin asignar').trim();
+  const summary = `${emoji} ${titulo} · ${worker}`;
+
+  const desc = [];
+  desc.push(plan.tipo === 'visita' ? 'Tipo: Visita' : 'Tipo: Trabajo');
+  if (plan.workOrderNumber) desc.push('Pedido: ' + plan.workOrderNumber);
+  if (plan.address && plan.address !== plan.client) desc.push('Dirección: ' + plan.address);
+  if (plan.nota) desc.push('Nota: ' + plan.nota);
+  desc.push('— Corp Projects Dashboard');
+
+  const body = {
+    summary,
+    description: desc.join('\n'),
+    extendedProperties: {
+      private: { cpPlanId: String(plan._id || ''), cpSource: 'dashboard' }
+    }
+  };
+
+  const date = String(plan.date || '').slice(0, 10);
+  const hora = String(plan.horaInicio || '').trim();
+
+  if (/^\d{2}:\d{2}$/.test(hora)) {
+    // Evento con hora. Calculamos el fin sumando la duración por defecto.
+    const [hh, mm] = hora.split(':').map(Number);
+    let fin = hh * 60 + mm + eventMinutes();
+    if (fin > 23 * 60 + 59) fin = 23 * 60 + 59; // no cruzar medianoche
+    const eh = _pad(Math.floor(fin / 60)), em = _pad(fin % 60);
+    body.start = { dateTime: `${date}T${hora}:00`,      timeZone: TZ };
+    body.end   = { dateTime: `${date}T${eh}:${em}:00`,  timeZone: TZ };
+  } else {
+    // Evento de día completo. end.date es EXCLUSIVO (día siguiente).
+    const d    = new Date(date + 'T00:00:00Z');
+    const next = new Date(d.getTime() + 86400000).toISOString().slice(0, 10);
+    body.start = { date };
+    body.end   = { date: next };
+  }
+  return body;
+}
+
+// Crea o actualiza el evento de una planificación. Devuelve el eventId de Google.
+async function upsertEvent(plan) {
+  const cal = getCalendar();
+  const calendarId = targetCalendarId();
+  const requestBody = buildEventBody(plan);
+
+  if (plan.gcalEventId) {
+    try {
+      const r = await cal.events.update({ calendarId, eventId: plan.gcalEventId, requestBody });
+      return r.data.id;
+    } catch (err) {
+      // Si alguien lo borró a mano en Google (404/410), lo recreamos.
+      if (err && (err.code === 404 || err.code === 410)) {
+        const r = await cal.events.insert({ calendarId, requestBody });
+        return r.data.id;
+      }
+      throw err;
+    }
+  }
+  const r = await cal.events.insert({ calendarId, requestBody });
+  return r.data.id;
+}
+
+// Borra el evento de Google. Ignora si ya no existe.
+async function deleteEvent(eventId) {
+  if (!eventId) return;
+  const cal = getCalendar();
+  const calendarId = targetCalendarId();
+  try {
+    await cal.events.delete({ calendarId, eventId });
+  } catch (err) {
+    if (err && (err.code === 404 || err.code === 410)) return;
+    throw err;
+  }
+}
+
+module.exports = { getAuth, getCalendar, diagnose, buildEventBody, upsertEvent, deleteEvent, targetCalendarId };
