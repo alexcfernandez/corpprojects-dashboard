@@ -19,6 +19,7 @@ const {
 } = require('./stelorder');
 const { sendWhatsApp, sendEmail } = require('./notifications');
 const { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail, sendWorkOrdersAlert } = require('./scheduler');
+const calendarSync = require('./calendar');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -557,6 +558,16 @@ app.delete('/api/planning/:id', requireAuth, async (req, res) => {
     const { deletePlanning } = require('./planning');
     res.json(await deletePlanning(req.params.id));
   } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// ── GOOGLE CALENDAR (diagnóstico) ─────────────────────────────────
+// Solo lectura: confirma el permiso del token y lista los calendarios + sus IDs.
+app.get('/api/calendar/diag', requireAuth, async (req, res) => {
+  try {
+    res.json(await calendarSync.diagnose());
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 app.get('/api/estados',  requireAuth, (req, res) => res.json(attendance.ESTADOS));
