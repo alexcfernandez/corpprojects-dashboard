@@ -1,4 +1,4 @@
-// public/modules/planning.js — Calendario de planificación (lo previsto).
+//d public/modules/planning.js — Calendario de planificación (lo previsto).
 (function(){
   const API = window.location.origin;
   const tok = () => localStorage.getItem('cp_token');
