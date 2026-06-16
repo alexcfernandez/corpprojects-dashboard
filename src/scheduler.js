@@ -4,6 +4,7 @@ const { getPendingInvoices, getSummary, getWorkOrdersLive } = require('./stelord
 const { sendInvoiceAlert, sendDailySummary, sendFamilySummary, buildFamilySummaryEmail, sendWorkOrdersSummary, sendEmail } = require('./notifications');
 const { pollEmails } = require('./email-intelligence');
 const avisos = require('./avisos');   // registro persistente de avisos enviados
+const calendarSync = require('./calendar'); // sondeo Google Calendar → dashboard
 
 // Flag: no enviar alertas en los primeros 5 minutos tras arrancar
 const startTime  = Date.now();
@@ -216,7 +217,20 @@ function startScheduler() {
     }
   }, { timezone: 'Europe/Madrid' });
 
-  console.log('[Scheduler] ✅ Recordatorios: 08:30 y 17:00 (según frecuencia por familia) | Resumen interno: 08:30 lun–vie | Emails: cada 15min');
+  // Sondeo Google Calendar → dashboard cada 2 minutos (lo que se edita en el móvil).
+  cron.schedule('*/2 * * * *', async () => {
+    try {
+      const s = await calendarSync.pullChanges();
+      if (s && (s.created || s.updated || s.deleted)) {
+        console.log(`[GCal] Sync ${s.mode}: +${s.created} ~${s.updated} -${s.deleted}`);
+      }
+      if (s && s.error) console.error('[GCal] Sync error:', s.error);
+    } catch (err) {
+      console.error('[GCal] Error sondeo:', err.message);
+    }
+  }, { timezone: 'Europe/Madrid' });
+
+  console.log('[Scheduler] ✅ Recordatorios: 08:30 y 17:00 (según frecuencia por familia) | Resumen interno: 08:30 lun–vie | Emails: cada 15min | GCal: cada 2min');
 
   // Primer poll de emails a los 2 minutos de arrancar
   setTimeout(async () => {
@@ -226,6 +240,16 @@ function startScheduler() {
       console.error('[Scheduler] Error primer poll emails:', err.message);
     }
   }, 2 * 60 * 1000);
+
+  // Primera pasada de Google Calendar a los 90s: fija el punto de partida (baseline).
+  setTimeout(async () => {
+    try {
+      const s = await calendarSync.pullChanges();
+      console.log(`[GCal] Sync inicial: ${s.mode} (+${s.created} ~${s.updated} -${s.deleted})${s.error ? ' ERROR: ' + s.error : ''}`);
+    } catch (err) {
+      console.error('[GCal] Error sync inicial:', err.message);
+    }
+  }, 90 * 1000);
 }
 
 module.exports = { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail, sendWorkOrdersAlert };
