@@ -417,6 +417,24 @@ async function getWorkOrderStateMap() {
   return map;
 }
 
+// Lista COMPLETA de pedidos (incluye cerrados). Para el log de actividad.
+async function getAllWorkOrders() {
+  return cached('workOrders', TTL.workOrders, () => fetchAllPages('/workOrders'));
+}
+
+// Mapa empleado/técnico: id -> nombre (defensivo ante distintos nombres de campo).
+async function getEmployeeMap() {
+  const list = await cached('employees', 360 * MIN, () => fetchAllPages('/employees'));
+  const map = {};
+  (Array.isArray(list) ? list : []).forEach(e => {
+    const nombre = e.name
+      || [e['first-name'], e['last-name']].filter(Boolean).join(' ').trim()
+      || e['full-name'] || e.email || ('#' + e.id);
+    map[String(e.id)] = nombre;
+  });
+  return map;
+}
+
 // Mapa incidencia -> tipo (para heredar Actuación/Presupuesto en el pedido)
 async function getIncidentTypeMaps() {
   const [incidents, types] = await Promise.all([
@@ -662,5 +680,6 @@ module.exports = {
   getAlertLevel, getFamiliesSummary, getAccountCategories, clearCache,
   sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw, getInvoicePdfPath, getEntityRawByRef,
   getWorkOrdersLive, getWorkOrderAlertLevel, setWorkOrderState, setWorkOrderStateLight,
-  getMonthlyBilling
+  getMonthlyBilling,
+  getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap
 };
