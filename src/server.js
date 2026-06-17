@@ -597,6 +597,14 @@ app.post('/api/activity/scan', requireAuth, async (req, res) => {
   }
 });
 
+app.post('/api/activity/reset', requireAuth, async (req, res) => {
+  try {
+    res.json(await activity.reset());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/estados',  requireAuth, (req, res) => res.json(attendance.ESTADOS));
 
 app.post('/api/attendance', requireAuth, async (req, res) => {
