@@ -62,6 +62,7 @@
           <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
             ${btnFiltro('','Todos')}${btnFiltro('creado','🟢 Creados')}${btnFiltro('modificado','🔵 Modificados')}${btnFiltro('borrado','🔴 Borrados')}
             <button class="btn bp" style="padding:6px 12px;font-size:12px" onclick="CP.Actividad.escanear(this)">🔄 Escanear ahora</button>
+            <button class="btn bgh" style="padding:6px 12px;font-size:12px" onclick="CP.Actividad.reiniciar(this)">🗑 Reiniciar</button>
           </div>
         </div>
         <div>${filas}</div>
@@ -81,6 +82,18 @@
         if(baseline){ alert('Primera foto tomada de los datos nuevos. A partir de ahora se registrarán sus cambios.'); }
       }catch(e){ alert('No se pudo escanear: '+e.message); }
       finally{ if(btn){ btn.disabled=false; btn.textContent=old||'🔄 Escanear ahora'; } }
+    },
+    async reiniciar(btn){
+      if(!confirm('Esto borra el registro actual y vuelve a tomar la foto inicial limpia (no registra lo antiguo). ¿Continuar?')) return;
+      const old = btn ? btn.textContent : '';
+      if(btn){ btn.disabled=true; btn.textContent='Reiniciando…'; }
+      try{
+        await api('/api/activity/reset',{method:'POST'});
+        await api('/api/activity/scan',{method:'POST'});  // foto inicial limpia
+        await _load();
+        alert('Registro reiniciado y foto inicial tomada. A partir de ahora solo se registran los cambios nuevos.');
+      }catch(e){ alert('No se pudo reiniciar: '+e.message); }
+      finally{ if(btn){ btn.disabled=false; btn.textContent=old||'🗑 Reiniciar'; } }
     }
   };
 
