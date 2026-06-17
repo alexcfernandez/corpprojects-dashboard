@@ -153,9 +153,12 @@ async function scanType(db, type) {
 
   const snapCol = db.collection('activitySnapshots');
   const logCol  = db.collection('activityLog');
+  const stateCol = db.collection('activityState');
 
-  const prevCount = await snapCol.countDocuments({ type });
-  const isBaseline = prevCount === 0;
+  // ¿Primera vez para este tipo? Se decide por una MARCA explícita, no contando
+  // fotos (así dos escaneos simultáneos no se pisan). La marca se pone al final.
+  const st = await stateCol.findOne({ _id: type });
+  const isBaseline = !(st && st.initialized);
 
   const current = await adapter.fetch();
   const prev = {};
@@ -204,19 +207,39 @@ async function scanType(db, type) {
     }
   }
 
+  // La foto inicial ha terminado: marcamos el tipo como inicializado.
+  if (isBaseline) {
+    await stateCol.updateOne({ _id: type }, { $set: { initialized: true, updatedAt: now } }, { upsert: true });
+  }
+
   return out;
 }
 
-// Escanea todos los tipos activos.
+// Escanea todos los tipos activos. Un solo escaneo a la vez (candado anti-solape).
+let _scanning = false;
 async function scan() {
-  const summary = { types: {}, error: null };
-  let db;
-  try { db = await getDB(); } catch (e) { summary.error = e.message; return summary; }
-  for (const type of Object.keys(ADAPTERS)) {
-    try { summary.types[type] = await scanType(db, type); }
-    catch (e) { summary.types[type] = { error: e.message }; }
-  }
-  return summary;
+  if (_scanning) return { skipped: true, types: {}, error: null };
+  _scanning = true;
+  try {
+    const summary = { types: {}, error: null };
+    let db;
+    try { db = await getDB(); } catch (e) { summary.error = e.message; return summary; }
+    for (const type of Object.keys(ADAPTERS)) {
+      try { summary.types[type] = await scanType(db, type); }
+      catch (e) { summary.types[type] = { error: e.message }; }
+    }
+    return summary;
+  } finally { _scanning = false; }
+}
+
+// Reinicia el registro: borra log + fotos + marcas. El siguiente escaneo
+// vuelve a tomar la foto inicial limpia (sin registrar lo antiguo).
+async function reset() {
+  const db = await getDB();
+  const a = await db.collection('activityLog').deleteMany({});
+  const b = await db.collection('activitySnapshots').deleteMany({});
+  const c = await db.collection('activityState').deleteMany({});
+  return { log: a.deletedCount, snapshots: b.deletedCount, state: c.deletedCount };
 }
 
 // Lee el log para la pestaña (más reciente primero).
@@ -227,4 +250,4 @@ async function getLog({ type, limit = 200 } = {}) {
   return db.collection('activityLog').find(q).sort({ at: -1 }).limit(Math.min(limit, 500)).toArray();
 }
 
-module.exports = { scan, getLog, scanType };
+module.exports = { scan, getLog, scanType, reset };
