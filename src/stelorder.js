@@ -450,6 +450,19 @@ async function getIncidentTypeMaps() {
   return { incToType, typeName };
 }
 
+// Lista completa de incidencias (para el log de actividad).
+async function getAllIncidents() {
+  return cached('incidents', TTL.incidents, () => fetchAllPages('/incidents'));
+}
+
+// Mapa estado de incidencia: id -> nombre.
+async function getIncidentStateMap() {
+  const states = await cached('incidentStates', TTL.incidentTypes, () => fetchAllPages('/incidentStates'));
+  const map = {};
+  (Array.isArray(states) ? states : []).forEach(s => { map[String(s.id)] = s.name; });
+  return map;
+}
+
 function daysSince(dateStr) {
   if (!dateStr) return 0;
   const d = new Date(dateStr);
@@ -681,5 +694,6 @@ module.exports = {
   sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw, getInvoicePdfPath, getEntityRawByRef,
   getWorkOrdersLive, getWorkOrderAlertLevel, setWorkOrderState, setWorkOrderStateLight,
   getMonthlyBilling,
-  getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap
+  getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap,
+  getIncidentTypeMaps, getAllIncidents, getIncidentStateMap
 };
