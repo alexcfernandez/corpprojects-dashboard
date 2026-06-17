@@ -5,6 +5,7 @@ const { sendInvoiceAlert, sendDailySummary, sendFamilySummary, buildFamilySummar
 const { pollEmails } = require('./email-intelligence');
 const avisos = require('./avisos');   // registro persistente de avisos enviados
 const calendarSync = require('./calendar'); // sondeo Google Calendar → dashboard
+const activity = require('./activity');      // log de actividad de StelOrder
 
 // Flag: no enviar alertas en los primeros 5 minutos tras arrancar
 const startTime  = Date.now();
@@ -230,7 +231,21 @@ function startScheduler() {
     }
   }, { timezone: 'Europe/Madrid' });
 
-  console.log('[Scheduler] ✅ Recordatorios: 08:30 y 17:00 (según frecuencia por familia) | Resumen interno: 08:30 lun–vie | Emails: cada 15min | GCal: cada 2min');
+  // Log de actividad de StelOrder cada 15 minutos (cuidando el tope diario de la API).
+  const GCAL_ACT = process.env.ACTIVITY_CRON || '*/15 * * * *';
+  cron.schedule(GCAL_ACT, async () => {
+    try {
+      const s = await activity.scan();
+      const p = s.types && s.types.pedido;
+      if (p && (p.created || p.modified || p.deleted)) {
+        console.log(`[Actividad] pedidos: +${p.created} ~${p.modified} -${p.deleted}`);
+      }
+    } catch (err) {
+      console.error('[Actividad] Error scan:', err.message);
+    }
+  }, { timezone: 'Europe/Madrid' });
+
+  console.log('[Scheduler] ✅ Recordatorios: 08:30 y 17:00 (según frecuencia por familia) | Resumen interno: 08:30 lun–vie | Emails: cada 15min | GCal: cada 2min | Actividad: cada 15min');
 
   // Primer poll de emails a los 2 minutos de arrancar
   setTimeout(async () => {
@@ -250,6 +265,17 @@ function startScheduler() {
       console.error('[GCal] Error sync inicial:', err.message);
     }
   }, 90 * 1000);
+
+  // Primera pasada del log de actividad a los 2,5 min: foto inicial (baseline).
+  setTimeout(async () => {
+    try {
+      const s = await activity.scan();
+      const p = s.types && s.types.pedido;
+      console.log(`[Actividad] Scan inicial: ${p ? (p.baseline ? 'baseline (foto inicial)' : `+${p.created} ~${p.modified} -${p.deleted}`) : 'sin datos'}${p && p.error ? ' ERROR: ' + p.error : ''}`);
+    } catch (err) {
+      console.error('[Actividad] Error scan inicial:', err.message);
+    }
+  }, 150 * 1000);
 }
 
 module.exports = { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail, sendWorkOrdersAlert };
