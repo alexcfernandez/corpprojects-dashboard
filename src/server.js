@@ -20,6 +20,7 @@ const {
 const { sendWhatsApp, sendEmail } = require('./notifications');
 const { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail, sendWorkOrdersAlert } = require('./scheduler');
 const calendarSync = require('./calendar');
+const activity = require('./activity');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -574,6 +575,23 @@ app.get('/api/calendar/diag', requireAuth, async (req, res) => {
 app.post('/api/calendar/pull', requireAuth, async (req, res) => {
   try {
     res.json(await calendarSync.pullChanges());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── LOG DE ACTIVIDAD DE STELORDER ─────────────────────────────────
+app.get('/api/activity', requireAuth, async (req, res) => {
+  try {
+    res.json({ items: await activity.getLog({ type: req.query.type || null, limit: parseInt(req.query.limit || '200', 10) }) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/activity/scan', requireAuth, async (req, res) => {
+  try {
+    res.json(await activity.scan());
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
