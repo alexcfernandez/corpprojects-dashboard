@@ -236,10 +236,10 @@ function startScheduler() {
   cron.schedule(GCAL_ACT, async () => {
     try {
       const s = await activity.scan();
-      const p = s.types && s.types.pedido;
-      if (p && (p.created || p.modified || p.deleted)) {
-        console.log(`[Actividad] pedidos: +${p.created} ~${p.modified} -${p.deleted}`);
-      }
+      const t = s.types || {};
+      const tot = k => Object.values(t).reduce((n, x) => n + ((x && x[k]) || 0), 0);
+      const c = tot('created'), m = tot('modified'), d = tot('deleted');
+      if (c || m || d) console.log(`[Actividad] +${c} ~${m} -${d}`);
     } catch (err) {
       console.error('[Actividad] Error scan:', err.message);
     }
@@ -270,8 +270,8 @@ function startScheduler() {
   setTimeout(async () => {
     try {
       const s = await activity.scan();
-      const p = s.types && s.types.pedido;
-      console.log(`[Actividad] Scan inicial: ${p ? (p.baseline ? 'baseline (foto inicial)' : `+${p.created} ~${p.modified} -${p.deleted}`) : 'sin datos'}${p && p.error ? ' ERROR: ' + p.error : ''}`);
+      const tipos = Object.entries(s.types || {}).map(([k, v]) => `${k}:${v.baseline ? 'baseline' : `+${v.created} ~${v.modified} -${v.deleted}`}${v.error ? '(ERR)' : ''}`).join(' | ');
+      console.log(`[Actividad] Scan inicial → ${tipos}`);
     } catch (err) {
       console.error('[Actividad] Error scan inicial:', err.message);
     }
