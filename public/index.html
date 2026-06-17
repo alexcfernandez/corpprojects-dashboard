@@ -78,6 +78,7 @@
     <button class="nav-btn" onclick="showTab('emails',this)" id="nav-emails">📧 Emails <span id="badge-emails" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:2px">0</span></button>
     <button class="nav-btn" onclick="showTab('usuarios',this)">⚙️ Usuarios</button>
     <button class="nav-btn" onclick="showTab('alertas',this)">🔔 Alertas</button>
+    <button class="nav-btn" onclick="showTab('actividad',this)">📜 Actividad</button>
   </span>
 </nav>
 <main class="main">
@@ -471,6 +472,11 @@
     </div>
     <div id="nRes" style="margin-top:10px;font-size:12px;color:var(--green);display:none"></div>
   </div>
+</div>
+
+<!-- ACTIVIDAD (log de StelOrder) -->
+<div id="tab-actividad" class="panel">
+  <div id="actividad-container"><div style="text-align:center;padding:60px;color:var(--text3)">Cargando actividad…</div></div>
 </div>
 
 </main>
@@ -1064,6 +1070,7 @@ function showTab(id, btn){
     familias: ['FamiliasAdmin', 'familias-resp-container'],
     pedidos: ['PedidosAdmin', 'pedidos-container'],
     planning: ['Planning', 'planning-container'],
+    actividad: ['Actividad', 'actividad-container'],
   };
   if(moduleMap[id]){
     const [modName, containerId]=moduleMap[id];
@@ -1136,5 +1143,6 @@ window.addEventListener('load',()=>{
 <script src="/modules/familias-admin.js"></script>
 <script src="/modules/pedidos-admin.js"></script>
 <script src="/modules/planning.js"></script>
+<script src="/modules/activity-admin.js"></script>
 </body>
 </html>
