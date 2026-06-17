@@ -77,8 +77,8 @@
       try{
         const r = await api('/api/activity/scan',{method:'POST'});
         await _load();
-        const p = r && r.types && r.types.pedido;
-        if(p && p.baseline){ alert('Primera foto tomada. A partir de ahora se registrarán los cambios.'); }
+        const baseline = r && r.types && Object.values(r.types).some(t=>t && t.baseline);
+        if(baseline){ alert('Primera foto tomada de los datos nuevos. A partir de ahora se registrarán sus cambios.'); }
       }catch(e){ alert('No se pudo escanear: '+e.message); }
       finally{ if(btn){ btn.disabled=false; btn.textContent=old||'🔄 Escanear ahora'; } }
     }
