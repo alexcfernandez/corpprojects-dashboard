@@ -68,24 +68,48 @@ function requireAuth(req, res, next) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// WhatsApp (Twilio) — puerta de entrada. ECO DE PRUEBA (sin IA todavía).
-// Ruta PÚBLICA a propósito: Twilio no envía token. Responde con TwiML,
-// así Twilio manda la respuesta sin que tengamos que llamar a su API.
+// WhatsApp (Twilio) — asistente personal. Ruta PÚBLICA (Twilio no envía token).
+// Responde de forma ASÍNCRONA por la API de Twilio para no agotar el tiempo
+// de espera del webhook (StelOrder + IA pueden tardar unos segundos).
 // ─────────────────────────────────────────────────────────────
+const asistente = require('./asistente');
+
 app.post('/api/whatsapp', express.urlencoded({ extended: false }), (req, res) => {
-  try {
-    const from = req.body.From || '';
-    const body = (req.body.Body || '').trim();
-    console.log(`[WhatsApp] De ${from}: "${body}"`);
-    const twilio = require('twilio');
-    const twiml = new twilio.twiml.MessagingResponse();
-    twiml.message(body ? `✅ Recibí: ${body}` : '✅ Recibí tu mensaje (sin texto).');
-    res.type('text/xml').send(twiml.toString());
-  } catch (err) {
-    console.error('[WhatsApp] Error webhook:', err.message);
-    res.type('text/xml').send('<Response></Response>');
-  }
+  // 1) Acuse inmediato a Twilio (sin respuesta síncrona)
+  res.type('text/xml').send('<Response></Response>');
+  // 2) Procesa en segundo plano y responde por la API de Twilio
+  const from = req.body.From || '';
+  const body = (req.body.Body || '').trim();
+  console.log(`[WhatsApp] De ${from}: "${body}"`);
+  procesarWhatsApp(from, body).catch(err => console.error('[WhatsApp] Error:', err.message));
 });
+
+async function procesarWhatsApp(from, body) {
+  const soloDigitos = s => String(s || '').replace(/\D/g, '');
+  const mio = soloDigitos(process.env.MI_WHATSAPP);
+  let reply;
+  if (mio && from && soloDigitos(from) !== mio) {
+    reply = '🔒 Este asistente es privado.';
+  } else if (!body) {
+    reply = 'Dime qué cliente o familia quieres consultar 🙂 (p. ej.: "¿qué debe Illa Verda?")';
+  } else {
+    reply = await asistente.responderConsulta(body);
+  }
+  await enviarWhatsApp(from, reply);
+}
+
+function enviarWhatsApp(to, body) {
+  if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
+    console.error('[WhatsApp] Faltan credenciales de Twilio'); return Promise.resolve();
+  }
+  const twilio = require('twilio');
+  const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+  return client.messages.create({
+    from: process.env.TWILIO_WHATSAPP_FROM,
+    to,
+    body: (body || '').slice(0, 1500)
+  });
+}
 
 // Usa la conexión única compartida (src/db.js). Mantiene el contrato
 // { db, client } para no romper las rutas existentes; client.close() es
