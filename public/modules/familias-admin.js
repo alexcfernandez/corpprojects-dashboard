@@ -54,7 +54,11 @@
       <tr>
         <td><strong>${esc(c.family)}</strong></td>
         <td><input type="email" id="fc-email-${i}" value="${esc(c.email)}" placeholder="responsable@empresa.com"
-            style="width:100%;min-width:200px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:7px 10px;color:var(--text);font-size:13px;outline:none;font-family:'Inter',sans-serif"></td>
+            style="width:100%;min-width:200px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:7px 10px;color:var(--text);font-size:13px;outline:none;font-family:'Inter',sans-serif">
+            <select id="fc-modo-${i}" style="${selStyle};margin-top:6px;width:100%">
+              <option value="familia" ${(c.modo||'familia')==='familia'?'selected':''}>Modo: 1 email para la familia</option>
+              <option value="cliente" ${c.modo==='cliente'?'selected':''}>Modo: a cada cliente (email de su ficha)</option>
+            </select></td>
         <td><select id="fc-freq-${i}" style="${selStyle}">${freqOpts(c.freq||'manual')}</select></td>
         <td><select id="fc-format-${i}" style="${selStyle}">${fmtOpts(c.format||'grouped')}</select></td>
         <td style="text-align:center">
@@ -188,12 +192,13 @@
     const paused = document.getElementById('fc-paused-'+i)?.checked || false;
     const freq   = document.getElementById('fc-freq-'+i)?.value || 'manual';
     const format = document.getElementById('fc-format-'+i)?.value || 'grouped';
+    const modo   = document.getElementById('fc-modo-'+i)?.value || 'familia';
     const msg = document.getElementById('fc-msg-'+i);
     if (msg) { msg.textContent='Guardando...'; msg.style.color='var(--text3)'; }
     try {
-      const r = await api('/api/family-contacts', { method:'PUT', body: JSON.stringify({ family: c.family, email, paused, freq, format }) });
+      const r = await api('/api/family-contacts', { method:'PUT', body: JSON.stringify({ family: c.family, email, paused, freq, format, modo }) });
       if (r && r.error) throw new Error(r.error);
-      c.email = email; c.paused = paused; c.freq = freq; c.format = format;
+      c.email = email; c.paused = paused; c.freq = freq; c.format = format; c.modo = modo;
       if (msg) { msg.textContent='✓ Guardado'; msg.style.color='var(--green)'; setTimeout(()=>{ if(msg && msg.textContent==='✓ Guardado') msg.textContent=''; }, 2500); }
     } catch(err) {
       if (msg) { msg.textContent='✗ '+err.message; msg.style.color='var(--red)'; }
@@ -209,7 +214,14 @@
       const url = format === 'individual' ? '/api/send-family-individual' : '/api/send-family-summaries';
       const r = await api(url, { method:'POST', body: JSON.stringify({}) });
       if (r && r.error) throw new Error(r.error);
-      if (msg) { msg.textContent = '✓ ' + (r.message || 'Hecho'); msg.style.color='var(--green)'; }
+      if (msg) {
+        let txt = '✓ ' + (r.message || 'Hecho');
+        if (r.sinEmail && r.sinEmail.length) {
+          txt += ` · ⚠️ ${r.sinEmail.length} sin email: ${r.sinEmail.join(', ')}`;
+          msg.style.color = 'var(--amber)';
+        } else { msg.style.color = 'var(--green)'; }
+        msg.textContent = txt;
+      }
     } catch(err) {
       if (msg) { msg.textContent = '✗ ' + err.message; msg.style.color='var(--red)'; }
     }
