@@ -95,7 +95,7 @@ function snapPresupuesto(e) {
     estado:  e.stateLabel || '',
     importe: Number(e.total || 0),
     cliente: e.client || '',
-    _ref: e.number || ('PRE#' + e.id),
+    _ref: e.ref || e.number || ('PRE#' + e.id),
     _fechaMod: e.date || null
   };
 }
