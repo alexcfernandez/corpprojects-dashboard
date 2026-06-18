@@ -88,6 +88,26 @@ async function sendForFamily(family, invoices, format) {
   }
 }
 
+// Envío POR CLIENTE: cada cliente recibe SOLO sus facturas, a su email de ficha.
+// Devuelve { sent, sinEmail:[nombres de clientes sin email] }.
+async function sendForClients(label, invoices) {
+  const byClient = {};
+  for (const inv of invoices) {
+    const k = inv.accountId ? ('acc:' + inv.accountId) : ('name:' + (inv.client || '?'));
+    if (!byClient[k]) byClient[k] = { client: inv.client || 'Cliente', email: (inv.clientEmail || '').trim(), invoices: [] };
+    byClient[k].invoices.push(inv);
+  }
+  let sent = 0; const sinEmail = [];
+  for (const c of Object.values(byClient)) {
+    if (!c.email) { sinEmail.push(c.client); continue; }
+    const { subject, html, waMsg } = await buildFamilySummaryEmail(c.client, c.invoices);
+    await sendEmail({ to: c.email, subject, html, text: waMsg });
+    sent++;
+    await new Promise(r => setTimeout(r, 1500));
+  }
+  return { sent, sinEmail };
+}
+
 // Envío AUTOMÁTICO: recorre familias y envía solo a las que les toca en esta
 // franja según su frecuencia. Respeta pausa global, familias pausadas y dedup
 // por familia+franja+día.
@@ -103,12 +123,18 @@ async function sendReminders(slot) {
     const byFam = groupByFamily(pending);
     for (const [family, invoices] of Object.entries(byFam)) {
       const cfg = await avisos.getFamilyConfig(family);
-      if (!cfg.email || cfg.paused)             { skipped++; continue; }
-      if (!isFamilyDue(cfg.freq, slot))         { skipped++; continue; }
+      if (cfg.paused)                              { skipped++; continue; }
+      if (cfg.modo !== 'cliente' && !cfg.email)    { skipped++; continue; }
+      if (!isFamilyDue(cfg.freq, slot))            { skipped++; continue; }
       const key = `REM:${family}:${slot}`;
       if (await avisos.wasAlertSentToday(key, 'auto')) { skipped++; continue; }
-      console.log(`[Scheduler] Recordatorio (${cfg.freq}/${cfg.format}) → ${family} (${invoices.length} fra.) → ${cfg.email}`);
-      await sendForFamily(family, invoices, cfg.format);
+      if (cfg.modo === 'cliente') {
+        const r = await sendForClients(family, invoices);
+        console.log(`[Scheduler] Recordatorio POR CLIENTE → ${family}: ${r.sent} enviados${r.sinEmail.length ? `, sin email: ${r.sinEmail.join(', ')}` : ''}`);
+      } else {
+        console.log(`[Scheduler] Recordatorio (${cfg.freq}/${cfg.format}) → ${family} (${invoices.length} fra.) → ${cfg.email}`);
+        await sendForFamily(family, invoices, cfg.format);
+      }
       await avisos.markAlertSent(key, 'auto');
       sent++;
       await new Promise(r => setTimeout(r, 1500));
@@ -126,12 +152,21 @@ async function sendReminders(slot) {
 async function sendManual(format) {
   if (await avisos.isGlobalPaused()) return { paused: true, sent: 0, skipped: 0 };
   let sent = 0, skipped = 0;
+  const sinEmail = [];
   try {
     const pending = await getPendingInvoices();
     const byFam = groupByFamily(pending);
     for (const [family, invoices] of Object.entries(byFam)) {
       const cfg = await avisos.getFamilyConfig(family);
-      if (!cfg.email || cfg.paused) { skipped++; continue; }
+      if (cfg.paused) { skipped++; continue; }
+      if (cfg.modo === 'cliente') {
+        const r = await sendForClients(family, invoices);
+        if (r.sinEmail.length) sinEmail.push(...r.sinEmail);
+        console.log(`[Scheduler] Manual POR CLIENTE → ${family}: ${r.sent} enviados, ${r.sinEmail.length} sin email.`);
+        sent++;
+        continue;
+      }
+      if (!cfg.email) { skipped++; continue; }
       console.log(`[Scheduler] Envío manual (${format}) → ${family} (${invoices.length} fra.) → ${cfg.email}`);
       await sendForFamily(family, invoices, format);
       sent++;
@@ -141,7 +176,7 @@ async function sendManual(format) {
   } catch (err) {
     console.error('[Scheduler] Error envío manual:', err.message);
   }
-  return { sent, skipped };
+  return { sent, skipped, sinEmail };
 }
 
 // PREVISUALIZACIÓN: arma el resumen agrupado y lo envía SOLO al email indicado.
