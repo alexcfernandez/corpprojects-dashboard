@@ -159,6 +159,8 @@ function buildInvoicesFromReceipts(receipts, clientMap) {
         number:      r['full-reference'] || `FAC #${invId}`,
         client:      clientInfo.name,
         family:      clientInfo.family,
+        accountId:   accId,
+        clientEmail: clientInfo.email || '',
         date:        r['payment-term-date'] || r['utc-last-modification-date'],
         totalAmount: 0,
         paidAmount:  0
@@ -189,6 +191,7 @@ async function getPendingInvoices() {
       pending.push({
         id: inv.id, number: inv.number, client: inv.client,
         family: inv.family, date: inv.date,
+        accountId: inv.accountId, clientEmail: inv.clientEmail,
         total: inv.totalAmount, paid: inv.paidAmount, pending: pendingAmount,
         daysOverdue, alertLevel: getAlertLevel(daysOverdue)
       });
