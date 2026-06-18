@@ -40,9 +40,10 @@ async function isFamilyPaused(family) {
 
 const FREQS   = ['manual', 'weekly', 'biweekly', 'daily', 'twice_daily'];
 const FORMATS = ['grouped', 'individual'];
+const MODOS   = ['familia', 'cliente'];
 
-// upsert de un responsable. email, paused, freq y/o format.
-async function setFamilyContact(family, { email, paused, freq, format } = {}) {
+// upsert de un responsable. email, paused, freq, format y/o modo.
+async function setFamilyContact(family, { email, paused, freq, format, modo } = {}) {
   if (!family) throw new Error('Falta la familia');
   const db = await getDB();
   const set = { family, updatedAt: new Date() };
@@ -50,6 +51,7 @@ async function setFamilyContact(family, { email, paused, freq, format } = {}) {
   if (paused !== undefined) set.paused = !!paused;
   if (freq   !== undefined) set.freq   = FREQS.includes(freq)     ? freq   : 'manual';
   if (format !== undefined) set.format = FORMATS.includes(format) ? format : 'grouped';
+  if (modo   !== undefined) set.modo   = MODOS.includes(modo)     ? modo   : 'familia';
   await db.collection('familyContacts').updateOne({ family }, { $set: set }, { upsert: true });
   return db.collection('familyContacts').findOne({ family });
 }
@@ -63,7 +65,8 @@ async function getFamilyConfig(family) {
     email:  (doc.email || '').trim(),
     paused: !!doc.paused,
     freq:   FREQS.includes(doc.freq)     ? doc.freq   : 'manual',
-    format: FORMATS.includes(doc.format) ? doc.format : 'grouped'
+    format: FORMATS.includes(doc.format) ? doc.format : 'grouped',
+    modo:   MODOS.includes(doc.modo)     ? doc.modo   : 'familia'
   };
 }
 
