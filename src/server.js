@@ -67,6 +67,26 @@ function requireAuth(req, res, next) {
   catch { return res.status(401).json({ error: 'Token inválido' }); }
 }
 
+// ─────────────────────────────────────────────────────────────
+// WhatsApp (Twilio) — puerta de entrada. ECO DE PRUEBA (sin IA todavía).
+// Ruta PÚBLICA a propósito: Twilio no envía token. Responde con TwiML,
+// así Twilio manda la respuesta sin que tengamos que llamar a su API.
+// ─────────────────────────────────────────────────────────────
+app.post('/api/whatsapp', express.urlencoded({ extended: false }), (req, res) => {
+  try {
+    const from = req.body.From || '';
+    const body = (req.body.Body || '').trim();
+    console.log(`[WhatsApp] De ${from}: "${body}"`);
+    const twilio = require('twilio');
+    const twiml = new twilio.twiml.MessagingResponse();
+    twiml.message(body ? `✅ Recibí: ${body}` : '✅ Recibí tu mensaje (sin texto).');
+    res.type('text/xml').send(twiml.toString());
+  } catch (err) {
+    console.error('[WhatsApp] Error webhook:', err.message);
+    res.type('text/xml').send('<Response></Response>');
+  }
+});
+
 // Usa la conexión única compartida (src/db.js). Mantiene el contrato
 // { db, client } para no romper las rutas existentes; client.close() es
 // un no-op porque la conexión con pool se reutiliza, no se cierra.
