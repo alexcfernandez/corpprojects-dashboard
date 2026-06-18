@@ -232,6 +232,7 @@ async function getEstimatesSummary() {
 
       const item = {
         id: String(est.id), number: est.number ?? `#${est.id}`,
+        ref: est['full-reference'] || est.reference || est.number || `#${est.id}`,
         client: clientInfo.name, family: clientInfo.family,
         date: rawDate, dueDate: est['due-date'] ?? est['expiry-date'],
         total, stateKey, stateLabel, stateId, daysOld
