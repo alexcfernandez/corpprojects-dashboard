@@ -387,6 +387,101 @@ async function fichaDe(scope, target, from) {
   return msg;
 }
 
+// ── Buscador UNIVERSAL de documentos por número ───────────────────
+// Tipos con datos: factura (FAC), presupuesto (PRT), pedido (PDT).
+// Albaranes y facturas de proveedor aún no están conectados.
+function refDigits(s) { return parseInt(String(s || '').replace(/\D/g, ''), 10); }
+
+async function docFactura(q) {
+  const invs = await stel.getInvoices().catch(() => []);
+  const f = (invs || []).find(x => refDigits(x.number) === q);
+  if (!f) return null;
+  const pendImp = (f.totalAmount || 0) - (f.paidAmount || 0);
+  const estado = pendImp <= 0.01 ? '✅ Pagada' : (f.paidAmount > 0 ? '🟡 Parcial' : '🔴 Pendiente');
+  const detalle = `🧾 *${f.number}* (factura)\nCliente: ${f.client}\n` +
+    (f.family && f.family !== 'Sin familia' ? `Familia: ${f.family}\n` : '') +
+    `Importe: *${fmtEur(f.totalAmount)}*\nEstado: ${estado}` +
+    (pendImp > 0.01 ? ` · pendiente *${fmtEur(pendImp)}*` : '') +
+    (f.date ? `\nFecha: ${String(f.date).slice(0, 10)}` : '');
+  return { detalle, resumen: `🧾 *${f.number}* — ${f.client} — ${fmtEur(f.totalAmount)} (${estado})` };
+}
+
+async function docPresupuesto(q) {
+  const s = await stel.getEstimatesSummary().catch(() => null);
+  if (!s) return null;
+  const e = (s.all || []).find(x => refDigits(x.ref || x.number) === q);
+  if (!e) return null;
+  const detalle = `📊 *${e.ref || e.number}* (presupuesto)\nCliente: ${e.client}\n` +
+    (e.family ? `Familia: ${e.family}\n` : '') +
+    `Estado: ${e.stateLabel}\nImporte: *${fmtEur(e.total)}*` +
+    (e.daysOld != null ? `\nAntigüedad: ${e.daysOld}d` : '') +
+    `\n\nVer conceptos: *"conceptos del ${refDigits(e.ref || e.number)}"*`;
+  return { detalle, resumen: `📊 *${e.ref || e.number}* — ${e.client} — ${fmtEur(e.total)} (${e.stateLabel})` };
+}
+
+async function docPedido(q) {
+  const [orders, stateMap, cli] = await Promise.all([
+    stel.getAllWorkOrders().catch(() => []),
+    stel.getWorkOrderStateMap().catch(() => ({})),
+    stel.getClients().catch(() => ({ clientMap: {} }))
+  ]);
+  const clientMap = cli.clientMap || {};
+  const o = (orders || []).filter(x => !x.deleted).find(x => refDigits(x['full-reference']) === q);
+  if (!o) return null;
+  const ref = o['full-reference'] || `PDT #${o.id}`;
+  const c = clientMap[String(o['account-id'] || '')] || {};
+  const estado = stateMap[String(o['document-state-id'])] || '';
+  const lines = Array.isArray(o.lines) ? o.lines.filter(l => !l.deleted) : [];
+  const desc = lines.map(l => l['item-name']).filter(Boolean).slice(0, 4).join(', ');
+  const imp = Number(o['total-amount']);
+  const detalle = `🔧 *${ref}* (pedido de trabajo)\nCliente: ${c.name || '—'}\n` +
+    (c.family && c.family !== 'Sin familia' ? `Familia: ${c.family}\n` : '') +
+    (estado ? `Estado: ${estado}\n` : '') +
+    (Number.isFinite(imp) && imp ? `Importe: *${fmtEur(imp)}*\n` : '') +
+    (desc ? `Trabajo: ${desc}` : '');
+  return { detalle, resumen: `🔧 *${ref}* — ${c.name || '—'}${estado ? ` (${estado})` : ''}` };
+}
+
+const BUSCADORES = { factura: docFactura, presupuesto: docPresupuesto, pedido: docPedido };
+
+function tipoDocumento(textoNorm) {
+  // Códigos pegados a los dígitos: fac309, prt00509, pdt384, alb45, fcp12
+  if (/\bfac\d|\bfra\d/.test(textoNorm)) return 'factura';
+  if (/\bprt\d/.test(textoNorm))         return 'presupuesto';
+  if (/\bpdt\d/.test(textoNorm))         return 'pedido';
+  if (/\balb\d/.test(textoNorm))         return 'albaran';
+  if (/\bfcp\d/.test(textoNorm))         return 'proveedor';
+  // Por palabra
+  if (/factura/.test(textoNorm) && !/proveedor/.test(textoNorm)) return 'factura';
+  if (/presupuest|presu\b|oferta/.test(textoNorm)) return 'presupuesto';
+  if (/pedido|parte|orden de trabajo/.test(textoNorm)) return 'pedido';
+  if (/albaran/.test(textoNorm)) return 'albaran';
+  if (/proveedor|\bfcp\b/.test(textoNorm)) return 'proveedor';
+  return null;
+}
+
+async function handlerDocumento(numero, tipo, from) {
+  const q = parseInt(String(numero).replace(/\D/g, ''), 10);
+  if (tipo === 'albaran')   return '📦 Los *albaranes* todavía no están conectados. Lo dejamos para una próxima mejora.';
+  if (tipo === 'proveedor') return '📥 Las *facturas de proveedor* todavía no están conectadas. Lo dejamos para una próxima mejora.';
+
+  const tipos = tipo ? [tipo] : ['factura', 'presupuesto', 'pedido'];
+  const hallados = [];
+  for (const t of tipos) {
+    const r = await BUSCADORES[t](q);
+    if (r) hallados.push(r);
+  }
+  if (!hallados.length) {
+    return tipo
+      ? `No encuentro ${tipo === 'factura' ? 'la factura' : tipo === 'presupuesto' ? 'el presupuesto' : 'el pedido'} ${numero}.`
+      : `No encuentro ningún documento con el número ${numero}.`;
+  }
+  if (hallados.length === 1) { ultima.delete(from); return hallados[0].detalle; }
+  ultima.delete(from);
+  return `Hay varios documentos con el ${numero}:\n\n` + hallados.map(h => h.resumen).join('\n') +
+         `\n\nDime el tipo, p. ej. *"factura ${numero}"* o *"presupuesto ${numero}"*.`;
+}
+
 function despachar(intent, from, scope, target) {
   if (intent === 'ficha')        return fichaDe(scope, target, from);
   if (intent === 'presupuestos') return handlerPresupuestos(`presupuestos de ${target}`, from, scope, target);
@@ -417,10 +512,22 @@ async function responderConsulta(texto, from = 'anon') {
     return 'No tengo nada más que mostrar 🙂 Pregúntame por un cliente, p. ej.: *"¿qué debe Illa Verda?"*';
   }
 
-  // C) ¿Conceptos / detalle de un presupuesto concreto? (ej. "conceptos del 509")
-  if (/concepto|detalle|detalla|desglos|linea|partida|que (incluye|lleva|contiene|tiene)/.test(norm(texto))) {
+  // C0) Conceptos / detalle (líneas) de un PRESUPUESTO concreto (ej. "conceptos del 509")
+  //     Solo si NO menciona factura/pedido (esos van al buscador universal).
+  if (/concepto|detalle|detalla|desglos|linea|partida|que (incluye|lleva|contiene|tiene)/.test(norm(texto))
+      && !/factura|\bfac\b|pedido|\bpdt\b/.test(norm(texto))) {
     const m = texto.match(/\d{2,6}/);
     if (m) return handlerDetalle(m[0], from);
+  }
+
+  // C1) Buscador UNIVERSAL de documento por número (factura/presupuesto/pedido)
+  //     Se activa si hay un número y o bien se nombra el tipo, o hay un verbo de búsqueda.
+  {
+    const n = norm(texto);
+    const num = texto.match(/\d{2,6}/);
+    const tipo = tipoDocumento(n);
+    const verboBusqueda = /\b(dime|dame|cual es|cuales son|que es|ver|muestrame|muestra|ensename|busca|buscar|info|informacion|datos|documento|numero)\b/.test(n);
+    if (num && (tipo || verboBusqueda)) return handlerDocumento(num[0], tipo, from);
   }
 
   // C2) ¿Resumen global del negocio? ("resumen", "cómo vamos")
@@ -439,6 +546,7 @@ async function responderConsulta(texto, from = 'anon') {
   return `👋 Puedo ayudarte con:\n\n` +
     `📌 *Resumen* — escribe "resumen" para ver el negocio de un vistazo\n` +
     `🗂️ *Ficha de cliente* — "resumen de Illa Verda" (deuda + presupuestos + pedidos)\n` +
+    `🔎 *Buscar un documento* — "dime el 309" · "la factura 309" · "presupuesto 509" · "pedido 384"\n` +
     `💰 *Facturas* — "¿qué debe Illa Verda?" · "cuánto me deben en total"\n` +
     `📊 *Presupuestos* — "los aceptados" · "conceptos del 509" · "presupuestos de Cinc"\n` +
     `🔧 *Pedidos* — "cuántos pedidos tenemos" · "pedidos de Illa Verda"\n\n` +
