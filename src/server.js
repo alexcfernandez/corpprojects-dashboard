@@ -245,9 +245,9 @@ app.get('/api/family-contacts', requireAuth, async (req, res) => {
 
 app.put('/api/family-contacts', requireAuth, async (req, res) => {
   try {
-    const { family, email, paused, freq, format } = req.body;
+    const { family, email, paused, freq, format, modo } = req.body;
     if (!family) return res.status(400).json({ error: 'Falta la familia' });
-    const saved = await avisos.setFamilyContact(family, { email, paused, freq, format });
+    const saved = await avisos.setFamilyContact(family, { email, paused, freq, format, modo });
     res.json(saved);
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
