@@ -93,7 +93,7 @@ async function procesarWhatsApp(from, body) {
   } else if (!body) {
     reply = 'Dime qué cliente o familia quieres consultar 🙂 (p. ej.: "¿qué debe Illa Verda?")';
   } else {
-    reply = await asistente.responderConsulta(body);
+    reply = await asistente.responderConsulta(body, from);
   }
   await enviarWhatsApp(from, reply);
 }
