@@ -1,13 +1,14 @@
 // src/asistente.js — Cerebro del asistente de WhatsApp.
-// v3: ENRUTADOR. Entiende qué tipo de pregunta es (facturas / presupuestos /
-//     pedidos) y responde por el cajón correcto. + formato + "ver más" + variantes.
-// PRINCIPIO: la IA solo INTERPRETA la intención y a qué cliente te refieres;
-// los datos (importes, conteos) salen SIEMPRE de StelOrder, nunca se inventan.
+// v4: ENRUTADOR (facturas / presupuestos / pedidos) + MEMORIA DE ALIAS.
+//     Si no conoce un nombre ("bellpuig"), te pregunta, y al decírselo lo
+//     guarda en MongoDB para siempre (alias -> cliente/familia canónico).
+// PRINCIPIO: la IA interpreta intención y a quién te refieres; los datos
+// (importes, conteos) salen SIEMPRE de StelOrder, nunca se inventan.
 
 const stel = require('./stelorder');
 
-// Memoria de la última lista mostrada por número (para "ver más").
-const ultima = new Map(); // from -> { items, titulo, encabezado, fmt, mostradas }
+const ultima    = new Map(); // from -> estado de paginación ("ver más")
+const pendiente = new Map(); // from -> { accion:'aprender', aliasRaw, intent, ts }
 const PAGINA = 10;
 
 function norm(s) {
@@ -16,8 +17,6 @@ function norm(s) {
 function fmtEur(n) {
   return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(n || 0);
 }
-
-// "ver más" ESTRICTO: solo si el mensaje ES exactamente eso (no cualquier frase con "más")
 function esVerMas(t) {
   const n = norm(t);
   return ['ver mas', 'mas', 'el resto', 'los demas', 'las demas', 'siguientes',
@@ -25,43 +24,41 @@ function esVerMas(t) {
           'mas facturas', 'ver el resto', 'resto'].includes(n);
 }
 
-// ── IA #1: clasifica la intención ────────────────────────────────
-async function clasificar(texto) {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return { intent: 'facturas', scope: 'general', rawTarget: null };
+// ── MongoDB: memoria de alias ─────────────────────────────────────
+async function getDB() { return require('./db').getDB(); }
 
-  const prompt = `Eres el asistente del dueño de una empresa de mantenimiento de fincas. Clasifica su pregunta.
-
-Pregunta: "${texto}"
-
-Responde SOLO un JSON válido, sin markdown:
-{"intent":"facturas|presupuestos|pedidos|otro","scope":"cliente|familia|general","rawTarget":"nombre tal cual lo dice, o null"}
-
-- intent "facturas": deudas, cobros, lo que deben, facturas pendientes, quién más debe.
-- intent "presupuestos": presupuestos / ofertas (aceptados, pendientes, etc.).
-- intent "pedidos": pedidos de trabajo, partes, trabajos abiertos o en curso.
-- intent "otro": saludos o cosas que no encajan.
-- scope "general": el total, todos, resumen, ranking. "cliente"/"familia": menciona uno concreto.
-- rawTarget: el nombre del cliente/familia tal cual lo escribió, o null.`;
-
-  return iaJson(prompt, 120, { intent: 'otro', scope: 'general', rawTarget: null });
+async function buscarAlias(aliasNorm) {
+  if (!aliasNorm) return null;
+  try {
+    const db = await getDB();
+    const doc = await db.collection('aliasClientes').findOne({ alias: aliasNorm });
+    return doc ? { target: doc.target, scope: doc.scope } : null;
+  } catch (e) { console.error('[Asistente] alias read:', e.message); return null; }
+}
+async function guardarAlias(aliasNorm, target, scope) {
+  try {
+    const db = await getDB();
+    await db.collection('aliasClientes').updateOne(
+      { alias: aliasNorm },
+      { $set: { alias: aliasNorm, target, scope, updatedAt: new Date() } },
+      { upsert: true }
+    );
+    console.log(`[Asistente] alias aprendido: "${aliasNorm}" -> ${target} (${scope})`);
+  } catch (e) { console.error('[Asistente] alias write:', e.message); }
 }
 
-// ── IA #2 (fallback): elige el nombre EXACTO de una lista ─────────
-async function elegirTarget(texto, candidatos) {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key || !candidatos.length) return null;
-  const prompt = `El usuario pregunta: "${texto}"
-
-Elige a cuál de esta lista se refiere (copia EXACTO, o null si ninguno):
-${candidatos.slice(0, 150).join('\n')}
-
-Responde SOLO JSON: {"target":"nombre EXACTO de la lista, o null"}`;
-  const out = await iaJson(prompt, 60, { target: null });
-  return out.target || null;
+// ── Universo de nombres (todos los clientes y familias) ───────────
+let _listasCache = null, _listasTs = 0;
+async function listas() {
+  if (_listasCache && Date.now() - _listasTs < 5 * 60 * 1000) return _listasCache;
+  const { clientMap, families } = await stel.getClients();
+  const clientes = [...new Set(Object.values(clientMap || {}).map(c => c && c.name).filter(Boolean))];
+  const fams     = [...new Set((families || []).map(f => (f && f.name) || f).filter(Boolean))];
+  _listasCache = { clientes, familias: fams }; _listasTs = Date.now();
+  return _listasCache;
 }
 
-// Llamada genérica a Haiku que espera JSON
+// ── IA ────────────────────────────────────────────────────────────
 async function iaJson(prompt, maxTokens, fallback) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return fallback;
@@ -79,37 +76,69 @@ async function iaJson(prompt, maxTokens, fallback) {
     if (!r.ok) throw new Error(`API ${r.status}: ${JSON.stringify(data).slice(0, 150)}`);
     const txt = (data.content?.[0]?.text || '{}').replace(/```json|```/g, '').trim();
     return JSON.parse(txt);
-  } catch (e) {
-    console.error('[Asistente] IA error:', e.message);
-    return fallback;
-  }
+  } catch (e) { console.error('[Asistente] IA error:', e.message); return fallback; }
 }
 
-// Resuelve a qué cliente/familia se refiere, mirando las listas reales del dataset.
+async function clasificar(texto) {
+  const prompt = `Eres el asistente del dueño de una empresa de mantenimiento de fincas. Clasifica su pregunta.
+
+Pregunta: "${texto}"
+
+Responde SOLO un JSON válido, sin markdown:
+{"intent":"facturas|presupuestos|pedidos|otro","scope":"cliente|familia|general","rawTarget":"nombre tal cual lo dice, o null"}
+
+- intent "facturas": deudas, cobros, lo que deben, facturas pendientes, quién más debe.
+- intent "presupuestos": presupuestos / ofertas (aceptados, pendientes, etc.).
+- intent "pedidos": pedidos de trabajo, partes, trabajos abiertos o en curso.
+- intent "otro": saludos o cosas que no encajan.
+- scope "general": el total, todos, resumen, ranking. "cliente"/"familia": menciona uno concreto.
+- rawTarget: el nombre del cliente/familia/sitio tal cual lo escribió, o null.`;
+  return iaJson(prompt, 120, { intent: 'otro', scope: 'general', rawTarget: null });
+}
+
+async function elegirTarget(texto, candidatos) {
+  if (!candidatos.length) return null;
+  const prompt = `El usuario pregunta: "${texto}"
+
+Elige a cuál de esta lista se refiere (copia EXACTO, o null si ninguno):
+${candidatos.slice(0, 150).join('\n')}
+
+Responde SOLO JSON: {"target":"nombre EXACTO de la lista, o null"}`;
+  const out = await iaJson(prompt, 60, { target: null });
+  return out.target || null;
+}
+
+// Resuelve a qué cliente/familia se refiere (alias -> código -> IA).
 // Devuelve { scope:'cliente'|'familia'|null, target:string|null }
-async function resolver(texto, rawTarget, items) {
-  const clientes = [...new Set(items.map(i => i.client).filter(Boolean))];
-  const familias = [...new Set(items.map(i => i.family).filter(Boolean))];
-  const r = norm(rawTarget || texto);
+async function resolver(texto, rawTarget) {
+  const raw = norm(rawTarget || '');
+  if (raw) { const a = await buscarAlias(raw); if (a) return { scope: a.scope, target: a.target }; }
 
-  // exacto
-  let mf = familias.filter(c => norm(c) === r);
-  if (mf.length === 1) return { scope: 'familia', target: mf[0] };
-  let mc = clientes.filter(c => norm(c) === r);
-  if (mc.length === 1) return { scope: 'cliente', target: mc[0] };
+  const { clientes, familias } = await listas();
+  const r = raw || norm(texto);
 
-  // contiene (en un sentido u otro)
+  let mf = familias.filter(c => norm(c) === r); if (mf.length === 1) return { scope: 'familia', target: mf[0] };
+  let mc = clientes.filter(c => norm(c) === r); if (mc.length === 1) return { scope: 'cliente', target: mc[0] };
+
   mf = familias.filter(c => norm(c).includes(r) || r.includes(norm(c)));
   mc = clientes.filter(c => norm(c).includes(r) || r.includes(norm(c)));
   if (mf.length === 1 && mc.length === 0) return { scope: 'familia', target: mf[0] };
   if (mc.length === 1 && mf.length === 0) return { scope: 'cliente', target: mc[0] };
 
-  // ambiguo o nada → IA sobre los candidatos
   const union = [...new Set([...mf, ...mc])];
   const cand = union.length ? union : [...familias, ...clientes];
   const t = await elegirTarget(texto, cand);
   if (!t) return { scope: null, target: null };
   return { scope: familias.includes(t) ? 'familia' : 'cliente', target: t };
+}
+
+// Mensaje cuando no encuentra el cliente: si dijo un nombre, lo aprendemos
+function noEncontrado(from, rawTarget, intent) {
+  if (rawTarget) {
+    pendiente.set(from, { accion: 'aprender', aliasRaw: rawTarget, intent, ts: Date.now() });
+    return `🤔 No conozco *"${rawTarget}"*. ¿A qué cliente corresponde? Dímelo (p. ej. "es Illa Verda") y lo recuerdo.`;
+  }
+  return '🤔 No tengo claro de qué cliente me hablas. Prueba con el nombre, p. ej.: *"¿qué debe Illa Verda?"*';
 }
 
 // ── Paginado genérico ─────────────────────────────────────────────
@@ -124,7 +153,7 @@ function pintar(from, estado, desde) {
   return msg;
 }
 
-// ── Handler: FACTURAS ─────────────────────────────────────────────
+// ── Handlers ──────────────────────────────────────────────────────
 async function handlerFacturas(texto, from, scope, rawTarget) {
   let pend;
   try { pend = await stel.getPendingInvoices(); }
@@ -144,50 +173,75 @@ async function handlerFacturas(texto, from, scope, rawTarget) {
     return msg;
   }
 
-  const { scope: sc, target } = await resolver(texto, rawTarget, pend);
-  if (!target) return '🤔 No tengo claro de qué cliente me hablas. Prueba con el nombre, p. ej.: *"¿qué debe Illa Verda?"*';
+  const { scope: sc, target } = await resolver(texto, rawTarget);
+  if (!target) return noEncontrado(from, rawTarget, 'facturas');
   const sel = pend.filter(i => norm(i[sc === 'familia' ? 'family' : 'client']) === norm(target))
                   .sort((a, b) => (b.daysOverdue || 0) - (a.daysOverdue || 0));
   if (!sel.length) return `✅ ${target} no tiene facturas pendientes.`;
   const total = sel.reduce((s, i) => s + (i.pending || 0), 0);
+  const tit = sc === 'familia' ? `Familia: ${target}` : target;
   return pintar(from, {
-    items: sel,
-    titulo: sc === 'familia' ? `Familia: ${target}` : target,
-    encabezado: `📋 *${sc === 'familia' ? 'Familia: ' + target : target}*\n💰 Pendiente: *${fmtEur(total)}* · ${sel.length} factura(s)`,
+    items: sel, titulo: tit,
+    encabezado: `📋 *${tit}*\n💰 Pendiente: *${fmtEur(total)}* · ${sel.length} factura(s)`,
     fmt: i => `• ${i.number} — *${fmtEur(i.pending)}*${i.daysOverdue ? ` · ${i.daysOverdue}d` : ''}`
   }, 0);
 }
 
-// ── Handler: PRESUPUESTOS ─────────────────────────────────────────
+// Detecta si el usuario nombra un estado concreto de presupuesto
+function detectarEstado(t) {
+  const n = norm(t);
+  if (/aceptad/.test(n))  return 'accepted';
+  if (/rechazad/.test(n)) return 'rejected';
+  if (/cerrad/.test(n))   return 'closed';
+  if (/pendient/.test(n)) return 'pending';
+  return null;
+}
+const ESTADO_ES = { accepted: 'aceptados', pending: 'pendientes', closed: 'cerrados', rejected: 'rechazados' };
+
 async function handlerPresupuestos(texto, from, scope, rawTarget) {
   let s;
   try { s = await stel.getEstimatesSummary(); }
   catch (e) { console.error('[Asistente]', e.message); return '⚠️ No pude consultar los presupuestos. Prueba en un momento.'; }
 
-  if (scope === 'general') {
+  const estado = detectarEstado(texto);
+
+  // Sin cliente concreto: o listamos un estado, o damos el resumen
+  if (scope !== 'cliente' && scope !== 'familia') {
+    if (estado) {
+      const arr = [...(s[estado] || [])].sort((a, b) => (b.total || 0) - (a.total || 0));
+      const etiqueta = ESTADO_ES[estado];
+      if (!arr.length) return `No hay presupuestos ${etiqueta}.`;
+      const tot = arr.reduce((x, i) => x + (i.total || 0), 0);
+      return pintar(from, {
+        items: arr, titulo: `Presupuestos ${etiqueta}`,
+        encabezado: `📊 *Presupuestos ${etiqueta}: ${arr.length}* (${fmtEur(tot)})`,
+        fmt: i => `• ${i.ref || i.number} — ${i.client} — *${fmtEur(i.total)}*`
+      }, 0);
+    }
     ultima.delete(from);
     return `📊 *Presupuestos*\n\n` +
       `✅ Aceptados: *${s.accepted.length}* (${fmtEur(s.totalAccepted)})\n` +
       `⏳ Pendientes: *${s.pending.length}* (${fmtEur(s.totalPending)})\n` +
       `📁 Cerrados: ${s.closed.length}\n` +
       `❌ Rechazados: ${s.rejected.length}\n\n` +
-      `Pregúntame por un cliente, p. ej.: *"presupuestos de Illa Verda"*`;
+      `Pregúntame por un estado ("los aceptados") o por un cliente ("presupuestos de Illa Verda").`;
   }
 
-  const { scope: sc, target } = await resolver(texto, rawTarget, s.all);
-  if (!target) return '🤔 No tengo claro de qué cliente me hablas para los presupuestos.';
-  const sel = (s.all || []).filter(i => norm(i[sc === 'familia' ? 'family' : 'client']) === norm(target))
-                           .sort((a, b) => (b.daysOld || 0) - (a.daysOld || 0));
-  if (!sel.length) return `No encuentro presupuestos de ${target}.`;
+  // Cliente/familia concreto (opcionalmente filtrado por estado)
+  const { scope: sc, target } = await resolver(texto, rawTarget);
+  if (!target) return noEncontrado(from, rawTarget, 'presupuestos');
+  let sel = (s.all || []).filter(i => norm(i[sc === 'familia' ? 'family' : 'client']) === norm(target));
+  if (estado) sel = sel.filter(i => i.stateKey === estado);
+  sel.sort((a, b) => (b.daysOld || 0) - (a.daysOld || 0));
+  const suf = estado ? ` ${ESTADO_ES[estado]}` : '';
+  if (!sel.length) return `No encuentro presupuestos${suf} de ${target}.`;
   return pintar(from, {
-    items: sel,
-    titulo: `Presupuestos — ${target}`,
-    encabezado: `📊 *Presupuestos — ${target}*\n${sel.length} presupuesto(s)`,
+    items: sel, titulo: `Presupuestos${suf} — ${target}`,
+    encabezado: `📊 *Presupuestos${suf} — ${target}*\n${sel.length} presupuesto(s)`,
     fmt: i => `• ${i.ref || i.number} — ${i.stateLabel} — *${fmtEur(i.total)}*`
   }, 0);
 }
 
-// ── Handler: PEDIDOS (trabajos abiertos) ──────────────────────────
 async function handlerPedidos(texto, from, scope, rawTarget) {
   let live;
   try { live = await stel.getWorkOrdersLive(); }
@@ -197,47 +251,64 @@ async function handlerPedidos(texto, from, scope, rawTarget) {
   if (scope === 'general') {
     const ordenados = [...live].sort((a, b) => (b.days || 0) - (a.days || 0));
     return pintar(from, {
-      items: ordenados,
-      titulo: 'Pedidos abiertos',
+      items: ordenados, titulo: 'Pedidos abiertos',
       encabezado: `🔧 *Pedidos de trabajo abiertos: ${live.length}*`,
       fmt: i => `• ${i.number} — ${i.client} · ${i.days || 0}d`
     }, 0);
   }
 
-  const { scope: sc, target } = await resolver(texto, rawTarget, live);
-  if (!target) return '🤔 No tengo claro de qué cliente me hablas para los pedidos.';
+  const { scope: sc, target } = await resolver(texto, rawTarget);
+  if (!target) return noEncontrado(from, rawTarget, 'pedidos');
   const sel = live.filter(i => norm(i[sc === 'familia' ? 'family' : 'client']) === norm(target))
                   .sort((a, b) => (b.days || 0) - (a.days || 0));
   if (!sel.length) return `✅ ${target} no tiene pedidos de trabajo abiertos.`;
   return pintar(from, {
-    items: sel,
-    titulo: `Pedidos — ${target}`,
+    items: sel, titulo: `Pedidos — ${target}`,
     encabezado: `🔧 *Pedidos abiertos — ${target}*\n${sel.length} pedido(s)`,
     fmt: i => `• ${i.number} — ${i.days || 0}d${i.state ? ` (${i.state})` : ''}`
   }, 0);
 }
 
+function despachar(intent, from, scope, target) {
+  if (intent === 'presupuestos') return handlerPresupuestos(`presupuestos de ${target}`, from, scope, target);
+  if (intent === 'pedidos')      return handlerPedidos(`pedidos de ${target}`, from, scope, target);
+  return handlerFacturas(`${target}`, from, scope, target);
+}
+
 // ── Punto de entrada ──────────────────────────────────────────────
 async function responderConsulta(texto, from = 'anon') {
-  // 1) "ver más"
+  // A) ¿Estábamos aprendiendo un alias? La respuesta es el nombre real.
+  const pend = pendiente.get(from);
+  if (pend && pend.accion === 'aprender' && (Date.now() - pend.ts) < 10 * 60 * 1000) {
+    const limpio = String(texto).replace(/^\s*(es|son|el|la|los|las|de|del)\s+/i, '').trim();
+    const { scope, target } = await resolver(limpio, limpio);
+    if (target) {
+      await guardarAlias(norm(pend.aliasRaw), target, scope);
+      pendiente.delete(from);
+      const respuesta = await despachar(pend.intent, from, scope, target);
+      return `✅ Apuntado: *${pend.aliasRaw}* = *${target}*\n\n${respuesta}`;
+    }
+    pendiente.delete(from); // no era un cliente; seguimos como consulta normal
+  }
+
+  // B) "ver más"
   if (esVerMas(texto)) {
     const prev = ultima.get(from);
     if (prev && prev.mostradas < prev.items.length) return pintar(from, prev, prev.mostradas);
     return 'No tengo nada más que mostrar 🙂 Pregúntame por un cliente, p. ej.: *"¿qué debe Illa Verda?"*';
   }
 
-  // 2) Enrutador: ¿qué tipo de pregunta es?
+  // C) Enrutador
   const { intent, scope, rawTarget } = await clasificar(texto);
-
   if (intent === 'facturas')     return handlerFacturas(texto, from, scope, rawTarget);
   if (intent === 'presupuestos') return handlerPresupuestos(texto, from, scope, rawTarget);
   if (intent === 'pedidos')      return handlerPedidos(texto, from, scope, rawTarget);
 
-  // 3) No encaja → ayuda
   return `👋 Puedo ayudarte con:\n\n` +
     `💰 *Facturas pendientes* — "¿qué debe Illa Verda?" · "cuánto me deben en total"\n` +
     `📊 *Presupuestos* — "cómo vamos de presupuestos" · "presupuestos de Cinc"\n` +
-    `🔧 *Pedidos de trabajo* — "cuántos pedidos tenemos" · "pedidos de Illa Verda"`;
+    `🔧 *Pedidos de trabajo* — "cuántos pedidos tenemos" · "pedidos de Illa Verda"\n\n` +
+    `Y si te equivocas con un nombre, te pregunto y lo recuerdo. 🧠`;
 }
 
 module.exports = { responderConsulta };
