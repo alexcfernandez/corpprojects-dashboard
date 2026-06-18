@@ -1,243 +1,1615 @@
-// src/asistente.js — Cerebro del asistente de WhatsApp.
-// v3: ENRUTADOR. Entiende qué tipo de pregunta es (facturas / presupuestos /
-//     pedidos) y responde por el cajón correcto. + formato + "ver más" + variantes.
-// PRINCIPIO: la IA solo INTERPRETA la intención y a qué cliente te refieres;
-// los datos (importes, conteos) salen SIEMPRE de StelOrder, nunca se inventan.
+// src/server.js v3
+require('dotenv').config();
+const express   = require('express');
+const cors      = require('cors');
+const helmet    = require('helmet');
+const rateLimit = require('express-rate-limit');
+const jwt       = require('jsonwebtoken');
+const path      = require('path');
+const multer    = require('multer');
+const fs        = require('fs');
+const { google } = require('googleapis');
+const { MongoClient, ObjectId } = require('mongodb');
 
-const stel = require('./stelorder');
+const {
+  getSummary, getPendingInvoices, getInvoices, getClients,
+  getEstimatesSummary, getFamiliesSummary, getAccountCategories, clearCache,
+  sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw, getEntityRawByRef,
+  getWorkOrdersLive
+} = require('./stelorder');
+const { sendWhatsApp, sendEmail } = require('./notifications');
+const { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail, sendWorkOrdersAlert } = require('./scheduler');
+const calendarSync = require('./calendar');
+const activity = require('./activity');
 
-// Memoria de la última lista mostrada por número (para "ver más").
-const ultima = new Map(); // from -> { items, titulo, encabezado, fmt, mostradas }
-const PAGINA = 10;
+const app  = express();
+const PORT = process.env.PORT || 3000;
 
-function norm(s) {
-  return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-}
-function fmtEur(n) {
-  return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(n || 0);
-}
-
-// "ver más" ESTRICTO: solo si el mensaje ES exactamente eso (no cualquier frase con "más")
-function esVerMas(t) {
-  const n = norm(t);
-  return ['ver mas', 'mas', 'el resto', 'los demas', 'las demas', 'siguientes',
-          'continuar', 'continua', 'sigue', 'mostrar mas', 'dame mas',
-          'mas facturas', 'ver el resto', 'resto'].includes(n);
-}
-
-// ── IA #1: clasifica la intención ────────────────────────────────
-async function clasificar(texto) {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return { intent: 'facturas', scope: 'general', rawTarget: null };
-
-  const prompt = `Eres el asistente del dueño de una empresa de mantenimiento de fincas. Clasifica su pregunta.
-
-Pregunta: "${texto}"
-
-Responde SOLO un JSON válido, sin markdown:
-{"intent":"facturas|presupuestos|pedidos|otro","scope":"cliente|familia|general","rawTarget":"nombre tal cual lo dice, o null"}
-
-- intent "facturas": deudas, cobros, lo que deben, facturas pendientes, quién más debe.
-- intent "presupuestos": presupuestos / ofertas (aceptados, pendientes, etc.).
-- intent "pedidos": pedidos de trabajo, partes, trabajos abiertos o en curso.
-- intent "otro": saludos o cosas que no encajan.
-- scope "general": el total, todos, resumen, ranking. "cliente"/"familia": menciona uno concreto.
-- rawTarget: el nombre del cliente/familia tal cual lo escribió, o null.`;
-
-  return iaJson(prompt, 120, { intent: 'otro', scope: 'general', rawTarget: null });
+// Seguridad: sin JWT_SECRET no arrancamos. Antes se firmaba con la palabra
+// 'fallback' (pública), lo que permitiría falsificar tokens de admin.
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error('[FATAL] Falta JWT_SECRET en las variables de entorno. Configúrala en Railway antes de arrancar.');
+  process.exit(1);
 }
 
-// ── IA #2 (fallback): elige el nombre EXACTO de una lista ─────────
-async function elegirTarget(texto, candidatos) {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key || !candidatos.length) return null;
-  const prompt = `El usuario pregunta: "${texto}"
+app.set('trust proxy', 1);
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(cors({
+  origin: ['https://dashboard.corpprojects.es','http://localhost:3000',
+           'https://corpprojects-dashboard-production.up.railway.app']
+}));
+app.use(express.json());
 
-Elige a cuál de esta lista se refiere (copia EXACTO, o null si ninguno):
-${candidatos.slice(0, 150).join('\n')}
+const UPLOADS_DIR = path.join(__dirname, '../uploads');
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
+  filename:    (req, file, cb) => cb(null, `bank_${Date.now()}.xlsx`)
+});
+const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 
-Responde SOLO JSON: {"target":"nombre EXACTO de la lista, o null"}`;
-  const out = await iaJson(prompt, 60, { target: null });
-  return out.target || null;
+const uploadMemory = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 15 }
+});
+
+app.use(express.static(path.join(__dirname, '../public')));
+
+const limiter = rateLimit({ windowMs: 15*60*1000, max: 300, message: { error: 'Rate limit.' } });
+app.use('/api/', limiter);
+const loginLimiter = rateLimit({ windowMs: 15*60*1000, max: 20, message: { error: 'Demasiados intentos.' } });
+
+function requireAuth(req, res, next) {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'No autorizado' });
+  try { req.user = jwt.verify(token, JWT_SECRET); next(); }
+  catch { return res.status(401).json({ error: 'Token inválido' }); }
 }
 
-// Llamada genérica a Haiku que espera JSON
-async function iaJson(prompt, maxTokens, fallback) {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return fallback;
+// ─────────────────────────────────────────────────────────────
+// WhatsApp (Twilio) — asistente personal. Ruta PÚBLICA (Twilio no envía token).
+// Responde de forma ASÍNCRONA por la API de Twilio para no agotar el tiempo
+// de espera del webhook (StelOrder + IA pueden tardar unos segundos).
+// ─────────────────────────────────────────────────────────────
+const asistente = require('./asistente');
+
+app.post('/api/whatsapp', express.urlencoded({ extended: false }), (req, res) => {
+  // 1) Acuse inmediato a Twilio (sin respuesta síncrona)
+  res.type('text/xml').send('<Response></Response>');
+  // 2) Procesa en segundo plano y responde por la API de Twilio
+  const from = req.body.From || '';
+  const body = (req.body.Body || '').trim();
+  console.log(`[WhatsApp] De ${from}: "${body}"`);
+  procesarWhatsApp(from, body).catch(err => console.error('[WhatsApp] Error:', err.message));
+});
+
+async function procesarWhatsApp(from, body) {
+  const soloDigitos = s => String(s || '').replace(/\D/g, '');
+  const mio = soloDigitos(process.env.MI_WHATSAPP);
+  let reply;
+  if (mio && from && soloDigitos(from) !== mio) {
+    reply = '🔒 Este asistente es privado.';
+  } else if (!body) {
+    reply = 'Dime qué cliente o familia quieres consultar 🙂 (p. ej.: "¿qué debe Illa Verda?")';
+  } else {
+    reply = await asistente.responderConsulta(body, from);
+  }
+  await enviarWhatsApp(from, reply);
+}
+
+function enviarWhatsApp(to, body) {
+  if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
+    console.error('[WhatsApp] Faltan credenciales de Twilio'); return Promise.resolve();
+  }
+  const twilio = require('twilio');
+  const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+  return client.messages.create({
+    from: process.env.TWILIO_WHATSAPP_FROM,
+    to,
+    body: (body || '').slice(0, 1500)
+  });
+}
+
+// Usa la conexión única compartida (src/db.js). Mantiene el contrato
+// { db, client } para no romper las rutas existentes; client.close() es
+// un no-op porque la conexión con pool se reutiliza, no se cierra.
+const sharedDb = require('./db');
+async function getDB() {
+  return sharedDb.getDBLegacy();
+}
+
+// ===== OAUTH GMAIL =====
+const oauth2Client = new google.auth.OAuth2(
+  process.env.GMAIL_CLIENT_ID,
+  process.env.GMAIL_CLIENT_SECRET,
+  process.env.GMAIL_REDIRECT_URI
+);
+
+app.get('/auth/google', (req, res) => {
+  const url = oauth2Client.generateAuthUrl({
+    access_type: 'offline',
+    prompt: 'consent',
+    scope: [
+      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/gmail.modify'
+    ]
+  });
+  res.redirect(url);
+});
+
+app.get('/auth/google/callback', async (req, res) => {
   try {
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: process.env.EMAIL_IA_MODEL || 'claude-haiku-4-5-20251001',
-        max_tokens: maxTokens,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-    const data = await r.json();
-    if (!r.ok) throw new Error(`API ${r.status}: ${JSON.stringify(data).slice(0, 150)}`);
-    const txt = (data.content?.[0]?.text || '{}').replace(/```json|```/g, '').trim();
-    return JSON.parse(txt);
+    const { code } = req.query;
+    const { tokens } = await oauth2Client.getToken(code);
+    res.json(tokens);
+  } catch (err) {
+    res.json({ error: err.message });
+  }
+});
+
+// ── Públicas ──────────────────────────────────────────────────────
+app.get('/health', (req, res) => res.json({
+  status:'ok', service:'Corp Projects Dashboard',
+  timestamp: new Date().toISOString(), uptime: Math.round(process.uptime())+'s'
+}));
+
+app.post('/api/login', loginLimiter, async (req, res) => {
+  const { password } = req.body;
+  if (!password) return res.status(400).json({ error: 'Contraseña requerida' });
+  if (password !== process.env.DASHBOARD_PASSWORD)
+    return res.status(401).json({ error: 'Contraseña incorrecta' });
+  const token = jwt.sign({ user:'admin' }, JWT_SECRET, { expiresIn:'24h' });
+  res.json({ token, expiresIn:'24h' });
+});
+
+// ── StelOrder ─────────────────────────────────────────────────────
+app.get('/api/summary',            requireAuth, async (req,res) => res.json(await getSummary()));
+
+// INICIO: resumen visual del negocio (cifras + gráficas + qué requiere atención).
+// Cada bloque va en su try/catch: si una fuente falla, las demás se muestran igual.
+app.get('/api/inicio', requireAuth, async (req, res) => {
+  const out = { lastUpdated: new Date().toISOString() };
+
+  // 1) Facturación (mes, total, pendientes) — reutiliza getSummary
+  try {
+    const s = await getSummary();
+    out.facturacion = {
+      mes: s.totalBilledMonth, mesCount: s.totalInvoicesMonth,
+      pendiente: s.totalPending, pendienteCount: s.pendingInvoices,
+      criticas: s.criticalCount, avisos: s.overdueCount + s.warningCount,
+      topPendientes: (s.pendingList || []).slice(0, 5).map(p => ({
+        number: p.number, client: p.client, pending: p.pending, days: p.daysOverdue, alert: p.alertLevel
+      }))
+    };
+  } catch (e) { out.facturacion = { error: e.message }; }
+
+  // 2) Serie mensual (6 meses) para la gráfica de barras
+  try {
+    out.serieMensual = await require('./stelorder').getMonthlyBilling(6);
   } catch (e) {
-    console.error('[Asistente] IA error:', e.message);
-    return fallback;
-  }
-}
-
-// Resuelve a qué cliente/familia se refiere, mirando las listas reales del dataset.
-// Devuelve { scope:'cliente'|'familia'|null, target:string|null }
-async function resolver(texto, rawTarget, items) {
-  const clientes = [...new Set(items.map(i => i.client).filter(Boolean))];
-  const familias = [...new Set(items.map(i => i.family).filter(Boolean))];
-  const r = norm(rawTarget || texto);
-
-  // exacto
-  let mf = familias.filter(c => norm(c) === r);
-  if (mf.length === 1) return { scope: 'familia', target: mf[0] };
-  let mc = clientes.filter(c => norm(c) === r);
-  if (mc.length === 1) return { scope: 'cliente', target: mc[0] };
-
-  // contiene (en un sentido u otro)
-  mf = familias.filter(c => norm(c).includes(r) || r.includes(norm(c)));
-  mc = clientes.filter(c => norm(c).includes(r) || r.includes(norm(c)));
-  if (mf.length === 1 && mc.length === 0) return { scope: 'familia', target: mf[0] };
-  if (mc.length === 1 && mf.length === 0) return { scope: 'cliente', target: mc[0] };
-
-  // ambiguo o nada → IA sobre los candidatos
-  const union = [...new Set([...mf, ...mc])];
-  const cand = union.length ? union : [...familias, ...clientes];
-  const t = await elegirTarget(texto, cand);
-  if (!t) return { scope: null, target: null };
-  return { scope: familias.includes(t) ? 'familia' : 'cliente', target: t };
-}
-
-// ── Paginado genérico ─────────────────────────────────────────────
-function pintar(from, estado, desde) {
-  const { items, titulo, encabezado, fmt } = estado;
-  const trozo = items.slice(desde, desde + PAGINA);
-  const restantes = items.length - (desde + trozo.length);
-  let msg = desde === 0 ? `${encabezado}\n\n` : `📋 *${titulo}* (continuación)\n\n`;
-  msg += trozo.map(fmt).join('\n');
-  if (restantes > 0) msg += `\n\n…y ${restantes} más. Responde *"ver más"* para seguir.`;
-  ultima.set(from, { ...estado, mostradas: desde + trozo.length });
-  return msg;
-}
-
-// ── Handler: FACTURAS ─────────────────────────────────────────────
-async function handlerFacturas(texto, from, scope, rawTarget) {
-  let pend;
-  try { pend = await stel.getPendingInvoices(); }
-  catch (e) { console.error('[Asistente]', e.message); return '⚠️ No pude consultar StelOrder. Prueba en un momento.'; }
-  if (!pend || pend.length === 0) return '✅ No hay facturas pendientes ahora mismo.';
-
-  if (scope === 'general') {
-    const total = pend.reduce((s, i) => s + (i.pending || 0), 0);
-    const porCli = {};
-    pend.forEach(i => { const c = i.client || '(sin nombre)'; porCli[c] = (porCli[c] || 0) + (i.pending || 0); });
-    const rank = Object.entries(porCli).sort((a, b) => b[1] - a[1]);
-    const top = rank.slice(0, 8).map(([c, v]) => `• ${c} — *${fmtEur(v)}*`);
-    let msg = `💰 *Total pendiente: ${fmtEur(total)}*\n${pend.length} facturas · ${rank.length} clientes\n\n*Quién más debe:*\n${top.join('\n')}`;
-    if (rank.length > 8) msg += `\n…y ${rank.length - 8} clientes más.`;
-    msg += `\n\nPregúntame por uno, p. ej.: *"¿qué debe Illa Verda?"*`;
-    ultima.delete(from);
-    return msg;
+    out.serieMensual = [];
+    out.serieMensualError = e.message;
   }
 
-  const { scope: sc, target } = await resolver(texto, rawTarget, pend);
-  if (!target) return '🤔 No tengo claro de qué cliente me hablas. Prueba con el nombre, p. ej.: *"¿qué debe Illa Verda?"*';
-  const sel = pend.filter(i => norm(i[sc === 'familia' ? 'family' : 'client']) === norm(target))
-                  .sort((a, b) => (b.daysOverdue || 0) - (a.daysOverdue || 0));
-  if (!sel.length) return `✅ ${target} no tiene facturas pendientes.`;
-  const total = sel.reduce((s, i) => s + (i.pending || 0), 0);
-  return pintar(from, {
-    items: sel,
-    titulo: sc === 'familia' ? `Familia: ${target}` : target,
-    encabezado: `📋 *${sc === 'familia' ? 'Familia: ' + target : target}*\n💰 Pendiente: *${fmtEur(total)}* · ${sel.length} factura(s)`,
-    fmt: i => `• ${i.number} — *${fmtEur(i.pending)}*${i.daysOverdue ? ` · ${i.daysOverdue}d` : ''}`
-  }, 0);
-}
+  // 3) Pedidos de trabajo vivos por nivel de alerta
+  try {
+    const list = await getWorkOrdersLive();
+    let rojo = 0, ambar = 0;
+    for (const p of list) {
+      const lvl = p.alertLevel || (require('./stelorder').getWorkOrderAlertLevel
+        ? require('./stelorder').getWorkOrderAlertLevel(p) : null);
+      if (lvl === 'red' || lvl === 'rojo') rojo++;
+      else if (lvl === 'amber' || lvl === 'ambar') ambar++;
+    }
+    out.pedidos = { total: list.length, rojo, ambar };
+  } catch (e) { out.pedidos = { total: 0, rojo: 0, ambar: 0, error: e.message }; }
 
-// ── Handler: PRESUPUESTOS ─────────────────────────────────────────
-async function handlerPresupuestos(texto, from, scope, rawTarget) {
-  let s;
-  try { s = await stel.getEstimatesSummary(); }
-  catch (e) { console.error('[Asistente]', e.message); return '⚠️ No pude consultar los presupuestos. Prueba en un momento.'; }
+  // 4) Partes por estado (pendientes de revisar / de facturar)
+  try {
+    const { db } = await getDB();
+    const porRevisar = await db.collection('partes').countDocuments({ status: 'pendiente' });
+    const porFacturar = await db.collection('partes').countDocuments({ status: 'verificado' });
+    out.partes = { porRevisar, porFacturar };
+  } catch (e) { out.partes = { porRevisar: 0, porFacturar: 0, error: e.message }; }
 
-  if (scope === 'general') {
-    ultima.delete(from);
-    return `📊 *Presupuestos*\n\n` +
-      `✅ Aceptados: *${s.accepted.length}* (${fmtEur(s.totalAccepted)})\n` +
-      `⏳ Pendientes: *${s.pending.length}* (${fmtEur(s.totalPending)})\n` +
-      `📁 Cerrados: ${s.closed.length}\n` +
-      `❌ Rechazados: ${s.rejected.length}\n\n` +
-      `Pregúntame por un cliente, p. ej.: *"presupuestos de Illa Verda"*`;
+  // 5) Emails urgentes sin gestionar (excluye publicidad/spam)
+  try {
+    const { db } = await getDB();
+    const urgentes = await db.collection('emails').countDocuments({
+      estado: 'PENDIENTE', urgencia: 'ALTA', categoria: { $nin: ['PUBLICIDAD', 'SPAM'] }
+    });
+    const sinLeer = await db.collection('emails').countDocuments({
+      leido: false, categoria: { $nin: ['PUBLICIDAD', 'SPAM'] }
+    });
+    out.emails = { urgentes, sinLeer };
+  } catch (e) { out.emails = { urgentes: 0, sinLeer: 0, error: e.message }; }
+
+  // 6) Presencia de hoy (quién ha fichado)
+  try {
+    const { db } = await getDB();
+    const hoy = new Date().toISOString().slice(0, 10);
+    const presentes = await db.collection('attendance').countDocuments({ date: hoy });
+    out.presencia = { hoy: presentes };
+  } catch (e) { out.presencia = { hoy: null }; }
+
+  // 7) Planificación: lo de hoy y el conteo de esta semana
+  try {
+    const { getPlanning } = require('./planning');
+    const now = new Date();
+    const hoy = now.toISOString().slice(0, 10);
+    // lunes..domingo de la semana actual
+    const dow = (now.getDay() + 6) % 7;
+    const lunes = new Date(now); lunes.setDate(now.getDate() - dow);
+    const domingo = new Date(lunes); domingo.setDate(lunes.getDate() + 6);
+    const fmt = d => d.toISOString().slice(0, 10);
+    const semana = await getPlanning(fmt(lunes), fmt(domingo));
+    out.planning = {
+      hoy: semana.filter(p => p.date === hoy).map(p => ({
+        workerName: p.workerName, color: p.color, client: p.client,
+        tipo: p.tipo, horaInicio: p.horaInicio, workOrderNumber: p.workOrderNumber
+      })),
+      semanaTotal: semana.length
+    };
+  } catch (e) { out.planning = { hoy: [], semanaTotal: 0 }; }
+
+  res.json(out);
+});
+app.get('/api/invoices/pending',   requireAuth, async (req,res) => res.json(await getPendingInvoices()));
+app.get('/api/invoices',           requireAuth, async (req,res) => res.json(await getInvoices()));
+app.get('/api/clients',            requireAuth, async (req,res) => { const {clients} = await getClients(); res.json(clients); });
+app.get('/api/estimates',          requireAuth, async (req,res) => res.json(await getEstimatesSummary()));
+app.get('/api/families',           requireAuth, async (req,res) => res.json(await getFamiliesSummary()));
+app.get('/api/families/list',      requireAuth, async (req,res) => { const {list} = await getAccountCategories(); res.json(list); });
+
+// Vaciar la caché de StelOrder bajo demanda (botón "Actualizar" del dashboard)
+app.post('/api/stelorder/refresh', requireAuth, (req,res) => { clearCache(); res.json({ ok:true, message:'Datos actualizados desde StelOrder' }); });
+
+// ── Responsables por familia (a quién van los avisos de cada familia) ──
+const avisos = require('./avisos');
+
+app.get('/api/family-contacts', requireAuth, async (req, res) => {
+  try {
+    const { list } = await getAccountCategories();
+    const map = await avisos.getFamilyContactMap();
+    const names = (list || []).map(f => f.name).filter(Boolean);
+    if (!names.includes('Sin familia')) names.push('Sin familia');
+    res.json(names.map(name => {
+      const c = map[name] || {};
+      return {
+        family: name,
+        email:  c.email || '',
+        paused: !!c.paused,
+        freq:   c.freq   || 'manual',
+        format: c.format || 'grouped'
+      };
+    }));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/family-contacts', requireAuth, async (req, res) => {
+  try {
+    const { family, email, paused, freq, format, modo } = req.body;
+    if (!family) return res.status(400).json({ error: 'Falta la familia' });
+    const saved = await avisos.setFamilyContact(family, { email, paused, freq, format, modo });
+    res.json(saved);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Pausa global de avisos (interruptor de emergencia)
+app.get('/api/avisos-status', requireAuth, async (req, res) => {
+  try { res.json({ globalPaused: await avisos.isGlobalPaused() }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/avisos-status', requireAuth, async (req, res) => {
+  try { res.json({ globalPaused: await avisos.setGlobalPaused(!!req.body.paused) }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Enviar la factura OFICIAL por StelOrder (sendDocument). Prueba controlada.
+// Acepta { number, email } o { invoiceId, email }.
+app.post('/api/invoice/send-official', requireAuth, async (req, res) => {
+  try {
+    const { number, invoiceId, email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Falta el email de destino' });
+    let id = invoiceId;
+    if (!id && number) id = await findInvoiceIdByNumber(number);
+    if (!id) return res.status(404).json({ error: `No se encontró la factura ${number || ''}`.trim() });
+    const r = await sendInvoiceByEmail(id, email);
+    res.json({ message: `✓ StelOrder envió la factura (ID ${id}) a ${email}`, ...r });
+  } catch (err) {
+    const status = err.response?.status;
+    const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+    res.status(500).json({ error: `StelOrder respondió ${status || ''}: ${detail}`.trim() });
   }
+});
 
-  const { scope: sc, target } = await resolver(texto, rawTarget, s.all);
-  if (!target) return '🤔 No tengo claro de qué cliente me hablas para los presupuestos.';
-  const sel = (s.all || []).filter(i => norm(i[sc === 'familia' ? 'family' : 'client']) === norm(target))
-                           .sort((a, b) => (b.daysOld || 0) - (a.daysOld || 0));
-  if (!sel.length) return `No encuentro presupuestos de ${target}.`;
-  return pintar(from, {
-    items: sel,
-    titulo: `Presupuestos — ${target}`,
-    encabezado: `📊 *Presupuestos — ${target}*\n${sel.length} presupuesto(s)`,
-    fmt: i => `• ${i.ref || i.number} — ${i.stateLabel} — *${fmtEur(i.total)}*`
-  }, 0);
-}
-
-// ── Handler: PEDIDOS (trabajos abiertos) ──────────────────────────
-async function handlerPedidos(texto, from, scope, rawTarget) {
-  let live;
-  try { live = await stel.getWorkOrdersLive(); }
-  catch (e) { console.error('[Asistente]', e.message); return '⚠️ No pude consultar los pedidos. Prueba en un momento.'; }
-  if (!live || live.length === 0) return '✅ No hay pedidos de trabajo abiertos ahora mismo.';
-
-  if (scope === 'general') {
-    const ordenados = [...live].sort((a, b) => (b.days || 0) - (a.days || 0));
-    return pintar(from, {
-      items: ordenados,
-      titulo: 'Pedidos abiertos',
-      encabezado: `🔧 *Pedidos de trabajo abiertos: ${live.length}*`,
-      fmt: i => `• ${i.number} — ${i.client} · ${i.days || 0}d`
-    }, 0);
+// DEBUG genérico: vuelca factura/incidencia/pedido por su referencia (FAC/INC/PDT).
+app.post('/api/debug/raw', requireAuth, async (req, res) => {
+  try {
+    const { ref } = req.body;
+    if (!ref) return res.status(400).json({ error: 'Falta la referencia (FAC.../INC.../PDT...)' });
+    const data = await getEntityRawByRef(ref);
+    res.json({ ref, data });
+  } catch (err) {
+    const status = err.response?.status;
+    const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+    res.status(500).json({ error: `${err.message || ''} ${status ? '(StelOrder '+status+')' : ''}`.trim() });
   }
+});
 
-  const { scope: sc, target } = await resolver(texto, rawTarget, live);
-  if (!target) return '🤔 No tengo claro de qué cliente me hablas para los pedidos.';
-  const sel = live.filter(i => norm(i[sc === 'familia' ? 'family' : 'client']) === norm(target))
-                  .sort((a, b) => (b.days || 0) - (a.days || 0));
-  if (!sel.length) return `✅ ${target} no tiene pedidos de trabajo abiertos.`;
-  return pintar(from, {
-    items: sel,
-    titulo: `Pedidos — ${target}`,
-    encabezado: `🔧 *Pedidos abiertos — ${target}*\n${sel.length} pedido(s)`,
-    fmt: i => `• ${i.number} — ${i.days || 0}d${i.state ? ` (${i.state})` : ''}`
-  }, 0);
-}
-
-// ── Punto de entrada ──────────────────────────────────────────────
-async function responderConsulta(texto, from = 'anon') {
-  // 1) "ver más"
-  if (esVerMas(texto)) {
-    const prev = ultima.get(from);
-    if (prev && prev.mostradas < prev.items.length) return pintar(from, prev, prev.mostradas);
-    return 'No tengo nada más que mostrar 🙂 Pregúntame por un cliente, p. ej.: *"¿qué debe Illa Verda?"*';
+// PEDIDOS DE TRABAJO vivos (Pendiente / En curso) con días y nivel de alerta.
+app.get('/api/workorders/live', requireAuth, async (req, res) => {
+  try {
+    const list = await getWorkOrdersLive();
+    await require('./asignaciones').attachAssignments(list);
+    res.json({ list, count: list.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
+});
 
-  // 2) Enrutador: ¿qué tipo de pregunta es?
-  const { intent, scope, rawTarget } = await clasificar(texto);
+// Usuarios asignables (activos) para el desplegable de asignación.
+app.get('/api/workorders/assignable-users', requireAuth, async (req, res) => {
+  try {
+    const { getUsers } = require('./users');
+    const all = await getUsers(false); // solo activos
+    res.json({ users: all.map(u => ({ id: String(u._id), name: u.name, role: u.role, color: u.color || '#6b7280' })) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-  if (intent === 'facturas')     return handlerFacturas(texto, from, scope, rawTarget);
-  if (intent === 'presupuestos') return handlerPresupuestos(texto, from, scope, rawTarget);
-  if (intent === 'pedidos')      return handlerPedidos(texto, from, scope, rawTarget);
+// Asignar / desasignar un pedido a un trabajador (userId vacío = desasignar).
+app.put('/api/workorders/assign', requireAuth, async (req, res) => {
+  try {
+    const { workOrderId, userId, priority } = req.body;
+    const r = await require('./asignaciones').setAssignment(workOrderId, userId || null, req.user?.username || null, priority);
+    res.json(r);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
 
-  // 3) No encaja → ayuda
-  return `👋 Puedo ayudarte con:\n\n` +
-    `💰 *Facturas pendientes* — "¿qué debe Illa Verda?" · "cuánto me deben en total"\n` +
-    `📊 *Presupuestos* — "cómo vamos de presupuestos" · "presupuestos de Cinc"\n` +
-    `🔧 *Pedidos de trabajo* — "cuántos pedidos tenemos" · "pedidos de Illa Verda"`;
-}
+// Validar sesión de trabajador guardada (para no pedir PIN cada vez).
+app.get('/api/partes/worker-session', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'Sin sesión' });
+    const { verifyWorkerToken } = require('./partes');
+    const w = await verifyWorkerToken(token);
+    if (!w) return res.status(401).json({ error: 'Sesión caducada' });
+    res.json({ workerId: w.workerId, workerName: w.workerName });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
-module.exports = { responderConsulta };
+// Interruptor de escritura en StelOrder (Fase 4).
+app.get('/api/workorders/stelwrite', requireAuth, async (req, res) => {
+  try { res.json({ enabled: await avisos.isStelWriteEnabled() }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.put('/api/workorders/stelwrite', requireAuth, async (req, res) => {
+  try { res.json({ enabled: await avisos.setStelWriteEnabled(!!req.body.enabled) }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// FASE 4 (prueba controlada): cambiar el estado de UN pedido en StelOrder.
+// Lee→backup→escribe→relee→compara. Devuelve el informe de verificación.
+app.post('/api/workorders/:id/stel-state', requireAuth, async (req, res) => {
+  try {
+    const { stateId } = req.body;
+    if (!stateId) return res.status(400).json({ error: 'Falta stateId' });
+    const { setWorkOrderState } = require('./stelorder');
+    const r = await setWorkOrderState(req.params.id, stateId, req.user?.username || 'admin');
+    res.json(r);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// MIS PEDIDOS (para el trabajador en parte.html, con su token w_).
+app.get('/api/workorders/mine', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'No autorizado' });
+    const { verifyWorkerToken } = require('./partes');
+    const workerDoc = await verifyWorkerToken(token);
+    if (!workerDoc) return res.status(401).json({ error: 'Token expirado' });
+
+    const asig = require('./asignaciones');
+    const list = await getWorkOrdersLive();
+    await asig.attachAssignments(list);
+    const mine = list.filter(p => String(p.assignedUserId || '') === String(workerDoc.workerId) && p.workStatus !== 'done' && p.workStatus !== 'invoiced');
+    // Adjuntar la sesión abierta (cronómetro) de cada pedido, si la hay
+    const open = await asig.getOpenTimers(workerDoc.workerId);
+    mine.forEach(p => { p.activeStartedAt = open[String(p.id)] || null; });
+    res.json({ list: mine, count: mine.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// INICIAR trabajo en un pedido (trabajador). Guarda hora de inicio en servidor.
+app.post('/api/workorders/:id/start', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'No autorizado' });
+    const { verifyWorkerToken } = require('./partes');
+    const workerDoc = await verifyWorkerToken(token);
+    if (!workerDoc) return res.status(401).json({ error: 'Token expirado' });
+    const r = await require('./asignaciones').startWork(req.params.id, workerDoc.workerId, workerDoc.workerName);
+
+    // Fase 4: reflejar "En curso" en StelOrder (si el interruptor está activo y es un inicio nuevo)
+    if (!r.alreadyRunning) {
+      try {
+        if (await require('./avisos').isStelWriteEnabled()) {
+          await require('./stelorder').setWorkOrderStateLight(req.params.id, 1120645, `start:${workerDoc.workerName || workerDoc.workerId}`);
+        }
+      } catch (e) { console.warn('[Fase4] start→En curso:', e.message); }
+    }
+    res.json(r);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// FINALIZAR trabajo en un pedido (trabajador). Devuelve la duración real.
+app.post('/api/workorders/:id/finish', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'No autorizado' });
+    const { verifyWorkerToken } = require('./partes');
+    const workerDoc = await verifyWorkerToken(token);
+    if (!workerDoc) return res.status(401).json({ error: 'Token expirado' });
+    const r = await require('./asignaciones').finishWork(req.params.id, workerDoc.workerId);
+    res.json(r);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Estado de pausa de los avisos de pedidos.
+app.get('/api/workorders/alert-status', requireAuth, async (req, res) => {
+  try { res.json({ paused: await avisos.isPedidosPaused() }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Cambiar pausa de los avisos de pedidos.
+app.put('/api/workorders/alert-status', requireAuth, async (req, res) => {
+  try { res.json({ paused: await avisos.setPedidosPaused(!!req.body.paused) }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Enviar AHORA el resumen de pedidos (ignora la pausa). Opcional { email }.
+app.post('/api/workorders/send-now', requireAuth, async (req, res) => {
+  try {
+    const r = await sendWorkOrdersAlert({ force: true, to: req.body.email || null });
+    if (r.error) throw new Error(r.error);
+    if (!r.count) return res.json({ message: 'No hay pedidos en rojo/ámbar ahora mismo.' });
+    res.json({ message: `✓ Aviso enviado a ${r.to} (${r.count} pedidos)`, ...r });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// DEBUG: volcar el objeto crudo de una factura por su número.
+app.post('/api/invoice/raw', requireAuth, async (req, res) => {
+  try {
+    const { number, invoiceId } = req.body;
+    let id = invoiceId;
+    if (!id && number) id = await findInvoiceIdByNumber(number);
+    if (!id) return res.status(404).json({ error: `No se encontró la factura ${number || ''}`.trim() });
+    const data = await getInvoiceRaw(id);
+    res.json({ id, data });
+  } catch (err) {
+    const status = err.response?.status;
+    const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+    res.status(500).json({ error: `StelOrder respondió ${status || ''}: ${detail}`.trim() });
+  }
+});
+
+// Enviar AHORA un resumen agrupado a cada familia con responsable
+app.post('/api/send-family-summaries', requireAuth, async (req, res) => {
+  try {
+    const r = await sendManual('grouped');
+    const message = r.paused
+      ? '⏸ Envíos en pausa global — no se ha enviado nada.'
+      : `Resúmenes enviados: ${r.sent} · omitidos: ${r.skipped}`;
+    res.json({ message, ...r });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Enviar AHORA las facturas una a una (individual) a cada familia con responsable
+app.post('/api/send-family-individual', requireAuth, async (req, res) => {
+  try {
+    const r = await sendManual('individual');
+    const message = r.paused
+      ? '⏸ Envíos en pausa global — no se ha enviado nada.'
+      : `Familias avisadas (individual): ${r.sent} · omitidas: ${r.skipped}`;
+    res.json({ message, ...r });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Previsualizar el resumen agrupado: se envía SOLO al email indicado, ignora pausa.
+app.post('/api/avisos/preview', requireAuth, async (req, res) => {
+  try {
+    const { email, family } = req.body;
+    if (!email) return res.status(400).json({ error: 'Falta el email' });
+    const r = await previewToEmail(email, family);
+    res.json({ message: `✓ Previsualización (${r.family}, ${r.count} fra.) enviada a ${r.to}`, ...r });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/invoices/by-family/:family', requireAuth, async (req, res) => {
+  const pending = await getPendingInvoices();
+  const all     = await getInvoices();
+  const fam     = decodeURIComponent(req.params.family);
+  res.json({
+    pending: pending.filter(i => i.family === fam),
+    all:     all.filter(i => i.family === fam)
+  });
+});
+
+// ── Banco ─────────────────────────────────────────────────────────
+app.post('/api/bank/upload', requireAuth, upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
+  const metaPath = path.join(UPLOADS_DIR, 'latest.json');
+  fs.writeFileSync(metaPath, JSON.stringify({
+    filename: req.file.filename, originalname: req.file.originalname,
+    uploadedAt: new Date().toISOString(), size: req.file.size
+  }));
+  res.json({ message: 'Fichero subido correctamente.', filename: req.file.filename });
+});
+
+app.get('/api/bank/info', requireAuth, (req, res) => {
+  const metaPath = path.join(UPLOADS_DIR, 'latest.json');
+  if (!fs.existsSync(metaPath)) return res.json({ uploaded: false });
+  res.json({ uploaded: true, ...JSON.parse(fs.readFileSync(metaPath, 'utf8')) });
+});
+
+// ── Notificaciones ────────────────────────────────────────────────
+app.post('/api/check-alerts',      requireAuth, (req,res) => { checkPendingInvoices().catch(console.error); res.json({message:'Revisión iniciada.'}); });
+app.post('/api/send-summary',      requireAuth, (req,res) => { runDailySummary().catch(console.error); res.json({message:'Resumen enviado.'}); });
+app.post('/api/test-notification', requireAuth, async (req,res) => {
+  const { type } = req.body;
+  const msg = `✅ *Test Corp Projects*\nSistema OK.\n📅 ${new Date().toLocaleString('es-ES')}`;
+  if (type==='whatsapp'||!type) await sendWhatsApp(msg);
+  if (type==='email'||!type) await sendEmail({ to:process.env.EMAIL_ADMIN, subject:'✅ Test', html:`<p>${msg}</p>`, text:msg });
+  res.json({ message:'Notificación enviada.' });
+});
+
+// ── PRESENCIA ─────────────────────────────────────────────────────
+const attendance = require('./attendance');
+
+// PLANIFICACIÓN (agenda de lo previsto) ──────────────────────────
+app.get('/api/planning', requireAuth, async (req, res) => {
+  try {
+    const { getPlanning } = require('./planning');
+    res.json({ items: await getPlanning(req.query.from, req.query.to) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/planning', requireAuth, async (req, res) => {
+  try {
+    const { createPlanning } = require('./planning');
+    res.json(await createPlanning(req.body || {}));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.put('/api/planning/:id', requireAuth, async (req, res) => {
+  try {
+    const { updatePlanning } = require('./planning');
+    res.json(await updatePlanning(req.params.id, req.body || {}));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.delete('/api/planning/:id', requireAuth, async (req, res) => {
+  try {
+    const { deletePlanning } = require('./planning');
+    res.json(await deletePlanning(req.params.id));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// ── GOOGLE CALENDAR (diagnóstico) ─────────────────────────────────
+// Solo lectura: confirma el permiso del token y lista los calendarios + sus IDs.
+app.get('/api/calendar/diag', requireAuth, async (req, res) => {
+  try {
+    res.json(await calendarSync.diagnose());
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Sondeo manual ("sincronizar ahora"): trae de Google los cambios.
+app.post('/api/calendar/pull', requireAuth, async (req, res) => {
+  try {
+    res.json(await calendarSync.pullChanges());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── LOG DE ACTIVIDAD DE STELORDER ─────────────────────────────────
+app.get('/api/activity', requireAuth, async (req, res) => {
+  try {
+    res.json({ items: await activity.getLog({ type: req.query.type || null, limit: parseInt(req.query.limit || '200', 10) }) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/activity/scan', requireAuth, async (req, res) => {
+  try {
+    res.json(await activity.scan());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/activity/reset', requireAuth, async (req, res) => {
+  try {
+    res.json(await activity.reset());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/estados',  requireAuth, (req, res) => res.json(attendance.ESTADOS));
+
+app.post('/api/attendance', requireAuth, async (req, res) => {
+  try {
+    const result = await attendance.saveAttendance(req.body);
+    res.json({ ok: true, result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/attendance/:workerId/:date', requireAuth, async (req, res) => {
+  try {
+    await attendance.deleteAttendance(req.params.workerId, req.params.date);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/attendance', requireAuth, async (req, res) => {
+  try {
+    const { workerId, from, to, clientName } = req.query;
+    const data = await attendance.getAttendance({ workerId, from, to, clientName });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/attendance/summary/:year/:month', requireAuth, async (req, res) => {
+  try {
+    const { getMonthlySummary, buildClientSummary } = require('./attendance');
+    const summary = await getMonthlySummary(
+      parseInt(req.params.year),
+      parseInt(req.params.month)
+    );
+    summary.clientSummary = buildClientSummary(summary.byWorker);
+    res.json(summary);
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/attendance/client', requireAuth, async (req, res) => {
+  try {
+    const { clientName, from, to } = req.query;
+    const data = await attendance.getClientExtract(clientName, from, to);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── USUARIOS ──────────────────────────────────────────────────────
+const users = require('./users');
+
+users.initDefaultUsers().catch(err => console.error('[Users] Error init:', err.message));
+
+app.post('/api/users/login', async (req, res) => {
+  try {
+    const { pin } = req.body;
+    if (!pin) return res.status(400).json({ error: 'PIN requerido' });
+    const result = await users.loginWithPin(pin);
+    res.json(result);
+  } catch (err) {
+    res.status(401).json({ error: err.message });
+  }
+});
+
+app.post('/api/users/logout', async (req, res) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (token) await users.logout(token).catch(() => {});
+  res.json({ ok: true });
+});
+
+app.get('/api/users/me', async (req, res) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'No autorizado' });
+  try {
+    if (!token.startsWith('u_')) {
+      const jwt = require('jsonwebtoken');
+      jwt.verify(token, JWT_SECRET);
+      return res.json({ role: 'admin', userName: 'Admin' });
+    }
+    const session = await users.verifyUserToken(token);
+    if (!session) return res.status(401).json({ error: 'Sesión expirada' });
+    res.json({ role: session.userRole, userName: session.userName, userId: session.userId });
+  } catch (err) {
+    res.status(401).json({ error: 'Token inválido' });
+  }
+});
+
+app.get('/api/users', requireAuth, async (req, res) => {
+  try {
+    const list = await users.getUsers(true);
+    res.json(list.map(u => ({ ...u, pin: '••••' })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/users/:id', requireAuth, async (req, res) => {
+  try {
+    const u = await users.getUser(req.params.id);
+    if (!u) return res.status(404).json({ error: 'Usuario no encontrado' });
+    res.json(u);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/users', requireAuth, async (req, res) => {
+  try {
+    const user = await users.createUser(req.body);
+    res.json({ ok: true, user });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.put('/api/users/:id', requireAuth, async (req, res) => {
+  try {
+    await users.updateUser(req.params.id, req.body);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/users/:id', requireAuth, async (req, res) => {
+  try {
+    await users.deactivateUser(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/roles', requireAuth, (req, res) => res.json(users.ROLES));
+
+// ── OBRAS ─────────────────────────────────────────────────────────
+const obras = require('./obras');
+
+app.get('/api/obras', requireAuth, async (req, res) => {
+  try {
+    const { clientName, status, search } = req.query;
+    res.json(await obras.getObras({ clientName, status, search }));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/obras/resumen', requireAuth, async (req, res) => {
+  try { res.json(await obras.getResumenGeneral()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/obras/:id', requireAuth, async (req, res) => {
+  try { res.json(await obras.getObra(req.params.id)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/obras/:id/rentabilidad', requireAuth, async (req, res) => {
+  try { res.json(await obras.getRentabilidad(req.params.id)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/obras', requireAuth, async (req, res) => {
+  try {
+    const obra = await obras.createObra(req.body);
+    res.json({ ok: true, obra });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.put('/api/obras/:id', requireAuth, async (req, res) => {
+  try {
+    await obras.updateObra(req.params.id, req.body);
+    res.json({ ok: true });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// ── PARTES DE TRABAJO ─────────────────────────────────────────────
+const partes = require('./partes');
+
+app.post('/api/partes/worker-login', async (req, res) => {
+  try {
+    const { workerId, pin } = req.body;
+    const { getUsers } = require('./users');
+    const allUsers = await getUsers(false);
+    const user = allUsers.find(u => String(u._id) === workerId || u.id === workerId);
+    if (user && user.pin === pin) {
+      const crypto = require('crypto');
+      const token = `w_${crypto.randomBytes(16).toString('hex')}`;
+      const { db, client } = await getDB();
+      await db.collection('worker_tokens').insertOne({
+        token,
+        workerId: String(user._id),
+        workerName: user.name,
+        workerRole: user.role,
+        createdAt: new Date(),
+        expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000)
+      });
+      await client.close();
+      return res.json({ token, workerId: String(user._id), workerName: user.name });
+    }
+    const result = await partes.workerLogin(workerId, pin);
+    res.json(result);
+  } catch (err) {
+    res.status(401).json({ error: 'PIN incorrecto' });
+  }
+});
+
+app.get('/api/partes/workers', async (req, res) => {
+  try {
+    const { getUsers } = require('./users');
+    const allUsers = await getUsers(false);
+    const techs = allUsers.filter(u => u.role === 'tech' || u.role === 'office');
+    if (techs.length > 0) {
+      res.json(techs.map(u => ({ id: String(u._id), name: u.name, color: u.color || '#4d9cf8', role: u.role, costeHora: u.costeHora || 15 })));
+    } else {
+      res.json(partes.WORKERS.map(w => ({ id: w.id, name: w.name, color: '#4d9cf8', costeHora: w.costeHora || 15 })));
+    }
+  } catch(err) {
+    res.json(partes.WORKERS.map(w => ({ id: w.id, name: w.name, color: '#4d9cf8', costeHora: w.costeHora || 15 })));
+  }
+});
+
+app.post('/api/partes', uploadMemory.any(), async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    let workerInfo;
+
+    if (authHeader.startsWith('Bearer w_')) {
+      const token = authHeader.replace('Bearer ', '');
+      const workerDoc = await partes.verifyWorkerToken(token);
+      if (!workerDoc) return res.status(401).json({ error: 'Token expirado' });
+      workerInfo = { workerId: workerDoc.workerId, workerName: workerDoc.workerName, role: 'worker', ip: req.ip, userAgent: req.headers['user-agent'] };
+    } else {
+      const token = authHeader.replace('Bearer ', '');
+      jwt.verify(token, JWT_SECRET);
+      const bodyData = req.body.data ? JSON.parse(req.body.data) : req.body;
+      const worker = partes.WORKERS.find(w => w.id === bodyData.workerId);
+      workerInfo = { workerId: bodyData.workerId || 'admin', workerName: bodyData.workerName || worker?.name || 'Admin', role: 'admin', ip: req.ip, userAgent: req.headers['user-agent'] };
+    }
+
+    const bodyData = req.body.data ? JSON.parse(req.body.data) : req.body;
+    const fotosTrabajo = [];
+    const fotosAlbaran = [];
+    if (req.files && req.files.length > 0) {
+      req.files.forEach(f => {
+        const b64 = `data:${f.mimetype};base64,${f.buffer.toString('base64')}`;
+        if (f.fieldname.startsWith('foto_trabajo')) fotosTrabajo.push(b64);
+        if (f.fieldname.startsWith('foto_albaran')) fotosAlbaran.push(b64);
+      });
+    }
+    bodyData.fotosTrabajo = fotosTrabajo;
+    bodyData.fotosAlbaran = fotosAlbaran;
+
+    const parte = await partes.createParte(bodyData, workerInfo);
+
+    // Cierre del ciclo pedido→parte (3C)
+    if (bodyData.workOrderId) {
+      try {
+        await require('./asignaciones').recordParteResult(bodyData.workOrderId, {
+          workerId: workerInfo.workerId, parteId: String(parte._id || parte.id),
+          estadoTrabajo: bodyData.estadoTrabajo || 'completado'
+        });
+      } catch (e) { console.warn('[Partes] recordParteResult:', e.message); }
+    }
+
+    // Reflejar la presencia del trabajador ese día a partir del parte
+    // (no rompe el envío del parte si algo falla).
+    try { await attendance.syncPresenceFromParte(parte); }
+    catch (e) { console.warn('[Partes] syncPresenceFromParte:', e.message); }
+
+    res.json({ ok: true, id: parte.id });
+  } catch (err) {
+    console.error('[Partes] Error create:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/partes', requireAuth, async (req, res) => {
+  try {
+    const { workerId, clientName, status, from, to, limit, skip } = req.query;
+    const data = await partes.getPartes({ workerId, clientName, status, from, to, limit: parseInt(limit||50), skip: parseInt(skip||0) });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/partes/:id', requireAuth, async (req, res) => {
+  try { res.json(await partes.getParte(req.params.id)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/partes/:id', requireAuth, async (req, res) => {
+  try {
+    await partes.updateParte(req.params.id, req.body, 'admin');
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/partes/:id', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    await db.collection('partes').deleteOne({ _id: new ObjectId(req.params.id) });
+    await client.close();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/partes/resumen/facturacion', requireAuth, async (req, res) => {
+  try {
+    const { from, to, clientName } = req.query;
+    res.json(await partes.getResumenFacturacion({ from, to, clientName }));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/clients/list', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.replace('Bearer ', '');
+    let valid = false;
+    if (token.startsWith('w_') || token.startsWith('u_')) {
+      const { verifyWorkerToken } = require('./partes');
+      const { verifyUserToken } = require('./users');
+      const w = token.startsWith('w_') ? await verifyWorkerToken(token) : await verifyUserToken(token);
+      valid = !!w;
+    } else {
+      try { jwt.verify(token, JWT_SECRET); valid = true; } catch(e) {}
+    }
+    if (!valid) return res.status(401).json({ error: 'No autorizado' });
+    const { clients } = await getClients();
+    const names = [...new Set(clients.map(c => c['legal-name']||c['fiscal-name']||'').filter(n=>n))].sort();
+    res.json(names);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── ASIGNACIONES, EXTERNOS Y EXPEDIENTES ─────────────────────────
+const expedientes = require('./expedientes');
+
+app.get('/api/externos', async (req, res) => {
+  try {
+    // Lectura permitida a admin (JWT) o trabajador (token de parte)
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'No autorizado' });
+    let ok = false;
+    try { jwt.verify(token, JWT_SECRET); ok = true; } catch {}
+    if (!ok) { const w = await partes.verifyWorkerToken(token); ok = !!w; }
+    if (!ok) return res.status(401).json({ error: 'No autorizado' });
+    res.json(await expedientes.getExternos());
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/externos', requireAuth, async (req, res) => {
+  try { res.json(await expedientes.createExterno(req.body)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.put('/api/externos/:id', requireAuth, async (req, res) => {
+  try { await expedientes.updateExterno(req.params.id, req.body); res.json({ ok: true }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.delete('/api/externos/:id', requireAuth, async (req, res) => {
+  try { await expedientes.deleteExterno(req.params.id); res.json({ ok: true }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/asignaciones', requireAuth, async (req, res) => {
+  try {
+    const { fecha, workerId } = req.query;
+    res.json(await expedientes.getAsignaciones({ fecha, workerId }));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/asignaciones/dia/:fecha', requireAuth, async (req, res) => {
+  try { res.json(await expedientes.getAsignacionesDelDia(req.params.fecha)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/asignaciones/worker/:workerId', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'No autorizado' });
+    const { verifyWorkerToken } = require('./partes');
+    const { verifyUserToken } = require('./users');
+    let valid = false;
+    if (token.startsWith('w_')) { valid = !!(await verifyWorkerToken(token)); }
+    else if (token.startsWith('u_')) { valid = !!(await verifyUserToken(token)); }
+    else { try { jwt.verify(token, JWT_SECRET); valid = true; } catch(e){} }
+    if (!valid) return res.status(401).json({ error: 'No autorizado' });
+    const fecha = req.query.fecha || new Date().toISOString().slice(0, 10);
+    res.json(await expedientes.getAsignacionesWorker(req.params.workerId, fecha));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/asignaciones', requireAuth, async (req, res) => {
+  try { res.json(await expedientes.createAsignacion(req.body)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.put('/api/asignaciones/:id', requireAuth, async (req, res) => {
+  try { await expedientes.updateAsignacion(req.params.id, req.body); res.json({ ok: true }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.delete('/api/asignaciones/:id', requireAuth, async (req, res) => {
+  try { await expedientes.deleteAsignacion(req.params.id); res.json({ ok: true }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/expedientes', requireAuth, async (req, res) => {
+  try {
+    const { estado, clientName } = req.query;
+    res.json(await expedientes.getExpedientes({ estado, clientName }));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/expedientes/:id', requireAuth, async (req, res) => {
+  try { res.json(await expedientes.getExpediente(req.params.id)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/expedientes', requireAuth, async (req, res) => {
+  try { res.json(await expedientes.createExpediente(req.body)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.put('/api/expedientes/:id', requireAuth, async (req, res) => {
+  try { await expedientes.updateExpediente(req.params.id, req.body); res.json({ ok: true }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.post('/api/expedientes/:id/cerrar', requireAuth, async (req, res) => {
+  try {
+    await expedientes.updateExpediente(req.params.id, { estado: 'COMPLETADO' });
+    const exp = await expedientes.getExpediente(req.params.id);
+    const totalHoras = await expedientes.recalcularHorasExpediente(req.params.id);
+    res.json({ ok: true, totalHoras, partes: exp.partes.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/partes/confirmar', uploadMemory.any(), async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'No autorizado' });
+    const workerDoc = await partes.verifyWorkerToken(token);
+    if (!workerDoc) return res.status(401).json({ error: 'Token expirado' });
+
+    const workerInfo = {
+      workerId: workerDoc.workerId,
+      workerName: workerDoc.workerName,
+      role: 'worker',
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    };
+
+    // El formulario envía multipart/form-data: los datos del parte van en el
+    // campo 'data' (JSON) y las fotos como ficheros. Antes se leía req.body
+    // directamente (sin multer) y llegaba VACÍO, por eso el parte salía sin
+    // cliente, con 8 h por defecto y sin descripción, fotos ni GPS.
+    const bodyData = req.body.data ? JSON.parse(req.body.data) : req.body;
+    const fotosTrabajo = [];
+    const fotosAlbaran = [];
+    if (req.files && req.files.length > 0) {
+      req.files.forEach(f => {
+        const b64 = `data:${f.mimetype};base64,${f.buffer.toString('base64')}`;
+        if (f.fieldname.startsWith('foto_trabajo')) fotosTrabajo.push(b64);
+        if (f.fieldname.startsWith('foto_albaran')) fotosAlbaran.push(b64);
+      });
+    }
+    bodyData.fotosTrabajo = fotosTrabajo;
+    bodyData.fotosAlbaran = fotosAlbaran;
+
+    const parte = await partes.createParte(bodyData, workerInfo);
+
+    // Cierre del ciclo pedido→parte (3C)
+    if (bodyData.workOrderId) {
+      try {
+        await require('./asignaciones').recordParteResult(bodyData.workOrderId, {
+          workerId: workerInfo.workerId, parteId: String(parte._id || parte.id),
+          estadoTrabajo: bodyData.estadoTrabajo || 'completado'
+        });
+      } catch (e) { console.warn('[Partes] recordParteResult:', e.message); }
+    }
+
+    // Reflejar la presencia del trabajador ese día (multi-obra). Lo hace el
+    // servidor para que se acumulen varias obras; el formulario ya no sincroniza.
+    try { await attendance.syncPresenceFromParte(parte); }
+    catch (e) { console.warn('[Partes] syncPresenceFromParte:', e.message); }
+
+    const equipo = bodyData.equipo || [];
+    let partesGenerados = [];
+    if (equipo.length > 1) {
+      partesGenerados = await expedientes.generarPartesEquipo(parte, equipo);
+    }
+
+    let expedienteId = null;
+    if (bodyData.estadoTrabajo === 'continua' || bodyData.estadoTrabajo === 'parcial' || bodyData.expedienteId) {
+      expedienteId = await expedientes.vincularOCrearExpediente(
+        String(parte._id),
+        parte.clientName,
+        parte.description,
+        bodyData.expedienteId || null
+      );
+      if (expedienteId && partesGenerados.length > 0) {
+        const { db, client } = await sharedDb.getDBLegacy();
+        for (const pg of partesGenerados) {
+          await db.collection('partes').updateOne(
+            { _id: pg.id },
+            { $set: { expedienteId } }
+          );
+        }
+        await client.close();
+      }
+    }
+
+    res.json({
+      ok: true,
+      parteId: String(parte._id),
+      partesGenerados: partesGenerados.length,
+      expedienteId
+    });
+  } catch (err) {
+    console.error('[Partes] Error confirmar:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── EMAILS INTELIGENTES ───────────────────────────────────────────
+const { pollEmails, enviarRespuesta } = require('./email-intelligence');
+
+// Mapa comunidad → gestor (aprendido pasivamente de las respuestas a avisos).
+app.get('/api/managers', requireAuth, async (req, res) => {
+  try { res.json({ managers: await require('./gestores').getManagers() }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.put('/api/managers/:id', requireAuth, async (req, res) => {
+  try { res.json(await require('./gestores').setConfirmed(req.params.id, !!req.body.confirmed)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.delete('/api/managers/:id', requireAuth, async (req, res) => {
+  try { res.json(await require('./gestores').removeManager(req.params.id)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Adjuntos de un email: listar (en vivo desde Gmail, vale para emails antiguos).
+app.get('/api/emails/:id/attachments', requireAuth, async (req, res) => {
+  try {
+    const { db } = await require('./db').getDBLegacy();
+    const { ObjectId } = require('mongodb');
+    const doc = await db.collection('emails').findOne({ _id: new ObjectId(req.params.id) });
+    if (!doc) return res.status(404).json({ error: 'Email no encontrado' });
+    const { listAttachments } = require('./email-intelligence');
+    res.json({ attachments: await listAttachments(doc.gmailId) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Descargar un adjunto concreto (por posición + nombre: los attachmentId de Gmail rotan).
+app.get('/api/emails/:id/attachments/:idx/download', requireAuth, async (req, res) => {
+  try {
+    const { db } = await require('./db').getDBLegacy();
+    const { ObjectId } = require('mongodb');
+    const doc = await db.collection('emails').findOne({ _id: new ObjectId(req.params.id) });
+    if (!doc) return res.status(404).json({ error: 'Email no encontrado' });
+    const { listAttachments, getAttachment } = require('./email-intelligence');
+    const atts = await listAttachments(doc.gmailId);
+    const idx = parseInt(req.params.idx);
+    let att = atts[idx];
+    // Verificación por nombre: si la posición no coincide, buscar por filename
+    if (req.query.fn && (!att || att.filename !== req.query.fn)) {
+      att = atts.find(a => a.filename === req.query.fn) || att;
+    }
+    if (!att) return res.status(404).json({ error: 'Adjunto no encontrado' });
+    const buf = await getAttachment(doc.gmailId, att.attachmentId);
+    res.set('Content-Type', att.mimeType);
+    res.set('Content-Disposition', `attachment; filename="${encodeURIComponent(att.filename)}"`);
+    res.send(buf);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Reenviar un adjunto al OCR de StelOrder (manual: consume tokens de OCR).
+app.post('/api/emails/:id/attachments/:idx/ocr', requireAuth, async (req, res) => {
+  try {
+    const { db } = await require('./db').getDBLegacy();
+    const { ObjectId } = require('mongodb');
+    const doc = await db.collection('emails').findOne({ _id: new ObjectId(req.params.id) });
+    if (!doc) return res.status(404).json({ error: 'Email no encontrado' });
+    const { listAttachments, reenviarAdjuntoOCR } = require('./email-intelligence');
+    const atts = await listAttachments(doc.gmailId);
+    const idx = parseInt(req.params.idx);
+    let att = atts[idx];
+    if (req.body.fn && (!att || att.filename !== req.body.fn)) {
+      att = atts.find(a => a.filename === req.body.fn) || att;
+    }
+    if (!att) return res.status(404).json({ error: 'Adjunto no encontrado' });
+    const r = await reenviarAdjuntoOCR(doc.gmailId, att.attachmentId, att.filename, att.mimeType, doc.asunto);
+    await db.collection('emails').updateOne(
+      { _id: doc._id },
+      { $addToSet: { ocrEnviados: att.filename }, $set: { ocrUltimoEnvio: new Date() } }
+    );
+    res.json({ ok: true, destino: r.destino, filename: att.filename });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Diagnóstico de la clasificación IA de emails.
+app.get('/api/emails/diag', requireAuth, async (req, res) => {
+  try {
+    const { diagnosticoIA } = require('./email-intelligence');
+    res.json(await diagnosticoIA());
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Reclasificar los emails que quedaron sin clasificar (fallback).
+app.post('/api/emails/reclassify', requireAuth, async (req, res) => {
+  try {
+    const { reclasificarPendientes } = require('./email-intelligence');
+    res.json(await reclasificarPendientes(parseInt(req.body.limit) || 150));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/emails', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    const { categoria, estado, urgencia, limit = 50, skip = 0 } = req.query;
+    const filtro = {};
+    if (categoria && categoria !== 'TODOS') filtro.categoria = categoria;
+    if (estado && estado !== 'TODOS') filtro.estado = estado;
+    if (urgencia && urgencia !== 'TODOS') filtro.urgencia = urgencia;
+    // La publicidad/spam no estorba en la bandeja: solo aparece si se filtra su categoría
+    if ((!categoria || categoria === 'TODOS') && estado === 'PENDIENTE') {
+      filtro.categoria = { $nin: ['PUBLICIDAD', 'SPAM'] };
+    }
+    const emails = await db.collection('emails')
+      .find(filtro).sort({ fecha: -1 }).skip(parseInt(skip)).limit(parseInt(limit)).toArray();
+    const total      = await db.collection('emails').countDocuments(filtro);
+    const pendientes = await db.collection('emails').countDocuments({ estado: 'PENDIENTE', categoria: { $nin: ['PUBLICIDAD', 'SPAM'] } });
+    const publicidad = await db.collection('emails').countDocuments({ estado: 'PENDIENTE', categoria: { $in: ['PUBLICIDAD', 'SPAM'] } });
+    const noLeidos   = await db.collection('emails').countDocuments({ leido: false, categoria: { $nin: ['PUBLICIDAD', 'SPAM'] } });
+    await client.close();
+    res.json({ emails, total, pendientes, noLeidos, publicidad });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/emails/:id/read', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    await db.collection('emails').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { leido: true } }
+    );
+    await client.close();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/emails/:id/archive', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    await db.collection('emails').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { estado: 'ARCHIVADO', leido: true } }
+    );
+    await client.close();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/emails/:id/nota', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    await db.collection('emails').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { notas: req.body.notas } }
+    );
+    await client.close();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/emails/:id/importante', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    await db.collection('emails').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { importante: req.body.importante } }
+    );
+    await client.close();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/emails/:id', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    await db.collection('emails').deleteOne({ _id: new ObjectId(req.params.id) });
+    await client.close();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/emails/:id/reenviar', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    const email = await db.collection('emails').findOne({ _id: new ObjectId(req.params.id) });
+    await client.close();
+    if (!email) return res.status(404).json({ error: 'No encontrado' });
+    const ok = await enviarRespuesta(
+      req.body.destino,
+      email.asunto,
+      `--- Email reenviado ---\n\nDe: ${email.de}\nAsunto: ${email.asunto}\n\n${email.cuerpo}`
+    );
+    res.json({ ok });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/emails/:id/action', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    const email = await db.collection('emails').findOne({ _id: new ObjectId(req.params.id) });
+    if (!email) { await client.close(); return res.status(404).json({ error: 'Email no encontrado' }); }
+
+    const { accion, datos } = req.body;
+    let stelOrderRef = null;
+    let mensajeRespuesta = null;
+
+    if (accion === 'CREAR_INCIDENCIA') {
+      const body = {
+        description: datos?.descripcion || email.resumen,
+        priority: email.urgencia === 'ALTA' ? 'HIGH' : email.urgencia === 'MEDIA' ? 'NORMAL' : 'LOW'
+      };
+      if (email.remitente?.id) body['account-id'] = email.remitente.id;
+      const r = await fetch('https://app.stelorder.com/app/incidents', {
+        method: 'POST',
+        headers: { 'APIKEY': process.env.STELORDER_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const inc = await r.json();
+      stelOrderRef = `INC — ID: ${inc.id || 'creada'}`;
+      mensajeRespuesta = `Hola,\n\nHemos recibido tu solicitud y hemos abierto una incidencia en nuestro sistema.\n\nReferencia: ${inc['full-reference'] || stelOrderRef}\n\nUno de nuestros operarios se encargará en breve.\n\nCorp Projects`;
+    }
+
+    if (accion === 'CREAR_PRESUPUESTO') {
+      const body = { title: datos?.titulo || email.asunto, comments: datos?.comentarios || email.resumen };
+      if (email.remitente?.id) body['account-id'] = email.remitente.id;
+      if (body['account-id']) {
+        const r = await fetch('https://app.stelorder.com/app/workEstimates', {
+          method: 'POST',
+          headers: { 'APIKEY': process.env.STELORDER_API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const est = await r.json();
+        stelOrderRef = `Presupuesto — ID: ${est.id || 'creado'}`;
+      } else {
+        stelOrderRef = 'Presupuesto pendiente — sin cliente vinculado';
+      }
+      mensajeRespuesta = `Hola,\n\nHemos recibido tu solicitud de presupuesto.\n\nEstamos preparando una propuesta y nos pondremos en contacto contigo en breve.\n\nCorp Projects`;
+    }
+
+    if (accion === 'MARCAR_PAGADO') {
+      stelOrderRef = 'Pago registrado manualmente';
+    }
+
+    if (mensajeRespuesta && datos?.enviarRespuesta !== false) {
+      const emailDe = email.de.match(/<(.+)>/)?.[1] || email.de;
+      await enviarRespuesta(emailDe, email.asunto, mensajeRespuesta);
+    }
+
+    await db.collection('emails').updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { estado: 'GESTIONADO', leido: true, accionRealizada: accion, stelOrderRef, gestionadoEn: new Date() } }
+    );
+    await client.close();
+    res.json({ ok: true, stelOrderRef, mensajeRespuesta });
+  } catch (err) {
+    console.error('[Emails] Error acción:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/emails/poll', requireAuth, async (req, res) => {
+  try {
+    pollEmails().catch(err => console.error('[Emails] Error poll manual:', err.message));
+    res.json({ message: 'Poll iniciado' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/emails/stats', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    const pendientes = await db.collection('emails').countDocuments({ estado: 'PENDIENTE' });
+    const noLeidos   = await db.collection('emails').countDocuments({ leido: false });
+    const urgentes   = await db.collection('emails').countDocuments({ estado: 'PENDIENTE', urgencia: 'ALTA' });
+    await client.close();
+    res.json({ pendientes, noLeidos, urgentes });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+// ── COLABORADORES EXTERNOS ────────────────────────────────────────
+const colaboradores = require('./colaboradores');
+
+app.get('/api/colaboradores', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.getColaboradores()); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/colaboradores/resumen', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.getResumenTodosColaboradores()); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/colaboradores/:id', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.getSaldoColaborador(req.params.id)); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/colaboradores', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.createColaborador(req.body)); }
+  catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.put('/api/colaboradores/:id', requireAuth, async (req, res) => {
+  try { await colaboradores.updateColaborador(req.params.id, req.body); res.json({ ok: true }); }
+  catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.get('/api/colaboradores/:id/movimientos', requireAuth, async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    res.json(await colaboradores.getMovimientos(req.params.id, { from, to }));
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/colaboradores/:id/movimientos', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.createMovimiento(req.params.id, req.body)); }
+  catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.delete('/api/colaboradores/movimientos/:id', requireAuth, async (req, res) => {
+  try { await colaboradores.deleteMovimiento(req.params.id); res.json({ ok: true }); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/colaboradores/:id', requireAuth, async (req, res) => {
+  try {
+    const { db, client } = await getDB();
+    await db.collection('colaborador_movimientos').deleteMany({ colaboradorId: req.params.id });
+    await db.collection('colaboradores').deleteOne({ _id: new ObjectId(req.params.id) });
+    await client.close();
+    res.json({ ok: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── PROYECTOS DE INVERSIÓN ────────────────────────────────────────
+app.get('/api/proyectos', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.getProyectos()); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/proyectos/:id', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.getProyecto(req.params.id)); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/proyectos', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.createProyecto(req.body)); }
+  catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.put('/api/proyectos/:id', requireAuth, async (req, res) => {
+  try { await colaboradores.updateProyecto(req.params.id, req.body); res.json({ ok: true }); }
+  catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.post('/api/proyectos/:id/movimientos', requireAuth, async (req, res) => {
+  try { res.json(await colaboradores.addMovimientoProyecto(req.params.id, req.body)); }
+  catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.delete('/api/proyectos/movimientos/:id', requireAuth, async (req, res) => {
+  try { await colaboradores.deleteMovimientoProyecto(req.params.id); res.json({ ok: true }); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+// ── PAGOS EN EFECTIVO ─────────────────────────────────────────────
+const pagos = require('./pagos');
+
+app.get('/api/pagos/resumen', requireAuth, async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    res.json(await pagos.getResumenPagos({ from, to }));
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/pagos', requireAuth, async (req, res) => {
+  try {
+    const { persona, tipo, from, to, limit, skip } = req.query;
+    res.json(await pagos.getPagos({ persona, tipo, from, to, limit: parseInt(limit||100), skip: parseInt(skip||0) }));
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/pagos/:id', requireAuth, async (req, res) => {
+  try { res.json(await pagos.getPago(req.params.id)); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/pagos', requireAuth, async (req, res) => {
+  try { res.json(await pagos.createPago({ ...req.body, registradoPor: 'admin' })); }
+  catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.put('/api/pagos/:id', requireAuth, async (req, res) => {
+  try { await pagos.updatePago(req.params.id, req.body); res.json({ ok: true }); }
+  catch(err) { res.status(400).json({ error: err.message }); }
+});
+
+app.delete('/api/pagos/:id', requireAuth, async (req, res) => {
+  try { await pagos.deletePago(req.params.id); res.json({ ok: true }); }
+  catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Rutas HTML ────────────────────────────────────────────────────
+app.get('/informe-presencia', (req, res) => res.sendFile(path.join(__dirname, '../public/informe-presencia.html')));
+app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
+app.get('*', (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
+
+app.listen(PORT, () => {
+  console.log(`\n╔════════════════════════════════════════╗`);
+  console.log(`║   Corp Projects Dashboard v3           ║`);
+  console.log(`╚════════════════════════════════════════╝`);
+  console.log(`🚀 Puerto: ${PORT}`);
+  console.log(`📊 StelOrder: ${process.env.STELORDER_API_KEY ? '✅' : '❌'}`);
+  console.log(`📧 Email: ${process.env.EMAIL_USER ? '✅' : '⚠️'}`);
+  console.log(`💬 WhatsApp: ${process.env.TWILIO_ACCOUNT_SID ? '✅' : '⚠️ Pendiente'}\n`);
+  startScheduler();
+});
+
+module.exports = app;
