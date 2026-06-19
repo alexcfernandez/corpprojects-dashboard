@@ -549,6 +549,26 @@ async function handlerDocumento(numero, tipo, from) {
          `\n\nDime el tipo, p. ej. *"factura ${numero}"* o *"presupuesto ${numero}"*.`;
 }
 
+// ── La ÚLTIMA factura / presupuesto / pedido (número de serie más alto) ──
+async function handlerUltimo(tipo, from) {
+  let q = 0;
+  if (tipo === 'factura') {
+    const invs = await stel.getInvoices().catch(() => []);
+    for (const x of invs || []) { const d = refDigits(x.number); if (Number.isFinite(d) && d > q) q = d; }
+  } else if (tipo === 'presupuesto') {
+    const s = await stel.getEstimatesSummary().catch(() => null);
+    for (const x of (s && s.all) || []) { const d = refDigits(x.ref || x.number); if (Number.isFinite(d) && d > q) q = d; }
+  } else if (tipo === 'pedido') {
+    const orders = await stel.getAllWorkOrders().catch(() => []);
+    for (const x of (orders || []).filter(o => !o.deleted)) { const d = refDigits(x['full-reference']); if (Number.isFinite(d) && d > q) q = d; }
+  }
+  if (!q) return `No encuentro ${tipo}s para saber cuál es la última.`;
+  const r = await BUSCADORES[tipo](q);
+  if (!r) return `No pude abrir la última ${tipo} (${q}).`;
+  ultimoDoc.set(from, { tipo, numero: q });
+  return `🆕 *Última ${tipo}:*\n\n${r.detalle}`;
+}
+
 function despachar(intent, from, scope, target) {
   if (intent === 'ficha')        return fichaDe(scope, target, from);
   if (intent === 'presupuestos') return handlerPresupuestos(`presupuestos de ${target}`, from, scope, target);
@@ -586,6 +606,14 @@ async function responderConsulta(texto, from = 'anon') {
     if (m || ultimoDoc.has(from)) return verConceptos(tipo, m ? m[0] : null, from);
   }
 
+  // C0.5) ¿La ÚLTIMA factura/presupuesto/pedido? ("la última factura que hemos hecho")
+  if (/\bultim[oa]s?\b|mas reciente|mas nueva/.test(norm(texto)) && !/incidencia/.test(norm(texto))) {
+    const tipo = tipoDocumento(norm(texto));
+    if (tipo === 'albaran')   return '📦 Los *albaranes* todavía no están conectados.';
+    if (tipo === 'proveedor') return '📥 Las *facturas de proveedor* todavía no están conectadas.';
+    if (tipo) return handlerUltimo(tipo, from);
+  }
+
   // C1) Buscador UNIVERSAL de documento por número (factura/presupuesto/pedido)
   {
     const n = norm(texto);
@@ -611,7 +639,7 @@ async function responderConsulta(texto, from = 'anon') {
   return `👋 Puedo ayudarte con:\n\n` +
     `📌 *Resumen* — escribe "resumen" para ver el negocio de un vistazo\n` +
     `🗂️ *Ficha de cliente* — "resumen de Illa Verda" (deuda + presupuestos + pedidos)\n` +
-    `🔎 *Buscar un documento* — "dime el 309" · "la factura 309" · "presupuesto 509" · "pedido 384"\n` +
+    `🔎 *Buscar un documento* — "dime el 309" · "la factura 309" · "la última factura"\n` +
     `📄 *Conceptos / desglose* — "conceptos del 509" · "qué lleva la factura 309" (o "conceptos" tras ver uno)\n` +
     `💰 *Facturas* — "¿qué debe Illa Verda?" · "cuánto me deben en total"\n` +
     `📊 *Presupuestos* — "los aceptados" · "conceptos del 509" · "presupuestos de Cinc"\n` +
