@@ -549,24 +549,60 @@ async function handlerDocumento(numero, tipo, from) {
          `\n\nDime el tipo, p. ej. *"factura ${numero}"* o *"presupuesto ${numero}"*.`;
 }
 
-// ── La ÚLTIMA factura / presupuesto / pedido (número de serie más alto) ──
-async function handlerUltimo(tipo, from) {
-  let q = 0;
+// Detecta un cliente/familia mencionado en el texto, SIN gastar IA:
+// mira alias guardados y nombres de cliente/familia que aparezcan literalmente.
+async function clienteEnTexto(texto) {
+  const r = norm(texto);
+  // 1) alias guardados (vocabulario del usuario: "bellpuig", etc.)
+  try {
+    const db = await getDB();
+    const aliases = await db.collection('aliasClientes').find({}).toArray();
+    for (const a of aliases) {
+      if (a.alias && a.alias.length >= 4 && r.includes(a.alias)) return { scope: a.scope, target: a.target };
+    }
+  } catch (e) {}
+  // 2) nombres de cliente/familia presentes literalmente
+  const { clientes, familias } = await listas();
+  const mc = clientes.filter(c => { const n = norm(c); return n.length >= 4 && r.includes(n); });
+  const mf = familias.filter(c => { const n = norm(c); return n.length >= 4 && r.includes(n); });
+  if (mc.length === 1 && mf.length === 0) return { scope: 'cliente', target: mc[0] };
+  if (mf.length === 1 && mc.length === 0) return { scope: 'familia', target: mf[0] };
+  return null;
+}
+
+// La ÚLTIMA factura / presupuesto / pedido (número de serie más alto),
+// global o de un cliente concreto si se menciona. Mismo comportamiento para los 3 tipos.
+async function handlerUltimo(tipo, texto, from) {
+  const cli = await clienteEnTexto(texto);
+  const campo = cli ? (cli.scope === 'familia' ? 'family' : 'client') : null;
+  let bestQ = 0;
+
   if (tipo === 'factura') {
-    const invs = await stel.getInvoices().catch(() => []);
-    for (const x of invs || []) { const d = refDigits(x.number); if (Number.isFinite(d) && d > q) q = d; }
+    let invs = await stel.getInvoices().catch(() => []);
+    if (cli) invs = (invs || []).filter(x => norm(x[campo]) === norm(cli.target));
+    for (const x of invs || []) { const d = refDigits(x.number); if (Number.isFinite(d) && d > bestQ) bestQ = d; }
   } else if (tipo === 'presupuesto') {
     const s = await stel.getEstimatesSummary().catch(() => null);
-    for (const x of (s && s.all) || []) { const d = refDigits(x.ref || x.number); if (Number.isFinite(d) && d > q) q = d; }
+    let arr = (s && s.all) || [];
+    if (cli) arr = arr.filter(x => norm(x[campo]) === norm(cli.target));
+    for (const x of arr) { const d = refDigits(x.ref || x.number); if (Number.isFinite(d) && d > bestQ) bestQ = d; }
   } else if (tipo === 'pedido') {
     const orders = await stel.getAllWorkOrders().catch(() => []);
-    for (const x of (orders || []).filter(o => !o.deleted)) { const d = refDigits(x['full-reference']); if (Number.isFinite(d) && d > q) q = d; }
+    let clientMap = {};
+    if (cli) { try { ({ clientMap } = await stel.getClients()); } catch (e) {} }
+    let arr = (orders || []).filter(o => !o.deleted);
+    if (cli) arr = arr.filter(o => {
+      const c = clientMap[String(o['account-id'] || '')] || {};
+      return norm(c[cli.scope === 'familia' ? 'family' : 'name'] || '') === norm(cli.target);
+    });
+    for (const x of arr) { const d = refDigits(x['full-reference']); if (Number.isFinite(d) && d > bestQ) bestQ = d; }
   }
-  if (!q) return `No encuentro ${tipo}s para saber cuál es la última.`;
-  const r = await BUSCADORES[tipo](q);
-  if (!r) return `No pude abrir la última ${tipo} (${q}).`;
-  ultimoDoc.set(from, { tipo, numero: q });
-  return `🆕 *Última ${tipo}:*\n\n${r.detalle}`;
+
+  if (!bestQ) return cli ? `No encuentro ${tipo}s de ${cli.target}.` : `No encuentro ${tipo}s.`;
+  const r = await BUSCADORES[tipo](bestQ);
+  if (!r) return `No pude abrir la última ${tipo} (${bestQ}).`;
+  ultimoDoc.set(from, { tipo, numero: bestQ });
+  return `🆕 *Última ${tipo}${cli ? ` de ${cli.target}` : ''}:*\n\n${r.detalle}`;
 }
 
 function despachar(intent, from, scope, target) {
@@ -611,7 +647,7 @@ async function responderConsulta(texto, from = 'anon') {
     const tipo = tipoDocumento(norm(texto));
     if (tipo === 'albaran')   return '📦 Los *albaranes* todavía no están conectados.';
     if (tipo === 'proveedor') return '📥 Las *facturas de proveedor* todavía no están conectadas.';
-    if (tipo) return handlerUltimo(tipo, from);
+    if (tipo) return handlerUltimo(tipo, texto, from);
   }
 
   // C1) Buscador UNIVERSAL de documento por número (factura/presupuesto/pedido)
