@@ -15,7 +15,7 @@ const {
   getSummary, getPendingInvoices, getInvoices, getClients,
   getEstimatesSummary, getFamiliesSummary, getAccountCategories, clearCache,
   sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw, getEntityRawByRef,
-  getWorkOrdersLive
+  getWorkOrdersLive, diagProveedores
 } = require('./stelorder');
 const { sendWhatsApp, sendEmail } = require('./notifications');
 const { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail, sendWorkOrdersAlert } = require('./scheduler');
@@ -264,6 +264,7 @@ app.get('/api/families/list',      requireAuth, async (req,res) => { const {list
 
 // Vaciar la caché de StelOrder bajo demanda (botón "Actualizar" del dashboard)
 app.post('/api/stelorder/refresh', requireAuth, (req,res) => { clearCache(); res.json({ ok:true, message:'Datos actualizados desde StelOrder' }); });
+app.get('/api/diag-proveedores',   requireAuth, async (req,res) => res.json(await diagProveedores()));
 
 // ── Responsables por familia (a quién van los avisos de cada familia) ──
 const avisos = require('./avisos');
