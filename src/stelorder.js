@@ -14,7 +14,10 @@ const TTL = {
   documentStates:    parseInt(process.env.STEL_TTL_DOCSTATES || 360) * MIN, // 6 h
   workOrders:        parseInt(process.env.STEL_TTL_WORKORDERS || 10)  * MIN, // 10 min
   incidents:         parseInt(process.env.STEL_TTL_INCIDENTS  || 30)  * MIN, // 30 min
-  incidentTypes:     parseInt(process.env.STEL_TTL_INCTYPES   || 360) * MIN  // 6 h
+  incidentTypes:     parseInt(process.env.STEL_TTL_INCTYPES   || 360) * MIN, // 6 h
+  purchases:         parseInt(process.env.STEL_TTL_PURCHASES  || 15)  * MIN, // 15 min
+  suppliers:         parseInt(process.env.STEL_TTL_SUPPLIERS  || 60)  * MIN, // 1 h
+  expenses:          parseInt(process.env.STEL_TTL_EXPENSES   || 15)  * MIN  // 15 min
 };
 
 const BASE_URL = 'https://app.stelorder.com/app';
@@ -691,6 +694,70 @@ async function getMonthlyBilling(months = 6) {
   }
 }
 
+// ── COMPRAS: proveedores, facturas de proveedor y gastos ──────────────────
+async function getSuppliers() {
+  return cached('suppliers', TTL.suppliers, async () => {
+    const raw = await fetchAllPages('/suppliers');
+    const supplierMap = {};
+    const suppliers = (raw || []).filter(x => !x.deleted).map(x => {
+      const name = (x['legal-name'] && x['legal-name'] !== 'null') ? x['legal-name']
+                 : (x.name && x.name !== 'null') ? x.name
+                 : (x['full-reference'] || `Proveedor ${x.id}`);
+      supplierMap[String(x.id)] = { name, ref: x['full-reference'] || '' };
+      return { id: String(x.id), name, ref: x['full-reference'] || '', email: x.email && x.email !== 'null' ? x.email : '' };
+    });
+    console.log(`[StelOrder] Suppliers: ${suppliers.length}`);
+    return { suppliers, supplierMap };
+  });
+}
+
+async function getPurchaseInvoices() {
+  return cached('purchases', TTL.purchases, async () => {
+    const [raw, { supplierMap }] = await Promise.all([fetchAllPages('/purchaseInvoices'), getSuppliers()]);
+    const list = (raw || []).filter(x => !x.deleted).map(x => {
+      const sup = supplierMap[String(x['account-id'] || '')] || {};
+      const total = Number(x['total-amount']) || 0;
+      const pending = Number(x['remaining-total-amount']);
+      return {
+        id: String(x.id),
+        number: x['full-reference'] || `FPR #${x.id}`,
+        supplierId: String(x['account-id'] || ''),
+        supplier: sup.name || '—',
+        title: (x.title && x.title !== 'null') ? x.title : '',
+        total,
+        paid: Number(x['paid-total-amount']) || 0,
+        pending: Number.isFinite(pending) ? pending : total,
+        date: x.date || x['creation-date'] || '',
+        settled: x.settled === true || String(x.settled) === 'true',
+        lines: Array.isArray(x.lines) ? x.lines : []
+      };
+    });
+    console.log(`[StelOrder] PurchaseInvoices: ${list.length}`);
+    return list;
+  });
+}
+
+async function getExpenses() {
+  return cached('expenses', TTL.expenses, async () => {
+    const [raw, { supplierMap }] = await Promise.all([fetchAllPages('/expenses'), getSuppliers()]);
+    const list = (raw || []).filter(x => !x.deleted).map(x => {
+      const sup = supplierMap[String(x['account-id'] || '')] || {};
+      return {
+        id: String(x.id),
+        number: x['full-reference'] || `GAS #${x.id}`,
+        supplierId: String(x['account-id'] || ''),
+        supplier: sup.name || '—',
+        amount: Number(x.amount) || 0,
+        date: x.date || '',
+        description: (x.description && x.description !== 'null') ? x.description : '',
+        categoryId: String(x['expense-category-id'] || '')
+      };
+    });
+    console.log(`[StelOrder] Expenses: ${list.length}`);
+    return list;
+  });
+}
+
 // ── DIAGNÓSTICO: muestra los campos reales de los endpoints de compras ──
 // Endpoints confirmados en la doc oficial de la API. Devuelve, por cada uno,
 // si responde, cuántos registros y los CAMPOS del primer registro (sin volcar
@@ -730,6 +797,7 @@ async function diagProveedores() {
 module.exports = {
   getInvoices, getAllReceipts, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary, diagProveedores,
+  getSuppliers, getPurchaseInvoices, getExpenses,
   getAlertLevel, getFamiliesSummary, getAccountCategories, clearCache,
   sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw, getInvoicePdfPath, getEntityRawByRef,
   getWorkOrdersLive, getWorkOrderAlertLevel, setWorkOrderState, setWorkOrderStateLight,
