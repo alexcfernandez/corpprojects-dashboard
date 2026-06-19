@@ -270,40 +270,103 @@ async function handlerPedidos(texto, from, scope, rawTarget) {
 }
 
 // ── Handler: CONCEPTOS / DETALLE de un presupuesto concreto ───────
-async function handlerDetalle(numero, from) {
-  let ests;
-  try { ests = await stel.getWorkEstimates(); }
-  catch (e) { console.error('[Asistente]', e.message); return '⚠️ No pude consultar el presupuesto. Prueba en un momento.'; }
+// ── CONCEPTOS / desglose de líneas — GLOBAL (presupuesto/factura/pedido) ──
+// Memoria del último documento mostrado, para "conceptos" sin número.
+const ultimoDoc = new Map(); // from -> { tipo, numero }
 
-  const qNum = parseInt(String(numero).replace(/\D/g, ''), 10);
-  const e = (ests || []).find(x => {
-    const ref = String(x['full-reference'] || x.reference || x.number || '');
-    return parseInt(ref.replace(/\D/g, ''), 10) === qNum || String(x.id) === String(numero);
-  });
-  if (!e) return `No encuentro el presupuesto ${numero}. Prueba con la referencia completa, p. ej. *"conceptos del PRT00509"*.`;
+// Caché en memoria del documento crudo de factura (getInvoiceRaw es llamada real)
+const _rawFacturaCache = new Map(); // id -> { doc, ts }
+async function rawFactura(id) {
+  const hit = _rawFacturaCache.get(id);
+  if (hit && Date.now() - hit.ts < 30 * 60 * 1000) return hit.doc;
+  const raw = await stel.getInvoiceRaw(id);
+  const doc = Array.isArray(raw) ? raw[0] : raw;
+  _rawFacturaCache.set(id, { doc, ts: Date.now() });
+  return doc;
+}
 
-  const ref = e['full-reference'] || e.reference || e.number || `#${e.id}`;
-  const lines = Array.isArray(e.lines) ? e.lines.filter(l => !l.deleted) : [];
+function fmtLineaConcepto(l) {
+  const nombre = [l['item-name'], l['item-description']].filter(Boolean).join(' — ') || '(sin descripción)';
+  const u = Number(l['units'] ?? l['quantity']);
+  let imp = Number(l['total-amount']);
+  if (!Number.isFinite(imp)) {
+    const p = Number(l['unit-price'] ?? l['price']);
+    if (Number.isFinite(u) && Number.isFinite(p)) imp = u * p;
+  }
+  const cant = Number.isFinite(u) && u && u !== 1 ? `${u} × ` : '';
+  const dinero = Number.isFinite(imp) && imp ? ` — *${fmtEur(imp)}*` : '';
+  return `• ${cant}${nombre}${dinero}`;
+}
+function pintaConceptos(from, ref, etiqueta, lines, total) {
   if (!lines.length) return `📄 *${ref}* no tiene líneas de detalle.`;
-
-  const fmtLinea = l => {
-    const nombre = [l['item-name'], l['item-description']].filter(Boolean).join(' — ') || '(sin descripción)';
-    const u = Number(l['units'] ?? l['quantity']);
-    let imp = Number(l['total-amount']);
-    if (!Number.isFinite(imp)) {
-      const p = Number(l['unit-price'] ?? l['price']);
-      if (Number.isFinite(u) && Number.isFinite(p)) imp = u * p;
-    }
-    const cant = Number.isFinite(u) && u && u !== 1 ? `${u} × ` : '';
-    const dinero = Number.isFinite(imp) && imp ? ` — *${fmtEur(imp)}*` : '';
-    return `• ${cant}${nombre}${dinero}`;
-  };
-  const tot = Number(e['total-amount']) || 0;
   return pintar(from, {
     items: lines, titulo: `Conceptos ${ref}`,
-    encabezado: `📄 *${ref} — Conceptos*${tot ? `\nTotal: *${fmtEur(tot)}*` : ''}`,
-    fmt: fmtLinea
+    encabezado: `📄 *${ref} — Conceptos* (${etiqueta})${total ? `\nTotal: *${fmtEur(total)}*` : ''}`,
+    fmt: fmtLineaConcepto
   }, 0);
+}
+
+async function conceptosPresupuesto(q, from) {
+  const ests = await stel.getWorkEstimates().catch(() => []);
+  const e = (ests || []).find(x => refDigits(x['full-reference'] || x.reference || x.number) === q);
+  if (!e) return `No encuentro el presupuesto ${q}.`;
+  const ref = e['full-reference'] || e.reference || e.number || `#${e.id}`;
+  const lines = Array.isArray(e.lines) ? e.lines.filter(l => !l.deleted) : [];
+  ultimoDoc.set(from, { tipo: 'presupuesto', numero: q });
+  return pintaConceptos(from, ref, 'presupuesto', lines, Number(e['total-amount']) || 0);
+}
+async function conceptosPedido(q, from) {
+  const orders = await stel.getAllWorkOrders().catch(() => []);
+  const o = (orders || []).filter(x => !x.deleted).find(x => refDigits(x['full-reference']) === q);
+  if (!o) return `No encuentro el pedido ${q}.`;
+  const ref = o['full-reference'] || `PDT #${o.id}`;
+  const lines = Array.isArray(o.lines) ? o.lines.filter(l => !l.deleted) : [];
+  ultimoDoc.set(from, { tipo: 'pedido', numero: q });
+  return pintaConceptos(from, ref, 'pedido', lines, Number(o['total-amount']) || 0);
+}
+async function conceptosFactura(q, from) {
+  const invs = await stel.getInvoices().catch(() => []);
+  const f = (invs || []).find(x => refDigits(x.number) === q);
+  if (!f) return `No encuentro la factura ${q}.`;
+  if (!f.id) return `No puedo abrir el detalle de la factura ${f.number}.`;
+  let doc;
+  try { doc = await rawFactura(f.id); }
+  catch (e) { console.error('[Asistente]', e.message); return '⚠️ No pude abrir el detalle de la factura. Prueba en un momento.'; }
+  const lines = Array.isArray(doc?.lines) ? doc.lines.filter(l => !l.deleted) : [];
+  ultimoDoc.set(from, { tipo: 'factura', numero: q });
+  return pintaConceptos(from, f.number, 'factura', lines, Number(doc?.['total-amount']) || f.totalAmount || 0);
+}
+
+function conceptosDe(tipo, q, from) {
+  if (tipo === 'presupuesto') return conceptosPresupuesto(q, from);
+  if (tipo === 'pedido')      return conceptosPedido(q, from);
+  if (tipo === 'factura')     return conceptosFactura(q, from);
+  return Promise.resolve('Todavía no puedo sacar el desglose de ese tipo de documento.');
+}
+
+async function verConceptos(tipo, numero, from) {
+  if (tipo === 'albaran')   return '📦 Los *albaranes* todavía no están conectados.';
+  if (tipo === 'proveedor') return '📥 Las *facturas de proveedor* todavía no están conectadas.';
+
+  // Sin número: usamos el último documento mostrado
+  if (numero == null) {
+    const ud = ultimoDoc.get(from);
+    if (!ud) return '¿De qué documento quieres el desglose? Dime el número, p. ej. *"conceptos del presupuesto 509"*.';
+    return conceptosDe(ud.tipo, ud.numero, from);
+  }
+  const q = parseInt(String(numero).replace(/\D/g, ''), 10);
+  if (tipo) return conceptosDe(tipo, q, from);
+
+  // Sin tipo: ¿en qué tipos existe ese número?
+  const existentes = [];
+  for (const t of ['factura', 'presupuesto', 'pedido']) {
+    const r = await BUSCADORES[t](q);
+    if (r) existentes.push(t);
+  }
+  if (!existentes.length) return `No encuentro ningún documento con el número ${numero}.`;
+  if (existentes.length === 1) return conceptosDe(existentes[0], q, from);
+  return `Hay varios documentos con el ${numero}. ¿De cuál quieres el desglose?\n` +
+    existentes.map(t => `• *"conceptos del ${t} ${numero}"*`).join('\n');
 }
 
 // ── Resumen GLOBAL del negocio ("resumen") ────────────────────────
@@ -469,14 +532,18 @@ async function handlerDocumento(numero, tipo, from) {
   const hallados = [];
   for (const t of tipos) {
     const r = await BUSCADORES[t](q);
-    if (r) hallados.push(r);
+    if (r) hallados.push({ ...r, tipo: t });
   }
   if (!hallados.length) {
     return tipo
       ? `No encuentro ${tipo === 'factura' ? 'la factura' : tipo === 'presupuesto' ? 'el presupuesto' : 'el pedido'} ${numero}.`
       : `No encuentro ningún documento con el número ${numero}.`;
   }
-  if (hallados.length === 1) { ultima.delete(from); return hallados[0].detalle; }
+  if (hallados.length === 1) {
+    ultima.delete(from);
+    ultimoDoc.set(from, { tipo: hallados[0].tipo, numero: q });
+    return hallados[0].detalle;
+  }
   ultima.delete(from);
   return `Hay varios documentos con el ${numero}:\n\n` + hallados.map(h => h.resumen).join('\n') +
          `\n\nDime el tipo, p. ej. *"factura ${numero}"* o *"presupuesto ${numero}"*.`;
@@ -512,21 +579,19 @@ async function responderConsulta(texto, from = 'anon') {
     return 'No tengo nada más que mostrar 🙂 Pregúntame por un cliente, p. ej.: *"¿qué debe Illa Verda?"*';
   }
 
-  // C0) Conceptos / detalle (líneas) de un PRESUPUESTO concreto (ej. "conceptos del 509")
-  //     Solo si NO menciona factura/pedido (esos van al buscador universal).
-  if (/concepto|detalle|detalla|desglos|linea|partida|que (incluye|lleva|contiene|tiene)/.test(norm(texto))
-      && !/factura|\bfac\b|pedido|\bpdt\b/.test(norm(texto))) {
+  // C0) Conceptos / desglose de líneas de un documento (presupuesto, factura o pedido)
+  if (/concepto|desglos|\blineas?\b|partida|que (incluye|lleva|contiene)/.test(norm(texto))) {
     const m = texto.match(/\d{2,6}/);
-    if (m) return handlerDetalle(m[0], from);
+    const tipo = tipoDocumento(norm(texto));
+    if (m || ultimoDoc.has(from)) return verConceptos(tipo, m ? m[0] : null, from);
   }
 
   // C1) Buscador UNIVERSAL de documento por número (factura/presupuesto/pedido)
-  //     Se activa si hay un número y o bien se nombra el tipo, o hay un verbo de búsqueda.
   {
     const n = norm(texto);
     const num = texto.match(/\d{2,6}/);
     const tipo = tipoDocumento(n);
-    const verboBusqueda = /\b(dime|dame|cual es|cuales son|que es|ver|muestrame|muestra|ensename|busca|buscar|info|informacion|datos|documento|numero)\b/.test(n);
+    const verboBusqueda = /\b(dime|dame|cual es|cuales son|que es|ver|muestrame|muestra|ensename|busca|buscar|info|informacion|datos|detalle|documento|numero)\b/.test(n);
     if (num && (tipo || verboBusqueda)) return handlerDocumento(num[0], tipo, from);
   }
 
@@ -547,6 +612,7 @@ async function responderConsulta(texto, from = 'anon') {
     `📌 *Resumen* — escribe "resumen" para ver el negocio de un vistazo\n` +
     `🗂️ *Ficha de cliente* — "resumen de Illa Verda" (deuda + presupuestos + pedidos)\n` +
     `🔎 *Buscar un documento* — "dime el 309" · "la factura 309" · "presupuesto 509" · "pedido 384"\n` +
+    `📄 *Conceptos / desglose* — "conceptos del 509" · "qué lleva la factura 309" (o "conceptos" tras ver uno)\n` +
     `💰 *Facturas* — "¿qué debe Illa Verda?" · "cuánto me deben en total"\n` +
     `📊 *Presupuestos* — "los aceptados" · "conceptos del 509" · "presupuestos de Cinc"\n` +
     `🔧 *Pedidos* — "cuántos pedidos tenemos" · "pedidos de Illa Verda"\n\n` +
