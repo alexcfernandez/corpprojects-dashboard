@@ -47,6 +47,32 @@ async function guardarAlias(aliasNorm, target, scope) {
   } catch (e) { console.error('[Asistente] alias write:', e.message); }
 }
 
+// Alias de PROVEEDOR (colección aparte)
+async function buscarAliasProv(aliasNorm) {
+  if (!aliasNorm) return null;
+  try {
+    const db = await getDB();
+    const doc = await db.collection('aliasProveedores').findOne({ alias: aliasNorm });
+    return doc ? doc.target : null;
+  } catch (e) { return null; }
+}
+async function guardarAliasProv(aliasNorm, target) {
+  try {
+    const db = await getDB();
+    await db.collection('aliasProveedores').updateOne(
+      { alias: aliasNorm },
+      { $set: { alias: aliasNorm, target, updatedAt: new Date() } },
+      { upsert: true }
+    );
+    console.log(`[Asistente] alias proveedor: "${aliasNorm}" -> ${target}`);
+  } catch (e) { console.error('[Asistente] aliasProv write:', e.message); }
+}
+// Palabras genéricas en nombres de proveedor que no distinguen
+const STOPPROV = new Set(['sl', 'slu', 'sa', 'sau', 'sccl', 'sociedad', 'limitada', 'unipersonal',
+  'espana', 'iberica', 'iberia', 'comercial', 'comercializadora', 'distribuciones', 'distribucion',
+  'suministros', 'suministro', 'materiales', 'material', 'grupo', 'hermanos', 'hijos', 'industrial',
+  'servicios', 'soluciones', 'group', 'and', 'the']);
+
 // ── Universo de nombres (todos los clientes y familias) ───────────
 let _listasCache = null, _listasTs = 0;
 async function listas() {
@@ -649,9 +675,34 @@ async function handlerUltimo(tipo, texto, from) {
 // Detecta un proveedor mencionado por nombre (sin IA): coincidencia literal.
 async function proveedorEnTexto(texto) {
   const r = norm(texto);
+  // 1) alias de proveedor aprendido
+  try {
+    const db = await getDB();
+    const aliases = await db.collection('aliasProveedores').find({}).toArray();
+    for (const a of aliases) if (a.alias && a.alias.length >= 3 && r.includes(a.alias)) return a.target;
+  } catch (e) {}
+
   const { suppliers } = await stel.getSuppliers().catch(() => ({ suppliers: [] }));
-  const m = (suppliers || []).filter(s => { const n = norm(s.name); return n.length >= 4 && r.includes(n); });
-  return m.length === 1 ? m[0].name : null;
+  if (!suppliers || !suppliers.length) return null;
+
+  // 2) nombre completo contenido en el texto
+  const full = suppliers.filter(s => { const n = norm(s.name); return n.length >= 4 && r.includes(n); });
+  if (full.length === 1) return full[0].name;
+
+  // 3) por trozo: palabras distintivas del nombre que aparezcan en el texto
+  const palabras = new Set(r.replace(/[^a-z0-9ñ ]/g, ' ').split(/\s+/).filter(w => w.length >= 4 && !STOPPROV.has(w)));
+  if (!palabras.size) return null;
+  const scored = [];
+  for (const s of suppliers) {
+    const toks = norm(s.name).replace(/[^a-z0-9ñ ]/g, ' ').split(/\s+/).filter(w => w.length >= 4 && !STOPPROV.has(w));
+    const seen = new Set();
+    let hits = 0;
+    for (const t of toks) { if (seen.has(t)) continue; seen.add(t); if (palabras.has(t)) hits++; }
+    if (hits > 0) scored.push({ name: s.name, hits });
+  }
+  scored.sort((a, b) => b.hits - a.hits);
+  if (scored.length && (scored.length === 1 || scored[0].hits > scored[1].hits)) return scored[0].name;
+  return null;
 }
 
 // Análisis de gasto: global ("qué proveedor gastamos más") o de un proveedor concreto.
@@ -678,6 +729,14 @@ async function handlerGasto(texto, from) {
     }
     ultima.delete(from);
     return msg;
+  }
+
+  // ¿Había un proveedor objetivo explícito que no reconocí? → aprenderlo
+  const mt = norm(texto).match(/(?:gastamos en|gastado en|gasto en|compramos en|compramos a|gastamos a|compras? a|compras? en)\s+(.+)$/);
+  const rawProv = mt ? mt[1].trim().replace(/[?.!]+$/, '') : null;
+  if (rawProv && rawProv.length >= 3) {
+    pendiente.set(from, { accion: 'aprender', clase: 'proveedor', aliasRaw: rawProv, intent: 'gasto', ts: Date.now() });
+    return `🤔 No conozco el proveedor *"${rawProv}"*. ¿A cuál corresponde? Dímelo (p. ej. "es Saint-Gobain Weber") y lo recuerdo.`;
   }
 
   // Global: ranking de proveedores
@@ -712,14 +771,25 @@ async function responderConsulta(texto, from = 'anon') {
   const pend = pendiente.get(from);
   if (pend && pend.accion === 'aprender' && (Date.now() - pend.ts) < 10 * 60 * 1000) {
     const limpio = String(texto).replace(/^\s*(es|son|el|la|los|las|de|del)\s+/i, '').trim();
-    const { scope, target } = await resolver(limpio, limpio);
-    if (target) {
-      await guardarAlias(norm(pend.aliasRaw), target, scope);
-      pendiente.delete(from);
-      const respuesta = await despachar(pend.intent, from, scope, target);
-      return `✅ Apuntado: *${pend.aliasRaw}* = *${target}*\n\n${respuesta}`;
+    if (pend.clase === 'proveedor') {
+      const prov = await proveedorEnTexto(limpio);
+      if (prov) {
+        await guardarAliasProv(norm(pend.aliasRaw), prov);
+        pendiente.delete(from);
+        const respuesta = await handlerGasto(`gastamos en ${prov}`, from);
+        return `✅ Apuntado: *${pend.aliasRaw}* = *${prov}*\n\n${respuesta}`;
+      }
+      pendiente.delete(from); // no reconocido, seguimos normal
+    } else {
+      const { scope, target } = await resolver(limpio, limpio);
+      if (target) {
+        await guardarAlias(norm(pend.aliasRaw), target, scope);
+        pendiente.delete(from);
+        const respuesta = await despachar(pend.intent, from, scope, target);
+        return `✅ Apuntado: *${pend.aliasRaw}* = *${target}*\n\n${respuesta}`;
+      }
+      pendiente.delete(from); // no era un cliente; seguimos como consulta normal
     }
-    pendiente.delete(from); // no era un cliente; seguimos como consulta normal
   }
 
   // B) "ver más"
