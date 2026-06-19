@@ -5,6 +5,7 @@ const cors      = require('cors');
 const helmet    = require('helmet');
 const rateLimit = require('express-rate-limit');
 const jwt       = require('jsonwebtoken');
+const axios     = require('axios');
 const path      = require('path');
 const multer    = require('multer');
 const fs        = require('fs');
@@ -80,22 +81,75 @@ app.post('/api/whatsapp', express.urlencoded({ extended: false }), (req, res) =>
   // 2) Procesa en segundo plano y responde por la API de Twilio
   const from = req.body.From || '';
   const body = (req.body.Body || '').trim();
-  console.log(`[WhatsApp] De ${from}: "${body}"`);
-  procesarWhatsApp(from, body).catch(err => console.error('[WhatsApp] Error:', err.message));
+  const numMedia = parseInt(req.body.NumMedia || '0', 10) || 0;
+  const mediaUrl = req.body.MediaUrl0 || '';
+  const mediaType = req.body.MediaContentType0 || '';
+  console.log(`[WhatsApp] De ${from}: "${body}"${numMedia ? ` (+${numMedia} media: ${mediaType})` : ''}`);
+  procesarWhatsApp(from, body, { numMedia, mediaUrl, mediaType })
+    .catch(err => console.error('[WhatsApp] Error:', err.message));
 });
 
-async function procesarWhatsApp(from, body) {
+async function procesarWhatsApp(from, body, media = {}) {
   const soloDigitos = s => String(s || '').replace(/\D/g, '');
   const mio = soloDigitos(process.env.MI_WHATSAPP);
-  let reply;
-  if (mio && from && soloDigitos(from) !== mio) {
-    reply = '🔒 Este asistente es privado.';
-  } else if (!body) {
-    reply = 'Dime qué cliente o familia quieres consultar 🙂 (p. ej.: "¿qué debe Illa Verda?")';
-  } else {
-    reply = await asistente.responderConsulta(body, from);
+  if (mio && from && soloDigitos(from) !== mio) return enviarWhatsApp(from, '🔒 Este asistente es privado.');
+
+  let texto = (body || '').trim();
+  let prefijo = '';
+
+  // ¿Nota de voz? (Twilio manda NumMedia + MediaUrl0 + MediaContentType0)
+  if (!texto && (media.numMedia || 0) > 0) {
+    if (/audio/i.test(media.mediaType || '')) {
+      try {
+        const t = await transcribirAudio(media.mediaUrl, media.mediaType);
+        if (!t) return enviarWhatsApp(from, '🎙️ He recibido tu nota de voz, pero la transcripción aún no está configurada. Escríbeme el texto y te respondo igual.');
+        texto = t;
+        prefijo = `🎙️ _He entendido:_ “${t}”\n\n`;
+      } catch (e) {
+        console.error('[WhatsApp] STT error:', e.message);
+        return enviarWhatsApp(from, '🎙️ No he conseguido entender el audio esta vez. ¿Me lo escribes o lo repites?');
+      }
+    } else {
+      return enviarWhatsApp(from, 'De momento solo entiendo texto y notas de voz 🙂');
+    }
   }
-  await enviarWhatsApp(from, reply);
+
+  if (!texto) return enviarWhatsApp(from, 'Dime qué cliente o familia quieres consultar 🙂 (p. ej.: "¿qué debe Illa Verda?")');
+
+  const reply = await asistente.responderConsulta(texto, from);
+  return enviarWhatsApp(from, prefijo + reply);
+}
+
+// Transcribe una nota de voz de WhatsApp (descarga de Twilio + STT compatible OpenAI).
+// Configurable por entorno: STT_API_KEY (obligatoria), STT_BASE_URL, STT_MODEL.
+async function transcribirAudio(mediaUrl, contentType) {
+  const key = process.env.STT_API_KEY;
+  if (!key || !mediaUrl) return null;
+  const FormData = require('form-data');
+
+  // 1) Descargar el audio de Twilio (autenticación básica SID:token)
+  const audio = await axios.get(mediaUrl, {
+    responseType: 'arraybuffer',
+    auth: { username: process.env.TWILIO_ACCOUNT_SID, password: process.env.TWILIO_AUTH_TOKEN },
+    timeout: 20000
+  });
+  const buf = Buffer.from(audio.data);
+
+  // 2) Enviar a la API de transcripción (formato OpenAI: /audio/transcriptions)
+  const base  = (process.env.STT_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
+  const model = process.env.STT_MODEL || 'whisper-1';
+  const ct = contentType || 'audio/ogg';
+  const ext = /mpeg|mp3/.test(ct) ? 'mp3' : /wav/.test(ct) ? 'wav' : /mp4|m4a/.test(ct) ? 'm4a' : /webm/.test(ct) ? 'webm' : 'ogg';
+  const form = new FormData();
+  form.append('file', buf, { filename: `audio.${ext}`, contentType: ct });
+  form.append('model', model);
+  form.append('language', 'es');
+
+  const r = await axios.post(`${base}/audio/transcriptions`, form, {
+    headers: { ...form.getHeaders(), Authorization: `Bearer ${key}` },
+    maxBodyLength: Infinity, maxContentLength: Infinity, timeout: 30000
+  });
+  return ((r.data && r.data.text) || '').trim();
 }
 
 function enviarWhatsApp(to, body) {
@@ -1608,6 +1662,7 @@ app.listen(PORT, () => {
   console.log(`╚════════════════════════════════════════╝`);
   console.log(`🚀 Puerto: ${PORT}`);
   console.log(`📊 StelOrder: ${process.env.STELORDER_API_KEY ? '✅' : '❌'}`);
+  console.log(`🎙️ Transcripción de voz (STT): ${process.env.STT_API_KEY ? '✅' : '❌ (define STT_API_KEY)'}`);
   console.log(`📧 Email: ${process.env.EMAIL_USER ? '✅' : '⚠️'}`);
   console.log(`💬 WhatsApp: ${process.env.TWILIO_ACCOUNT_SID ? '✅' : '⚠️ Pendiente'}\n`);
   startScheduler();
