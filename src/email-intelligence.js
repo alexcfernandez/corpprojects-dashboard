@@ -335,7 +335,20 @@ async function procesarEmail(gmail, messageId) {
     console.log(`[Email] Procesando: ${asunto} de ${de}`);
 
     const clasificacion = await clasificarEmail(de, asunto, cuerpo);
-    const remitente     = await buscarRemitenteEnStelOrder(de);
+    let remitente       = await buscarRemitenteEnStelOrder(de);
+    // Si no se encuentra por email, intentar identificar la comunidad por el asunto
+    if (!remitente.encontrado) {
+      try {
+        const com = await require('./gestores').identificarComunidad(asunto, cuerpo);
+        if (com) {
+          remitente = {
+            encontrado: true, tipo: 'comunidad', via: 'asunto',
+            id: com.accountId, nombre: com.communityName, familia: com.family,
+            nombreMostrado: remitente.nombreMostrado, emailRemitente: remitente.emailRemitente
+          };
+        }
+      } catch (e) { console.warn('[Email] identificarComunidad:', e.message); }
+    }
     const permisos      = verificarPermisos(remitente, clasificacion);
 
     await db.collection('emails').insertOne({
@@ -367,7 +380,7 @@ async function procesarEmail(gmail, messageId) {
 
     // Aprendizaje pasivo: si responde a un aviso (FAC/PDT en el asunto),
     // asociar remitente → comunidad. Nunca afecta al procesado del email.
-    try { await require('./gestores').aprenderDeEmail(de, asunto); }
+    try { await require('./gestores').aprenderDeEmail(de, asunto, cuerpo); }
     catch (e) { console.warn('[Gestores] aprender:', e.message); }
 
     await gmail.users.messages.modify({
