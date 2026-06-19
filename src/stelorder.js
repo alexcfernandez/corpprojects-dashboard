@@ -691,9 +691,45 @@ async function getMonthlyBilling(months = 6) {
   }
 }
 
+// ── DIAGNÓSTICO: muestra los campos reales de los endpoints de compras ──
+// Endpoints confirmados en la doc oficial de la API. Devuelve, por cada uno,
+// si responde, cuántos registros y los CAMPOS del primer registro (sin volcar
+// datos). Para purchaseInvoices/suppliers incluye un ejemplo de valores no
+// sensibles para entender el formato.
+async function diagProveedores() {
+  const candidatos = [
+    '/purchaseInvoices', '/purchaseInvoiceReceipts', '/suppliers',
+    '/purchaseOrders', '/purchaseDeliveryNotes', '/expenses', '/expensesAndInvestments'
+  ];
+  const out = [];
+  for (const ep of candidatos) {
+    try {
+      const res = await client.get(`${ep}?limit=1`);
+      const data = res.data;
+      const arrData = Array.isArray(data) ? data : null;
+      const first = arrData && arrData[0] ? arrData[0] : null;
+      out.push({
+        endpoint: ep,
+        status: res.status,
+        registros: arrData ? arrData.length : null,
+        campos: first ? Object.keys(first) : (arrData ? '(array vacío)' : typeof data),
+        // muestra acotada de valores para ver formatos (recortada)
+        ejemplo: first ? Object.fromEntries(Object.entries(first).slice(0, 60).map(([k, v]) => {
+          const s = (v && typeof v === 'object') ? (Array.isArray(v) ? `[array ${v.length}]` : '{obj}') : String(v);
+          return [k, s.length > 60 ? s.slice(0, 60) + '…' : s];
+        })) : null
+      });
+    } catch (e) {
+      out.push({ endpoint: ep, status: e.response?.status || 'ERROR', error: (e.response?.data ? JSON.stringify(e.response.data).slice(0, 150) : e.message) });
+    }
+    await new Promise(r => setTimeout(r, 350));
+  }
+  return out;
+}
+
 module.exports = {
   getInvoices, getAllReceipts, getPendingInvoices, getClients,
-  getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary,
+  getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary, diagProveedores,
   getAlertLevel, getFamiliesSummary, getAccountCategories, clearCache,
   sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw, getInvoicePdfPath, getEntityRawByRef,
   getWorkOrdersLive, getWorkOrderAlertLevel, setWorkOrderState, setWorkOrderStateLight,
