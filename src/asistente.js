@@ -337,16 +337,26 @@ async function conceptosFactura(q, from) {
   return pintaConceptos(from, f.number, 'factura', lines, Number(doc?.['total-amount']) || f.totalAmount || 0);
 }
 
+async function conceptosProveedor(q, from) {
+  const invs = await stel.getPurchaseInvoices().catch(() => []);
+  const f = (invs || []).find(x => refDigits(x.number) === q);
+  if (!f) return `No encuentro la factura de proveedor ${q}.`;
+  const lines = Array.isArray(f.lines) ? f.lines.filter(l => !l.deleted) : [];
+  ultimoDoc.set(from, { tipo: 'proveedor', numero: q });
+  return pintaConceptos(from, `${f.number} (${f.supplier})`, 'compra', lines, f.total || 0);
+}
+
 function conceptosDe(tipo, q, from) {
   if (tipo === 'presupuesto') return conceptosPresupuesto(q, from);
   if (tipo === 'pedido')      return conceptosPedido(q, from);
   if (tipo === 'factura')     return conceptosFactura(q, from);
+  if (tipo === 'proveedor')   return conceptosProveedor(q, from);
+  if (tipo === 'gasto')       return Promise.resolve('Los gastos no tienen desglose de líneas; usa *"gasto N"* para ver su ficha.');
   return Promise.resolve('Todavía no puedo sacar el desglose de ese tipo de documento.');
 }
 
 async function verConceptos(tipo, numero, from) {
-  if (tipo === 'albaran')   return '📦 Los *albaranes* todavía no están conectados.';
-  if (tipo === 'proveedor') return '📥 Las *facturas de proveedor* todavía no están conectadas.';
+  if (tipo === 'albaran') return '📦 Los *albaranes* todavía no están conectados.';
 
   // Sin número: usamos el último documento mostrado
   if (numero == null) {
@@ -357,9 +367,9 @@ async function verConceptos(tipo, numero, from) {
   const q = parseInt(String(numero).replace(/\D/g, ''), 10);
   if (tipo) return conceptosDe(tipo, q, from);
 
-  // Sin tipo: ¿en qué tipos existe ese número?
+  // Sin tipo: ¿en qué tipos (con desglose) existe ese número?
   const existentes = [];
-  for (const t of ['factura', 'presupuesto', 'pedido']) {
+  for (const t of ['factura', 'presupuesto', 'pedido', 'proveedor']) {
     const r = await BUSCADORES[t](q);
     if (r) existentes.push(t);
   }
@@ -452,7 +462,8 @@ async function fichaDe(scope, target, from) {
 
 // ── Buscador UNIVERSAL de documentos por número ───────────────────
 // Tipos con datos: factura (FAC), presupuesto (PRT), pedido (PDT).
-// Albaranes y facturas de proveedor aún no están conectados.
+// Tipos con datos: factura (FAC), presupuesto (PRT), pedido (PDT), proveedor (FPR), gasto (GAS).
+// Albaranes (ALB) aún no están conectados.
 function refDigits(s) { return parseInt(String(s || '').replace(/\D/g, ''), 10); }
 
 async function docFactura(q) {
@@ -505,39 +516,65 @@ async function docPedido(q) {
   return { detalle, resumen: `🔧 *${ref}* — ${c.name || '—'}${estado ? ` (${estado})` : ''}` };
 }
 
-const BUSCADORES = { factura: docFactura, presupuesto: docPresupuesto, pedido: docPedido };
+async function docProveedor(q) {
+  const invs = await stel.getPurchaseInvoices().catch(() => []);
+  const f = (invs || []).find(x => refDigits(x.number) === q);
+  if (!f) return null;
+  const estado = f.pending <= 0.01 ? '✅ Pagada' : (f.paid > 0 ? '🟡 Parcial' : '🔴 Pendiente');
+  const detalle = `📥 *${f.number}* (factura de proveedor)\nProveedor: ${f.supplier}\n` +
+    (f.title ? `Concepto: ${f.title}\n` : '') +
+    `Importe: *${fmtEur(f.total)}*\nEstado: ${estado}` +
+    (f.pending > 0.01 ? ` · pendiente *${fmtEur(f.pending)}*` : '') +
+    (f.date ? `\nFecha: ${String(f.date).slice(0, 10)}` : '') +
+    `\n\nVer conceptos: *"conceptos del ${refDigits(f.number)}"*`;
+  return { detalle, resumen: `📥 *${f.number}* — ${f.supplier} — ${fmtEur(f.total)} (${estado})` };
+}
+
+async function docGasto(q) {
+  const gastos = await stel.getExpenses().catch(() => []);
+  const g = (gastos || []).find(x => refDigits(x.number) === q);
+  if (!g) return null;
+  const detalle = `💸 *${g.number}* (gasto)\nProveedor: ${g.supplier}\n` +
+    (g.description ? `Descripción: ${g.description}\n` : '') +
+    `Importe: *${fmtEur(g.amount)}*` +
+    (g.date ? `\nFecha: ${String(g.date).slice(0, 10)}` : '');
+  return { detalle, resumen: `💸 *${g.number}* — ${g.supplier} — ${fmtEur(g.amount)}` };
+}
+
+const BUSCADORES = { factura: docFactura, presupuesto: docPresupuesto, pedido: docPedido, proveedor: docProveedor, gasto: docGasto };
+const TIPOS_DOC = ['factura', 'presupuesto', 'pedido', 'proveedor', 'gasto'];
 
 function tipoDocumento(textoNorm) {
-  // Códigos pegados a los dígitos: fac309, prt00509, pdt384, alb45, fcp12
+  // Códigos pegados a los dígitos
   if (/\bfac\d|\bfra\d/.test(textoNorm)) return 'factura';
   if (/\bprt\d/.test(textoNorm))         return 'presupuesto';
   if (/\bpdt\d/.test(textoNorm))         return 'pedido';
+  if (/\bfpr\d/.test(textoNorm))         return 'proveedor';
+  if (/\bgas\d/.test(textoNorm))         return 'gasto';
   if (/\balb\d/.test(textoNorm))         return 'albaran';
-  if (/\bfcp\d/.test(textoNorm))         return 'proveedor';
-  // Por palabra
-  if (/factura/.test(textoNorm) && !/proveedor/.test(textoNorm)) return 'factura';
+  // Por palabra (proveedor/compra ANTES que factura)
+  if (/proveedor|factura de compra|factura de proveedor/.test(textoNorm)) return 'proveedor';
+  if (/\bgasto\b|\bgastos\b/.test(textoNorm)) return 'gasto';
+  if (/factura/.test(textoNorm)) return 'factura';
   if (/presupuest|presu\b|oferta/.test(textoNorm)) return 'presupuesto';
   if (/pedido|parte|orden de trabajo/.test(textoNorm)) return 'pedido';
   if (/albaran/.test(textoNorm)) return 'albaran';
-  if (/proveedor|\bfcp\b/.test(textoNorm)) return 'proveedor';
   return null;
 }
 
 async function handlerDocumento(numero, tipo, from) {
   const q = parseInt(String(numero).replace(/\D/g, ''), 10);
-  if (tipo === 'albaran')   return '📦 Los *albaranes* todavía no están conectados. Lo dejamos para una próxima mejora.';
-  if (tipo === 'proveedor') return '📥 Las *facturas de proveedor* todavía no están conectadas. Lo dejamos para una próxima mejora.';
+  if (tipo === 'albaran') return '📦 Los *albaranes* todavía no están conectados. Lo dejamos para una próxima mejora.';
 
-  const tipos = tipo ? [tipo] : ['factura', 'presupuesto', 'pedido'];
+  const tipos = tipo ? [tipo] : TIPOS_DOC;
   const hallados = [];
   for (const t of tipos) {
     const r = await BUSCADORES[t](q);
     if (r) hallados.push({ ...r, tipo: t });
   }
   if (!hallados.length) {
-    return tipo
-      ? `No encuentro ${tipo === 'factura' ? 'la factura' : tipo === 'presupuesto' ? 'el presupuesto' : 'el pedido'} ${numero}.`
-      : `No encuentro ningún documento con el número ${numero}.`;
+    const etiqueta = { factura: 'la factura', presupuesto: 'el presupuesto', pedido: 'el pedido', proveedor: 'la factura de proveedor', gasto: 'el gasto' }[tipo];
+    return tipo ? `No encuentro ${etiqueta} ${numero}.` : `No encuentro ningún documento con el número ${numero}.`;
   }
   if (hallados.length === 1) {
     ultima.delete(from);
@@ -596,13 +633,70 @@ async function handlerUltimo(tipo, texto, from) {
       return norm(c[cli.scope === 'familia' ? 'family' : 'name'] || '') === norm(cli.target);
     });
     for (const x of arr) { const d = refDigits(x['full-reference']); if (Number.isFinite(d) && d > bestQ) bestQ = d; }
+  } else if (tipo === 'proveedor') {
+    const invs = await stel.getPurchaseInvoices().catch(() => []);
+    for (const x of invs || []) { const d = refDigits(x.number); if (Number.isFinite(d) && d > bestQ) bestQ = d; }
+  } else if (tipo === 'gasto') {
+    const gastos = await stel.getExpenses().catch(() => []);
+    for (const x of gastos || []) { const d = refDigits(x.number); if (Number.isFinite(d) && d > bestQ) bestQ = d; }
   }
-
-  if (!bestQ) return cli ? `No encuentro ${tipo}s de ${cli.target}.` : `No encuentro ${tipo}s.`;
   const r = await BUSCADORES[tipo](bestQ);
   if (!r) return `No pude abrir la última ${tipo} (${bestQ}).`;
   ultimoDoc.set(from, { tipo, numero: bestQ });
   return `🆕 *Última ${tipo}${cli ? ` de ${cli.target}` : ''}:*\n\n${r.detalle}`;
+}
+
+// Detecta un proveedor mencionado por nombre (sin IA): coincidencia literal.
+async function proveedorEnTexto(texto) {
+  const r = norm(texto);
+  const { suppliers } = await stel.getSuppliers().catch(() => ({ suppliers: [] }));
+  const m = (suppliers || []).filter(s => { const n = norm(s.name); return n.length >= 4 && r.includes(n); });
+  return m.length === 1 ? m[0].name : null;
+}
+
+// Análisis de gasto: global ("qué proveedor gastamos más") o de un proveedor concreto.
+async function handlerGasto(texto, from) {
+  const [compras, gastos] = await Promise.all([
+    stel.getPurchaseInvoices().catch(() => []),
+    stel.getExpenses().catch(() => [])
+  ]);
+  const prov = await proveedorEnTexto(texto);
+
+  if (prov) {
+    const fc = compras.filter(x => norm(x.supplier) === norm(prov));
+    const gc = gastos.filter(x => norm(x.supplier) === norm(prov));
+    const totC = fc.reduce((s, x) => s + (x.total || 0), 0);
+    const totG = gc.reduce((s, x) => s + (x.amount || 0), 0);
+    if (!fc.length && !gc.length) return `No encuentro compras a ${prov}.`;
+    let msg = `🏷️ *${prov}*\n\n`;
+    msg += `📥 Facturas de proveedor: *${fmtEur(totC)}* (${fc.length})\n`;
+    msg += `💸 Gastos: *${fmtEur(totG)}* (${gc.length})\n`;
+    msg += `Σ Total: *${fmtEur(totC + totG)}*`;
+    if (fc.length) {
+      const ult = [...fc].sort((a, b) => refDigits(b.number) - refDigits(a.number))[0];
+      msg += `\n\nÚltima factura: ${ult.number} · ${fmtEur(ult.total)}${ult.date ? ` · ${String(ult.date).slice(0, 10)}` : ''}`;
+    }
+    ultima.delete(from);
+    return msg;
+  }
+
+  // Global: ranking de proveedores
+  const totalCompras = compras.reduce((s, x) => s + (x.total || 0), 0);
+  const totalGastos  = gastos.reduce((s, x) => s + (x.amount || 0), 0);
+  const porProv = {};
+  for (const x of compras) { const k = x.supplier || '—'; porProv[k] = (porProv[k] || 0) + (x.total || 0); }
+  for (const x of gastos)  { const k = x.supplier || '—'; porProv[k] = (porProv[k] || 0) + (x.amount || 0); }
+  const rank = Object.entries(porProv).sort((a, b) => b[1] - a[1]);
+  const top = rank.slice(0, 8).map(([n, v]) => `• ${n} — *${fmtEur(v)}*`);
+  let msg = `🛒 *Gasto en proveedores*\n\n`;
+  msg += `📥 Facturas de proveedor: *${fmtEur(totalCompras)}* (${compras.length})\n`;
+  msg += `💸 Gastos sueltos: *${fmtEur(totalGastos)}* (${gastos.length})\n`;
+  msg += `Σ Total: *${fmtEur(totalCompras + totalGastos)}*\n\n`;
+  msg += `*En quién más gastamos:*\n${top.join('\n')}`;
+  if (rank.length > 8) msg += `\n…y ${rank.length - 8} proveedores más.`;
+  msg += `\n\nPregunta por uno: *"cuánto gastamos en Saltoki"*.`;
+  ultima.delete(from);
+  return msg;
 }
 
 function despachar(intent, from, scope, target) {
@@ -642,15 +736,21 @@ async function responderConsulta(texto, from = 'anon') {
     if (m || ultimoDoc.has(from)) return verConceptos(tipo, m ? m[0] : null, from);
   }
 
-  // C0.5) ¿La ÚLTIMA factura/presupuesto/pedido? ("la última factura que hemos hecho")
+  // C0.5) ¿La ÚLTIMA factura/presupuesto/pedido/proveedor/gasto?
   if (/\bultim[oa]s?\b|mas reciente|mas nueva/.test(norm(texto)) && !/incidencia/.test(norm(texto))) {
     const tipo = tipoDocumento(norm(texto));
-    if (tipo === 'albaran')   return '📦 Los *albaranes* todavía no están conectados.';
-    if (tipo === 'proveedor') return '📥 Las *facturas de proveedor* todavía no están conectadas.';
+    if (tipo === 'albaran') return '📦 Los *albaranes* todavía no están conectados.';
     if (tipo) return handlerUltimo(tipo, texto, from);
   }
 
-  // C1) Buscador UNIVERSAL de documento por número (factura/presupuesto/pedido)
+  // C0.7) ¿Análisis de GASTO / compras? ("qué proveedor gastamos más", "cuánto gastamos en X")
+  //        Sin número de documento (eso va al buscador universal).
+  if (!/\d{2,6}/.test(texto) &&
+      /(que|qué)\s+proveedor|proveedor(es)?\b|gastamos|compramos|gasto total|total de (gasto|compra)|en quien (mas )?gastamos|compras totales|cuanto (gastamos|compramos)|en que gastamos/.test(norm(texto))) {
+    return handlerGasto(texto, from);
+  }
+
+  // C1) Buscador UNIVERSAL de documento por número (factura/presupuesto/pedido/proveedor/gasto)
   {
     const n = norm(texto);
     const num = texto.match(/\d{2,6}/);
@@ -679,7 +779,8 @@ async function responderConsulta(texto, from = 'anon') {
     `📄 *Conceptos / desglose* — "conceptos del 509" · "qué lleva la factura 309" (o "conceptos" tras ver uno)\n` +
     `💰 *Facturas* — "¿qué debe Illa Verda?" · "cuánto me deben en total"\n` +
     `📊 *Presupuestos* — "los aceptados" · "conceptos del 509" · "presupuestos de Cinc"\n` +
-    `🔧 *Pedidos* — "cuántos pedidos tenemos" · "pedidos de Illa Verda"\n\n` +
+    `🔧 *Pedidos* — "cuántos pedidos tenemos" · "pedidos de Illa Verda"\n` +
+    `🛒 *Proveedores y gasto* — "qué proveedor gastamos más" · "cuánto gastamos en Saltoki" · "la factura de proveedor 9"\n\n` +
     `Y si te equivocas con un nombre, te pregunto y lo recuerdo. 🧠`;
 }
 
