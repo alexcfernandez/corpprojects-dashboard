@@ -168,13 +168,32 @@ async function scanType(db, type) {
   const seen = new Set();
   const now = new Date();
 
+  const prevCount = Object.keys(prev).length;
+  const currentActivos = current.filter(c => !c.deleted).length;
+
+  // Anti-flood 1: fetch vacío sospechoso (probable fallo transitorio de StelOrder).
+  // Si no llegan datos pero antes había muchas fotos, NO registres bajas masivas
+  // ni borres las fotos: salta este escaneo y conserva la baseline.
+  if (!isBaseline && currentActivos === 0 && prevCount >= 5) {
+    console.warn(`[Activity] ${type}: 0 elementos con ${prevCount} fotos previas → escaneo omitido (posible fallo de datos, anti-flood bajas)`);
+    return { ...out, skipped: 'fetch-vacio' };
+  }
+
+  // Anti-flood 2: baseline perdida (sin fotos pero con datos presentes) →
+  // reconstruir en silencio en vez de registrar altas masivas falsas.
+  let baseline = isBaseline;
+  if (!baseline && prevCount === 0 && currentActivos >= 5) {
+    console.warn(`[Activity] ${type}: baseline vacía con ${currentActivos} elementos → re-baseline silencioso (anti-flood altas)`);
+    baseline = true;
+  }
+
   for (const item of current) {
     seen.add(item.id);
     const key = { type, entityId: item.id };
     const prevDoc = prev[item.id];
 
     if (item.deleted) {
-      if (prevDoc && !isBaseline) {
+      if (prevDoc && !baseline) {
         await logCol.insertOne({ type, label: adapter.label, ref: prevDoc.snap._ref || item.id, kind: 'borrado', changes: [], at: now, fechaMod: item.snap._fechaMod });
         out.deleted++;
       }
@@ -183,13 +202,13 @@ async function scanType(db, type) {
     }
 
     if (!prevDoc) {
-      if (!isBaseline) {
+      if (!baseline) {
         await logCol.insertOne({ type, label: adapter.label, ref: item.snap._ref, kind: 'creado', changes: resumenAlta(item.snap), at: now, fechaMod: item.snap._fechaMod });
         out.created++;
       }
     } else {
       const cambios = diff(prevDoc.snap, item.snap);
-      if (cambios.length && !isBaseline) {
+      if (cambios.length && !baseline) {
         await logCol.insertOne({ type, label: adapter.label, ref: item.snap._ref, kind: 'modificado', changes: cambios, at: now, fechaMod: item.snap._fechaMod });
         out.modified++;
       }
@@ -197,7 +216,7 @@ async function scanType(db, type) {
     await snapCol.updateOne(key, { $set: { type, entityId: item.id, snap: item.snap, updatedAt: now } }, { upsert: true });
   }
 
-  if (!isBaseline) {
+  if (!baseline) {
     for (const id of Object.keys(prev)) {
       if (!seen.has(id)) {
         await logCol.insertOne({ type, label: adapter.label, ref: prev[id].snap._ref || id, kind: 'borrado', changes: [], at: now, fechaMod: prev[id].snap._fechaMod });
@@ -207,11 +226,12 @@ async function scanType(db, type) {
     }
   }
 
-  // La foto inicial ha terminado: marcamos el tipo como inicializado.
-  if (isBaseline) {
+  // Foto inicial (o re-baseline) terminada: marcamos el tipo como inicializado.
+  if (baseline) {
     await stateCol.updateOne({ _id: type }, { $set: { initialized: true, updatedAt: now } }, { upsert: true });
   }
 
+  out.baseline = baseline;
   return out;
 }
 
