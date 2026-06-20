@@ -9,6 +9,7 @@ const stel = require('./stelorder');
 
 const ultima    = new Map(); // from -> estado de paginación ("ver más")
 const pendiente = new Map(); // from -> { accion:'aprender', aliasRaw, intent, ts }
+const contexto  = new Map(); // from -> { tipo:'gasto', prov, ts } para encadenar preguntas
 const PAGINA = 10;
 
 function norm(s) {
@@ -741,6 +742,23 @@ function detectarPeriodo(textoNorm) {
   const m = ahora.getMonth(); // 0-11
   const rango = (desde, hasta, etiqueta) => ({ desde, hasta, etiqueta });
   const yearMatch = textoNorm.match(/\b(20\d{2})\b/);
+  const MESES_N = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  const etiqMes = (d) => `${MESES_N[d.getMonth()]} ${d.getFullYear()}`;
+  const NUMPAL = { un: 1, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, once: 11, doce: 12 };
+  const numDe = w => (NUMPAL[w] != null ? NUMPAL[w] : (/^\d+$/.test(w) ? +w : null));
+  const NUM = '(\\d+|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce)';
+
+  // Relativos: "hace 2 meses", "hace un año", "últimos 3 meses"
+  let mm;
+  if ((mm = textoNorm.match(new RegExp(`hace\\s+${NUM}\\s+mes`)))) {
+    const k = numDe(mm[1]); if (k != null) { const d = new Date(y, m - k, 1); return rango(d, new Date(y, m - k + 1, 1), etiqMes(d)); }
+  }
+  if ((mm = textoNorm.match(new RegExp(`hace\\s+${NUM}\\s+an[oñ]`)))) {
+    const k = numDe(mm[1]); if (k != null) return rango(new Date(y - k, 0, 1), new Date(y - k + 1, 0, 1), `${y - k}`);
+  }
+  if ((mm = textoNorm.match(new RegExp(`ultimos?\\s+${NUM}\\s+mes`)))) {
+    const k = numDe(mm[1]); if (k != null) return rango(new Date(y, m - k + 1, 1), new Date(y, m + 1, 1), `últimos ${k} meses`);
+  }
 
   if (/\beste mes\b|mes actual|del mes/.test(textoNorm))            return rango(new Date(y, m, 1),     new Date(y, m + 1, 1), 'este mes');
   if (/mes pasado|ultimo mes|mes anterior/.test(textoNorm))        return rango(new Date(y, m - 1, 1), new Date(y, m, 1),     'el mes pasado');
@@ -751,8 +769,7 @@ function detectarPeriodo(textoNorm) {
   for (const [nombre, idx] of Object.entries(MES)) {
     if (new RegExp(`\\b${nombre}\\b`).test(textoNorm)) {
       const yy = yearMatch ? +yearMatch[1] : y;
-      const etiq = `${nombre.charAt(0).toUpperCase() + nombre.slice(1)} ${yy}`;
-      return rango(new Date(yy, idx, 1), new Date(yy, idx + 1, 1), etiq);
+      return rango(new Date(yy, idx, 1), new Date(yy, idx + 1, 1), `${MESES_N[idx]} ${yy}`);
     }
   }
   if (yearMatch) { const yy = +yearMatch[1]; return rango(new Date(yy, 0, 1), new Date(yy + 1, 0, 1), `${yy}`); }
@@ -779,6 +796,7 @@ async function handlerGasto(texto, from) {
   const prov = await proveedorEnTexto(texto);
 
   if (prov) {
+    contexto.set(from, { tipo: 'gasto', prov, ts: Date.now() });
     const fc = compras.filter(x => norm(x.supplier) === norm(prov));
     const gc = gastos.filter(x => norm(x.supplier) === norm(prov));
     const totC = fc.reduce((s, x) => s + (x.total || 0), 0);
@@ -807,6 +825,7 @@ async function handlerGasto(texto, from) {
   }
 
   // Global: ranking de proveedores
+  contexto.set(from, { tipo: 'gasto', prov: null, ts: Date.now() });
   const totalCompras = compras.reduce((s, x) => s + (x.total || 0), 0);
   const totalGastos  = gastos.reduce((s, x) => s + (x.amount || 0), 0);
   const porProv = {};
@@ -881,15 +900,34 @@ async function responderConsulta(texto, from = 'anon') {
     if (tipo) return handlerUltimo(tipo, texto, from);
   }
 
-  // C0.7) ¿Análisis de GASTO / compras? ("qué proveedor gastamos más este año", "cuánto gastamos en X")
+  // C-ctx) Continuación temporal de una consulta de gasto ("¿y el mes pasado?", "¿y hace dos meses?")
+  {
+    const n = norm(texto);
+    const ctx = contexto.get(from);
+    const periodoSolo = detectarPeriodo(n);
+    const palabras = n.replace(/[¿?¡!.,]/g, '').trim().split(/\s+/).filter(Boolean);
+    const empiezaY = /^\s*(y|¿\s*y|e)\b/.test(texto.trim().toLowerCase());
+    const cortito = palabras.length <= 5;
+    const sinOtraIntencion = !/proveedor|factura|presupuesto|pedido|debe|deben|conceptos|resumen/.test(n);
+    if (ctx && ctx.tipo === 'gasto' && (Date.now() - ctx.ts) < 15 * 60 * 1000 &&
+        periodoSolo && sinOtraIntencion && (empiezaY || cortito)) {
+      const base = ctx.prov ? `gastamos en ${ctx.prov}` : 'que proveedor gastamos mas';
+      return handlerGasto(`${base} ${texto}`, from);
+    }
+  }
+
+  // C0.7) ¿Análisis de GASTO / compras? ("qué proveedor gastamos más este año", "cuánto pagamos en X")
   {
     const n = norm(texto);
     const numTok = texto.match(/\d{2,6}/);
     const esAnio = numTok && /^20\d{2}$/.test(numTok[0]);
-    const verbosGasto = /(gastamos|gastado|compramos|gasto total|total de (gasto|compra)|en quien (mas )?gastamos|compras totales|cuanto (gastamos|compramos)|en que gastamos|que proveedor)/.test(n);
+    const verbosGasto = /(gastamos|gastado|gasto total|compramos|comprado|compras totales|total de (gasto|compra)|en quien (mas )?gastamos|cuanto (gastamos|compramos)|en que gastamos|que proveedor)/.test(n);
+    // "pagado/pagamos/abonado ... en/a X" = pago a proveedor (excluye cobros de clientes)
+    const pagoProv = /(pagado|pagamos|pagar|abonado|abonamos)/.test(n) && /\b(en|a|al|a la)\b/.test(n) &&
+                     !/nos (han )?pag|me (han )?pag|nos pagan|me pagan|nos deben|me deben|cliente/.test(n);
     const mencionProv = /proveedor(es)?\b/.test(n);
-    if (verbosGasto && (!numTok || esAnio)) return handlerGasto(texto, from);
-    if (mencionProv && !numTok)             return handlerGasto(texto, from);
+    if ((verbosGasto || pagoProv) && (!numTok || esAnio)) return handlerGasto(texto, from);
+    if (mencionProv && !numTok)                           return handlerGasto(texto, from);
   }
 
   // C1) Buscador UNIVERSAL de documento por número (factura/presupuesto/pedido/proveedor/gasto)
