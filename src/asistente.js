@@ -900,6 +900,13 @@ async function responderConsulta(texto, from = 'anon') {
     if (tipo) return handlerUltimo(tipo, texto, from);
   }
 
+  // Comando: "avisos" / "qué debería revisar" → resumen proactivo bajo demanda
+  if (/^\s*(avisos?|alertas?|que revisar)\b/.test(norm(texto)) ||
+      /que (deberia|tengo que|debo) revisar|que tengo pendiente de cobr|que me avisarias/.test(norm(texto))) {
+    try { const { construirAviso } = require('./avisos-proactivo'); return (await construirAviso()).texto; }
+    catch (e) { return 'No he podido montar el resumen de avisos ahora mismo.'; }
+  }
+
   // Comando de revisión: "fallos" → consultas que no entendí (para que las veas tú)
   if (/^\s*(fallos|errores)\b/.test(norm(texto)) || /que (no )?(has )?entend|consultas que no entend|donde fallas/.test(norm(texto))) {
     return handlerFallos(from);
