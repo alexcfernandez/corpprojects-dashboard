@@ -84,6 +84,33 @@ async function listas() {
   return _listasCache;
 }
 
+// Vocabulario para mejorar la transcripción de voz (Whisper): nombres propios
+// reales de StelOrder (comunidades/familias + proveedores). Whisper solo usa
+// los últimos ~224 tokens del prompt, así que los más distintivos van al final.
+let _vozCache = null, _vozTs = 0;
+async function vocabularioVoz() {
+  if (_vozCache && Date.now() - _vozTs < 10 * 60 * 1000) return _vozCache;
+  let familias = [], provNames = [], clientes = [];
+  try {
+    const l = await listas();
+    familias = l.familias || []; clientes = l.clientes || [];
+  } catch (e) {}
+  try {
+    const { suppliers } = await stel.getSuppliers();
+    provNames = (suppliers || []).map(s => s.name);
+  } catch (e) {}
+  // Limpia sufijos societarios y duplicados; los proveedores (marcas) al final.
+  const limpiar = arr => [...new Set((arr || [])
+    .map(n => String(n).replace(/[\s,]+(s\.?l\.?u?\.?|s\.?a\.?u?\.?|s\.?c\.?c\.?l\.?)\.?\s*$/i, '').replace(/[",]/g, ' ').replace(/\s+/g, ' ').trim())
+    .filter(n => n.length >= 3))];
+  const nombres = [...limpiar(clientes), ...limpiar(familias), ...limpiar(provNames)];
+  let prompt = `Empresa de mantenimiento y reformas de comunidades de vecinos. Nombres propios habituales: ${nombres.join(', ')}.`;
+  // Whisper recorta al final del prompt: conservamos la cola (proveedores/familias).
+  if (prompt.length > 1100) prompt = '…' + prompt.slice(prompt.length - 1100);
+  _vozCache = prompt; _vozTs = Date.now();
+  return prompt;
+}
+
 // ── IA ────────────────────────────────────────────────────────────
 async function iaJson(prompt, maxTokens, fallback) {
   const key = process.env.ANTHROPIC_API_KEY;
@@ -899,4 +926,4 @@ async function responderConsulta(texto, from = 'anon') {
     `Y si te equivocas con un nombre, te pregunto y lo recuerdo. 🧠`;
 }
 
-module.exports = { responderConsulta };
+module.exports = { responderConsulta, vocabularioVoz };
