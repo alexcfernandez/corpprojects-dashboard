@@ -900,6 +900,11 @@ async function responderConsulta(texto, from = 'anon') {
     if (tipo) return handlerUltimo(tipo, texto, from);
   }
 
+  // Comando de revisión: "fallos" → consultas que no entendí (para que las veas tú)
+  if (/^\s*(fallos|errores)\b/.test(norm(texto)) || /que (no )?(has )?entend|consultas que no entend|donde fallas/.test(norm(texto))) {
+    return handlerFallos(from);
+  }
+
   // C-ctx) Continuación temporal de una consulta de gasto ("¿y el mes pasado?", "¿y hace dos meses?")
   {
     const n = norm(texto);
@@ -946,12 +951,29 @@ async function responderConsulta(texto, from = 'anon') {
   const objFicha = detectarFicha(texto);
   if (objFicha) return handlerFicha(texto, from, objFicha);
 
+  // C4) Base de conocimiento de comunidades (ficha automática + notas manuales)
+  {
+    const n = norm(texto);
+    // Añadir nota: "apunta/anota/recuerda en <comunidad> que <texto>"  ó  "... en <comunidad>: <texto>"
+    const mAdd = texto.match(/(?:ap[uú]nta(?:me)?|anota|recuerda|guarda)\b[\s\S]*?\ben\s+(.+?)\s+que\s+([\s\S]+)$/i)
+              || texto.match(/(?:ap[uú]nta(?:me)?|anota|recuerda|guarda|nota)\b[\s\S]*?\ben\s+(.+?)\s*:\s*([\s\S]+)$/i);
+    if (mAdd) return handlerNotaAdd(mAdd[1].trim(), mAdd[2].trim(), from);
+
+    // Consultar ficha de comunidad (no confundir con gasto de proveedores)
+    if (!/proveedor|gastamos|pagado|compramos|compra a/.test(n) &&
+        /(solemos|soliamos|materiales|trabajos que|ficha tecnica|ficha de comunidad|conocimiento de|que sabemos de|que solemos hacer|que hay en)/.test(n)) {
+      return handlerComunidad(texto, from);
+    }
+  }
+
   // D) Enrutador
   const { intent, scope, rawTarget } = await clasificar(texto);
   if (intent === 'facturas')     return handlerFacturas(texto, from, scope, rawTarget);
   if (intent === 'presupuestos') return handlerPresupuestos(texto, from, scope, rawTarget);
   if (intent === 'pedidos')      return handlerPedidos(texto, from, scope, rawTarget);
 
+  // Ninguna regla ni el clasificador lo entendieron → lo registramos para ir mejorando.
+  await registrarFallo(from, texto);
   return `👋 Puedo ayudarte con:\n\n` +
     `📌 *Resumen* — escribe "resumen" para ver el negocio de un vistazo\n` +
     `🗂️ *Ficha de cliente* — "resumen de Illa Verda" (deuda + presupuestos + pedidos)\n` +
@@ -960,8 +982,128 @@ async function responderConsulta(texto, from = 'anon') {
     `💰 *Facturas* — "¿qué debe Illa Verda?" · "cuánto me deben en total"\n` +
     `📊 *Presupuestos* — "los aceptados" · "conceptos del 509" · "presupuestos de Cinc"\n` +
     `🔧 *Pedidos* — "cuántos pedidos tenemos" · "pedidos de Illa Verda"\n` +
-    `🛒 *Proveedores y gasto* — "qué proveedor gastamos más" · "cuánto gastamos en Saltoki" · "la factura de proveedor 9"\n\n` +
+    `🛒 *Proveedores y gasto* — "qué proveedor gastamos más" · "cuánto gastamos en Saltoki" · "la factura de proveedor 9"\n` +
+    `🏘️ *Comunidades* — "materiales de Illa Verda" · "apunta en Illa Verda que la caldera es Roca"\n\n` +
     `Y si te equivocas con un nombre, te pregunto y lo recuerdo. 🧠`;
+}
+
+// ── Registro de fallos (retroalimentación): consultas que no se entendieron ──
+async function registrarFallo(from, texto) {
+  try {
+    const db = await getDB();
+    await db.collection('fallosAsistente').insertOne({
+      texto: String(texto || '').slice(0, 500),
+      from: String(from || ''),
+      ts: new Date(),
+      revisado: false
+    });
+  } catch (e) { console.error('[Asistente] registrarFallo:', e.message); }
+}
+
+async function handlerFallos(from) {
+  let docs = [];
+  try {
+    const db = await getDB();
+    docs = await db.collection('fallosAsistente').find({}).sort({ ts: -1 }).limit(300).toArray();
+  } catch (e) { return 'No he podido leer el registro de fallos.'; }
+  if (!docs.length) return '🎉 No tengo consultas sin entender registradas. De momento, todo lo que me preguntáis lo voy pillando.';
+  const conteo = {};
+  for (const d of docs) {
+    const k = norm(d.texto).slice(0, 60);
+    if (!k) continue;
+    if (!conteo[k]) conteo[k] = { n: 0, ej: d.texto };
+    conteo[k].n++;
+  }
+  const rank = Object.values(conteo).sort((a, b) => b.n - a.n).slice(0, 15);
+  let msg = `🛠️ *Consultas que no entendí* (de las últimas ${docs.length})\n\n`;
+  msg += rank.map(r => `• "${r.ej}"${r.n > 1 ? ` _×${r.n}_` : ''}`).join('\n');
+  msg += `\n\n_Esto me sirve para ir aprendiendo qué os hace falta._`;
+  return msg;
+}
+
+// ── Base de conocimiento de comunidades ──────────────────────────────────
+// Ficha determinista: agrega las líneas (conceptos) de presupuestos + pedidos
+// de esa comunidad + notas manuales. No inventa: lee datos reales de StelOrder.
+async function fichaComunidad(target, scope, from) {
+  const [ests, orders, clientsData] = await Promise.all([
+    stel.getWorkEstimates().catch(() => []),
+    stel.getAllWorkOrders().catch(() => []),
+    stel.getClients().catch(() => ({ clientMap: {} }))
+  ]);
+  const clientMap = clientsData.clientMap || {};
+  const tnorm = norm(target);
+  const matchDoc = (doc) => {
+    const ci = clientMap[String(doc['account-id'] || '')];
+    if (!ci) return false;
+    return scope === 'familia' ? norm(ci.family) === tnorm : norm(ci.name) === tnorm;
+  };
+  const docs = [...(Array.isArray(ests) ? ests : []), ...(Array.isArray(orders) ? orders : [])]
+    .filter(d => !d.deleted && matchDoc(d));
+
+  const conteo = {};
+  for (const d of docs) {
+    const lines = Array.isArray(d.lines) ? d.lines.filter(l => !l.deleted) : [];
+    for (const l of lines) {
+      const nombre = String(l['item-name'] || '').trim();
+      if (!nombre) continue;
+      const k = norm(nombre);
+      if (!conteo[k]) conteo[k] = { nombre, n: 0 };
+      conteo[k].n++;
+    }
+  }
+  const rank = Object.values(conteo).sort((a, b) => b.n - a.n).slice(0, 12);
+
+  // Anclaje de notas al id de cliente cuando es posible (estable ante renombrados)
+  let accId = null;
+  if (scope !== 'familia') for (const [id, ci] of Object.entries(clientMap)) { if (norm(ci.name) === tnorm) { accId = id; break; } }
+  const clave = accId ? `id:${accId}` : (scope === 'familia' ? `fam:${tnorm}` : `nombre:${tnorm}`);
+  let notas = [];
+  try {
+    const db = await getDB();
+    const doc = await db.collection('comunidadNotas').findOne({ clave });
+    notas = (doc && Array.isArray(doc.notas)) ? doc.notas : [];
+  } catch (e) {}
+
+  if (!docs.length && !notas.length) {
+    return `🏘️ No tengo información de *${target}* todavía.\nApúntame algo con: *"apunta en ${target} que ..."* y lo recordaré.`;
+  }
+  let msg = `🏘️ *${target}* — ficha de comunidad\n`;
+  if (rank.length) {
+    msg += `\n📑 Según ${docs.length} presupuesto(s)/pedido(s), lo más habitual:\n`;
+    msg += rank.map(r => `• ${r.nombre}${r.n > 1 ? ` _×${r.n}_` : ''}`).join('\n');
+  } else {
+    msg += `\n_(Aún no hay presupuestos ni pedidos con desglose para sacar materiales.)_`;
+  }
+  if (notas.length) msg += `\n\n📝 *Notas:*\n` + notas.slice(-10).map(x => `• ${x.texto}`).join('\n');
+  else              msg += `\n\n_Sin notas. Añade con: "apunta en ${target} que ..."_`;
+  return msg;
+}
+
+async function handlerComunidad(texto, from) {
+  const { scope, target } = await resolver(texto, texto);
+  if (!target) return '¿De qué comunidad quieres la ficha? Dime el nombre como aparece en StelOrder (p. ej. *"materiales de Illa Verda"*).';
+  return fichaComunidad(target, scope || 'cliente', from);
+}
+
+async function handlerNotaAdd(comunidadRaw, notaTexto, from) {
+  notaTexto = String(notaTexto || '').trim().replace(/[.\s]+$/, '');
+  if (!notaTexto) return '¿Qué quieres que apunte? Prueba: *"apunta en Illa Verda que la caldera es Roca"*.';
+  const { scope, target } = await resolver(comunidadRaw, comunidadRaw);
+  if (!target) return `No reconozco la comunidad *"${comunidadRaw}"*. Dímela como aparece en StelOrder.`;
+  const { clientMap } = await stel.getClients().catch(() => ({ clientMap: {} }));
+  const tnorm = norm(target);
+  let accId = null;
+  if (scope !== 'familia') for (const [id, ci] of Object.entries(clientMap || {})) { if (norm(ci.name) === tnorm) { accId = id; break; } }
+  const clave = accId ? `id:${accId}` : (scope === 'familia' ? `fam:${tnorm}` : `nombre:${tnorm}`);
+  try {
+    const db = await getDB();
+    await db.collection('comunidadNotas').updateOne(
+      { clave },
+      { $setOnInsert: { clave, comunidad: target, scope: scope || 'cliente' }, $push: { notas: { texto: notaTexto, ts: new Date() } } },
+      { upsert: true }
+    );
+  } catch (e) { return 'No he podido guardar la nota ahora mismo.'; }
+  return `📝 Apuntado en *${target}*: "${notaTexto}"\nPídeme su ficha con *"materiales de ${target}"*.`;
 }
 
 module.exports = { responderConsulta, vocabularioVoz };
