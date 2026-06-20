@@ -1,7 +1,8 @@
 // src/scheduler.js — con protección contra alertas al arrancar
 const cron = require('node-cron');
 const { getPendingInvoices, getSummary, getWorkOrdersLive } = require('./stelorder');
-const { sendInvoiceAlert, sendDailySummary, sendFamilySummary, buildFamilySummaryEmail, sendWorkOrdersSummary, sendEmail } = require('./notifications');
+const { sendInvoiceAlert, sendDailySummary, sendFamilySummary, buildFamilySummaryEmail, sendWorkOrdersSummary, sendEmail, sendWhatsApp } = require('./notifications');
+const { construirAviso } = require('./avisos-proactivo');
 const { pollEmails } = require('./email-intelligence');
 const avisos = require('./avisos');   // registro persistente de avisos enviados
 const calendarSync = require('./calendar'); // sondeo Google Calendar → dashboard
@@ -41,6 +42,24 @@ async function checkPendingInvoices() {
     }
   } catch (err) {
     console.error('[Scheduler] Error:', err.message);
+  }
+}
+
+// Aviso proactivo por WhatsApp al dueño: facturas vencidas + presupuestos aceptados parados.
+async function enviarAvisoProactivo() {
+  const isWarmup = (Date.now() - startTime) < WARMUP_MS;
+  if (isWarmup) { console.log('[Aviso] warmup, no se envía.'); return; }
+  try {
+    if (await avisos.isGlobalPaused()) { console.log('[Aviso] pausa global, no se envía.'); return; }
+    const dateKey = new Date().toISOString().slice(0, 10);
+    if (await avisos.wasAlertSentToday('aviso-proactivo', dateKey)) { console.log('[Aviso] ya enviado hoy.'); return; }
+    const { texto, hayAlgo } = await construirAviso();
+    if (!hayAlgo && process.env.AVISO_SOLO_SI_HAY === '1') { console.log('[Aviso] nada que avisar.'); return; }
+    await sendWhatsApp(texto);
+    await avisos.markAlertSent('aviso-proactivo', dateKey);
+    console.log('[Aviso] proactivo enviado por WhatsApp.');
+  } catch (err) {
+    console.error('[Aviso] Error:', err.message);
   }
 }
 
@@ -244,6 +263,10 @@ function startScheduler() {
   // Aviso diario de PEDIDOS DE TRABAJO (rojos + ámbar) a las 08:00. Respeta su pausa.
   cron.schedule('0 8 * * *', () => sendWorkOrdersAlert(), { timezone: 'Europe/Madrid' });
 
+  // Aviso PROACTIVO al dueño por WhatsApp (facturas vencidas + presupuestos parados).
+  // Por defecto lunes 08:00; configurable con AVISO_CRON.
+  cron.schedule(process.env.AVISO_CRON || '0 8 * * 1', () => enviarAvisoProactivo(), { timezone: 'Europe/Madrid' });
+
   // Poll de emails cada 15 minutos
   cron.schedule('*/15 * * * *', async () => {
     try {
@@ -313,4 +336,4 @@ function startScheduler() {
   }, 150 * 1000);
 }
 
-module.exports = { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail, sendWorkOrdersAlert };
+module.exports = { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail, sendWorkOrdersAlert, enviarAvisoProactivo };
