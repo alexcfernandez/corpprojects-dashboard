@@ -1,7 +1,12 @@
 // src/avisos-proactivo.js — Construye el resumen de "cosas a revisar":
 // facturas vencidas sin cobrar + presupuestos aceptados sin cerrar.
-// Solo LEE datos de StelOrder (no envía nada, no escribe nada).
+// Solo LEE datos de StelOrder. La marca "en gestión" oculta morosos de ESTE
+// aviso de WhatsApp (no afecta a los correos de impago al cliente).
 const { getPendingInvoices, getEstimatesSummary } = require('./stelorder');
+const { getDB } = require('./db');
+
+function normTxt(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim(); }
+function digitos(s) { const m = String(s || '').match(/\d+/g); return m ? String(parseInt(m.join(''), 10)) : ''; }
 
 // Formato de euros manual (Railway no tiene ICU completo → evitamos Intl).
 function fmtEur(n) {
@@ -10,18 +15,48 @@ function fmtEur(n) {
   return ent.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + dec + ' €';
 }
 
+// ── "En gestión" (judicial/Paypymes): solo oculta del aviso de WhatsApp ──
+async function getGestion() {
+  try { const db = await getDB(); return await db.collection('morososGestion').find({}).toArray(); }
+  catch (e) { return []; }
+}
+async function marcarGestion(tipo, valor, clave) {
+  const k = clave || normTxt(valor);
+  if (!k) return false;
+  try {
+    const db = await getDB();
+    await db.collection('morososGestion').updateOne(
+      { tipo, clave: k },
+      { $set: { tipo, clave: k, valor, updatedAt: new Date() } },
+      { upsert: true }
+    );
+    return true;
+  } catch (e) { return false; }
+}
+async function desmarcarGestion(tipo, clave) {
+  try { const db = await getDB(); const r = await db.collection('morososGestion').deleteOne({ tipo, clave }); return r.deletedCount > 0; }
+  catch (e) { return false; }
+}
+
 async function construirAviso(opts = {}) {
   const diasUmbral = parseInt(opts.dias      || process.env.AVISO_DIAS_VENCIDA || 60, 10);
   const diasPresu  = parseInt(opts.diasPresu || process.env.AVISO_DIAS_PRESU   || 15, 10);
 
-  const [pending, est] = await Promise.all([
+  const [pending, est, gest] = await Promise.all([
     getPendingInvoices().catch(() => []),
-    getEstimatesSummary().catch(() => ({ accepted: [] }))
+    getEstimatesSummary().catch(() => ({ accepted: [] })),
+    getGestion()
   ]);
 
-  const vencidas = (pending || [])
+  const cliGest = new Set(gest.filter(g => g.tipo === 'cliente').map(g => g.clave));
+  const facGest = new Set(gest.filter(g => g.tipo === 'factura').map(g => g.clave));
+  const enGestion = i => cliGest.has(normTxt(i.client)) || facGest.has(digitos(i.number));
+
+  const todasVencidas = (pending || [])
     .filter(i => (i.daysOverdue || 0) >= diasUmbral)
     .sort((a, b) => (b.daysOverdue || 0) - (a.daysOverdue || 0));
+  const vencidas = todasVencidas.filter(i => !enGestion(i));
+  const nOcultas = todasVencidas.length - vencidas.length;
   const totalVencido = vencidas.reduce((s, i) => s + (i.pending || 0), 0);
 
   const aceptados = (est.accepted || [])
@@ -32,8 +67,9 @@ async function construirAviso(opts = {}) {
 
   let texto = `🔔 *Cosas a revisar*\n`;
   if (!hayAlgo) {
-    texto += `\n✅ Nada urgente: sin facturas vencidas (+${diasUmbral}d) ni presupuestos aceptados parados.`;
-    return { texto, hayAlgo, nVencidas: 0, totalVencido: 0 };
+    texto += `\n✅ Nada nuevo que perseguir: sin facturas vencidas (+${diasUmbral}d) ni presupuestos aceptados parados.`;
+    if (nOcultas) texto += `\n🔕 (${nOcultas} en gestión, ocultas — siguen recibiendo correos.)`;
+    return { texto, hayAlgo, nVencidas: 0, totalVencido: 0, nOcultas };
   }
   if (vencidas.length) {
     texto += `\n💰 *Sin cobrar (+${diasUmbral} días): ${vencidas.length}* — total *${fmtEur(totalVencido)}*\n`;
@@ -50,7 +86,8 @@ async function construirAviso(opts = {}) {
     if (aceptados.length > 5) texto += `\n…y ${aceptados.length - 5} más.`;
     texto += `\n_Revisa si ya están convertidos en pedido._`;
   }
-  return { texto, hayAlgo, nVencidas: vencidas.length, totalVencido };
+  if (nOcultas) texto += `\n\n🔕 ${nOcultas} en gestión (ocultas — siguen recibiendo correos).`;
+  return { texto, hayAlgo, nVencidas: vencidas.length, totalVencido, nOcultas };
 }
 
-module.exports = { construirAviso };
+module.exports = { construirAviso, getGestion, marcarGestion, desmarcarGestion, normTxt, digitos };
