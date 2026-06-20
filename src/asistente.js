@@ -900,6 +900,24 @@ async function responderConsulta(texto, from = 'anon') {
     if (tipo) return handlerUltimo(tipo, texto, from);
   }
 
+  // Comando: gestión de morosos (oculta del aviso de WhatsApp; NO toca los correos)
+  {
+    const n = norm(texto);
+    if (/gestion/.test(n)) {
+      // Listar
+      if (/^\s*(en gestion|morosos? en gestion|que (morosos? )?tengo en gestion|lista de gestion)\s*[?]?\s*$/.test(n)) {
+        return handlerGestionList();
+      }
+      // Quitar de gestión
+      const mq = texto.match(/(?:quita|saca|elimina|borra|reactiva)\s+(?:de\s+)?gesti[oó]n\s+(.+)$/i);
+      if (mq) return handlerGestionMarcar(mq[1].trim(), false, from);
+      // Marcar en gestión
+      const mm = texto.match(/(?:en|a|pon(?:er)?\s+en|marca(?:r)?\s+en)\s+gesti[oó]n\s+(.+)$/i)
+              || texto.match(/gesti[oó]n\s+(?:de\s+|judicial\s+|paypymes\s+)?(.+)$/i);
+      if (mm) return handlerGestionMarcar(mm[1].trim(), true, from);
+    }
+  }
+
   // Comando: "avisos" / "qué debería revisar" → resumen proactivo bajo demanda
   if (/^\s*(avisos?|alertas?|que revisar)\b/.test(norm(texto)) ||
       /que (deberia|tengo que|debo) revisar|que tengo pendiente de cobr|que me avisarias/.test(norm(texto))) {
@@ -1111,6 +1129,44 @@ async function handlerNotaAdd(comunidadRaw, notaTexto, from) {
     );
   } catch (e) { return 'No he podido guardar la nota ahora mismo.'; }
   return `📝 Apuntado en *${target}*: "${notaTexto}"\nPídeme su ficha con *"materiales de ${target}"*.`;
+}
+
+// ── Gestión de morosos: ocultar del aviso de WhatsApp (los correos siguen) ──
+async function handlerGestionMarcar(valorRaw, activar, from) {
+  const gp = require('./avisos-proactivo');
+  const v = String(valorRaw || '').trim().replace(/[?.!]+$/, '');
+  if (!v) return '¿A quién o qué factura? Prueba: *"en gestión Clepsa"* o *"en gestión FAC00179"*.';
+
+  const num = (v.match(/\d{2,6}/) || [])[0];
+  const pareceFactura = num && (/\b(fac|fra|factura)\b/i.test(v) || /^(la |el )?(fac|fra|factura)?\s*0*\d{2,6}$/i.test(v));
+
+  if (pareceFactura) {
+    const clave = String(parseInt(num, 10));
+    const etiqueta = `FAC${clave.padStart(5, '0')}`;
+    if (activar) { await gp.marcarGestion('factura', etiqueta, clave); return `🔕 *${etiqueta}* en gestión: no saldrá en tu aviso. _(El cliente sigue recibiendo los correos.)_`; }
+    const ok = await gp.desmarcarGestion('factura', clave);
+    return ok ? `🔔 *${etiqueta}* vuelve a tu aviso.` : `*${etiqueta}* no estaba en gestión.`;
+  }
+
+  // Por cliente: resolvemos el nombre real
+  const { target } = await resolver(v, v);
+  if (!target) return `No reconozco *"${v}"*. Dímelo como aparece en StelOrder, o usa el número de factura.`;
+  if (activar) { await gp.marcarGestion('cliente', target); return `🔕 *${target}* queda en gestión: sus facturas no saldrán en tu aviso. _(Le siguen llegando los correos de impago.)_`; }
+  const ok = await gp.desmarcarGestion('cliente', gp.normTxt(target));
+  return ok ? `🔔 *${target}* vuelve a tu aviso.` : `*${target}* no estaba en gestión.`;
+}
+
+async function handlerGestionList() {
+  const gp = require('./avisos-proactivo');
+  const gest = await gp.getGestion();
+  if (!gest.length) return '🔕 No tienes nada en gestión.\nMarca con *"en gestión Clepsa"* o *"en gestión FAC00179"*.';
+  const cli = gest.filter(g => g.tipo === 'cliente');
+  const fac = gest.filter(g => g.tipo === 'factura');
+  let msg = `🔕 *En gestión* (ocultos de tu aviso; siguen recibiendo correos)\n`;
+  if (cli.length) msg += `\n*Clientes:*\n` + cli.map(g => `• ${g.valor}`).join('\n');
+  if (fac.length) msg += `\n\n*Facturas:*\n` + fac.map(g => `• ${g.valor}`).join('\n');
+  msg += `\n\nPara reactivar: *"quita de gestión Clepsa"*.`;
+  return msg;
 }
 
 module.exports = { responderConsulta, vocabularioVoz };
