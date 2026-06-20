@@ -318,11 +318,41 @@ function verificarPermisos(remitente, clasificacion) {
 }
 
 // ── Procesar un email individual ──────────────────────────────────
+// ── Etiqueta interna para marcar emails ya procesados ────────────
+// Evita que un email ya tratado (pero aún "no leído" en Gmail) se cuente
+// como nuevo en cada poll. NO altera el estado leído/no leído salvo en el
+// procesado normal (que ya lo marcaba como leído de antes).
+let _processedLabelId = null;
+async function ensureProcessedLabel(gmail) {
+  if (_processedLabelId) return _processedLabelId;
+  try {
+    const list = await gmail.users.labels.list({ userId: 'me' });
+    const found = (list.data.labels || []).find(l => l.name === 'CorpProcessed');
+    if (found) { _processedLabelId = found.id; return found.id; }
+    const created = await gmail.users.labels.create({
+      userId: 'me',
+      requestBody: { name: 'CorpProcessed', labelListVisibility: 'labelHide', messageListVisibility: 'hide' }
+    });
+    _processedLabelId = created.data.id;
+    return _processedLabelId;
+  } catch (e) { console.warn('[Email] ensureLabel:', e.message); return null; }
+}
+async function etiquetarProcesado(gmail, messageId, quitarUnread) {
+  try {
+    const labelId = await ensureProcessedLabel(gmail);
+    const requestBody = {};
+    if (labelId) requestBody.addLabelIds = [labelId];
+    if (quitarUnread) requestBody.removeLabelIds = ['UNREAD'];
+    if (!requestBody.addLabelIds && !requestBody.removeLabelIds) return;
+    await gmail.users.messages.modify({ userId: 'me', id: messageId, requestBody });
+  } catch (e) { console.warn('[Email] etiquetar:', e.message); }
+}
+
 async function procesarEmail(gmail, messageId) {
   const { db, client } = await getDB();
   try {
     const existe = await db.collection('emails').findOne({ gmailId: messageId });
-    if (existe) return;
+    if (existe) { await etiquetarProcesado(gmail, messageId, false); return; }
 
     const msg = await gmail.users.messages.get({ userId: 'me', id: messageId, format: 'full' });
     const headers = msg.data.payload.headers;
@@ -383,11 +413,7 @@ async function procesarEmail(gmail, messageId) {
     try { await require('./gestores').aprenderDeEmail(de, asunto, cuerpo); }
     catch (e) { console.warn('[Gestores] aprender:', e.message); }
 
-    await gmail.users.messages.modify({
-      userId: 'me',
-      id: messageId,
-      requestBody: { removeLabelIds: ['UNREAD'] }
-    });
+    await etiquetarProcesado(gmail, messageId, true);
 
   } finally {
     await client.close();
@@ -401,7 +427,7 @@ async function pollEmails() {
     const gmail = getGmailClient();
     const res = await gmail.users.messages.list({
       userId: 'me',
-      q: 'is:unread newer_than:2d -from:me',
+      q: 'is:unread newer_than:2d -from:me -label:CorpProcessed',
       maxResults: 20
     });
     const mensajes = res.data.messages || [];
