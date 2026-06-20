@@ -101,7 +101,8 @@ async function procesarWhatsApp(from, body, media = {}) {
   if (!texto && (media.numMedia || 0) > 0) {
     if (/audio/i.test(media.mediaType || '')) {
       try {
-        const t = await transcribirAudio(media.mediaUrl, media.mediaType);
+        const hint = await asistente.vocabularioVoz().catch(() => '');
+        const t = await transcribirAudio(media.mediaUrl, media.mediaType, hint);
         if (!t) return enviarWhatsApp(from, '🎙️ He recibido tu nota de voz, pero la transcripción aún no está configurada. Escríbeme el texto y te respondo igual.');
         texto = t;
         prefijo = `🎙️ _He entendido:_ “${t}”\n\n`;
@@ -122,7 +123,7 @@ async function procesarWhatsApp(from, body, media = {}) {
 
 // Transcribe una nota de voz de WhatsApp (descarga de Twilio + STT compatible OpenAI).
 // Configurable por entorno: STT_API_KEY (obligatoria), STT_BASE_URL, STT_MODEL.
-async function transcribirAudio(mediaUrl, contentType) {
+async function transcribirAudio(mediaUrl, contentType, hint) {
   const key = process.env.STT_API_KEY;
   if (!key || !mediaUrl) return null;
   const FormData = require('form-data');
@@ -144,6 +145,7 @@ async function transcribirAudio(mediaUrl, contentType) {
   form.append('file', buf, { filename: `audio.${ext}`, contentType: ct });
   form.append('model', model);
   form.append('language', 'es');
+  if (hint) form.append('prompt', String(hint).slice(0, 1200)); // pista de nombres propios reales
 
   const r = await axios.post(`${base}/audio/transcriptions`, form, {
     headers: { ...form.getHeaders(), Authorization: `Bearer ${key}` },
