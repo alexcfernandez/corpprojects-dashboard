@@ -991,6 +991,8 @@ async function responderConsulta(texto, from = 'anon') {
   // C4) Base de conocimiento de comunidades (ficha automática + notas manuales)
   {
     const n = norm(texto);
+    // Borrar nota: "borra de <comunidad> la nota 3"
+    if (/\b(borra|elimina|quita)\b[\s\S]*\bnota/.test(norm(texto))) return handlerNotaBorrar(texto, from);
     // Añadir nota: "apunta/anota/recuerda en <comunidad> [que/:] <texto>"
     const mAdd = texto.match(/(?:ap[uú]nta(?:me)?|an[oó]ta(?:me)?|recuerda|guarda)\b[\s\S]*?\ben\s+([\s\S]+)$/i);
     if (mAdd) return handlerNotaAdd(mAdd[1].trim(), from);
@@ -1061,39 +1063,26 @@ async function handlerFallos(from) {
 // ── Base de conocimiento de comunidades ──────────────────────────────────
 // Ficha determinista: agrega las líneas (conceptos) de presupuestos + pedidos
 // de esa comunidad + notas manuales. No inventa: lee datos reales de StelOrder.
-async function fichaComunidad(target, scope, from) {
-  const [ests, orders, clientsData] = await Promise.all([
-    stel.getWorkEstimates().catch(() => []),
-    stel.getAllWorkOrders().catch(() => []),
-    stel.getClients().catch(() => ({ clientMap: {} }))
-  ]);
-  const clientMap = clientsData.clientMap || {};
+// Categorías de la ficha técnica de comunidad
+const CAT_COM = {
+  iluminacion:  '💡 Iluminación',
+  electricidad: '🔌 Electricidad',
+  fontaneria:   '💧 Fontanería',
+  calefaccion:  '🔥 Calefacción/ACS',
+  accesos:      '🚪 Accesos y portería',
+  otros:        '📝 Otros'
+};
+
+function claveComunidad(target, scope, clientMap) {
   const tnorm = norm(target);
-  const matchDoc = (doc) => {
-    const ci = clientMap[String(doc['account-id'] || '')];
-    if (!ci) return false;
-    return scope === 'familia' ? norm(ci.family) === tnorm : norm(ci.name) === tnorm;
-  };
-  const docs = [...(Array.isArray(ests) ? ests : []), ...(Array.isArray(orders) ? orders : [])]
-    .filter(d => !d.deleted && matchDoc(d));
-
-  const conteo = {};
-  for (const d of docs) {
-    const lines = Array.isArray(d.lines) ? d.lines.filter(l => !l.deleted) : [];
-    for (const l of lines) {
-      const nombre = String(l['item-name'] || '').trim();
-      if (!nombre) continue;
-      const k = norm(nombre);
-      if (!conteo[k]) conteo[k] = { nombre, n: 0 };
-      conteo[k].n++;
-    }
-  }
-  const rank = Object.values(conteo).sort((a, b) => b.n - a.n).slice(0, 12);
-
-  // Anclaje de notas al id de cliente cuando es posible (estable ante renombrados)
   let accId = null;
-  if (scope !== 'familia') for (const [id, ci] of Object.entries(clientMap)) { if (norm(ci.name) === tnorm) { accId = id; break; } }
-  const clave = accId ? `id:${accId}` : (scope === 'familia' ? `fam:${tnorm}` : `nombre:${tnorm}`);
+  if (scope !== 'familia') for (const [id, ci] of Object.entries(clientMap || {})) { if (norm(ci.name) === tnorm) { accId = id; break; } }
+  return accId ? `id:${accId}` : (scope === 'familia' ? `fam:${tnorm}` : `nombre:${tnorm}`);
+}
+
+async function fichaComunidad(target, scope, from) {
+  const { clientMap } = await stel.getClients().catch(() => ({ clientMap: {} }));
+  const clave = claveComunidad(target, scope, clientMap);
   let notas = [];
   try {
     const db = await getDB();
@@ -1101,18 +1090,23 @@ async function fichaComunidad(target, scope, from) {
     notas = (doc && Array.isArray(doc.notas)) ? doc.notas : [];
   } catch (e) {}
 
-  if (!docs.length && !notas.length) {
-    return `🏘️ No tengo información de *${target}* todavía.\nApúntame algo con: *"apunta en ${target} que ..."* y lo recordaré.`;
+  if (!notas.length) {
+    return `🏘️ *${target}* — ficha técnica\n\nAún no tengo datos. Apúntame cosas de mantenimiento, p. ej.:\n• *"apunta en ${target} las luces son downlight 26W 4000K"*\n• *"apunta en ${target} portero Fermax, código portal 1234"*`;
   }
-  let msg = `🏘️ *${target}* — ficha de comunidad\n`;
-  if (rank.length) {
-    msg += `\n📑 Según ${docs.length} presupuesto(s)/pedido(s), lo más habitual:\n`;
-    msg += rank.map(r => `• ${r.nombre}${r.n > 1 ? ` _×${r.n}_` : ''}`).join('\n');
-  } else {
-    msg += `\n_(Aún no hay presupuestos ni pedidos con desglose para sacar materiales.)_`;
+
+  // Numeramos globalmente (para poder borrar "la nota 3") y agrupamos por categoría
+  const porCat = {};
+  notas.forEach((nt, i) => {
+    const cat = CAT_COM[nt.cat] ? nt.cat : 'otros';
+    (porCat[cat] = porCat[cat] || []).push({ n: i + 1, texto: nt.texto });
+  });
+
+  let msg = `🏘️ *${target}* — ficha técnica\n`;
+  for (const key of Object.keys(CAT_COM)) {
+    if (!porCat[key]) continue;
+    msg += `\n*${CAT_COM[key]}*\n` + porCat[key].map(x => `${x.n}. ${x.texto}`).join('\n') + '\n';
   }
-  if (notas.length) msg += `\n\n📝 *Notas:*\n` + notas.slice(-10).map(x => `• ${x.texto}`).join('\n');
-  else              msg += `\n\n_Sin notas. Añade con: "apunta en ${target} que ..."_`;
+  msg += `\n_Borra con "borra de ${target} la nota 3" · añade con "apunta en ${target} ..."_`;
   return msg;
 }
 
@@ -1143,19 +1137,55 @@ async function handlerNotaAdd(resto, from) {
   if (!nota) return `Entiendo que es sobre *${target}*, pero no veo la nota. Ej: *"apunta en ${target} que la caldera es Roca"*.`;
 
   const { clientMap } = await stel.getClients().catch(() => ({ clientMap: {} }));
-  const tnorm = norm(target);
-  let accId = null;
-  if (scope !== 'familia') for (const [id, ci] of Object.entries(clientMap || {})) { if (norm(ci.name) === tnorm) { accId = id; break; } }
-  const clave = accId ? `id:${accId}` : (scope === 'familia' ? `fam:${tnorm}` : `nombre:${tnorm}`);
+  const clave = claveComunidad(target, scope, clientMap);
+  const cat = await clasificarNota(nota);
   try {
     const db = await getDB();
     await db.collection('comunidadNotas').updateOne(
       { clave },
-      { $setOnInsert: { clave, comunidad: target, scope: scope || 'cliente' }, $push: { notas: { texto: nota, ts: new Date() } } },
+      { $setOnInsert: { clave, comunidad: target, scope: scope || 'cliente' }, $push: { notas: { texto: nota, cat, ts: new Date() } } },
       { upsert: true }
     );
   } catch (e) { return 'No he podido guardar la nota ahora mismo.'; }
-  return `📝 Apuntado en *${target}*: "${nota}"\nPídeme su ficha con *"materiales de ${target}"*.`;
+  return `📝 Apuntado en *${target}* ${CAT_COM[cat] || CAT_COM.otros}: "${nota}"`;
+}
+
+// Clasifica una nota técnica en su categoría (IA, con fallback por palabras clave)
+async function clasificarNota(nota) {
+  const n = norm(nota);
+  // Reglas rápidas (gratis) para lo evidente
+  if (/downlight|luminaria|bombilla|led|fluorescent|tubo|lampar|foco|3000k|4000k|6000k|kelvin|\bluz\b|luces/.test(n)) return 'iluminacion';
+  if (/portero|fermax|telefonill|codigo (de )?(portal|acceso)|llave|cerradura|puerta|garaje|mando/.test(n)) return 'accesos';
+  if (/caldera|termo|acs|agua caliente|radiador|calefacc|gas\b/.test(n)) return 'calefaccion';
+  if (/fontaner|grifo|tuberia|bajante|deposito|bomba|valvula|fuga|desague/.test(n)) return 'fontaneria';
+  if (/cuadro electric|diferencial|magnetotermic|contador|fase|enchufe|cableado/.test(n)) return 'electricidad';
+  // IA para el resto
+  const cats = Object.keys(CAT_COM);
+  const r = await iaJson(
+    `Clasifica esta nota de mantenimiento de un edificio en UNA categoría.\nCategorías: ${cats.join(', ')}.\nNota: "${nota}"\nResponde SOLO JSON: {"cat":"..."}`,
+    30, { cat: 'otros' }
+  );
+  return cats.includes(r && r.cat) ? r.cat : 'otros';
+}
+
+async function handlerNotaBorrar(texto, from) {
+  const m = norm(texto).match(/\bnota\s+(\d{1,3})\b|\b(\d{1,3})\b/);
+  const idx = m ? parseInt(m[1] || m[2], 10) : null;
+  const { scope, target } = await resolver(texto, texto);
+  if (!target) return 'No reconozco la comunidad. Ej: *"borra de Illa Verda la nota 3"*.';
+  const { clientMap } = await stel.getClients().catch(() => ({ clientMap: {} }));
+  const clave = claveComunidad(target, scope || 'cliente', clientMap);
+  let notas = [];
+  try { const db = await getDB(); const doc = await db.collection('comunidadNotas').findOne({ clave }); notas = (doc && doc.notas) || []; } catch (e) {}
+  if (!notas.length) return `*${target}* no tiene notas.`;
+  if (!idx || idx < 1 || idx > notas.length) return `¿Qué nota borro? *${target}* tiene ${notas.length}. Mira los números con *"materiales de ${target}"* y di *"borra de ${target} la nota 2"*.`;
+  const borrada = notas[idx - 1];
+  notas.splice(idx - 1, 1);
+  try {
+    const db = await getDB();
+    await db.collection('comunidadNotas').updateOne({ clave }, { $set: { notas } });
+  } catch (e) { return 'No he podido borrar la nota.'; }
+  return `🗑️ Borrada de *${target}*: "${borrada.texto}"`;
 }
 
 // ── Gestión de morosos: ocultar del aviso de WhatsApp (los correos siguen) ──
