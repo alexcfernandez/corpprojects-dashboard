@@ -315,6 +315,26 @@ app.get('/api/invoices/pending',   requireAuth, async (req,res) => res.json(awai
 app.get('/api/invoices',           requireAuth, async (req,res) => res.json(await getInvoices()));
 app.get('/api/clients',            requireAuth, async (req,res) => { const {clients} = await getClients(); res.json(clients); });
 app.get('/api/estimates',          requireAuth, async (req,res) => res.json(await getEstimatesSummary()));
+
+// ── Cobros: panel de priorización + gestión de morosos ──
+const _cobros = require('./avisos-proactivo');
+app.get('/api/cobros', requireAuth, async (req, res) => {
+  try {
+    const data = await _cobros.construirCobros();
+    const gestion = await _cobros.getGestion();
+    res.json({ rojo: data.rojo, naranja: data.naranja, amarillo: data.amarillo, totalTodo: data.totalTodo, gestion });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/cobros/gestion', requireAuth, async (req, res) => {
+  try {
+    const { tipo, valor, clave, motivo, activar } = req.body || {};
+    if (!tipo || (!valor && !clave)) return res.status(400).json({ error: 'faltan datos' });
+    let ok;
+    if (activar) ok = await _cobros.marcarGestion(tipo, valor, clave, motivo);
+    else         ok = await _cobros.desmarcarGestion(tipo, clave || _cobros.normTxt(valor));
+    res.json({ ok: !!ok });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 app.get('/api/families',           requireAuth, async (req,res) => res.json(await getFamiliesSummary()));
 app.get('/api/families/list',      requireAuth, async (req,res) => { const {list} = await getAccountCategories(); res.json(list); });
 
