@@ -60,6 +60,7 @@
   <span class="subgrp" data-grp="dinero" style="display:none">
     <button class="nav-btn" onclick="showTab('facturas',this)">📊 Facturación</button>
     <button class="nav-btn" onclick="showTab('pendientes',this)">🔴 Pendientes cobro</button>
+    <button class="nav-btn" onclick="showTab('cobros',this)">💸 Cobros</button>
     <button class="nav-btn" onclick="showTab('presupuestos',this)">📋 Presupuestos</button>
     <button class="nav-btn" onclick="showTab('banco',this)">🏦 Banco y gastos</button>
     <button class="nav-btn" onclick="showTab('pagos',this)">💵 Pagos</button>
@@ -425,6 +426,12 @@
 </div>
   
 <!-- PAGOS EN EFECTIVO -->
+<div id="tab-cobros" class="panel">
+  <div id="cobros-container">
+    <div style="text-align:center;padding:40px;color:var(--text3)"><div style="font-size:32px;margin-bottom:10px">💸</div><div>Cargando cobros...</div></div>
+  </div>
+</div>
+
 <div id="tab-pagos" class="panel">
   <div id="pagos-container">
     <div style="text-align:center;padding:40px;color:var(--text3)"><div style="font-size:32px;margin-bottom:10px">💵</div><div>Cargando módulo de pagos...</div></div>
@@ -1067,6 +1074,7 @@ function showTab(id, btn){
     usuarios:  ['Usuarios',    'usuarios-container'],
     obras:     ['Obras',       'obras-container'],
     pagos: ['Pagos', 'pagos-container'],
+    cobros: ['Cobros', 'cobros-container'],
     familias: ['FamiliasAdmin', 'familias-resp-container'],
     pedidos: ['PedidosAdmin', 'pedidos-container'],
     planning: ['Planning', 'planning-container'],
@@ -1135,6 +1143,8 @@ window.addEventListener('load',()=>{
 
 <!-- ── MÓDULOS ── -->
 <script src="/modules/pagos-admin.js"></script>
+<script src="/modules/cobros.js"></script>
+<style>.cb-btn{background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:4px 9px;font-size:12px;cursor:pointer;margin-left:4px}.cb-btn:hover{background:var(--border)}</style>
 <script src="/modules/presencia.js"></script>
 <script src="/modules/partes-admin.js"></script>
 <script src="/modules/usuarios.js"></script>
