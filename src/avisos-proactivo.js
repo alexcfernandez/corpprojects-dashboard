@@ -20,14 +20,16 @@ async function getGestion() {
   try { const db = await getDB(); return await db.collection('morososGestion').find({}).toArray(); }
   catch (e) { return []; }
 }
-async function marcarGestion(tipo, valor, clave) {
+async function marcarGestion(tipo, valor, clave, motivo) {
   const k = clave || normTxt(valor);
   if (!k) return false;
   try {
     const db = await getDB();
+    const set = { tipo, clave: k, valor, updatedAt: new Date() };
+    if (motivo) set.motivo = motivo;
     await db.collection('morososGestion').updateOne(
       { tipo, clave: k },
-      { $set: { tipo, clave: k, valor, updatedAt: new Date() } },
+      { $set: set },
       { upsert: true }
     );
     return true;
@@ -90,4 +92,52 @@ async function construirAviso(opts = {}) {
   return { texto, hayAlgo, nVencidas: vencidas.length, totalVencido, nOcultas };
 }
 
-module.exports = { construirAviso, getGestion, marcarGestion, desmarcarGestion, normTxt, digitos };
+// ── Panel de cobros: prioriza a quién reclamar (tiempo × importe) ──
+// Agrupa por cliente. No filtra por importe ("hay que reclamar todos");
+// el importe solo ordena dentro de cada nivel. Excluye lo marcado "en gestión".
+async function construirCobros(opts = {}) {
+  const diasRojo    = parseInt(opts.diasRojo    || process.env.COBROS_DIAS_ROJO    || 365, 10);
+  const diasNaranja = parseInt(opts.diasNaranja || process.env.COBROS_DIAS_NARANJA || 200, 10);
+
+  const [pending, gest] = await Promise.all([getPendingInvoices().catch(() => []), getGestion()]);
+  const cliGest = new Set(gest.filter(g => g.tipo === 'cliente').map(g => g.clave));
+  const facGest = new Set(gest.filter(g => g.tipo === 'factura').map(g => g.clave));
+
+  const porCli = {};
+  let nGestion = 0;
+  for (const i of (pending || [])) {
+    if (facGest.has(digitos(i.number)) || cliGest.has(normTxt(i.client))) { nGestion++; continue; }
+    const k = i.client || '—';
+    if (!porCli[k]) porCli[k] = { cliente: k, total: 0, n: 0, maxDias: 0 };
+    porCli[k].total += (i.pending || 0);
+    porCli[k].n++;
+    porCli[k].maxDias = Math.max(porCli[k].maxDias, i.daysOverdue || 0);
+  }
+  const clientes = Object.values(porCli);
+  const rojo     = clientes.filter(c => c.maxDias >= diasRojo).sort((a, b) => b.total - a.total);
+  const naranja  = clientes.filter(c => c.maxDias >= diasNaranja && c.maxDias < diasRojo).sort((a, b) => b.total - a.total);
+  const amarillo = clientes.filter(c => c.maxDias < diasNaranja).sort((a, b) => b.total - a.total);
+  const totalTodo = clientes.reduce((s, c) => s + c.total, 0);
+
+  const linea = c => `• ${c.cliente} — *${fmtEur(c.total)}*${c.n > 1 ? ` _(${c.n} fras)_` : ''} · ${c.maxDias}d`;
+  const bloque = (emoji, titulo, arr, tope) => {
+    if (!arr.length) return '';
+    const sub = arr.reduce((s, c) => s + c.total, 0);
+    let s = `\n\n${emoji} *${titulo} — ${arr.length}* _(${fmtEur(sub)})_:\n` + arr.slice(0, tope).map(linea).join('\n');
+    if (arr.length > tope) s += `\n…y ${arr.length - tope} más.`;
+    return s;
+  };
+
+  let msg = `💸 *Cobros — a quién reclamar*\n_Pendiente total: ${fmtEur(totalTodo)} · ${clientes.length} clientes_`;
+  if (!clientes.length) {
+    msg += `\n\n✅ Nada que reclamar fuera de lo que ya tienes en gestión.`;
+  } else {
+    msg += bloque('🔴', `Derivar ya (+${diasRojo}d)`, rojo, 12);
+    msg += bloque('🟠', `Apretar (${diasNaranja}-${diasRojo}d)`, naranja, 8);
+    msg += bloque('🟡', `Vigilar (<${diasNaranja}d)`, amarillo, 5);
+  }
+  if (nGestion) msg += `\n\n🔕 ${nGestion} factura(s) en gestión, ocultas.`;
+  return { texto: msg, rojo, naranja, amarillo, totalTodo };
+}
+
+module.exports = { construirAviso, construirCobros, getGestion, marcarGestion, desmarcarGestion, normTxt, digitos };
