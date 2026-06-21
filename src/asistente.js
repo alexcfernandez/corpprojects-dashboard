@@ -991,10 +991,9 @@ async function responderConsulta(texto, from = 'anon') {
   // C4) Base de conocimiento de comunidades (ficha automática + notas manuales)
   {
     const n = norm(texto);
-    // Añadir nota: "apunta/anota/recuerda en <comunidad> que <texto>"  ó  "... en <comunidad>: <texto>"
-    const mAdd = texto.match(/(?:ap[uú]nta(?:me)?|anota|recuerda|guarda)\b[\s\S]*?\ben\s+(.+?)\s+que\s+([\s\S]+)$/i)
-              || texto.match(/(?:ap[uú]nta(?:me)?|anota|recuerda|guarda|nota)\b[\s\S]*?\ben\s+(.+?)\s*:\s*([\s\S]+)$/i);
-    if (mAdd) return handlerNotaAdd(mAdd[1].trim(), mAdd[2].trim(), from);
+    // Añadir nota: "apunta/anota/recuerda en <comunidad> [que/:] <texto>"
+    const mAdd = texto.match(/(?:ap[uú]nta(?:me)?|an[oó]ta(?:me)?|recuerda|guarda)\b[\s\S]*?\ben\s+([\s\S]+)$/i);
+    if (mAdd) return handlerNotaAdd(mAdd[1].trim(), from);
 
     // Consultar ficha de comunidad (no confundir con gasto de proveedores)
     if (!/proveedor|gastamos|pagado|compramos|compra a/.test(n) &&
@@ -1123,11 +1122,26 @@ async function handlerComunidad(texto, from) {
   return fichaComunidad(target, scope || 'cliente', from);
 }
 
-async function handlerNotaAdd(comunidadRaw, notaTexto, from) {
-  notaTexto = String(notaTexto || '').trim().replace(/[.\s]+$/, '');
-  if (!notaTexto) return '¿Qué quieres que apunte? Prueba: *"apunta en Illa Verda que la caldera es Roca"*.';
-  const { scope, target } = await resolver(comunidadRaw, comunidadRaw);
-  if (!target) return `No reconozco la comunidad *"${comunidadRaw}"*. Dímela como aparece en StelOrder.`;
+async function handlerNotaAdd(resto, from) {
+  resto = String(resto || '').trim();
+  if (!resto) return '¿Qué apunto y en qué comunidad? Ej: *"apunta en Illa Verda que la caldera es Roca"*.';
+
+  const { scope, target } = await resolver(resto, resto);
+  if (!target) return `No reconozco la comunidad. Empieza por el nombre, ej: *"apunta en Illa Verda que ..."*.`;
+
+  // Separar la nota: quitamos el nombre de la comunidad del principio (sin cortar el resto)
+  const STOP = new Set(['cp', 'c', 'p', 'comunidad', 'comunitat', 'propietarios', 'propietaris', 'de', 'del', 'la', 'el', 'los', 'las']);
+  const sig = norm(target).replace(/[.\-_/]/g, ' ').split(/\s+/).filter(w => w.length >= 3 && !STOP.has(w));
+  const words = resto.split(/\s+/);
+  let cut = 0;
+  for (let i = 0; i < Math.min(words.length, 8); i++) {
+    const w = norm(words[i]).replace(/[^a-z0-9ñ]/g, '');
+    if (sig.includes(w)) cut = i + 1;
+  }
+  let nota = words.slice(cut).join(' ').trim();
+  nota = nota.replace(/^(que|:|,|;|->)\s*/i, '').trim().replace(/[.\s]+$/, '');
+  if (!nota) return `Entiendo que es sobre *${target}*, pero no veo la nota. Ej: *"apunta en ${target} que la caldera es Roca"*.`;
+
   const { clientMap } = await stel.getClients().catch(() => ({ clientMap: {} }));
   const tnorm = norm(target);
   let accId = null;
@@ -1137,11 +1151,11 @@ async function handlerNotaAdd(comunidadRaw, notaTexto, from) {
     const db = await getDB();
     await db.collection('comunidadNotas').updateOne(
       { clave },
-      { $setOnInsert: { clave, comunidad: target, scope: scope || 'cliente' }, $push: { notas: { texto: notaTexto, ts: new Date() } } },
+      { $setOnInsert: { clave, comunidad: target, scope: scope || 'cliente' }, $push: { notas: { texto: nota, ts: new Date() } } },
       { upsert: true }
     );
   } catch (e) { return 'No he podido guardar la nota ahora mismo.'; }
-  return `📝 Apuntado en *${target}*: "${notaTexto}"\nPídeme su ficha con *"materiales de ${target}"*.`;
+  return `📝 Apuntado en *${target}*: "${nota}"\nPídeme su ficha con *"materiales de ${target}"*.`;
 }
 
 // ── Gestión de morosos: ocultar del aviso de WhatsApp (los correos siguen) ──
