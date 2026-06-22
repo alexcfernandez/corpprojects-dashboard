@@ -316,7 +316,38 @@ app.get('/api/invoices',           requireAuth, async (req,res) => res.json(awai
 app.get('/api/clients',            requireAuth, async (req,res) => { const {clients} = await getClients(); res.json(clients); });
 app.get('/api/estimates',          requireAuth, async (req,res) => res.json(await getEstimatesSummary()));
 
-// ── Cobros: panel de priorización + gestión de morosos ──
+// ── Fichas técnicas de comunidad ──
+const _com = require('./comunidades');
+app.get('/api/comunidades', requireAuth, async (req, res) => {
+  try {
+    const [todas, conFicha] = await Promise.all([_com.listComunidades(), _com.comunidadesConFicha()]);
+    res.json({ todas, conFicha });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/comunidades/ficha', requireAuth, async (req, res) => {
+  try {
+    const target = req.query.comunidad; const scope = req.query.scope || 'cliente';
+    if (!target) return res.status(400).json({ error: 'falta comunidad' });
+    const notas = await _com.getNotas(target, scope);
+    res.json({ comunidad: target, cats: _com.CAT_COM, orden: _com.CAT_ORDER, notas });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/comunidades/nota', requireAuth, async (req, res) => {
+  try {
+    const { comunidad, scope, texto } = req.body || {};
+    if (!comunidad || !texto) return res.status(400).json({ error: 'faltan datos' });
+    const r = await _com.addNota(comunidad, scope || 'cliente', texto);
+    res.json(r);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/comunidades/nota/borrar', requireAuth, async (req, res) => {
+  try {
+    const { comunidad, scope, idx } = req.body || {};
+    if (!comunidad || !idx) return res.status(400).json({ error: 'faltan datos' });
+    const r = await _com.borrarNota(comunidad, scope || 'cliente', parseInt(idx, 10));
+    res.json(r);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 const _cobros = require('./avisos-proactivo');
 app.get('/api/cobros', requireAuth, async (req, res) => {
   try {
