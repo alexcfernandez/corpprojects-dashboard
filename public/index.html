@@ -71,6 +71,7 @@
     <button class="nav-btn" onclick="showTab('planning',this)">🗓 Planificación</button>
     <button class="nav-btn" onclick="showTab('partes',this)">📋 Partes</button>
     <button class="nav-btn" onclick="showTab('obras',this)">📊 Obras</button>
+    <button class="nav-btn" onclick="showTab('comunidades',this)">🏘️ Comunidades</button>
     <button class="nav-btn" onclick="showTab('presencia',this)">📅 Presencia</button>
   </span>
   <!-- GESTIÓN -->
@@ -426,6 +427,12 @@
 </div>
   
 <!-- PAGOS EN EFECTIVO -->
+<div id="tab-comunidades" class="panel">
+  <div id="comunidades-container">
+    <div style="text-align:center;padding:40px;color:var(--text3)"><div style="font-size:32px;margin-bottom:10px">🏘️</div><div>Cargando comunidades...</div></div>
+  </div>
+</div>
+
 <div id="tab-cobros" class="panel">
   <div id="cobros-container">
     <div style="text-align:center;padding:40px;color:var(--text3)"><div style="font-size:32px;margin-bottom:10px">💸</div><div>Cargando cobros...</div></div>
@@ -1075,6 +1082,7 @@ function showTab(id, btn){
     obras:     ['Obras',       'obras-container'],
     pagos: ['Pagos', 'pagos-container'],
     cobros: ['Cobros', 'cobros-container'],
+    comunidades: ['Comunidades', 'comunidades-container'],
     familias: ['FamiliasAdmin', 'familias-resp-container'],
     pedidos: ['PedidosAdmin', 'pedidos-container'],
     planning: ['Planning', 'planning-container'],
@@ -1144,6 +1152,7 @@ window.addEventListener('load',()=>{
 <!-- ── MÓDULOS ── -->
 <script src="/modules/pagos-admin.js"></script>
 <script src="/modules/cobros.js"></script>
+<script src="/modules/comunidades.js"></script>
 <style>.cb-btn{background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:4px 9px;font-size:12px;cursor:pointer;margin-left:4px}.cb-btn:hover{background:var(--border)}</style>
 <script src="/modules/presencia.js"></script>
 <script src="/modules/partes-admin.js"></script>
