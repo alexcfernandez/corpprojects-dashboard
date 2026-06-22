@@ -6,6 +6,7 @@
 // (importes, conteos) salen SIEMPRE de StelOrder, nunca se inventan.
 
 const stel = require('./stelorder');
+const com  = require('./comunidades');
 
 const ultima    = new Map(); // from -> estado de paginación ("ver más")
 const pendiente = new Map(); // from -> { accion:'aprender', aliasRaw, intent, ts }
@@ -1063,48 +1064,22 @@ async function handlerFallos(from) {
 // ── Base de conocimiento de comunidades ──────────────────────────────────
 // Ficha determinista: agrega las líneas (conceptos) de presupuestos + pedidos
 // de esa comunidad + notas manuales. No inventa: lee datos reales de StelOrder.
-// Categorías de la ficha técnica de comunidad
-const CAT_COM = {
-  iluminacion:  '💡 Iluminación',
-  electricidad: '🔌 Electricidad',
-  fontaneria:   '💧 Fontanería',
-  calefaccion:  '🔥 Calefacción/ACS',
-  accesos:      '🚪 Accesos y portería',
-  otros:        '📝 Otros'
-};
-
-function claveComunidad(target, scope, clientMap) {
-  const tnorm = norm(target);
-  let accId = null;
-  if (scope !== 'familia') for (const [id, ci] of Object.entries(clientMap || {})) { if (norm(ci.name) === tnorm) { accId = id; break; } }
-  return accId ? `id:${accId}` : (scope === 'familia' ? `fam:${tnorm}` : `nombre:${tnorm}`);
-}
+// Categorías de la ficha técnica de comunidad (en módulo compartido com.CAT_COM)
 
 async function fichaComunidad(target, scope, from) {
-  const { clientMap } = await stel.getClients().catch(() => ({ clientMap: {} }));
-  const clave = claveComunidad(target, scope, clientMap);
-  let notas = [];
-  try {
-    const db = await getDB();
-    const doc = await db.collection('comunidadNotas').findOne({ clave });
-    notas = (doc && Array.isArray(doc.notas)) ? doc.notas : [];
-  } catch (e) {}
-
+  const notas = await com.getNotas(target, scope || 'cliente');
   if (!notas.length) {
     return `🏘️ *${target}* — ficha técnica\n\nAún no tengo datos. Apúntame cosas de mantenimiento, p. ej.:\n• *"apunta en ${target} las luces son downlight 26W 4000K"*\n• *"apunta en ${target} portero Fermax, código portal 1234"*`;
   }
-
-  // Numeramos globalmente (para poder borrar "la nota 3") y agrupamos por categoría
   const porCat = {};
   notas.forEach((nt, i) => {
-    const cat = CAT_COM[nt.cat] ? nt.cat : 'otros';
+    const cat = com.CAT_COM[nt.cat] ? nt.cat : 'otros';
     (porCat[cat] = porCat[cat] || []).push({ n: i + 1, texto: nt.texto });
   });
-
   let msg = `🏘️ *${target}* — ficha técnica\n`;
-  for (const key of Object.keys(CAT_COM)) {
+  for (const key of com.CAT_ORDER) {
     if (!porCat[key]) continue;
-    msg += `\n*${CAT_COM[key]}*\n` + porCat[key].map(x => `${x.n}. ${x.texto}`).join('\n') + '\n';
+    msg += `\n*${com.CAT_COM[key]}*\n` + porCat[key].map(x => `${x.n}. ${x.texto}`).join('\n') + '\n';
   }
   msg += `\n_Borra con "borra de ${target} la nota 3" · añade con "apunta en ${target} ..."_`;
   return msg;
@@ -1136,36 +1111,13 @@ async function handlerNotaAdd(resto, from) {
   nota = nota.replace(/^(que|:|,|;|->)\s*/i, '').trim().replace(/[.\s]+$/, '');
   if (!nota) return `Entiendo que es sobre *${target}*, pero no veo la nota. Ej: *"apunta en ${target} que la caldera es Roca"*.`;
 
-  const { clientMap } = await stel.getClients().catch(() => ({ clientMap: {} }));
-  const clave = claveComunidad(target, scope, clientMap);
-  const cat = await clasificarNota(nota);
-  try {
-    const db = await getDB();
-    await db.collection('comunidadNotas').updateOne(
-      { clave },
-      { $setOnInsert: { clave, comunidad: target, scope: scope || 'cliente' }, $push: { notas: { texto: nota, cat, ts: new Date() } } },
-      { upsert: true }
-    );
-  } catch (e) { return 'No he podido guardar la nota ahora mismo.'; }
-  return `📝 Apuntado en *${target}* ${CAT_COM[cat] || CAT_COM.otros}: "${nota}"`;
-}
-
-// Clasifica una nota técnica en su categoría (IA, con fallback por palabras clave)
-async function clasificarNota(nota) {
-  const n = norm(nota);
-  // Reglas rápidas (gratis) para lo evidente
-  if (/downlight|luminaria|bombilla|led|fluorescent|tubo|lampar|foco|3000k|4000k|6000k|kelvin|\bluz\b|luces/.test(n)) return 'iluminacion';
-  if (/portero|fermax|telefonill|codigo (de )?(portal|acceso)|llave|cerradura|puerta|garaje|mando/.test(n)) return 'accesos';
-  if (/caldera|termo|acs|agua caliente|radiador|calefacc|gas\b/.test(n)) return 'calefaccion';
-  if (/fontaner|grifo|tuberia|bajante|deposito|bomba|valvula|fuga|desague/.test(n)) return 'fontaneria';
-  if (/cuadro electric|diferencial|magnetotermic|contador|fase|enchufe|cableado/.test(n)) return 'electricidad';
-  // IA para el resto
-  const cats = Object.keys(CAT_COM);
-  const r = await iaJson(
-    `Clasifica esta nota de mantenimiento de un edificio en UNA categoría.\nCategorías: ${cats.join(', ')}.\nNota: "${nota}"\nResponde SOLO JSON: {"cat":"..."}`,
-    30, { cat: 'otros' }
-  );
-  return cats.includes(r && r.cat) ? r.cat : 'otros';
+  const iaCls = async (t, cats) => {
+    const r = await iaJson(`Clasifica esta nota de mantenimiento de un edificio en UNA categoría.\nCategorías: ${cats.join(', ')}.\nNota: "${t}"\nResponde SOLO JSON: {"cat":"..."}`, 30, { cat: 'otros' });
+    return (r && cats.includes(r.cat)) ? r.cat : 'otros';
+  };
+  const res = await com.addNota(target, scope || 'cliente', nota, iaCls);
+  if (!res.ok) return 'No he podido guardar la nota ahora mismo.';
+  return `📝 Apuntado en *${target}* ${com.CAT_COM[res.cat] || com.CAT_COM.otros}: "${nota}"`;
 }
 
 async function handlerNotaBorrar(texto, from) {
@@ -1173,19 +1125,12 @@ async function handlerNotaBorrar(texto, from) {
   const idx = m ? parseInt(m[1] || m[2], 10) : null;
   const { scope, target } = await resolver(texto, texto);
   if (!target) return 'No reconozco la comunidad. Ej: *"borra de Illa Verda la nota 3"*.';
-  const { clientMap } = await stel.getClients().catch(() => ({ clientMap: {} }));
-  const clave = claveComunidad(target, scope || 'cliente', clientMap);
-  let notas = [];
-  try { const db = await getDB(); const doc = await db.collection('comunidadNotas').findOne({ clave }); notas = (doc && doc.notas) || []; } catch (e) {}
-  if (!notas.length) return `*${target}* no tiene notas.`;
-  if (!idx || idx < 1 || idx > notas.length) return `¿Qué nota borro? *${target}* tiene ${notas.length}. Mira los números con *"materiales de ${target}"* y di *"borra de ${target} la nota 2"*.`;
-  const borrada = notas[idx - 1];
-  notas.splice(idx - 1, 1);
-  try {
-    const db = await getDB();
-    await db.collection('comunidadNotas').updateOne({ clave }, { $set: { notas } });
-  } catch (e) { return 'No he podido borrar la nota.'; }
-  return `🗑️ Borrada de *${target}*: "${borrada.texto}"`;
+  if (!idx) return `¿Qué nota borro? Mira los números con *"materiales de ${target}"* y di *"borra de ${target} la nota 2"*.`;
+  const res = await com.borrarNota(target, scope || 'cliente', idx);
+  if (!res.ok) return res.total != null
+    ? `¿Qué nota borro? *${target}* tiene ${res.total}. Míralas con *"materiales de ${target}"*.`
+    : 'No he podido borrar la nota.';
+  return `🗑️ Borrada de *${target}*: "${res.borrada.texto}"`;
 }
 
 // ── Gestión de morosos: ocultar del aviso de WhatsApp (los correos siguen) ──
