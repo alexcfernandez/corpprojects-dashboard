@@ -270,6 +270,32 @@ Reglas:
   return iaJsonDoc(prompt, base64Pdf, 8000, null);
 }
 
+// Lee un PRESUPUESTO con precios (foto o PDF, p. ej. de la competencia) y lo
+// estructura plano: cliente, partidas con precio unitario (base, sin IVA) e IVA.
+async function estructurarPresupuestoPdf(base64Pdf) {
+  const prompt = `Eres un perito de presupuestos de obra/reformas. Te paso un PRESUPUESTO o "pressupost" (foto o PDF, catalán o castellano) que SÍ lleva precios.
+
+Extrae los datos del trabajo y los precios. IGNORA datos de la empresa que emite, condiciones de pago, firmas y avisos legales.
+
+Responde SOLO un JSON VÁLIDO, sin markdown:
+{
+ "titulo": "título corto del trabajo (ej. Terrassa nova)",
+ "cliente": "nombre del cliente/destinatario tal cual aparece, o null",
+ "iva": 21,
+ "partidas": [
+   { "nombre": "nombre corto de la partida", "descripcion": "texto/descripción de los trabajos tal cual, cada punto en su línea", "cantidad": 1, "precio": 13235.00 }
+ ]
+}
+
+Reglas:
+- "precio" = precio UNITARIO SIN IVA (base), NÚMERO con PUNTO decimal y SIN separador de miles (13235.00, nunca "13.235,00").
+- "iva" = porcentaje de IVA que aparece (21, 10, 4 o 0). Si no aparece, pon 21.
+- Si el presupuesto es una sola partida global, devuelve UNA partida con su importe como "precio" y "cantidad" 1.
+- Si hay varias líneas con precio, devuelve una partida por línea.
+- Copia la descripción de los trabajos COMPLETA, respetando saltos de línea. No inventes nada.`;
+  return iaJsonDoc(prompt, base64Pdf, 4000, null);
+}
+
 async function clasificar(texto) {
   const prompt = `Eres el asistente del dueño de una empresa de mantenimiento de fincas. Clasifica su pregunta.
 
@@ -1635,4 +1661,4 @@ async function handlerGestionList() {
   return msg;
 }
 
-module.exports = { responderConsulta, vocabularioVoz, estructurarAmidamentPdf };
+module.exports = { responderConsulta, vocabularioVoz, estructurarAmidamentPdf, estructurarPresupuestoPdf };
