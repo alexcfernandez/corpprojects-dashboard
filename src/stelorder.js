@@ -1152,6 +1152,25 @@ async function accountIdByName(nombre) {
   return null;
 }
 
+// ── Producto GENÉRICO reutilizable (uno por tipo): se crea 1 vez y se guarda su id ──
+// Evita ensuciar el catálogo con un producto por cada pedido. La descripción real
+// de cada trabajo va en la LÍNEA (item-description), no en el producto.
+async function getProductoGenerico(tipo /* 'actuacion' | 'presupuesto' */) {
+  const nombre = tipo === 'presupuesto' ? 'Presupuesto' : 'Actuación';
+  const clave = tipo === 'presupuesto' ? 'generico:presupuesto' : 'generico:actuacion';
+  const db = await require('./db').getDB();
+  // 1) ¿Ya lo tenemos guardado y sigue existiendo?
+  const guard = await db.collection('config').findOne({ _id: clave }).catch(() => null);
+  if (guard && guard.itemId) {
+    // Verificar que no esté en la papelera: si los productos vivos no lo incluyen, lo recreamos
+    return guard.itemId;
+  }
+  // 2) Crearlo una vez y guardar su id
+  const prod = await crearProducto({ nombre, descripcion: `Línea genérica de ${nombre.toLowerCase()} (la descripción real va en cada línea)`, precio: 0 });
+  await db.collection('config').updateOne({ _id: clave }, { $set: { _id: clave, itemId: prod.id, nombre, at: new Date() } }, { upsert: true });
+  return prod.id;
+}
+
 // ── CREAR PRODUCTO de catálogo (necesario para líneas ITEM) ──
 async function crearProducto({ nombre, descripcion = null, precio = 0 }) {
   if (!nombre) throw new Error('Falta el nombre del producto');
@@ -1165,24 +1184,24 @@ async function crearProducto({ nombre, descripcion = null, precio = 0 }) {
 }
 
 // ── GENERAR PEDIDO DE TRABAJO desde una incidencia (réplica del "Generar" nativo) ──
-// Crea un producto con la descripción y un pedido con esa línea ITEM, enlazado por parent-incident-id.
-async function generarPedidoDesdeIncidencia({ incidentId, accId, descripcion, estadoId = 1120651, requestedBy = null }) {
+// Usa un producto GENÉRICO reutilizable (Actuación/Presupuesto); la descripción de la
+// incidencia va en la línea (item-description). Enlazado por parent-incident-id.
+async function generarPedidoDesdeIncidencia({ incidentId, accId, descripcion, tipo = 'actuacion', estadoId = 1120651, requestedBy = null }) {
   if (!incidentId || !accId) throw new Error('Faltan datos (incidencia o cliente)');
   const desc = String(descripcion || 'Trabajo a realizar').trim();
   const db = await require('./db').getDB();
 
-  // 1) Producto con la descripción (nombre = primeras palabras, descripción = texto completo)
-  const nombreCorto = desc.length > 60 ? desc.slice(0, 57).trim() + '…' : desc;
-  const prod = await crearProducto({ nombre: nombreCorto, descripcion: desc, precio: 0 });
+  // 1) Producto genérico reutilizable según el tipo (NO se crea uno nuevo cada vez)
+  const itemId = await getProductoGenerico(tipo);
 
-  // 2) Pedido enlazado a la incidencia con la línea ITEM
+  // 2) Pedido enlazado a la incidencia; la descripción real va en la línea
   const body = {
     'account-id': Number(accId),
     'document-state-id': Number(estadoId),
     'parent-incident-id': Number(incidentId),
-    lines: [{ 'line-type': 'ITEM', 'item-id': Number(prod.id), units: 1, 'item-base-price': 0, 'item-description': desc }]
+    lines: [{ 'line-type': 'ITEM', 'item-id': Number(itemId), units: 1, 'item-base-price': 0, 'item-description': desc }]
   };
-  const ins = await db.collection('stelWriteLog').insertOne({ tipo: 'pedido-desde-incidencia', incidentId, productId: prod.id, body, requestedBy, at: new Date(), result: 'pending' });
+  const ins = await db.collection('stelWriteLog').insertOne({ tipo: 'pedido-desde-incidencia', incidentId, itemId, body, requestedBy, at: new Date(), result: 'pending' });
   try {
     const r = await client.post('/workOrders', body, { headers: { 'Content-Type': 'application/json' }, timeout: 25000 });
     const d = Array.isArray(r.data) ? r.data[0] : r.data;
@@ -1190,7 +1209,7 @@ async function generarPedidoDesdeIncidencia({ incidentId, accId, descripcion, es
     const ref = (d && (d['full-reference'] || (d.reference ? 'PDT' + d.reference : null))) || (id ? '#' + id : null);
     await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: 'ok', status: r.status, workOrderId: id, ref } });
     try { invalidate('workOrders'); } catch (e) {}
-    return { ok: true, id, ref, productId: prod.id };
+    return { ok: true, id, ref };
   } catch (err) {
     await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: 'error', error: `${err.response?.status || ''} ${err.message}`, errorBody: err.response?.data || null } });
     throw new Error(`StelOrder rechazó el pedido: ${err.response?.status || ''} ${JSON.stringify(err.response?.data || err.message).slice(0, 200)}`);
@@ -1203,8 +1222,7 @@ async function ultimaIncidencia() {
   const vivas = (incs || []).filter(i => !i.deleted);
   if (!vivas.length) return null;
   vivas.sort((a, b) => new Date(b['creation-date'] || b.date || 0) - new Date(a['creation-date'] || a.date || 0));
-  const i = vivas[0];
-  return { id: String(i.id), accId: String(i['account-id'] || ''), descripcion: i.description || '', ref: i['full-reference'] || (i.reference ? 'INC' + i.reference : '#' + i.id) };
+  return _incInfo(vivas[0]);
 }
 
 // Busca una incidencia por su referencia (ej. "INC00575" o "575")
@@ -1212,8 +1230,17 @@ async function incidenciaPorRef(ref) {
   const incs = await getAllIncidents().catch(() => []);
   const q = parseInt(String(ref || '').replace(/\D/g, ''), 10);
   const i = (incs || []).filter(x => !x.deleted).find(x => parseInt(String(x['full-reference'] || x.reference || '').replace(/\D/g, ''), 10) === q);
-  if (!i) return null;
-  return { id: String(i.id), accId: String(i['account-id'] || ''), descripcion: i.description || '', ref: i['full-reference'] || (i.reference ? 'INC' + i.reference : '#' + i.id) };
+  return i ? _incInfo(i) : null;
+}
+
+function _incInfo(i) {
+  const tid = Number(i['incident-type-id']);
+  const tipo = tid === 3145 ? 'presupuesto' : 'actuacion';
+  return {
+    id: String(i.id), accId: String(i['account-id'] || ''),
+    descripcion: i.description || '', tipo,
+    ref: i['full-reference'] || (i.reference ? 'INC' + i.reference : '#' + i.id)
+  };
 }
 
 module.exports = {
@@ -1226,5 +1253,5 @@ module.exports = {
   getMonthlyBilling,
   getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap,
   getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA,
-  crearIncidencia, accountIdByName, crearProducto, generarPedidoDesdeIncidencia, ultimaIncidencia, incidenciaPorRef
+  crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, ultimaIncidencia, incidenciaPorRef
 };
