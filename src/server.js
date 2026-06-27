@@ -572,6 +572,17 @@ app.post('/api/presupuesto/preview', requireAuth, uploadPdf.single('pdf'), async
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 2b) Reescribir las descripciones en estilo propio (idioma elegible)
+app.post('/api/presupuesto/reescribir', requireAuth, async (req, res) => {
+  try {
+    const { partidas, idioma } = req.body || {};
+    if (!Array.isArray(partidas) || !partidas.length) return res.status(400).json({ error: 'Faltan partidas.' });
+    const out = await asistente.reescribirPartidas(partidas, idioma === 'ca' ? 'ca' : 'es');
+    if (!out || !out.length) return res.status(422).json({ error: 'No pude reescribir el texto. Inténtalo otra vez.' });
+    res.json({ ok: true, partidas: out });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // 2) Crear en StelOrder (partidas planas, con el precio ya ajustado por el usuario)
 app.post('/api/presupuesto/crear', requireAuth, async (req, res) => {
   try {
