@@ -864,7 +864,8 @@ async function handlerNuevaIncidencia(texto, from) {
     `Frase: "${texto}"\n\n` +
     `Extrae y responde SOLO JSON:\n` +
     `{"cliente":"nombre del cliente/comunidad tal cual lo dice, o null","descripcion":"el problema descrito, redactado claro y breve","tipo":"actuacion|presupuesto|null"}\n\n` +
-    `- "actuacion": reparación directa, arreglar, cambiar, urgencia.\n- "presupuesto": piden presupuesto, valorar, presupuestar.\n- tipo null si no lo dice.`,
+    `IMPORTANTE sobre "tipo": SOLO pon "actuacion" o "presupuesto" si el usuario lo dice EXPLÍCITAMENTE (ej. "es actuación", "para hacer presupuesto", "hay que presupuestar"). ` +
+    `Si NO lo dice de forma explícita, pon "tipo":null. NUNCA lo deduzcas tú por el tipo de problema.`,
     250, { cliente: null, descripcion: null, tipo: null }
   );
   if (!ex.descripcion) return '¿Qué incidencia creo y para qué comunidad? Ej: *"incidencia para Illa Verda: no funciona la luz del portal, es actuación"*.';
@@ -873,7 +874,7 @@ async function handlerNuevaIncidencia(texto, from) {
   const { scope, target } = await resolver(texto, ex.cliente || '');
   if (!target) {
     pendiente.set(from, { accion: 'incCliente', descripcion: ex.descripcion, tipo: ex.tipo, ts: Date.now() });
-    return `📋 Incidencia: "${ex.descripcion}"\n\n🤔 ¿De qué comunidad es? Dime el nombre como aparece en StelOrder.`;
+    return `📋 Incidencia: "${ex.descripcion}"\n\n🤔 ¿De qué cliente es? Dime el nombre **tal como aparece en StelOrder**.\n\n_Si es un cliente nuevo, créalo primero en StelOrder (Clientes) con su NIF y dirección, y luego vuelve a decírmelo._`;
   }
   const accId = await stel.accountIdByName(target);
   if (!accId) return `Reconozco *${target}* pero no encuentro su ficha en StelOrder. Prueba con el nombre exacto.`;
@@ -939,7 +940,7 @@ async function responderConsulta(texto, from = 'anon') {
           return prepararConfirmIncidencia(from, accId, target, pend.descripcion, pend.tipo);
         }
       }
-      return 'No reconozco esa comunidad. Dime el nombre como aparece en StelOrder.';
+      return '⚠️ No existe ningún cliente así en StelOrder. Créalo primero en *Clientes* (con su NIF y dirección) y luego vuelve a decirme la incidencia.\n\n_O dime el nombre exacto si ya existe._';
     }
   }
 
@@ -973,8 +974,13 @@ async function responderConsulta(texto, from = 'anon') {
     return 'No tengo nada más que mostrar 🙂 Pregúntame por un cliente, p. ej.: *"¿qué debe Illa Verda?"*';
   }
 
-  // C0.inc) Crear incidencia: "incidencia para X ...", "crea un aviso de ...", "nueva incidencia ..."
-  if (/\b(crea(r)?|nueva|nuevo|abre|apunta)\b[\s\S]*\b(incidencia|aviso|parte)\b|^incidencia\b|\bincidencia para\b|\baviso (para|de)\b/.test(norm(texto))) {
+  // C0.inc) Crear incidencia: "incidencia para X ...", "crea un aviso de ...", "hay que hacer presupuesto para X ..."
+  const _ni = norm(texto);
+  const intencionCrear =
+    /\b(crea(r)?|nueva|nuevo|abre|apunta)\b[\s\S]*\b(incidencia|aviso|parte)\b|^incidencia\b|\bincidencia (para|de|en|por)\b|\baviso (para|de)\b/.test(_ni) ||
+    /\b(hay que|tenemos que|tengo que|necesito|toca)\b[\s\S]*\b(hacer|preparar|sacar)\b[\s\S]*\bpresupuest/.test(_ni) ||
+    /\bpresupuest[oa]r\b[\s\S]*\b(para|de|en)\b/.test(_ni);
+  if (intencionCrear) {
     return handlerNuevaIncidencia(texto, from);
   }
 
