@@ -954,6 +954,58 @@ async function diagCrearEnlace({ accId = null, go = false } = {}) {
   return out;
 }
 
+// ── SONDA: ¿acepta líneas LIBRES (sin producto de catálogo)? (prueba que TÚ borras) ──
+// Intenta crear pedidos de PRUEBA con la línea escrita de varias formas, para ver
+// cuál acepta StelOrder sin exigir item-id. Para en cuanto una funcione.
+async function diagLineaLibre({ accId = null, go = false } = {}) {
+  const out = { ts: new Date().toISOString(), cliente: {}, intentos: [], ganador: null, aBorrar: [], nota: '' };
+  if (!go) { out.nota = 'Simulación. Añade ?go=1 para crear pedidos de PRUEBA (los borras tú).'; return out; }
+
+  try {
+    const { clientMap } = await getClients();
+    if (!accId) {
+      const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const entradas = Object.entries(clientMap || {});
+      const mela = entradas.find(([id, c]) => norm(c.name).includes('mela mutermilch'));
+      accId = mela ? mela[0] : (entradas[0] ? entradas[0][0] : null);
+    }
+    out.cliente = { accId, nombre: (clientMap[String(accId)] || {}).name || null };
+  } catch (e) { out.cliente = { error: e.message }; return out; }
+  if (!accId) { out.nota = 'No hay cliente.'; return out; }
+
+  const H = { headers: { 'Content-Type': 'application/json' }, timeout: 25000 };
+  const extraerId = (data) => { const d = Array.isArray(data) ? data[0] : data; return d && (d.id) ? String(d.id) : null; };
+  const TXT = 'PRUEBA API - BORRAR: reparación baldosas sueltas fachada';
+
+  // Distintas formas de escribir una línea libre (sin item-id)
+  const variantes = [
+    { etq: 'A: line-type TEXT', linea: { 'line-type': 'TEXT', 'item-description': TXT, units: 1 } },
+    { etq: 'B: line-type COMMENT', linea: { 'line-type': 'COMMENT', 'item-description': TXT } },
+    { etq: 'C: item-name + units sin tipo', linea: { 'item-name': TXT, 'item-description': TXT, units: 1, 'item-base-price': 0 } },
+    { etq: 'D: line-type ITEM sin item-id', linea: { 'line-type': 'ITEM', 'item-name': TXT, units: 1, 'item-base-price': 0 } },
+    { etq: 'E: line-type FREE', linea: { 'line-type': 'FREE', 'item-description': TXT, units: 1, 'item-base-price': 100 } }
+  ];
+
+  for (const v of variantes) {
+    const body = { 'account-id': Number(accId), 'document-state-id': 1120651, title: 'PRUEBA API - BORRAR', lines: [v.linea] };
+    try {
+      const r = await client.post('/workOrders', body, H);
+      const id = extraerId(r.data);
+      out.intentos.push({ variante: v.etq, status: r.status, ok: true, id });
+      if (id) { out.aBorrar.push(`Pedido id ${id}`); out.ganador = v.etq; break; }
+    } catch (err) {
+      const code = err.response?.data?.[0]?.['error-code'] || err.response?.status;
+      out.intentos.push({ variante: v.etq, status: err.response?.status, ok: false, error: err.response?.data ? JSON.stringify(err.response.data).slice(0, 200) : err.message, code });
+    }
+    await new Promise(r => setTimeout(r, 1300));
+  }
+
+  out.nota = out.ganador
+    ? `✅ Funciona la variante "${out.ganador}". BORRA en StelOrder: ${out.aBorrar.join(' · ')}`
+    : '❌ Ninguna variante de línea libre fue aceptada → tocará Camino A (crear el producto). No quedó nada que borrar.';
+  return out;
+}
+
 module.exports = {
   getInvoices, getAllReceipts, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary, diagProveedores,
@@ -963,5 +1015,5 @@ module.exports = {
   getWorkOrdersLive, getWorkOrderAlertLevel, setWorkOrderState, setWorkOrderStateLight,
   getMonthlyBilling,
   getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap,
-  getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace
+  getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace, diagLineaLibre
 };
