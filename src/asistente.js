@@ -520,6 +520,13 @@ async function verConceptos(tipo, numero, from) {
   const q = parseInt(String(numero).replace(/\D/g, ''), 10);
   if (tipo) return conceptosDe(tipo, q, from);
 
+  // Sin tipo explícito: si justo veníamos mirando un documento con ESE número,
+  // seguimos el hilo y usamos su tipo (evita el "¿de cuál?" cuando ya lo sabíamos).
+  const udCtx = ultimoDoc.get(from);
+  if (udCtx && parseInt(String(udCtx.numero).replace(/\D/g, ''), 10) === q) {
+    return conceptosDe(udCtx.tipo, q, from);
+  }
+
   // Sin tipo: ¿en qué tipos (con desglose) existe ese número?
   const existentes = [];
   for (const t of ['factura', 'presupuesto', 'pedido', 'proveedor']) {
@@ -1086,6 +1093,7 @@ async function handlerPresupuesto(texto, from, imagenes = []) {
     `- "iva": 21 por defecto; si el usuario dice "al 10" pon 10; si dice "al 0" o "sin iva" pon 0.\n` +
     `- PRECIOS: si el usuario da un total, REPARTE ese total entre las partidas de forma realista (la suma debe cuadrar). Si da precios por partida, respétalos. Si no da ningún precio, propón importes de referencia razonables para España.\n` +
     `- Redacta en español, profesional, como un presupuesto real de construcción. El paso a paso de la mano de obra debe ser detallado.\n` +
+    `- FORMATO del paso a paso: cada paso en su PROPIA LÍNEA, con salto de línea real (\\n) entre pasos, numerados "1) ", "2) "… No los pongas seguidos en un mismo párrafo. Ejemplo de "descripcion": "1) Desmontaje de sanitarios.\\n2) Arranque de alicatado.\\n3) Retirada de escombros."\n` +
     `- En pintura: superficies completas (paños enteros, techos completos), nunca parches.\n` +
     `- JSON VÁLIDO OBLIGATORIO: "precio" y "uds" deben ser NÚMEROS con PUNTO decimal y sin separador de miles (ej: 180.00, 1250.5), NUNCA con coma (no "180,00"). No pongas el símbolo € dentro del JSON. Escapa correctamente comillas y saltos de línea dentro de los textos.`;
 
