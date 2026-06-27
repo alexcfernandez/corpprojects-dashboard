@@ -1264,22 +1264,30 @@ async function generarPedidoDesdeIncidencia({ incidentId, accId, descripcion, ti
   }
 }
 
+// IDs de impuesto (taxLines) confirmados en el catálogo de StelOrder de Corpprojects.
+// Para escribir el IVA de una línea hay que mandar primary-tax-percentage + primary-tax-id.
+const IVA_TAX_IDS = { 21: 183287, 10: 183288, 4: 183289, 0: 183873 };
+
 // ── CREAR PRESUPUESTO (workEstimate) desde un borrador de la IA ──
 // Estructura ya probada en /workOrders y replicada en /workEstimates:
 //   · 1 línea SECTION con las observaciones técnicas (si las hay)
 //   · 1 línea ITEM por partida, con el producto GENÉRICO "Presupuesto"
-//     (item-id reutilizable); el nombre + paso a paso van en item-description.
+//     (item-id reutilizable); el título va en item-name y el paso a paso en item-description.
 // Estado por defecto: Pendiente (1120641) — en este StelOrder no existe un estado
 // "borrador" separado; un presupuesto nuevo nace Pendiente a la espera de aceptación.
-// IVA por línea NO se fija aquí (queda al de por defecto del producto): es el trozo 4.
-// Enlace opcional a incidencia vía parent-incident-id. Todo queda en stelWriteLog.
-async function crearPresupuestoStel({ accId, titulo = null, observaciones = null, partidas, incidentId = null, estadoId = 1120641, requestedBy = null }) {
+// IVA por línea: se escribe primary-tax-percentage + primary-tax-id según `iva` (21/10/0),
+// con 21% por defecto. Enlace opcional a incidencia vía parent-incident-id. Todo en stelWriteLog.
+async function crearPresupuestoStel({ accId, titulo = null, observaciones = null, partidas, iva = 21, incidentId = null, estadoId = 1120641, requestedBy = null }) {
   if (!accId) throw new Error('Falta el cliente (account-id)');
   if (!Array.isArray(partidas) || !partidas.length) throw new Error('El presupuesto no tiene partidas');
   const db = await require('./db').getDB();
 
   // 1) Producto genérico reutilizable (NO se crea uno por presupuesto)
   const itemId = await getProductoGenerico('presupuesto');
+
+  // IVA a aplicar (21/10/0). Si no está en el mapa, cae a 21%.
+  const ivaPct = IVA_TAX_IDS[Number(iva)] != null ? Number(iva) : 21;
+  const taxId = IVA_TAX_IDS[ivaPct];
 
   // 2) Construir líneas: SECTION (observaciones) + ITEM por partida
   const lines = [];
@@ -1294,7 +1302,9 @@ async function crearPresupuestoStel({ accId, titulo = null, observaciones = null
       'item-name': nombre.slice(0, 200),   // título de la partida en la columna Nombre (sobrescribe el del producto genérico)
       units: Number(p.uds) || 1,
       'item-base-price': Number(p.precio) || 0,
-      'item-description': desc.slice(0, 4000)  // solo el paso a paso (el título ya va en item-name)
+      'item-description': desc.slice(0, 4000),  // solo el paso a paso (el título ya va en item-name)
+      'primary-tax-percentage': ivaPct,
+      'primary-tax-id': taxId
     });
   }
 
