@@ -908,7 +908,7 @@ async function ejecutarCrearIncidencia(from, pend) {
       tipoId: TIPO_INC[pend.tipo] || null, requestedBy: from
     });
     // Guardamos la incidencia recién creada para poder generar su pedido con "sí"
-    pendiente.set(from, { accion: 'genPedido', incidentId: r.id, accId: pend.accId, target: pend.target, descripcion: pend.descripcion, ref: r.ref, ts: Date.now() });
+    pendiente.set(from, { accion: 'genPedido', incidentId: r.id, accId: pend.accId, target: pend.target, descripcion: pend.descripcion, tipo: pend.tipo || 'actuacion', ref: r.ref, ts: Date.now() });
     return `✅ Incidencia creada: *${r.ref || r.id}*\n🏘️ ${pend.target}\n\n¿Genero el pedido de trabajo? Responde *"sí"* o *"no"*.`;
   } catch (e) {
     pendiente.delete(from);
@@ -933,14 +933,14 @@ async function handlerGenerarPedido(texto, from) {
   // Resolver nombre del cliente para mostrarlo
   let nombre = '';
   try { const { clientMap } = await stel.getClients(); nombre = (clientMap[String(inc.accId)] || {}).name || ''; } catch (e) {}
-  pendiente.set(from, { accion: 'genPedido', incidentId: inc.id, accId: inc.accId, target: nombre, descripcion: inc.descripcion, ref: inc.ref, ts: Date.now() });
+  pendiente.set(from, { accion: 'genPedido', incidentId: inc.id, accId: inc.accId, target: nombre, descripcion: inc.descripcion, tipo: inc.tipo || 'actuacion', ref: inc.ref, ts: Date.now() });
   return `📋 *Voy a generar un pedido de trabajo:*\n\n🔗 Desde: *${inc.ref}*\n🏘️ Cliente: *${nombre || '—'}*\n📝 ${inc.descripcion || '(sin descripción)'}\n\n¿Lo genero? Responde *"sí"* o *"no"*.`;
 }
 
 async function ejecutarGenerarPedido(from, datos) {
   try {
     const r = await stel.generarPedidoDesdeIncidencia({
-      incidentId: datos.incidentId, accId: datos.accId, descripcion: datos.descripcion, requestedBy: from
+      incidentId: datos.incidentId, accId: datos.accId, descripcion: datos.descripcion, tipo: datos.tipo || 'actuacion', requestedBy: from
     });
     pendiente.delete(from);
     return `✅ Pedido de trabajo generado: *${r.ref || r.id}*\n🏘️ ${datos.target || ''}\n🔗 Enlazado a ${datos.ref || 'la incidencia'}`;
