@@ -93,6 +93,19 @@ textarea{min-height:54px;resize:vertical}
     <label>Cliente (debe existir en StelOrder)</label>
     <input id="cliente" type="text" placeholder="Comunitat de Propietaris...">
 
+    <!-- REESCRITURA -->
+    <div style="margin-top:16px">
+      <label>Reescribir el texto (estilo propio, para que no parezca copiado)</label>
+      <div class="seg" id="langSeg">
+        <button data-lang="es" class="on">Castellano</button>
+        <button data-lang="ca">Catalán</button>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button class="btn ghost" id="btnReescribir" style="flex:1">✍️ Reescribir</button>
+        <button class="btn ghost hide" id="btnRevertir" style="flex:0 0 auto;width:auto;padding:13px 16px">Original</button>
+      </div>
+      <div id="msgRw" class="small" style="margin-top:6px"></div>
+    </div>
     <!-- AJUSTE DE PRECIO -->
     <div style="margin-top:16px">
       <label>Ajustar precio</label>
@@ -139,6 +152,8 @@ let datos = null;        // {titulo,cliente,iva,partidas:[{nombre,descripcion,ca
 let baseOriginal = 0;
 let mode = 'none';       // none | pct | fix
 let fixBase = 'base';    // base | total
+let lang = 'es';         // es | ca
+let partidasOriginal = null;
 
 if (!TOKEN) { $('noauth').classList.remove('hide'); $('step1').classList.add('hide'); }
 
@@ -168,6 +183,7 @@ $('btnAnalizar').onclick = async () => {
 
 // ---- paso 2 ----
 function initPaso2(){
+  partidasOriginal = JSON.parse(JSON.stringify(datos.partidas||[]));
   $('titulo').value = datos.titulo||'';
   $('cliente').value = datos.cliente||'';
   $('iva').value = String(datos.iva!=null?datos.iva:21);
@@ -188,6 +204,33 @@ $('fixBase').querySelectorAll('button').forEach(btn=>{
   btn.onclick=()=>{ fixBase=btn.dataset.fb; $('fixBase').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===btn)); recalc(); };
 });
 ['pctVal','fixVal','iva'].forEach(id=> $(id).addEventListener('input', recalc));
+
+// idioma de reescritura
+$('langSeg').querySelectorAll('button').forEach(btn=>{
+  btn.onclick=()=>{ lang=btn.dataset.lang; $('langSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===btn)); };
+});
+
+$('btnReescribir').onclick = async () => {
+  const b=$('btnReescribir'); b.disabled=true; b.innerHTML='<span class="spin"></span> Reescribiendo…'; $('msgRw').innerHTML='';
+  try{
+    const payload={ idioma:lang, partidas:(datos.partidas||[]).map(p=>({nombre:p.nombre,descripcion:p.descripcion})) };
+    const r=await fetch('/api/presupuesto/reescribir',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+TOKEN},body:JSON.stringify(payload)});
+    const d=await r.json(); if(!r.ok) throw new Error(d.error||('Error '+r.status));
+    // sustituye nombre/descripcion conservando precio y cantidad
+    (d.partidas||[]).forEach((np,i)=>{ if(datos.partidas[i]){ datos.partidas[i].nombre=np.nombre||datos.partidas[i].nombre; datos.partidas[i].descripcion=np.descripcion||datos.partidas[i].descripcion; } });
+    $('btnRevertir').classList.remove('hide');
+    $('msgRw').innerHTML='<span style="color:var(--green)">✓ Texto reescrito en '+(lang==='ca'?'catalán':'castellano')+'. Revísalo abajo.</span>';
+    recalc();
+  }catch(e){ $('msgRw').innerHTML='<span style="color:#ffb4b4">No se pudo reescribir: '+e.message+'</span>'; }
+  finally{ b.disabled=false; b.innerHTML='✍️ Reescribir'; }
+};
+
+$('btnRevertir').onclick = () => {
+  datos.partidas = JSON.parse(JSON.stringify(partidasOriginal||[]));
+  $('btnRevertir').classList.add('hide');
+  $('msgRw').innerHTML='<span class="muted">Texto original restaurado.</span>';
+  recalc();
+};
 
 function factorActual(){
   const iva = Number($('iva').value)||0;
