@@ -1277,9 +1277,21 @@ const IVA_TAX_IDS = { 21: 183287, 10: 183288, 4: 183289, 0: 183873 };
 // "borrador" separado; un presupuesto nuevo nace Pendiente a la espera de aceptación.
 // IVA por línea: se escribe primary-tax-percentage + primary-tax-id según `iva` (21/10/0),
 // con 21% por defecto. Enlace opcional a incidencia vía parent-incident-id. Todo en stelWriteLog.
-async function crearPresupuestoStel({ accId, titulo = null, observaciones = null, partidas, iva = 21, incidentId = null, estadoId = 1120641, requestedBy = null }) {
+// Campo donde StelOrder muestra el texto de una línea SECTION. A CONFIRMAR con
+// la sonda crearPresupuestoMultiSeccionPrueba; si hiciera falta, cambiar a 'item-description'.
+const SECCION_CAMPO = 'item-name';
+function lineaSeccion(texto) {
+  const t = String(texto || '').trim().slice(0, 4000);
+  const l = { 'line-type': 'SECTION' };
+  l[SECCION_CAMPO] = t;
+  return l;
+}
+
+async function crearPresupuestoStel({ accId, titulo = null, observaciones = null, partidas = null, estructura = null, iva = 21, incidentId = null, estadoId = 1120641, requestedBy = null }) {
   if (!accId) throw new Error('Falta el cliente (account-id)');
-  if (!Array.isArray(partidas) || !partidas.length) throw new Error('El presupuesto no tiene partidas');
+  const tienePart = Array.isArray(partidas) && partidas.length;
+  const tieneEstr = Array.isArray(estructura) && estructura.length;
+  if (!tienePart && !tieneEstr) throw new Error('El presupuesto no tiene partidas');
   const db = await require('./db').getDB();
 
   // 1) Producto genérico reutilizable (NO se crea uno por presupuesto)
@@ -1289,23 +1301,37 @@ async function crearPresupuestoStel({ accId, titulo = null, observaciones = null
   const ivaPct = IVA_TAX_IDS[Number(iva)] != null ? Number(iva) : 21;
   const taxId = IVA_TAX_IDS[ivaPct];
 
-  // 2) Construir líneas: SECTION (observaciones) + ITEM por partida
+  // Una partida -> línea ITEM. Acepta 'cantidad' (amidaments) o 'uds' (voz).
+  const itemLinea = (p) => ({
+    'line-type': 'ITEM',
+    'item-id': Number(itemId),
+    'item-name': String(p.nombre || 'Partida').trim().slice(0, 200),
+    units: Number(p.cantidad != null ? p.cantidad : p.uds) || 1,
+    'item-base-price': Number(p.precio) || 0,
+    'item-description': String(p.descripcion || '').trim().slice(0, 4000),
+    'primary-tax-percentage': ivaPct,
+    'primary-tax-id': taxId
+  });
+
+  // 2) Construir líneas en orden
   const lines = [];
   const obs = String(observaciones || '').trim();
-  if (obs) lines.push({ 'line-type': 'SECTION', 'item-description': obs.slice(0, 4000) });
-  for (const p of partidas) {
-    const nombre = String(p.nombre || 'Partida').trim();
-    const desc = String(p.descripcion || '').trim();
-    lines.push({
-      'line-type': 'ITEM',
-      'item-id': Number(itemId),
-      'item-name': nombre.slice(0, 200),   // título de la partida en la columna Nombre (sobrescribe el del producto genérico)
-      units: Number(p.uds) || 1,
-      'item-base-price': Number(p.precio) || 0,
-      'item-description': desc.slice(0, 4000),  // solo el paso a paso (el título ya va en item-name)
-      'primary-tax-percentage': ivaPct,
-      'primary-tax-id': taxId
-    });
+  if (obs) lines.push(lineaSeccion(obs));
+
+  if (tieneEstr) {
+    // Jerarquía: capítulo (SECTION) -> subcapítulo (SECTION) -> partidas (ITEM)
+    for (const cap of estructura) {
+      const capTxt = [cap.codigo, cap.nombre].filter(Boolean).join(' ').trim();
+      if (capTxt) lines.push(lineaSeccion(capTxt));
+      for (const p of (Array.isArray(cap.partidas) ? cap.partidas : [])) lines.push(itemLinea(p));
+      for (const sub of (Array.isArray(cap.subcapitulos) ? cap.subcapitulos : [])) {
+        const subTxt = [sub.codigo, sub.nombre].filter(Boolean).join(' ').trim();
+        if (subTxt) lines.push(lineaSeccion(subTxt));
+        for (const p of (Array.isArray(sub.partidas) ? sub.partidas : [])) lines.push(itemLinea(p));
+      }
+    }
+  } else {
+    for (const p of partidas) lines.push(itemLinea(p));
   }
 
   const body = { 'account-id': Number(accId), 'document-state-id': Number(estadoId), lines };
@@ -1354,6 +1380,27 @@ function _incInfo(i) {
   };
 }
 
+// SONDA temporal (borrable): crea un presupuesto de prueba con DOS variantes de
+// línea SECTION para ver cómo pinta StelOrder los capítulos/subcapítulos.
+async function crearPresupuestoMultiSeccionPrueba(accId) {
+  if (!accId) throw new Error('Falta accId de prueba');
+  const itemId = await getProductoGenerico('presupuesto');
+  const lines = [
+    { 'line-type': 'SECTION', 'item-name': '00 CAPITULO PRUEBA (texto via item-name)' },
+    { 'line-type': 'SECTION', 'item-description': '00 01 SUBCAPITULO PRUEBA (texto via item-description)' },
+    {
+      'line-type': 'ITEM', 'item-id': Number(itemId),
+      'item-name': 'Partida de prueba', units: 2, 'item-base-price': 0,
+      'item-description': '1) Paso uno de prueba.\n2) Paso dos de prueba.',
+      'primary-tax-percentage': 10, 'primary-tax-id': IVA_TAX_IDS[10]
+    }
+  ];
+  const body = { 'account-id': Number(accId), 'document-state-id': 1120641, title: 'PRUEBA multi-seccion (borrar)', lines };
+  const r = await client.post('/workEstimates', body, { headers: { 'Content-Type': 'application/json; charset=utf-8' }, timeout: 25000 });
+  const d = Array.isArray(r.data) ? r.data[0] : r.data;
+  return { ok: true, id: d && d.id ? String(d.id) : null, ref: (d && (d['full-reference'] || d.reference)) || null };
+}
+
 module.exports = {
   getInvoices, getAllReceipts, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary, diagProveedores,
@@ -1364,5 +1411,5 @@ module.exports = {
   getMonthlyBilling,
   getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap,
   getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA, diagLineaImpuesto, diagImpuestos,
-  crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, crearPresupuestoStel, ultimaIncidencia, incidenciaPorRef
+  crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, crearPresupuestoStel, crearPresupuestoMultiSeccionPrueba, ultimaIncidencia, incidenciaPorRef
 };
