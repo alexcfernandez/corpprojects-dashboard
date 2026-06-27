@@ -1021,6 +1021,25 @@ async function ejecutarGenerarPedido(from, datos) {
   }
 }
 
+// Crea el presupuesto (workEstimate) en StelOrder a partir del borrador guardado.
+async function ejecutarCrearPresupuesto(from, pend) {
+  try {
+    const b = pend.borrador || {};
+    const r = await stel.crearPresupuestoStel({
+      accId: pend.accId,
+      titulo: b.titulo || null,
+      observaciones: b.observaciones || null,
+      partidas: b.partidas || [],
+      requestedBy: from
+    });
+    pendiente.delete(from);
+    return `✅ Presupuesto creado en StelOrder: *${r.ref || r.id}*\n🏘️ ${pend.target || ''}\n\n_Está en estado Pendiente. Revísalo y ajusta el IVA si hace falta._`;
+  } catch (e) {
+    pendiente.delete(from);
+    return `⚠️ No pude crear el presupuesto: ${e.message}`;
+  }
+}
+
 // ── PIEZA B: PRESUPUESTO TÉCNICO por voz/texto + fotos (de momento SOLO genera y enseña) ──
 function fmtEurB(n) {
   const v = (Number(n) || 0).toFixed(2);
@@ -1051,9 +1070,7 @@ async function handlerPresupuesto(texto, from, imagenes = []) {
   const base = r.partidas.reduce((s, p) => s + (Number(p.precio) || 0) * (Number(p.uds) || 1), 0);
   const total = base * (1 + iva / 100);
 
-  // Guardamos el borrador por si luego lo creamos (trozo 3, aún no activo)
-  pendiente.set(from, { accion: 'presuBorrador', borrador: r, iva, ts: Date.now() });
-
+  // Cuerpo del borrador (igual que antes)
   let msg = `📊 *BORRADOR DE PRESUPUESTO*\n`;
   if (r.titulo) msg += `_${r.titulo}_\n`;
   if (r.cliente) msg += `🏘️ ${r.cliente}\n`;
@@ -1069,7 +1086,19 @@ async function handlerPresupuesto(texto, from, imagenes = []) {
   msg += `Base: ${fmtEurB(base)}\n`;
   msg += `IVA (${iva}%): ${fmtEurB(total - base)}\n`;
   msg += `*TOTAL: ${fmtEurB(total)}*\n\n`;
-  msg += `_⚠️ Borrador generado por IA — revisa los precios. Aún NO se ha creado en StelOrder (lo conectamos en el siguiente paso)._`;
+
+  // Resolver el cliente para poder crearlo en StelOrder
+  const { target } = await resolver(texto, r.cliente || '');
+  const accId = target ? await stel.accountIdByName(target) : null;
+
+  if (accId) {
+    pendiente.set(from, { accion: 'presuConfirmar', borrador: r, iva, accId, target, ts: Date.now() });
+    const avisoIva = iva !== 21 ? `\n_Nota: el IVA se creará al 21% por defecto; el control fino del IVA (${iva}%) llega en el siguiente paso — ajústalo en StelOrder si hace falta._` : '';
+    msg += `_⚠️ Borrador generado por IA — revisa los precios._\n\n¿Lo creo en StelOrder para *${target}* (presupuesto en estado Pendiente)? Responde *"sí"* o *"no"*.${avisoIva}`;
+  } else {
+    pendiente.set(from, { accion: 'presuCliente', borrador: r, iva, ts: Date.now() });
+    msg += `_⚠️ Borrador generado por IA — revisa los precios._\n\n🤔 ¿Para qué cliente lo creo? Dime el nombre **tal como aparece en StelOrder** y lo creo.\n_Si el cliente no existe aún, créalo primero en StelOrder._`;
+  }
   return msg;
 }
 
@@ -1084,6 +1113,22 @@ async function responderConsulta(texto, from = 'anon', imagenes = []) {
       if (/^(s[ií]|si|vale|ok|dale|confirmo|adelante|correcto|genera(lo)?|hazlo)\b/.test(nn)) return ejecutarGenerarPedido(from, pend);
       if (/^(no|cancela|para|anula|dejalo|mejor no|ahora no)\b/.test(nn)) { pendiente.delete(from); return '👍 Vale, no genero el pedido. La incidencia queda creada.'; }
       // si no responde sí/no, dejamos pasar al resto (puede querer otra cosa)
+    }
+    if (pend.accion === 'presuConfirmar') {
+      if (/^(s[ií]|si|vale|ok|dale|confirmo|adelante|correcto|crea(lo)?|hazlo)\b/.test(nn)) return ejecutarCrearPresupuesto(from, pend);
+      if (/^(no|cancela|para|anula|dejalo|mejor no|ahora no)\b/.test(nn)) { pendiente.delete(from); return '👍 Vale, no creo el presupuesto. El borrador queda descartado.'; }
+      return 'Responde *"sí"* para crear el presupuesto en StelOrder o *"no"* para descartarlo.';
+    }
+    if (pend.accion === 'presuCliente') {
+      const { target } = await resolver(texto, texto);
+      const accId = target ? await stel.accountIdByName(target) : null;
+      if (accId) {
+        const b = pend.borrador || {};
+        pendiente.set(from, { accion: 'presuConfirmar', borrador: b, iva: pend.iva, accId, target, ts: Date.now() });
+        const avisoIva = pend.iva !== 21 ? `\n_Nota: el IVA se creará al 21% por defecto (el control fino llega en el siguiente paso)._` : '';
+        return `📊 Presupuesto _${b.titulo || ''}_ para *${target}*.\n¿Lo creo en StelOrder (estado Pendiente)? Responde *"sí"* o *"no"*.${avisoIva}`;
+      }
+      return '⚠️ No encuentro ese cliente en StelOrder. Dime el nombre exacto tal como aparece en *Clientes*, o créalo primero allí.';
     }
     if (pend.accion === 'incConfirmar') {
       if (/^(s[ií]|si|vale|ok|dale|confirmo|adelante|correcto|crea(la)?)\b/.test(nn)) return ejecutarCrearIncidencia(from, pend);
