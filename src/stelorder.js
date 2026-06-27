@@ -1240,13 +1240,13 @@ async function crearPresupuestoStel({ accId, titulo = null, observaciones = null
   for (const p of partidas) {
     const nombre = String(p.nombre || 'Partida').trim();
     const desc = String(p.descripcion || '').trim();
-    const itemDesc = (nombre + (desc ? '\n' + desc : '')).slice(0, 4000);
     lines.push({
       'line-type': 'ITEM',
       'item-id': Number(itemId),
+      'item-name': nombre.slice(0, 200),   // título de la partida en la columna Nombre (sobrescribe el del producto genérico)
       units: Number(p.uds) || 1,
       'item-base-price': Number(p.precio) || 0,
-      'item-description': itemDesc
+      'item-description': desc.slice(0, 4000)  // solo el paso a paso (el título ya va en item-name)
     });
   }
 
