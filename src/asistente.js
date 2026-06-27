@@ -134,11 +134,51 @@ async function iaJson(prompt, maxTokens, fallback) {
   } catch (e) { console.error('[Asistente] IA error:', e.message); return fallback; }
 }
 
+// Parser de JSON tolerante: arregla los fallos típicos de los modelos antes de
+// rendirse — coma decimal española ("180,00" -> "180.00"), comas finales y, como
+// último recurso, cierra cadenas/llaves de un JSON truncado para salvar el borrador.
+function parseJsonLoose(raw) {
+  let s = String(raw || '').replace(/```json|```/g, '').trim();
+  const a = s.indexOf('{'), b = s.lastIndexOf('}');
+  if (a !== -1 && b > a) s = s.slice(a, b + 1);
+  // Coma decimal -> punto SOLO en posición de valor numérico (dígito,dígitos seguido de , } o ])
+  s = s.replace(/(\d),(\d{1,2})(?=\s*[,}\]])/g, '$1.$2');
+  // Comas finales antes de cierre
+  s = s.replace(/,\s*([}\]])/g, '$1');
+  try { return JSON.parse(s); }
+  catch (e1) {
+    try { return JSON.parse(repararJsonTruncado(s)); }
+    catch (e2) { throw e1; } // lanza el error original, más informativo
+  }
+}
+
+// Cierra un JSON cortado a media frase: cierra la cadena colgante y los
+// brackets abiertos en el ORDEN correcto (pila), respetando el anidamiento.
+function repararJsonTruncado(s) {
+  const pila = [];
+  let enCadena = false, escape = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (escape) { escape = false; continue; }
+    if (c === '\\') { escape = true; continue; }
+    if (c === '"') { enCadena = !enCadena; continue; }
+    if (enCadena) continue;
+    if (c === '{' || c === '[') pila.push(c);
+    else if (c === '}' || c === ']') pila.pop();
+  }
+  let t = s;
+  if (enCadena) t += '"';        // cierra cadena colgante
+  t = t.replace(/,\s*$/, '');     // quita coma colgante al final
+  for (let i = pila.length - 1; i >= 0; i--) t += (pila[i] === '{' ? '}' : ']');
+  return t.replace(/,\s*([}\]])/g, '$1');
+}
+
 // Llamada a IA que admite IMÁGENES (para el presupuesto técnico con fotos).
 // Usa un modelo más capaz (Sonnet) porque redacta partidas técnicas y lee fotos.
 async function iaJsonVision(prompt, imagenes, maxTokens, fallback) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return fallback;
+  let raw = '', stop = '';
   try {
     const content = [];
     for (const img of (imagenes || []).slice(0, 4)) {
@@ -156,9 +196,13 @@ async function iaJsonVision(prompt, imagenes, maxTokens, fallback) {
     });
     const data = await r.json();
     if (!r.ok) throw new Error(`API ${r.status}: ${JSON.stringify(data).slice(0, 200)}`);
-    const txt = (data.content?.[0]?.text || '{}').replace(/```json|```/g, '').trim();
-    return JSON.parse(txt);
-  } catch (e) { console.error('[Asistente] IA vision error:', e.message); return fallback; }
+    raw = data.content?.[0]?.text || '';
+    stop = data.stop_reason || '';
+    return parseJsonLoose(raw);
+  } catch (e) {
+    console.error('[Asistente] IA vision error:', e.message, '| stop_reason:', stop, '| raw(0-400):', String(raw).slice(0, 400));
+    return fallback;
+  }
 }
 
 async function clasificar(texto) {
@@ -995,11 +1039,12 @@ async function handlerPresupuesto(texto, from, imagenes = []) {
     `- "iva": 21 por defecto; si el usuario dice "al 10" pon 10; si dice "al 0" o "sin iva" pon 0.\n` +
     `- PRECIOS: si el usuario da un total, REPARTE ese total entre las partidas de forma realista (la suma debe cuadrar). Si da precios por partida, respétalos. Si no da ningún precio, propón importes de referencia razonables para España.\n` +
     `- Redacta en español, profesional, como un presupuesto real de construcción. El paso a paso de la mano de obra debe ser detallado.\n` +
-    `- En pintura: superficies completas (paños enteros, techos completos), nunca parches.`;
+    `- En pintura: superficies completas (paños enteros, techos completos), nunca parches.\n` +
+    `- JSON VÁLIDO OBLIGATORIO: "precio" y "uds" deben ser NÚMEROS con PUNTO decimal y sin separador de miles (ej: 180.00, 1250.5), NUNCA con coma (no "180,00"). No pongas el símbolo € dentro del JSON. Escapa correctamente comillas y saltos de línea dentro de los textos.`;
 
-  const r = await iaJsonVision(prompt, imagenes, 2000, null);
+  const r = await iaJsonVision(prompt, imagenes, 4000, null);
   if (!r || !Array.isArray(r.partidas) || !r.partidas.length) {
-    return '🤔 No he conseguido generar el presupuesto. Dame un poco más de detalle (qué trabajo y, si quieres, el importe). Ej: *"presupuesto para Illa Verda: impermeabilizar la tribuna, 2530€"*.';
+    return '🤔 No he conseguido generar el presupuesto. Dame un poco más de detalle (qué trabajo y, si quieres, el importe). Ej: *"hazme un presupuesto para Illa Verda: impermeabilizar la tribuna, 2530€"*.';
   }
 
   const iva = [0, 10, 21].includes(Number(r.iva)) ? Number(r.iva) : 21;
@@ -1099,7 +1144,8 @@ async function responderConsulta(texto, from = 'anon', imagenes = []) {
   const _np = norm(texto);
   const pidePresu =
     /\b(haz(me)?|prepara(me)?|redacta(me)?|generame|gener[ae]me|montame|hacer un presupuesto detallado)\b[\s\S]*\bpresupuest/.test(_np) ||
-    /\bpresupuesto (detallado|tecnico|t\u00e9cnico|profesional)\b/.test(_np);
+    /\bpresupuesto (detallado|tecnico|t\u00e9cnico|profesional)\b/.test(_np) ||
+    /\bpresupuesto (para|de)\b[\s\S]{0,80}:\s*\S/.test(_np);
   if (pidePresu || (imagenes && imagenes.length && /presupuest/.test(_np))) {
     return handlerPresupuesto(texto, from, imagenes);
   }
