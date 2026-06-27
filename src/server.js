@@ -16,7 +16,7 @@ const {
   getSummary, getPendingInvoices, getInvoices, getClients,
   getEstimatesSummary, getFamiliesSummary, getAccountCategories, clearCache,
   sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw, getEntityRawByRef,
-  getWorkOrdersLive, diagProveedores, diagEscritura, diagCrearEnlace
+  getWorkOrdersLive, diagProveedores, diagEscritura, diagCrearEnlace, diagLineaLibre
 } = require('./stelorder');
 const { sendWhatsApp, sendEmail } = require('./notifications');
 const { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail, sendWorkOrdersAlert } = require('./scheduler');
@@ -378,6 +378,10 @@ app.get('/api/diag/stel-write',     requireAuth, async (req,res) => {
 });
 app.get('/api/diag/stel-enlace',    requireAuth, async (req,res) => {
   try { res.json(await diagCrearEnlace({ accId: req.query.acc || null, go: req.query.go === '1' || req.query.go === 'true' })); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/diag/stel-linea',     requireAuth, async (req,res) => {
+  try { res.json(await diagLineaLibre({ accId: req.query.acc || null, go: req.query.go === '1' || req.query.go === 'true' })); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
