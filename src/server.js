@@ -16,7 +16,7 @@ const {
   getSummary, getPendingInvoices, getInvoices, getClients,
   getEstimatesSummary, getFamiliesSummary, getAccountCategories, clearCache,
   sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw, getEntityRawByRef,
-  getWorkOrdersLive, diagProveedores, diagEscritura
+  getWorkOrdersLive, diagProveedores, diagEscritura, diagCrearEnlace
 } = require('./stelorder');
 const { sendWhatsApp, sendEmail } = require('./notifications');
 const { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail, sendWorkOrdersAlert } = require('./scheduler');
@@ -374,6 +374,10 @@ app.post('/api/stelorder/refresh', requireAuth, (req,res) => { clearCache(); res
 app.get('/api/diag-proveedores',   requireAuth, async (req,res) => res.json(await diagProveedores()));
 app.get('/api/diag/stel-write',     requireAuth, async (req,res) => {
   try { res.json(await diagEscritura({ probePost: req.query.probe === '1' || req.query.probe === 'true' })); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/diag/stel-enlace',    requireAuth, async (req,res) => {
+  try { res.json(await diagCrearEnlace({ accId: req.query.acc || null, go: req.query.go === '1' || req.query.go === 'true' })); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
