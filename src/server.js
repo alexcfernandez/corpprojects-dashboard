@@ -178,25 +178,35 @@ async function transcribirAudio(mediaUrl, contentType, hint) {
   return ((r.data && r.data.text) || '').trim();
 }
 
-// Trocea un texto largo en partes <= max, respetando saltos de línea cuando puede.
-// WhatsApp/Twilio limita a ~1600 caracteres por mensaje; usamos 1450 para dejar
-// margen al indicador de parte "(i/n) ".
+// Trocea un texto largo en partes <= max. Corta preferentemente por BLOQUES
+// (párrafos separados por línea en blanco), de modo que una partida no se separe
+// de su descripción. Si un bloque solo ya supera el máximo, lo trocea por líneas;
+// y si una línea sola lo supera, la corta en duro. WhatsApp/Twilio limita a ~1600.
 function trocearMensaje(texto, max = 1450) {
   const t = String(texto || '');
   if (t.length <= max) return [t];
   const partes = [];
   let buf = '';
-  for (const linea of t.split('\n')) {
-    if (linea.length > max) {
-      // Una sola línea más larga que el máximo: vacía el buffer y trocea duro.
-      if (buf) { partes.push(buf); buf = ''; }
-      for (let i = 0; i < linea.length; i += max) partes.push(linea.slice(i, i + max));
+  const empuja = () => { if (buf) { partes.push(buf); buf = ''; } };
+  for (const bloque of t.split('\n\n')) {
+    if (bloque.length > max) {
+      // Bloque demasiado largo: vaciar buffer y trocear por líneas
+      empuja();
+      let sub = '';
+      for (const linea of bloque.split('\n')) {
+        if (linea.length > max) {
+          if (sub) { partes.push(sub); sub = ''; }
+          for (let i = 0; i < linea.length; i += max) partes.push(linea.slice(i, i + max));
+        } else if (sub && (sub.length + 1 + linea.length) > max) { partes.push(sub); sub = linea; }
+        else sub = sub ? sub + '\n' + linea : linea;
+      }
+      if (sub) partes.push(sub);
       continue;
     }
-    if (buf && (buf.length + 1 + linea.length) > max) { partes.push(buf); buf = linea; }
-    else buf = buf ? buf + '\n' + linea : linea;
+    if (buf && (buf.length + 2 + bloque.length) > max) { empuja(); buf = bloque; }
+    else buf = buf ? buf + '\n\n' + bloque : bloque;
   }
-  if (buf) partes.push(buf);
+  empuja();
   return partes;
 }
 
