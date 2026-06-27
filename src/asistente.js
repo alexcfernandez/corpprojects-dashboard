@@ -134,6 +134,33 @@ async function iaJson(prompt, maxTokens, fallback) {
   } catch (e) { console.error('[Asistente] IA error:', e.message); return fallback; }
 }
 
+// Llamada a IA que admite IMÁGENES (para el presupuesto técnico con fotos).
+// Usa un modelo más capaz (Sonnet) porque redacta partidas técnicas y lee fotos.
+async function iaJsonVision(prompt, imagenes, maxTokens, fallback) {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) return fallback;
+  try {
+    const content = [];
+    for (const img of (imagenes || []).slice(0, 4)) {
+      if (img && img.data) content.push({ type: 'image', source: { type: 'base64', media_type: img.media_type || 'image/jpeg', data: img.data } });
+    }
+    content.push({ type: 'text', text: prompt });
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: process.env.PRESU_IA_MODEL || 'claude-sonnet-4-6',
+        max_tokens: maxTokens,
+        messages: [{ role: 'user', content }]
+      })
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(`API ${r.status}: ${JSON.stringify(data).slice(0, 200)}`);
+    const txt = (data.content?.[0]?.text || '{}').replace(/```json|```/g, '').trim();
+    return JSON.parse(txt);
+  } catch (e) { console.error('[Asistente] IA vision error:', e.message); return fallback; }
+}
+
 async function clasificar(texto) {
   const prompt = `Eres el asistente del dueño de una empresa de mantenimiento de fincas. Clasifica su pregunta.
 
@@ -950,7 +977,58 @@ async function ejecutarGenerarPedido(from, datos) {
   }
 }
 
-async function responderConsulta(texto, from = 'anon') {
+// ── PIEZA B: PRESUPUESTO TÉCNICO por voz/texto + fotos (de momento SOLO genera y enseña) ──
+function fmtEurB(n) {
+  const v = (Number(n) || 0).toFixed(2);
+  return v.replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' €';
+}
+
+async function handlerPresupuesto(texto, from, imagenes = []) {
+  const prompt =
+    `Eres un técnico de una empresa española de mantenimiento de fincas y reformas (fachadas, impermeabilizaciones, electricidad, fontanería, pintura). ` +
+    `Vas a redactar un PRESUPUESTO profesional a partir de lo que te dice el usuario` + (imagenes && imagenes.length ? ` y de las FOTOS adjuntas (úsalas para entender el trabajo)` : '') + `.\n\n` +
+    `Petición del usuario: "${texto}"\n\n` +
+    `Devuelve SOLO un JSON válido (sin markdown) con esta forma:\n` +
+    `{"titulo":"título del presupuesto","cliente":"nombre del cliente si lo dice, o null","iva":21,"observaciones":"texto técnico de observaciones (opcional, puede ser null)","partidas":[{"nombre":"nombre corto de la partida","descripcion":"detalle técnico paso a paso, estilo profesional","precio":0.00,"uds":1}]}\n\n` +
+    `Reglas:\n` +
+    `- Estructura típica: mano de obra (con su paso a paso detallado), materiales, medios auxiliares (andamio si aplica), desplazamiento/gestión de residuos.\n` +
+    `- "iva": 21 por defecto; si el usuario dice "al 10" pon 10; si dice "al 0" o "sin iva" pon 0.\n` +
+    `- PRECIOS: si el usuario da un total, REPARTE ese total entre las partidas de forma realista (la suma debe cuadrar). Si da precios por partida, respétalos. Si no da ningún precio, propón importes de referencia razonables para España.\n` +
+    `- Redacta en español, profesional, como un presupuesto real de construcción. El paso a paso de la mano de obra debe ser detallado.\n` +
+    `- En pintura: superficies completas (paños enteros, techos completos), nunca parches.`;
+
+  const r = await iaJsonVision(prompt, imagenes, 2000, null);
+  if (!r || !Array.isArray(r.partidas) || !r.partidas.length) {
+    return '🤔 No he conseguido generar el presupuesto. Dame un poco más de detalle (qué trabajo y, si quieres, el importe). Ej: *"presupuesto para Illa Verda: impermeabilizar la tribuna, 2530€"*.';
+  }
+
+  const iva = [0, 10, 21].includes(Number(r.iva)) ? Number(r.iva) : 21;
+  const base = r.partidas.reduce((s, p) => s + (Number(p.precio) || 0) * (Number(p.uds) || 1), 0);
+  const total = base * (1 + iva / 100);
+
+  // Guardamos el borrador por si luego lo creamos (trozo 3, aún no activo)
+  pendiente.set(from, { accion: 'presuBorrador', borrador: r, iva, ts: Date.now() });
+
+  let msg = `📊 *BORRADOR DE PRESUPUESTO*\n`;
+  if (r.titulo) msg += `_${r.titulo}_\n`;
+  if (r.cliente) msg += `🏘️ ${r.cliente}\n`;
+  msg += `\n`;
+  if (r.observaciones) msg += `📝 *Observaciones técnicas:*\n${r.observaciones}\n\n`;
+  r.partidas.forEach((p, i) => {
+    const sub = (Number(p.precio) || 0) * (Number(p.uds) || 1);
+    msg += `*${i + 1}. ${p.nombre}* — ${fmtEurB(sub)}\n`;
+    if (p.descripcion) msg += `${p.descripcion}\n`;
+    msg += `\n`;
+  });
+  msg += `━━━━━━━━━━\n`;
+  msg += `Base: ${fmtEurB(base)}\n`;
+  msg += `IVA (${iva}%): ${fmtEurB(total - base)}\n`;
+  msg += `*TOTAL: ${fmtEurB(total)}*\n\n`;
+  msg += `_⚠️ Borrador generado por IA — revisa los precios. Aún NO se ha creado en StelOrder (lo conectamos en el siguiente paso)._`;
+  return msg;
+}
+
+async function responderConsulta(texto, from = 'anon', imagenes = []) {
   // A) ¿Estábamos aprendiendo un alias? La respuesta es el nombre real.
   const pend = pendiente.get(from);
 
@@ -1014,6 +1092,16 @@ async function responderConsulta(texto, from = 'anon') {
     const prev = ultima.get(from);
     if (prev && prev.mostradas < prev.items.length) return pintar(from, prev, prev.mostradas);
     return 'No tengo nada más que mostrar 🙂 Pregúntame por un cliente, p. ej.: *"¿qué debe Illa Verda?"*';
+  }
+
+  // C0.presu) PIEZA B — generar presupuesto técnico: "hazme/prepara/redacta un presupuesto de ..."
+  // (distinto de "hay que hacer presupuesto para X" que registra una incidencia)
+  const _np = norm(texto);
+  const pidePresu =
+    /\b(haz(me)?|prepara(me)?|redacta(me)?|generame|gener[ae]me|montame|hacer un presupuesto detallado)\b[\s\S]*\bpresupuest/.test(_np) ||
+    /\bpresupuesto (detallado|tecnico|t\u00e9cnico|profesional)\b/.test(_np);
+  if (pidePresu || (imagenes && imagenes.length && /presupuest/.test(_np))) {
+    return handlerPresupuesto(texto, from, imagenes);
   }
 
   // C0.ped) Generar pedido desde incidencia: "haz el pedido de INC00575" / "pedido de la última incidencia"
