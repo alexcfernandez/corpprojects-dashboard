@@ -1006,6 +1006,121 @@ async function diagLineaLibre({ accId = null, go = false } = {}) {
   return out;
 }
 
+// ── SONDA FINAL: crear producto → pedido con línea ITEM + parent-incident-id + SECTION ──
+// Confirma el Camino A completo. Crea documentos de PRUEBA que TÚ borras.
+async function diagCaminoA({ accId = null, go = false } = {}) {
+  const out = { ts: new Date().toISOString(), cliente: {}, producto: {}, incidencia: {}, pedido: {}, seccion: {}, aBorrar: [], veredicto: '', nota: '' };
+  if (!go) { out.nota = 'Simulación. Añade ?go=1 para crear producto/incidencia/pedido de PRUEBA (los borras tú).'; return out; }
+
+  // 0) Cliente real
+  try {
+    const { clientMap } = await getClients();
+    if (!accId) {
+      const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const ent = Object.entries(clientMap || {});
+      const mela = ent.find(([id, c]) => norm(c.name).includes('mela mutermilch'));
+      accId = mela ? mela[0] : (ent[0] ? ent[0][0] : null);
+    }
+    out.cliente = { accId, nombre: (clientMap[String(accId)] || {}).name || null };
+  } catch (e) { out.cliente = { error: e.message }; return out; }
+  if (!accId) { out.nota = 'No hay cliente.'; return out; }
+
+  const H = { headers: { 'Content-Type': 'application/json' }, timeout: 25000 };
+  const idOf = (data) => { const d = Array.isArray(data) ? data[0] : data; return d && d.id ? String(d.id) : null; };
+
+  // 1) Crear PRODUCTO de catálogo — probar endpoints/campos hasta acertar
+  let itemId = null;
+  const prodBodies = [
+    { ep: '/products', body: { name: 'PRUEBA API - BORRAR baldosas', reference: 'PRUEBA-API', 'base-price': 100, type: 'PRODUCT' } },
+    { ep: '/products', body: { name: 'PRUEBA API - BORRAR baldosas', 'base-price': 100 } },
+    { ep: '/items',    body: { name: 'PRUEBA API - BORRAR baldosas', 'base-price': 100 } },
+    { ep: '/catalog',  body: { name: 'PRUEBA API - BORRAR baldosas', 'base-price': 100 } }
+  ];
+  out.producto.intentos = [];
+  for (const p of prodBodies) {
+    try {
+      const r = await client.post(p.ep, p.body, H);
+      itemId = idOf(r.data);
+      out.producto.intentos.push({ ep: p.ep, status: r.status, ok: true, id: itemId, body: JSON.stringify(r.data).slice(0, 250) });
+      if (itemId) { out.producto.endpoint = p.ep; out.aBorrar.push(`Producto id ${itemId} (Catálogo)`); break; }
+    } catch (err) {
+      out.producto.intentos.push({ ep: p.ep, status: err.response?.status, ok: false, error: err.response?.data ? JSON.stringify(err.response.data).slice(0, 250) : err.message });
+    }
+    await new Promise(r => setTimeout(r, 1200));
+  }
+  if (!itemId) { out.veredicto = '❌ NO_PUDE_CREAR_PRODUCTO (revisa intentos para ver el endpoint correcto)'; out.nota = 'Nada que borrar salvo lo que diga aBorrar.'; return out; }
+
+  await new Promise(r => setTimeout(r, 1200));
+
+  // 2) Crear incidencia de PRUEBA (para enlazar)
+  let incId = null;
+  try {
+    const r = await client.post('/incidents', { 'account-id': Number(accId), description: 'PRUEBA API - BORRAR (camino A)', 'incident-type-id': 3146, 'incident-state-id': 1120644 }, H);
+    incId = idOf(r.data);
+    out.incidencia = { status: r.status, id: incId };
+    if (incId) out.aBorrar.push(`Incidencia id ${incId}`);
+  } catch (err) { out.incidencia = { status: err.response?.status, error: err.response?.data ? JSON.stringify(err.response.data).slice(0, 250) : err.message }; }
+
+  await new Promise(r => setTimeout(r, 1200));
+
+  // 3) Crear PEDIDO con línea ITEM (item-id) + parent-incident-id
+  let pdtId = null;
+  try {
+    const body = {
+      'account-id': Number(accId),
+      'document-state-id': 1120651,
+      title: 'PRUEBA API - BORRAR',
+      lines: [{ 'line-type': 'ITEM', 'item-id': Number(itemId), units: 1, 'item-base-price': 100, 'item-description': 'Reparación baldosas sueltas fachada (PRUEBA)' }]
+    };
+    if (incId) body['parent-incident-id'] = Number(incId);
+    const r = await client.post('/workOrders', body, H);
+    pdtId = idOf(r.data);
+    out.pedido = { status: r.status, id: pdtId, body: JSON.stringify(r.data).slice(0, 300) };
+    if (pdtId) out.aBorrar.push(`Pedido id ${pdtId}`);
+  } catch (err) { out.pedido = { status: err.response?.status, error: err.response?.data ? JSON.stringify(err.response.data).slice(0, 300) : err.message }; }
+
+  // 3b) Releer pedido → ¿se mantuvo parent-incident-id?
+  if (pdtId) {
+    await new Promise(r => setTimeout(r, 1500));
+    try {
+      const orders = await fetchAllPages('/workOrders');
+      const o = (orders || []).find(x => String(x.id) === String(pdtId));
+      if (o) out.pedido.verificacion = {
+        ref: o['full-reference'] || null,
+        parentIncidentId: o['parent-incident-id'] || null,
+        vinculoOk: String(o['parent-incident-id'] || '') === String(incId),
+        lineas: (o.lines || []).filter(l => !l.deleted).length
+      };
+    } catch (e) { out.pedido.verificacionError = e.message; }
+  }
+
+  await new Promise(r => setTimeout(r, 1200));
+
+  // 4) Probar línea SECTION (texto sin producto) — para el paso a paso de la Pieza B
+  try {
+    const body = {
+      'account-id': Number(accId),
+      'document-state-id': 1120651,
+      title: 'PRUEBA API SECTION - BORRAR',
+      lines: [
+        { 'line-type': 'SECTION', 'item-description': '1) Retirada de baldosas sueltas y limpieza' },
+        { 'line-type': 'ITEM', 'item-id': Number(itemId), units: 1, 'item-base-price': 100 }
+      ]
+    };
+    const r = await client.post('/workOrders', body, H);
+    const secId = idOf(r.data);
+    out.seccion = { status: r.status, id: secId, ok: !!secId, body: JSON.stringify(r.data).slice(0, 250) };
+    if (secId) out.aBorrar.push(`Pedido SECTION id ${secId}`);
+  } catch (err) { out.seccion = { status: err.response?.status, ok: false, error: err.response?.data ? JSON.stringify(err.response.data).slice(0, 250) : err.message }; }
+
+  const linkOk = out.pedido.verificacion && out.pedido.verificacion.vinculoOk;
+  out.veredicto = (pdtId ? '✅ PEDIDO_CREADO_CON_ITEM' : '⚠️ PEDIDO_NO_CREADO') +
+                  (linkOk ? ' · ✅ PARENT_OK' : ' · ⚠️ PARENT_REVISAR') +
+                  (out.seccion.ok ? ' · ✅ SECTION_OK' : ' · ⚠️ SECTION_NO');
+  out.nota = '⚠️ BORRA en StelOrder: ' + out.aBorrar.join(' · ');
+  return out;
+}
+
 module.exports = {
   getInvoices, getAllReceipts, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary, diagProveedores,
@@ -1015,5 +1130,5 @@ module.exports = {
   getWorkOrdersLive, getWorkOrderAlertLevel, setWorkOrderState, setWorkOrderStateLight,
   getMonthlyBilling,
   getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap,
-  getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace, diagLineaLibre
+  getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA
 };
