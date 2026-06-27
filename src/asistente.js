@@ -1070,23 +1070,26 @@ async function handlerPresupuesto(texto, from, imagenes = []) {
   const base = r.partidas.reduce((s, p) => s + (Number(p.precio) || 0) * (Number(p.uds) || 1), 0);
   const total = base * (1 + iva / 100);
 
-  // Cuerpo del borrador (igual que antes)
+  // Cuerpo COMPACTO para WhatsApp (resumen). El paso a paso completo NO se manda
+  // por WhatsApp (gastaría muchos mensajes); se guarda en el borrador y va entero
+  // a la línea de StelOrder al crear el presupuesto.
   let msg = `📊 *BORRADOR DE PRESUPUESTO*\n`;
   if (r.titulo) msg += `_${r.titulo}_\n`;
   if (r.cliente) msg += `🏘️ ${r.cliente}\n`;
   msg += `\n`;
-  if (r.observaciones) msg += `📝 *Observaciones técnicas:*\n${r.observaciones}\n\n`;
+  if (r.observaciones) {
+    const obs = String(r.observaciones).trim();
+    msg += `📝 *Observaciones:*\n${obs.length > 400 ? obs.slice(0, 400) + '…' : obs}\n\n`;
+  }
   r.partidas.forEach((p, i) => {
     const sub = (Number(p.precio) || 0) * (Number(p.uds) || 1);
     msg += `*${i + 1}. ${p.nombre}* — ${fmtEurB(sub)}\n`;
-    if (p.descripcion) msg += `${p.descripcion}\n`;
-    msg += `\n`;
   });
   msg += `━━━━━━━━━━\n`;
   msg += `Base: ${fmtEurB(base)}\n`;
   msg += `IVA (${iva}%): ${fmtEurB(total - base)}\n`;
   msg += `*TOTAL: ${fmtEurB(total)}*\n\n`;
-
+  msg += `_El detalle técnico (paso a paso) de cada partida se guardará en StelOrder._\n`;
   // Resolver el cliente para poder crearlo en StelOrder
   const { target } = await resolver(texto, r.cliente || '');
   const accId = target ? await stel.accountIdByName(target) : null;
