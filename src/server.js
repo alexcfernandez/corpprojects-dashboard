@@ -497,6 +497,15 @@ app.get('/api/diag/stel-impuestos', requireAuth, async (req,res) => {
   try { res.json(await diagImpuestos()); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
+app.get('/api/diag/stel-multiseccion', requireAuth, async (req,res) => {
+  try {
+    const stel = require('./stelorder');
+    let accId = req.query.accId;
+    if (!accId && req.query.cliente) accId = await stel.accountIdByName(req.query.cliente);
+    if (!accId) return res.status(400).json({ error: 'Pasa ?accId=NNN o ?cliente=Nombre' });
+    res.json(await stel.crearPresupuestoMultiSeccionPrueba(accId));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // ── Responsables por familia (a quién van los avisos de cada familia) ──
 const avisos = require('./avisos');
