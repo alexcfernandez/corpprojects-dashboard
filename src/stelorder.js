@@ -1287,15 +1287,10 @@ const IVA_TAX_IDS = { 21: 183287, 10: 183288, 4: 183289, 0: 183873 };
 // "borrador" separado; un presupuesto nuevo nace Pendiente a la espera de aceptación.
 // IVA por línea: se escribe primary-tax-percentage + primary-tax-id según `iva` (21/10/0),
 // con 21% por defecto. Enlace opcional a incidencia vía parent-incident-id. Todo en stelWriteLog.
-// Campo donde StelOrder muestra el texto de una línea SECTION. A CONFIRMAR con
-// la sonda crearPresupuestoMultiSeccionPrueba; si hiciera falta, cambiar a 'item-description'.
-const SECCION_CAMPO = 'item-name';
-function lineaSeccion(texto) {
-  const t = String(texto || '').trim().slice(0, 4000);
-  const l = { 'line-type': 'SECTION' };
-  l[SECCION_CAMPO] = t;
-  return l;
-}
+// Cabecera de CAPÍTULO -> negrita azul (vía item-name).
+// Cabecera de SUBCAPÍTULO y observaciones -> gris suave (vía item-description).
+function seccionTitulo(texto) { return { 'line-type': 'SECTION', 'item-name': String(texto || '').trim().slice(0, 200) }; }
+function seccionTexto(texto)  { return { 'line-type': 'SECTION', 'item-description': String(texto || '').trim().slice(0, 4000) }; }
 
 async function crearPresupuestoStel({ accId, titulo = null, observaciones = null, partidas = null, estructura = null, iva = 21, incidentId = null, estadoId = 1120641, requestedBy = null }) {
   if (!accId) throw new Error('Falta el cliente (account-id)');
@@ -1326,17 +1321,17 @@ async function crearPresupuestoStel({ accId, titulo = null, observaciones = null
   // 2) Construir líneas en orden
   const lines = [];
   const obs = String(observaciones || '').trim();
-  if (obs) lines.push(lineaSeccion(obs));
+  if (obs) lines.push(seccionTexto(obs));
 
   if (tieneEstr) {
-    // Jerarquía: capítulo (SECTION) -> subcapítulo (SECTION) -> partidas (ITEM)
+    // Jerarquía: capítulo (cabecera negrita) -> subcapítulo (gris) -> partidas (ITEM)
     for (const cap of estructura) {
       const capTxt = [cap.codigo, cap.nombre].filter(Boolean).join(' ').trim();
-      if (capTxt) lines.push(lineaSeccion(capTxt));
+      if (capTxt) lines.push(seccionTitulo(capTxt));
       for (const p of (Array.isArray(cap.partidas) ? cap.partidas : [])) lines.push(itemLinea(p));
       for (const sub of (Array.isArray(cap.subcapitulos) ? cap.subcapitulos : [])) {
         const subTxt = [sub.codigo, sub.nombre].filter(Boolean).join(' ').trim();
-        if (subTxt) lines.push(lineaSeccion(subTxt));
+        if (subTxt) lines.push(seccionTexto(subTxt));
         for (const p of (Array.isArray(sub.partidas) ? sub.partidas : [])) lines.push(itemLinea(p));
       }
     }
