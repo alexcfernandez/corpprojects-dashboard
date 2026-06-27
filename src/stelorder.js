@@ -860,6 +860,100 @@ async function diagEscritura({ probePost = false } = {}) {
   return out;
 }
 
+// ── VERIFICACIÓN: ¿la API crea y respeta parent-incident-id? (Paso 1, prueba que TÚ borras) ──
+// Crea una incidencia de PRUEBA + un pedido enlazado a ella, y comprueba si el vínculo
+// "generado a partir de" se mantiene. Devuelve los IDs para que los borres en StelOrder.
+async function diagCrearEnlace({ accId = null, go = false } = {}) {
+  const out = { ts: new Date().toISOString(), pasos: {}, aBorrar: [], veredicto: '', nota: '' };
+  if (!go) {
+    out.nota = 'Simulación. Añade ?go=1 para crear de verdad una incidencia y un pedido de PRUEBA (los borras tú luego).';
+    return out;
+  }
+
+  // 0) Resolver un account-id real (el que pidas, o "Mela Mutermilch", o el primero)
+  try {
+    const { clientMap } = await getClients();
+    if (!accId) {
+      const entradas = Object.entries(clientMap || {});
+      const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const mela = entradas.find(([id, c]) => norm(c.name).includes('mela mutermilch'));
+      accId = mela ? mela[0] : (entradas[0] ? entradas[0][0] : null);
+    }
+    out.pasos.cliente = { accId, nombre: (clientMap[String(accId)] || {}).name || null };
+  } catch (e) { out.pasos.clienteError = e.message; return out; }
+  if (!accId) { out.veredicto = 'NO_HAY_CLIENTE'; return out; }
+
+  const H = { headers: { 'Content-Type': 'application/json' }, timeout: 25000 };
+  const extraerId = (data) => {
+    const d = Array.isArray(data) ? data[0] : data;
+    return d && (d.id || d['id']) ? String(d.id || d['id']) : null;
+  };
+
+  // 1) Crear incidencia de PRUEBA
+  let incId = null;
+  try {
+    const body = {
+      'account-id': Number(accId),
+      description: 'PRUEBA API - BORRAR. Verificación de creación por API.',
+      'incident-type-id': 3146,    // Actuación
+      'incident-state-id': 1120644 // Pendiente
+    };
+    const r = await client.post('/incidents', body, H);
+    incId = extraerId(r.data);
+    out.pasos.incidencia = { status: r.status, id: incId, body: JSON.stringify(r.data).slice(0, 400) };
+    if (incId) out.aBorrar.push(`Incidencia id ${incId}`);
+  } catch (err) {
+    out.pasos.incidencia = { status: err.response?.status, error: err.response?.data ? JSON.stringify(err.response.data).slice(0, 400) : err.message };
+    out.veredicto = 'FALLO_AL_CREAR_INCIDENCIA';
+    return out;
+  }
+
+  await new Promise(r => setTimeout(r, 1200));
+
+  // 2) Crear pedido de trabajo enlazado a esa incidencia
+  let pdtId = null;
+  try {
+    const body = {
+      'account-id': Number(accId),
+      'document-state-id': 1120651, // Pendiente (WORKORDER)
+      title: 'PRUEBA API - BORRAR'
+    };
+    if (incId) body['parent-incident-id'] = Number(incId);
+    const r = await client.post('/workOrders', body, H);
+    pdtId = extraerId(r.data);
+    out.pasos.pedido = { status: r.status, id: pdtId, body: JSON.stringify(r.data).slice(0, 400) };
+    if (pdtId) out.aBorrar.push(`Pedido de trabajo id ${pdtId}`);
+  } catch (err) {
+    out.pasos.pedido = { status: err.response?.status, error: err.response?.data ? JSON.stringify(err.response.data).slice(0, 400) : err.message };
+    out.veredicto = 'FALLO_AL_CREAR_PEDIDO';
+    return out;
+  }
+
+  await new Promise(r => setTimeout(r, 1500));
+
+  // 3) Releer el pedido y comprobar si el vínculo parent-incident-id se mantuvo
+  try {
+    const orders = await fetchAllPages('/workOrders');
+    const o = (orders || []).find(x => String(x.id) === String(pdtId));
+    if (o) {
+      const linked = String(o['parent-incident-id'] || '') === String(incId);
+      out.pasos.verificacion = {
+        pedidoRef: o['full-reference'] || null,
+        parentIncidentId: o['parent-incident-id'] || null,
+        vinculoCorrecto: linked,
+        clienteOk: String(o['account-id']) === String(accId)
+      };
+      out.veredicto = linked ? '✅ VINCULO_OK_PODEMOS_REPLICAR_GENERAR' : '⚠️ CREA_PERO_SIN_VINCULO_NATIVO';
+    } else {
+      out.pasos.verificacion = { aviso: 'No encontré el pedido recién creado en la lista (puede tardar en indexar).' };
+      out.veredicto = 'CREADO_PERO_NO_RELEIDO';
+    }
+  } catch (e) { out.pasos.verificacionError = e.message; }
+
+  out.nota = '⚠️ BORRA estos documentos de prueba en StelOrder (SAT → Incidencias y Pedidos de trabajo): ' + out.aBorrar.join(' · ');
+  return out;
+}
+
 module.exports = {
   getInvoices, getAllReceipts, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary, diagProveedores,
@@ -869,5 +963,5 @@ module.exports = {
   getWorkOrdersLive, getWorkOrderAlertLevel, setWorkOrderState, setWorkOrderStateLight,
   getMonthlyBilling,
   getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap,
-  getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura
+  getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace
 };
