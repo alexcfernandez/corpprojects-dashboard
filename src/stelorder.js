@@ -1121,6 +1121,37 @@ async function diagCaminoA({ accId = null, go = false } = {}) {
   return out;
 }
 
+// ── CREAR INCIDENCIA (escritura real, con copia de seguridad en stelWriteLog) ──
+async function crearIncidencia({ accId, descripcion, tipoId = null, estadoId = 1120644, requestedBy = null }) {
+  if (!accId || !descripcion) throw new Error('Faltan datos (cliente o descripción)');
+  const db = await require('./db').getDB();
+  const body = { 'account-id': Number(accId), description: String(descripcion), 'incident-state-id': Number(estadoId) };
+  if (tipoId) body['incident-type-id'] = Number(tipoId);
+  const ins = await db.collection('stelWriteLog').insertOne({ tipo: 'incidencia', body, requestedBy, at: new Date(), result: 'pending' });
+  try {
+    const r = await client.post('/incidents', body, { headers: { 'Content-Type': 'application/json' }, timeout: 25000 });
+    const d = Array.isArray(r.data) ? r.data[0] : r.data;
+    const id = d && d.id ? String(d.id) : null;
+    const ref = (d && (d['full-reference'] || (d.reference ? 'INC' + d.reference : null))) || (id ? '#' + id : null);
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: 'ok', status: r.status, incidentId: id, ref } });
+    try { invalidate('incidents'); } catch (e) {}
+    return { ok: true, id, ref, status: r.status };
+  } catch (err) {
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: 'error', error: `${err.response?.status || ''} ${err.message}`, errorBody: err.response?.data || null } });
+    throw new Error(`StelOrder rechazó: ${err.response?.status || ''} ${JSON.stringify(err.response?.data || err.message).slice(0, 200)}`);
+  }
+}
+
+// Resuelve el account-id interno a partir del nombre exacto del cliente
+async function accountIdByName(nombre) {
+  const { clientMap } = await getClients().catch(() => ({ clientMap: {} }));
+  const n = String(nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  for (const [id, ci] of Object.entries(clientMap || {})) {
+    if (String(ci.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim() === n) return id;
+  }
+  return null;
+}
+
 module.exports = {
   getInvoices, getAllReceipts, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary, diagProveedores,
@@ -1130,5 +1161,6 @@ module.exports = {
   getWorkOrdersLive, getWorkOrderAlertLevel, setWorkOrderState, setWorkOrderStateLight,
   getMonthlyBilling,
   getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap,
-  getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA
+  getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA,
+  crearIncidencia, accountIdByName
 };
