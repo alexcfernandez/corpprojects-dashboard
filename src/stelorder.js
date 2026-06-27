@@ -794,6 +794,72 @@ async function diagProveedores() {
   return out;
 }
 
+// ── DIAGNÓSTICO DE ESCRITURA (Paso 0, SIN RIESGO) ──────────────────────────
+// Averigua qué permite la API sin crear nada real:
+//  1) Lee catálogos (estados/tipos de incidencia y de documento) → opciones para clasificar/cambiar estado.
+//  2) Lee un documento real de cada tipo → qué campos trae (lo que pediría un CREATE).
+//  3) (opcional, probe=1) Sondea POST con cuerpo VACÍO: 404=no existe · 400/422=existe y pide datos · 405=no permitido.
+async function diagEscritura({ probePost = false } = {}) {
+  const out = { ts: new Date().toISOString(), catalogos: {}, muestras: {}, endpoints: {}, nota: '' };
+  const campos = (obj) => (obj && typeof obj === 'object') ? Object.keys(obj).filter(k => k !== 'lines').sort() : null;
+
+  // 1) Catálogos (solo lectura)
+  try {
+    const [incStates, incTypes, docStates] = await Promise.all([
+      fetchAllPages('/incidentStates'),
+      fetchAllPages('/incidentTypes'),
+      fetchAllPages('/documentStates')
+    ]);
+    out.catalogos.incidentStates = (incStates || []).map(s => ({ id: s.id, name: s.name }));
+    out.catalogos.incidentTypes  = (incTypes  || []).map(s => ({ id: s.id, name: s.name }));
+    out.catalogos.documentStates = (docStates || []).map(s => ({ id: s.id, name: s.name, type: s['document-type'] || s.type || null }));
+  } catch (e) { out.catalogos.error = e.message; }
+
+  // 2) Muestras reales (solo lectura): campos disponibles por tipo
+  try {
+    const ests = await getWorkEstimates();
+    const e0 = (ests || []).find(x => !x.deleted) || null;
+    out.muestras.presupuesto = e0
+      ? { ref: e0['full-reference'] || null, campos: campos(e0), tieneLineas: Array.isArray(e0.lines), camposLinea: (e0.lines && e0.lines[0]) ? Object.keys(e0.lines[0]).sort() : null }
+      : 'sin datos';
+  } catch (e) { out.muestras.presupuestoError = e.message; }
+  try {
+    const incs = await getAllIncidents();
+    const i0 = (incs || []).find(x => !x.deleted) || null;
+    out.muestras.incidencia = i0 ? { ref: i0['full-reference'] || null, campos: campos(i0) } : 'sin datos';
+  } catch (e) { out.muestras.incidenciaError = e.message; }
+  try {
+    const ords = await getAllWorkOrders();
+    const o0 = (ords || []).find(x => !x.deleted) || null;
+    out.muestras.pedido = o0
+      ? { ref: o0['full-reference'] || null, campos: campos(o0), camposLinea: (o0.lines && o0.lines[0]) ? Object.keys(o0.lines[0]).sort() : null }
+      : 'sin datos';
+  } catch (e) { out.muestras.pedidoError = e.message; }
+
+  // 3) Sondas POST (cuerpo vacío → no crea datos reales)
+  if (probePost) {
+    for (const ep of ['/incidents', '/workEstimates', '/workOrders', '/ordinaryInvoices']) {
+      try {
+        const r = await client.post(ep, {}, { headers: { 'Content-Type': 'application/json' }, timeout: 20000 });
+        out.endpoints[ep] = { status: r.status, veredicto: '⚠️ CREO_ALGO_REVISAR', body: JSON.stringify(r.data).slice(0, 300) };
+      } catch (err) {
+        const st = err.response?.status;
+        let veredicto = 'otro';
+        if (st === 404) veredicto = 'NO_EXISTE';
+        else if (st === 400 || st === 422) veredicto = 'EXISTE_pide_datos';
+        else if (st === 405) veredicto = 'METODO_NO_PERMITIDO';
+        else if (st === 401 || st === 403) veredicto = 'AUTH';
+        out.endpoints[ep] = { status: st || null, veredicto, body: err.response?.data ? JSON.stringify(err.response.data).slice(0, 300) : err.message };
+      }
+      await new Promise(r => setTimeout(r, 1200));
+    }
+    out.nota = 'Sondas POST con cuerpo vacío. Si alguna dice CREO_ALGO_REVISAR, revisa ese endpoint en StelOrder por si quedó un registro vacío.';
+  } else {
+    out.nota = 'Modo solo-lectura. Añade ?probe=1 para sondear si POST está permitido (cuerpo vacío, no crea datos reales).';
+  }
+  return out;
+}
+
 module.exports = {
   getInvoices, getAllReceipts, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary, diagProveedores,
@@ -803,5 +869,5 @@ module.exports = {
   getWorkOrdersLive, getWorkOrderAlertLevel, setWorkOrderState, setWorkOrderStateLight,
   getMonthlyBilling,
   getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap,
-  getIncidentTypeMaps, getAllIncidents, getIncidentStateMap
+  getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura
 };
