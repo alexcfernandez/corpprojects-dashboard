@@ -82,12 +82,32 @@ app.post('/api/whatsapp', express.urlencoded({ extended: false }), (req, res) =>
   const from = req.body.From || '';
   const body = (req.body.Body || '').trim();
   const numMedia = parseInt(req.body.NumMedia || '0', 10) || 0;
-  const mediaUrl = req.body.MediaUrl0 || '';
-  const mediaType = req.body.MediaContentType0 || '';
-  console.log(`[WhatsApp] De ${from}: "${body}"${numMedia ? ` (+${numMedia} media: ${mediaType})` : ''}`);
-  procesarWhatsApp(from, body, { numMedia, mediaUrl, mediaType })
+  // Recoger TODOS los medios (audio + fotos): MediaUrl0..N / MediaContentType0..N
+  const medios = [];
+  for (let i = 0; i < numMedia; i++) {
+    const url = req.body[`MediaUrl${i}`]; const type = req.body[`MediaContentType${i}`] || '';
+    if (url) medios.push({ url, type });
+  }
+  const audioM = medios.find(m => /audio/i.test(m.type));
+  const fotos = medios.filter(m => /image/i.test(m.type));
+  console.log(`[WhatsApp] De ${from}: "${body}"${numMedia ? ` (+${numMedia} media: ${medios.map(m => m.type).join(',')})` : ''}`);
+  procesarWhatsApp(from, body, { numMedia, mediaUrl: audioM ? audioM.url : (medios[0] && medios[0].url), mediaType: audioM ? audioM.type : (medios[0] && medios[0].type), fotos })
     .catch(err => console.error('[WhatsApp] Error:', err.message));
 });
+
+// Descarga una imagen de Twilio y la devuelve como {media_type, data(base64)}
+async function descargarFoto(url, type) {
+  try {
+    const r = await axios.get(url, {
+      responseType: 'arraybuffer',
+      auth: { username: process.env.TWILIO_ACCOUNT_SID, password: process.env.TWILIO_AUTH_TOKEN },
+      timeout: 20000
+    });
+    let mt = (type || 'image/jpeg').split(';')[0].trim();
+    if (!/^image\/(jpeg|png|gif|webp)$/.test(mt)) mt = 'image/jpeg';
+    return { media_type: mt, data: Buffer.from(r.data).toString('base64') };
+  } catch (e) { console.error('[WhatsApp] descargarFoto:', e.message); return null; }
+}
 
 async function procesarWhatsApp(from, body, media = {}) {
   const soloDigitos = s => String(s || '').replace(/\D/g, '');
@@ -98,26 +118,30 @@ async function procesarWhatsApp(from, body, media = {}) {
   let prefijo = '';
 
   // ¿Nota de voz? (Twilio manda NumMedia + MediaUrl0 + MediaContentType0)
-  if (!texto && (media.numMedia || 0) > 0) {
-    if (/audio/i.test(media.mediaType || '')) {
-      try {
-        const hint = await asistente.vocabularioVoz().catch(() => '');
-        const t = await transcribirAudio(media.mediaUrl, media.mediaType, hint);
-        if (!t) return enviarWhatsApp(from, '🎙️ He recibido tu nota de voz, pero la transcripción aún no está configurada. Escríbeme el texto y te respondo igual.');
-        texto = t;
-        prefijo = `🎙️ _He entendido:_ “${t}”\n\n`;
-      } catch (e) {
-        console.error('[WhatsApp] STT error:', e.message);
-        return enviarWhatsApp(from, '🎙️ No he conseguido entender el audio esta vez. ¿Me lo escribes o lo repites?');
-      }
-    } else {
-      return enviarWhatsApp(from, 'De momento solo entiendo texto y notas de voz 🙂');
+  if (!texto && (media.numMedia || 0) > 0 && /audio/i.test(media.mediaType || '')) {
+    try {
+      const hint = await asistente.vocabularioVoz().catch(() => '');
+      const t = await transcribirAudio(media.mediaUrl, media.mediaType, hint);
+      if (!t) return enviarWhatsApp(from, '🎙️ He recibido tu nota de voz, pero la transcripción aún no está configurada. Escríbeme el texto y te respondo igual.');
+      texto = t;
+      prefijo = `🎙️ _He entendido:_ “${t}”\n\n`;
+    } catch (e) {
+      console.error('[WhatsApp] STT error:', e.message);
+      return enviarWhatsApp(from, '🎙️ No he conseguido entender el audio esta vez. ¿Me lo escribes o lo repites?');
     }
   }
 
-  if (!texto) return enviarWhatsApp(from, 'Dime qué cliente o familia quieres consultar 🙂 (p. ej.: "¿qué debe Illa Verda?")');
+  // Descargar fotos (si las hay) para pasárselas a la IA
+  let imagenes = [];
+  if (Array.isArray(media.fotos) && media.fotos.length) {
+    const descargas = await Promise.all(media.fotos.slice(0, 4).map(f => descargarFoto(f.url, f.type)));
+    imagenes = descargas.filter(Boolean);
+  }
 
-  const reply = await asistente.responderConsulta(texto, from);
+  if (!texto && !imagenes.length) return enviarWhatsApp(from, 'Dime qué cliente o familia quieres consultar 🙂 (p. ej.: "¿qué debe Illa Verda?")');
+  if (!texto && imagenes.length) texto = '(foto adjunta)';
+
+  const reply = await asistente.responderConsulta(texto, from, imagenes);
   return enviarWhatsApp(from, prefijo + reply);
 }
 
