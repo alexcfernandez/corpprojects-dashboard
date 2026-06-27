@@ -205,16 +205,17 @@ async function iaJsonVision(prompt, imagenes, maxTokens, fallback) {
   }
 }
 
-// Llama a Claude pasando un PDF (base64) como documento y devuelve JSON.
-async function iaJsonDoc(prompt, base64Pdf, maxTokens, fallback) {
+// Llama a Claude pasando un archivo (PDF o imagen) en base64 y devuelve JSON.
+async function iaJsonDoc(prompt, base64, maxTokens, fallback, mediaType = 'application/pdf') {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return fallback;
   let raw = '', stop = '';
   try {
-    const content = [
-      { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64Pdf } },
-      { type: 'text', text: prompt }
-    ];
+    const esImagen = /^image\//.test(mediaType || '');
+    const bloque = esImagen
+      ? { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } }
+      : { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } };
+    const content = [ bloque, { type: 'text', text: prompt } ];
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
@@ -237,7 +238,7 @@ async function iaJsonDoc(prompt, base64Pdf, maxTokens, fallback) {
 
 // Lee un "estat d'amidaments" (PDF, normalmente imágenes) y lo estructura en
 // capítulos -> subcapítulos -> partidas, listo para crearPresupuestoStel({estructura}).
-async function estructurarAmidamentPdf(base64Pdf) {
+async function estructurarAmidamentPdf(base64Pdf, mediaType = 'application/pdf') {
   const prompt = `Eres un aparejador. Te paso un "estat d'amidaments" / estado de mediciones de una obra (PDF, suele venir como imágenes escaneadas, en catalán o castellano).
 
 Extrae SOLO las tablas de mediciones. IGNORA portada, planos, fotos, condiciones legales y documentación final.
@@ -267,12 +268,12 @@ Reglas:
 - Copia la descripción COMPLETA de cada partida tal cual, respetando saltos de línea.
 - Si una partida cuelga del capítulo sin subcapítulo, ponla en un campo "partidas" del propio capítulo.
 - No inventes precios (no hay). No añadas ni quites partidas. Mantén el orden del documento.`;
-  return iaJsonDoc(prompt, base64Pdf, 8000, null);
+  return iaJsonDoc(prompt, base64Pdf, 8000, null, mediaType);
 }
 
 // Lee un PRESUPUESTO con precios (foto o PDF, p. ej. de la competencia) y lo
 // estructura plano: cliente, partidas con precio unitario (base, sin IVA) e IVA.
-async function estructurarPresupuestoPdf(base64Pdf) {
+async function estructurarPresupuestoPdf(base64Pdf, mediaType = 'application/pdf') {
   const prompt = `Eres un perito de presupuestos de obra/reformas. Te paso un PRESUPUESTO o "pressupost" (foto o PDF, catalán o castellano) que SÍ lleva precios.
 
 Extrae los datos del trabajo y los precios. IGNORA datos de la empresa que emite, condiciones de pago, firmas y avisos legales.
@@ -293,7 +294,7 @@ Reglas:
 - Si el presupuesto es una sola partida global, devuelve UNA partida con su importe como "precio" y "cantidad" 1.
 - Si hay varias líneas con precio, devuelve una partida por línea.
 - Copia la descripción de los trabajos COMPLETA, respetando saltos de línea. No inventes nada.`;
-  return iaJsonDoc(prompt, base64Pdf, 4000, null);
+  return iaJsonDoc(prompt, base64Pdf, 4000, null, mediaType);
 }
 
 async function clasificar(texto) {
