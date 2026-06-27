@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Presupuesto de competencia — Corp Projects</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;
+  --border:rgba(255,255,255,0.1);--border2:rgba(255,255,255,0.15);
+  --text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;
+  --green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b;
+  --r:12px;--rs:10px;
+}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:14px 20px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:10}
+.logo{width:34px;height:34px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:#fff}
+.header-text{font-weight:600;font-size:15px}
+.header-sub{font-size:12px;color:var(--text3);margin-top:1px}
+.container{padding:20px;max-width:680px;margin:0 auto}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:18px;margin-bottom:16px}
+.muted{color:var(--text2)}.small{font-size:13px}
+label{display:block;font-size:13px;color:var(--text2);margin:10px 0 5px}
+input[type=text],input[type=number],select,textarea{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);color:var(--text);padding:11px 12px;font-family:inherit;font-size:15px}
+textarea{min-height:54px;resize:vertical}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--blue);color:#fff;border:none;border-radius:var(--rs);padding:13px 18px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;width:100%}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.green{background:var(--green)}
+.btn.ghost{background:var(--bg3);border:1px solid var(--border2);color:var(--text)}
+.filebox{border:2px dashed var(--border2);border-radius:var(--r);padding:26px 16px;text-align:center;cursor:pointer}
+.filebox.has{border-color:var(--blue)}
+.part{background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:10px 12px;margin:6px 0}
+.part .top{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.part .nm{font-weight:600}
+.part .pr{white-space:nowrap;text-align:right}
+.part .pr .o{color:var(--text3);text-decoration:line-through;font-size:12px}
+.part .pr .n{color:var(--green);font-weight:600;margin-left:6px}
+.part .desc{font-size:12px;color:var(--text3);margin-top:5px;white-space:pre-line;max-height:54px;overflow:hidden}
+.part .desc.open{max-height:none}
+.pill{display:inline-block;background:var(--bg);border:1px solid var(--border2);border-radius:6px;padding:1px 6px;font-size:11px;color:var(--text2);margin-right:6px}
+.banner{padding:11px 14px;border-radius:var(--rs);font-size:14px;margin-bottom:12px}
+.banner.err{background:rgba(240,82,82,.12);border:1px solid rgba(240,82,82,.4);color:#ffb4b4}
+.banner.ok{background:rgba(34,196,135,.12);border:1px solid rgba(34,196,135,.4);color:#9af0cf}
+.hide{display:none}
+.spin{width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;display:inline-block}
+@keyframes sp{to{transform:rotate(360deg)}}
+.row2{display:grid;grid-template-columns:1fr 110px;gap:10px}
+.seg{display:flex;gap:8px;margin-bottom:10px}
+.seg button{flex:1;background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:var(--rs);padding:9px;font-family:inherit;font-size:13px;cursor:pointer}
+.seg button.on{background:var(--blue);color:#fff;border-color:var(--blue)}
+.totbox{background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:12px 14px;margin-top:12px}
+.totrow{display:flex;justify-content:space-between;padding:3px 0;font-size:14px}
+.totrow.big{font-size:18px;font-weight:700;border-top:1px solid var(--border);margin-top:6px;padding-top:8px}
+.totrow .v{font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="logo">CP</div>
+  <div>
+    <div class="header-text">Presupuesto de competencia</div>
+    <div class="header-sub">Foto/PDF con precio → tu presupuesto en StelOrder</div>
+  </div>
+</div>
+
+<div class="container">
+  <div id="noauth" class="card hide">
+    <div class="banner err">No has iniciado sesión. Abre primero el <b>dashboard</b> en este navegador y vuelve aquí.</div>
+  </div>
+
+  <!-- PASO 1 -->
+  <div id="step1" class="card">
+    <div class="filebox" id="filebox">
+      <div id="fileinfo" class="muted">📄 Toca para elegir la foto o PDF del presupuesto</div>
+    </div>
+    <input id="file" type="file" accept="application/pdf,image/*" class="hide">
+    <div id="msg1"></div>
+    <div style="margin-top:14px"><button class="btn" id="btnAnalizar" disabled>Analizar</button></div>
+    <p class="small muted" style="margin-top:10px">Lee las partidas, los precios y el IVA. Luego podrás ajustar el precio.</p>
+  </div>
+
+  <!-- PASO 2 -->
+  <div id="step2" class="card hide">
+    <div id="msg2"></div>
+
+    <div class="row2">
+      <div><label>Título del presupuesto</label><input id="titulo" type="text"></div>
+      <div><label>IVA</label>
+        <select id="iva"><option value="21">21%</option><option value="10">10%</option><option value="4">4%</option><option value="0">0%</option></select>
+      </div>
+    </div>
+    <label>Cliente (debe existir en StelOrder)</label>
+    <input id="cliente" type="text" placeholder="Comunitat de Propietaris...">
+
+    <!-- AJUSTE DE PRECIO -->
+    <div style="margin-top:16px">
+      <label>Ajustar precio</label>
+      <div class="seg" id="modeSeg">
+        <button data-mode="none" class="on">Sin cambios</button>
+        <button data-mode="pct">Por %</button>
+        <button data-mode="fix">Precio fijo</button>
+      </div>
+
+      <div id="blkPct" class="hide row2">
+        <div>
+          <select id="pctDir"><option value="-1">Bajar</option><option value="1">Subir</option></select>
+        </div>
+        <div><input id="pctVal" type="number" min="0" step="0.5" placeholder="%"></div>
+      </div>
+
+      <div id="blkFix" class="hide">
+        <div class="seg" id="fixBase">
+          <button data-fb="base" class="on">Importe = Base (sin IVA)</button>
+          <button data-fb="total">Importe = Total (con IVA)</button>
+        </div>
+        <input id="fixVal" type="number" min="0" step="0.01" placeholder="Importe €">
+      </div>
+    </div>
+
+    <div class="totbox" id="totbox"></div>
+
+    <div id="lista" style="margin-top:14px"></div>
+
+    <label>Observaciones (opcional)</label>
+    <textarea id="obs" placeholder="Texto que irá al principio del presupuesto"></textarea>
+
+    <div style="margin-top:16px;display:flex;gap:10px">
+      <button class="btn ghost" id="btnVolver" style="flex:0 0 auto;width:auto;padding:13px 16px">↩︎</button>
+      <button class="btn green" id="btnCrear">Crear en StelOrder</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const TOKEN = localStorage.getItem('cp_token');
+const $ = id => document.getElementById(id);
+let datos = null;        // {titulo,cliente,iva,partidas:[{nombre,descripcion,cantidad,precio}]}
+let baseOriginal = 0;
+let mode = 'none';       // none | pct | fix
+let fixBase = 'base';    // base | total
+
+if (!TOKEN) { $('noauth').classList.remove('hide'); $('step1').classList.add('hide'); }
+
+const eur = n => (Math.round(n*100)/100).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+function banner(el,t,h){ el.innerHTML='<div class="banner '+t+'">'+h+'</div>'; }
+
+// ---- subida ----
+$('filebox').onclick = () => $('file').click();
+$('file').onchange = () => {
+  const f = $('file').files[0];
+  if (f){ $('fileinfo').innerHTML='📄 <b>'+f.name+'</b> ('+Math.round(f.size/1024)+' KB)'; $('filebox').classList.add('has'); $('btnAnalizar').disabled=false; }
+};
+
+$('btnAnalizar').onclick = async () => {
+  const f = $('file').files[0]; if(!f) return;
+  const b=$('btnAnalizar'); b.disabled=true; b.innerHTML='<span class="spin"></span> Analizando…'; $('msg1').innerHTML='';
+  try{
+    const fd=new FormData(); fd.append('pdf',f);
+    const r=await fetch('/api/presupuesto/preview',{method:'POST',headers:{Authorization:'Bearer '+TOKEN},body:fd});
+    const d=await r.json(); if(!r.ok) throw new Error(d.error||('Error '+r.status));
+    datos=d.datos; baseOriginal=d.baseTotal||0;
+    initPaso2();
+    $('step1').classList.add('hide'); $('step2').classList.remove('hide');
+  }catch(e){ banner($('msg1'),'err','No se pudo analizar: '+e.message); }
+  finally{ b.disabled=false; b.textContent='Analizar'; }
+};
+
+// ---- paso 2 ----
+function initPaso2(){
+  $('titulo').value = datos.titulo||'';
+  $('cliente').value = datos.cliente||'';
+  $('iva').value = String(datos.iva!=null?datos.iva:21);
+  recalc();
+}
+
+// segmentos de modo
+$('modeSeg').querySelectorAll('button').forEach(btn=>{
+  btn.onclick=()=>{
+    mode=btn.dataset.mode;
+    $('modeSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===btn));
+    $('blkPct').classList.toggle('hide', mode!=='pct');
+    $('blkFix').classList.toggle('hide', mode!=='fix');
+    recalc();
+  };
+});
+$('fixBase').querySelectorAll('button').forEach(btn=>{
+  btn.onclick=()=>{ fixBase=btn.dataset.fb; $('fixBase').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===btn)); recalc(); };
+});
+['pctVal','fixVal','iva'].forEach(id=> $(id).addEventListener('input', recalc));
+
+function factorActual(){
+  const iva = Number($('iva').value)||0;
+  if(mode==='pct'){
+    const v=Number($('pctVal').value)||0; const dir=Number($('pctDir').value); // -1 bajar, +1 subir
+    return 1 + dir*(v/100);
+  }
+  if(mode==='fix'){
+    const objetivo=Number($('fixVal').value)||0;
+    if(!objetivo || baseOriginal<=0) return 1;
+    const baseObjetivo = fixBase==='total' ? objetivo/(1+iva/100) : objetivo;
+    return baseObjetivo/baseOriginal;
+  }
+  return 1;
+}
+
+function recalc(){
+  const iva=Number($('iva').value)||0;
+  const f=factorActual();
+  const baseFinal=baseOriginal*f;
+  const ivaImp=baseFinal*iva/100;
+  const total=baseFinal+ivaImp;
+
+  // resumen
+  let html='';
+  if(Math.abs(f-1)>1e-9) html+='<div class="totrow muted"><span>Base original</span><span class="v">'+eur(baseOriginal)+'</span></div>';
+  html+='<div class="totrow"><span>Base</span><span class="v">'+eur(baseFinal)+'</span></div>';
+  html+='<div class="totrow muted"><span>IVA '+iva+'%</span><span class="v">'+eur(ivaImp)+'</span></div>';
+  html+='<div class="totrow big"><span>Total</span><span class="v">'+eur(total)+'</span></div>';
+  $('totbox').innerHTML=html;
+
+  // partidas
+  const L=$('lista'); L.innerHTML='';
+  (datos.partidas||[]).forEach(p=>{
+    const pr0=Number(p.precio)||0, pr1=pr0*f;
+    const el=document.createElement('div'); el.className='part';
+    const cant = p.cantidad!=null? '<span class="pill">x'+p.cantidad+'</span>':'';
+    const prHtml = Math.abs(f-1)>1e-9
+      ? '<span class="o">'+eur(pr0)+'</span><span class="n">'+eur(pr1)+'</span>'
+      : '<span class="n">'+eur(pr0)+'</span>';
+    el.innerHTML='<div class="top"><div class="nm">'+cant+(p.nombre||'')+'</div><div class="pr">'+prHtml+'</div></div>'+
+      (p.descripcion?'<div class="desc">'+p.descripcion.replace(/</g,'&lt;')+'</div>':'');
+    const d=el.querySelector('.desc'); if(d) d.onclick=()=>d.classList.toggle('open');
+    L.appendChild(el);
+  });
+}
+
+$('btnVolver').onclick=()=>{ $('step2').classList.add('hide'); $('step1').classList.remove('hide'); $('msg2').innerHTML=''; };
+
+$('btnCrear').onclick = async () => {
+  const b=$('btnCrear'); b.disabled=true; b.innerHTML='<span class="spin"></span> Creando…'; $('msg2').innerHTML='';
+  try{
+    const f=factorActual();
+    const partidas=(datos.partidas||[]).map(p=>({
+      nombre:p.nombre, descripcion:p.descripcion, cantidad:p.cantidad!=null?p.cantidad:1,
+      precio: Math.round((Number(p.precio)||0)*f*100)/100
+    }));
+    const payload={ partidas, titulo:$('titulo').value.trim(), cliente:$('cliente').value.trim(), iva:$('iva').value, observaciones:$('obs').value.trim()||null };
+    const r=await fetch('/api/presupuesto/crear',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+TOKEN},body:JSON.stringify(payload)});
+    const d=await r.json(); if(!r.ok) throw new Error(d.error||('Error '+r.status));
+    banner($('msg2'),'ok','✅ Presupuesto creado en StelOrder: <b>'+(d.ref||d.id)+'</b>');
+    b.classList.add('hide');
+  }catch(e){ banner($('msg2'),'err','No se pudo crear: '+e.message); b.disabled=false; b.textContent='Crear en StelOrder'; }
+};
+</script>
+</body>
+</html>
