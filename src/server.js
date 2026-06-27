@@ -519,7 +519,7 @@ app.post('/api/amidaments/preview', requireAuth, uploadPdf.single('pdf'), async 
   try {
     if (!req.file || !req.file.buffer) return res.status(400).json({ error: 'Falta el PDF (campo "pdf").' });
     const base64 = req.file.buffer.toString('base64');
-    const est = await asistente.estructurarAmidamentPdf(base64);
+    const est = await asistente.estructurarAmidamentPdf(base64, req.file.mimetype);
     if (!est || !Array.isArray(est.capitulos) || !est.capitulos.length) {
       return res.status(422).json({ error: 'No pude extraer partidas del PDF. ¿Es un estado de mediciones con tablas?' });
     }
@@ -563,7 +563,7 @@ app.post('/api/presupuesto/preview', requireAuth, uploadPdf.single('pdf'), async
   try {
     if (!req.file || !req.file.buffer) return res.status(400).json({ error: 'Falta el archivo (campo "pdf").' });
     const base64 = req.file.buffer.toString('base64');
-    const datos = await asistente.estructurarPresupuestoPdf(base64);
+    const datos = await asistente.estructurarPresupuestoPdf(base64, req.file.mimetype);
     if (!datos || !Array.isArray(datos.partidas) || !datos.partidas.length) {
       return res.status(422).json({ error: 'No pude extraer partidas con precio. ¿Es un presupuesto con importes?' });
     }
