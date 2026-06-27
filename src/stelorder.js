@@ -583,6 +583,28 @@ async function diagLineaImpuesto() {
   return out;
 }
 
+// ── SONDA (solo lectura): volcar el CATÁLOGO DE IMPUESTOS con su id y % ──
+// La línea apunta a taxLines/{id}; probamos ese endpoint (y /taxes por si acaso)
+// para mapear 21% / 10% / 0% a su primary-tax-id, necesario al escribir el IVA.
+async function diagImpuestos() {
+  const out = {};
+  for (const ep of ['/taxLines', '/taxes']) {
+    try {
+      const list = await fetchAllPages(ep);
+      out[ep] = (list || []).map(t => ({
+        id: t.id,
+        percentage: t.percentage ?? t['tax-percentage'] ?? t.value ?? t.rate ?? null,
+        name: t.name ?? t['tax-name'] ?? t.description ?? null,
+        deleted: t.deleted ?? null,
+        claves: Object.keys(t)
+      }));
+    } catch (e) {
+      out[ep] = { error: `${e.response?.status || ''} ${e.message}`.trim() };
+    }
+  }
+  return out;
+}
+
 // Resuelve el ID interno de una factura a partir de su número (ej. "FAC00791").
 async function findInvoiceIdByNumber(number) {
   const invoices = await getInvoices();
@@ -1331,6 +1353,6 @@ module.exports = {
   getWorkOrdersLive, getWorkOrderAlertLevel, setWorkOrderState, setWorkOrderStateLight,
   getMonthlyBilling,
   getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap,
-  getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA, diagLineaImpuesto,
+  getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA, diagLineaImpuesto, diagImpuestos,
   crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, crearPresupuestoStel, ultimaIncidencia, incidenciaPorRef
 };
