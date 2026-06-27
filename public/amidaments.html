@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Importar amidaments — Corp Projects</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;
+  --border:rgba(255,255,255,0.1);--border2:rgba(255,255,255,0.15);
+  --text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;
+  --green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b;
+  --r:12px;--rs:10px;
+}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:14px 20px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:10}
+.logo{width:34px;height:34px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:#fff}
+.header-text{font-weight:600;font-size:15px}
+.header-sub{font-size:12px;color:var(--text3);margin-top:1px}
+.container{padding:20px;max-width:680px;margin:0 auto}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:18px;margin-bottom:16px}
+.muted{color:var(--text2)}
+.small{font-size:13px}
+label{display:block;font-size:13px;color:var(--text2);margin:10px 0 5px}
+input[type=text],select,textarea{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);color:var(--text);padding:11px 12px;font-family:inherit;font-size:15px}
+textarea{min-height:60px;resize:vertical}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--blue);color:#fff;border:none;border-radius:var(--rs);padding:13px 18px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;width:100%}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.green{background:var(--green)}
+.btn.ghost{background:var(--bg3);border:1px solid var(--border2);color:var(--text)}
+.filebox{border:2px dashed var(--border2);border-radius:var(--r);padding:26px 16px;text-align:center;cursor:pointer}
+.filebox.has{border-color:var(--blue)}
+.cap{font-weight:700;color:var(--blue);margin:14px 0 4px;font-size:15px}
+.sub{font-weight:600;color:var(--text2);margin:10px 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:.3px}
+.part{background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:10px 12px;margin:6px 0}
+.part .top{display:flex;justify-content:space-between;gap:10px}
+.part .nm{font-weight:600}
+.part .qty{color:var(--green);white-space:nowrap;font-weight:600}
+.part .desc{font-size:12px;color:var(--text3);margin-top:5px;white-space:pre-line;max-height:60px;overflow:hidden}
+.part .desc.open{max-height:none}
+.pill{display:inline-block;background:var(--bg);border:1px solid var(--border2);border-radius:6px;padding:1px 6px;font-size:11px;color:var(--text2);margin-right:6px}
+.banner{padding:11px 14px;border-radius:var(--rs);font-size:14px;margin-bottom:12px}
+.banner.err{background:rgba(240,82,82,.12);border:1px solid rgba(240,82,82,.4);color:#ffb4b4}
+.banner.ok{background:rgba(34,196,135,.12);border:1px solid rgba(34,196,135,.4);color:#9af0cf}
+.hide{display:none}
+.spin{width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;display:inline-block}
+@keyframes sp{to{transform:rotate(360deg)}}
+.row2{display:grid;grid-template-columns:1fr 110px;gap:10px}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="logo">CP</div>
+  <div>
+    <div class="header-text">Importar amidaments</div>
+    <div class="header-sub">PDF del arquitecto → presupuesto en StelOrder</div>
+  </div>
+</div>
+
+<div class="container">
+  <div id="noauth" class="card hide">
+    <div class="banner err">No has iniciado sesión. Abre primero el <b>dashboard</b> en esta misma pestaña/navegador y vuelve aquí.</div>
+  </div>
+
+  <!-- PASO 1: subir -->
+  <div id="step1" class="card">
+    <div class="filebox" id="filebox">
+      <div id="fileinfo" class="muted">📄 Toca para elegir el PDF del estado de mediciones</div>
+    </div>
+    <input id="file" type="file" accept="application/pdf" class="hide">
+    <div id="msg1"></div>
+    <div style="margin-top:14px">
+      <button class="btn" id="btnAnalizar" disabled>Analizar PDF</button>
+    </div>
+    <p class="small muted" style="margin-top:10px">Lee solo las tablas de mediciones (ignora portada, planos y fotos). Tarda unos segundos.</p>
+  </div>
+
+  <!-- PASO 2: revisar y crear -->
+  <div id="step2" class="card hide">
+    <div id="msg2"></div>
+    <div id="resumen" class="small muted" style="margin-bottom:12px"></div>
+
+    <div class="row2">
+      <div>
+        <label>Título del presupuesto</label>
+        <input id="titulo" type="text">
+      </div>
+      <div>
+        <label>IVA</label>
+        <select id="iva">
+          <option value="21">21%</option>
+          <option value="10">10%</option>
+          <option value="4">4%</option>
+          <option value="0">0%</option>
+        </select>
+      </div>
+    </div>
+    <label>Cliente (debe existir en StelOrder)</label>
+    <input id="cliente" type="text" placeholder="Comunitat de Propietaris...">
+    <label>Observaciones (opcional)</label>
+    <textarea id="obs" placeholder="Texto que irá al principio del presupuesto"></textarea>
+
+    <div id="tree" style="margin-top:16px"></div>
+
+    <div style="margin-top:16px;display:flex;gap:10px">
+      <button class="btn ghost" id="btnVolver" style="flex:0 0 auto;width:auto;padding:13px 16px">↩︎</button>
+      <button class="btn green" id="btnCrear">Crear en StelOrder</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const TOKEN = localStorage.getItem('cp_token');
+let estructura = null;
+const $ = id => document.getElementById(id);
+
+if (!TOKEN) { $('noauth').classList.remove('hide'); $('step1').classList.add('hide'); }
+
+const fileInput = $('file');
+$('filebox').onclick = () => fileInput.click();
+fileInput.onchange = () => {
+  const f = fileInput.files[0];
+  if (f) {
+    $('fileinfo').innerHTML = '📄 <b>' + f.name + '</b> (' + Math.round(f.size/1024) + ' KB)';
+    $('filebox').classList.add('has');
+    $('btnAnalizar').disabled = false;
+  }
+};
+
+function banner(el, type, html){ el.innerHTML = '<div class="banner '+type+'">'+html+'</div>'; }
+
+$('btnAnalizar').onclick = async () => {
+  const f = fileInput.files[0];
+  if (!f) return;
+  const b = $('btnAnalizar');
+  b.disabled = true; b.innerHTML = '<span class="spin"></span> Analizando…';
+  $('msg1').innerHTML = '';
+  try {
+    const fd = new FormData(); fd.append('pdf', f);
+    const r = await fetch('/api/amidaments/preview', { method:'POST', headers:{ Authorization:'Bearer '+TOKEN }, body: fd });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || ('Error '+r.status));
+    estructura = data.estructura;
+    pintar(data);
+    $('step1').classList.add('hide');
+    $('step2').classList.remove('hide');
+  } catch(e) {
+    banner($('msg1'), 'err', 'No se pudo analizar: ' + e.message);
+  } finally {
+    b.disabled = false; b.textContent = 'Analizar PDF';
+  }
+};
+
+function pintar(data){
+  $('titulo').value = estructura.titulo || '';
+  $('cliente').value = estructura.cliente || '';
+  const R = data.resumen || {};
+  $('resumen').textContent = `Detectado: ${R.capitulos||0} capítulos · ${R.subcapitulos||0} subcapítulos · ${R.partidas||0} partidas. Revísalo y ajusta antes de crear.`;
+  const tree = $('tree'); tree.innerHTML = '';
+  (estructura.capitulos||[]).forEach(c => {
+    const cap = document.createElement('div'); cap.className='cap';
+    cap.textContent = [c.codigo, c.nombre].filter(Boolean).join(' ');
+    tree.appendChild(cap);
+    (c.partidas||[]).forEach(p => tree.appendChild(partidaEl(p)));
+    (c.subcapitulos||[]).forEach(s => {
+      const sub = document.createElement('div'); sub.className='sub';
+      sub.textContent = [s.codigo, s.nombre].filter(Boolean).join(' ');
+      tree.appendChild(sub);
+      (s.partidas||[]).forEach(p => tree.appendChild(partidaEl(p)));
+    });
+  });
+}
+
+function partidaEl(p){
+  const el = document.createElement('div'); el.className='part';
+  const unidad = p.unidad ? '<span class="pill">'+p.unidad+'</span>' : '';
+  el.innerHTML = '<div class="top"><div class="nm">'+unidad+(p.nombre||'')+'</div>'+
+    '<div class="qty">'+(p.cantidad!=null?p.cantidad:'')+'</div></div>'+
+    (p.descripcion?'<div class="desc">'+p.descripcion.replace(/</g,'&lt;')+'</div>':'');
+  const d = el.querySelector('.desc');
+  if (d) d.onclick = () => d.classList.toggle('open');
+  return el;
+}
+
+$('btnVolver').onclick = () => { $('step2').classList.add('hide'); $('step1').classList.remove('hide'); $('msg2').innerHTML=''; };
+
+$('btnCrear').onclick = async () => {
+  const b = $('btnCrear');
+  b.disabled = true; b.innerHTML = '<span class="spin"></span> Creando…';
+  $('msg2').innerHTML = '';
+  try {
+    const payload = {
+      estructura,
+      titulo: $('titulo').value.trim(),
+      cliente: $('cliente').value.trim(),
+      iva: $('iva').value,
+      observaciones: $('obs').value.trim() || null
+    };
+    const r = await fetch('/api/amidaments/crear', {
+      method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+TOKEN },
+      body: JSON.stringify(payload)
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || ('Error '+r.status));
+    banner($('msg2'), 'ok', '✅ Presupuesto creado en StelOrder: <b>'+(data.ref||data.id)+'</b>');
+    b.classList.add('hide');
+  } catch(e) {
+    banner($('msg2'), 'err', 'No se pudo crear: ' + e.message);
+    b.disabled = false; b.textContent = 'Crear en StelOrder';
+  }
+};
+</script>
+</body>
+</html>
