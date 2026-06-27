@@ -854,9 +854,95 @@ function despachar(intent, from, scope, target) {
 }
 
 // ── Punto de entrada ──────────────────────────────────────────────
+// ── CREAR INCIDENCIA por voz/texto (la IA propone, tú confirmas, el sistema escribe) ──
+const TIPO_INC = { actuacion: 3146, presupuesto: 3145 };
+
+async function handlerNuevaIncidencia(texto, from) {
+  // 1) La IA extrae cliente, descripción y tipo de la frase
+  const ex = await iaJson(
+    `Eres el asistente de una empresa de mantenimiento de fincas. El usuario quiere CREAR una incidencia.\n` +
+    `Frase: "${texto}"\n\n` +
+    `Extrae y responde SOLO JSON:\n` +
+    `{"cliente":"nombre del cliente/comunidad tal cual lo dice, o null","descripcion":"el problema descrito, redactado claro y breve","tipo":"actuacion|presupuesto|null"}\n\n` +
+    `- "actuacion": reparación directa, arreglar, cambiar, urgencia.\n- "presupuesto": piden presupuesto, valorar, presupuestar.\n- tipo null si no lo dice.`,
+    250, { cliente: null, descripcion: null, tipo: null }
+  );
+  if (!ex.descripcion) return '¿Qué incidencia creo y para qué comunidad? Ej: *"incidencia para Illa Verda: no funciona la luz del portal, es actuación"*.';
+
+  // 2) Resolver el cliente
+  const { scope, target } = await resolver(texto, ex.cliente || '');
+  if (!target) {
+    pendiente.set(from, { accion: 'incCliente', descripcion: ex.descripcion, tipo: ex.tipo, ts: Date.now() });
+    return `📋 Incidencia: "${ex.descripcion}"\n\n🤔 ¿De qué comunidad es? Dime el nombre como aparece en StelOrder.`;
+  }
+  const accId = await stel.accountIdByName(target);
+  if (!accId) return `Reconozco *${target}* pero no encuentro su ficha en StelOrder. Prueba con el nombre exacto.`;
+
+  // 3) ¿Falta el tipo? Preguntarlo
+  if (!ex.tipo || !TIPO_INC[ex.tipo]) {
+    pendiente.set(from, { accion: 'incTipo', accId, target, descripcion: ex.descripcion, ts: Date.now() });
+    return `📋 Incidencia para *${target}*:\n"${ex.descripcion}"\n\n¿Es de *Actuación* (reparar) o *Presupuesto*? Responde "actuación" o "presupuesto".`;
+  }
+
+  // 4) Mostrar borrador y pedir confirmación
+  return prepararConfirmIncidencia(from, accId, target, ex.descripcion, ex.tipo);
+}
+
+function prepararConfirmIncidencia(from, accId, target, descripcion, tipo) {
+  pendiente.set(from, { accion: 'incConfirmar', accId, target, descripcion, tipo, ts: Date.now() });
+  const tipoLabel = tipo === 'presupuesto' ? 'Presupuesto' : 'Actuación';
+  return `📋 *Voy a crear esta incidencia:*\n\n` +
+    `🏘️ Cliente: *${target}*\n` +
+    `📝 Descripción: ${descripcion}\n` +
+    `🏷️ Tipo: ${tipoLabel}\n\n` +
+    `¿La creo? Responde *"sí"* o *"no"*.`;
+}
+
+async function ejecutarCrearIncidencia(from, pend) {
+  try {
+    const r = await stel.crearIncidencia({
+      accId: pend.accId, descripcion: pend.descripcion,
+      tipoId: TIPO_INC[pend.tipo] || null, requestedBy: from
+    });
+    pendiente.delete(from);
+    return `✅ Incidencia creada: *${r.ref || r.id}*\n🏘️ ${pend.target}\n\n¿Genero el pedido de trabajo? (próximamente)`;
+  } catch (e) {
+    pendiente.delete(from);
+    return `⚠️ No pude crear la incidencia: ${e.message}`;
+  }
+}
+
 async function responderConsulta(texto, from = 'anon') {
   // A) ¿Estábamos aprendiendo un alias? La respuesta es el nombre real.
   const pend = pendiente.get(from);
+
+  // A.inc) Flujo de creación de incidencia (cliente / tipo / confirmación)
+  if (pend && (Date.now() - pend.ts) < 10 * 60 * 1000) {
+    const nn = norm(texto);
+    if (pend.accion === 'incConfirmar') {
+      if (/^(s[ií]|si|vale|ok|dale|confirmo|adelante|correcto|crea(la)?)\b/.test(nn)) return ejecutarCrearIncidencia(from, pend);
+      if (/^(no|cancela|para|anula|dejalo|mejor no)\b/.test(nn)) { pendiente.delete(from); return '👍 Cancelado, no he creado nada.'; }
+      // si no es sí/no claro, seguimos esperando
+      return 'Responde *"sí"* para crear la incidencia o *"no"* para cancelar.';
+    }
+    if (pend.accion === 'incTipo') {
+      const tipo = /presupuest/.test(nn) ? 'presupuesto' : (/actuaci|repar|arregl|cambi/.test(nn) ? 'actuacion' : null);
+      if (tipo) return prepararConfirmIncidencia(from, pend.accId, pend.target, pend.descripcion, tipo);
+      return 'Dime *"actuación"* (reparar) o *"presupuesto"*.';
+    }
+    if (pend.accion === 'incCliente') {
+      const { scope, target } = await resolver(texto, texto);
+      if (target) {
+        const accId = await stel.accountIdByName(target);
+        if (accId) {
+          if (!pend.tipo || !TIPO_INC[pend.tipo]) { pendiente.set(from, { accion: 'incTipo', accId, target, descripcion: pend.descripcion, ts: Date.now() }); return `📋 Incidencia para *${target}*:\n"${pend.descripcion}"\n\n¿Es de *Actuación* o *Presupuesto*?`; }
+          return prepararConfirmIncidencia(from, accId, target, pend.descripcion, pend.tipo);
+        }
+      }
+      return 'No reconozco esa comunidad. Dime el nombre como aparece en StelOrder.';
+    }
+  }
+
   if (pend && pend.accion === 'aprender' && (Date.now() - pend.ts) < 10 * 60 * 1000) {
     const limpio = String(texto).replace(/^\s*(es|son|el|la|los|las|de|del)\s+/i, '').trim();
     if (pend.clase === 'proveedor') {
@@ -885,6 +971,11 @@ async function responderConsulta(texto, from = 'anon') {
     const prev = ultima.get(from);
     if (prev && prev.mostradas < prev.items.length) return pintar(from, prev, prev.mostradas);
     return 'No tengo nada más que mostrar 🙂 Pregúntame por un cliente, p. ej.: *"¿qué debe Illa Verda?"*';
+  }
+
+  // C0.inc) Crear incidencia: "incidencia para X ...", "crea un aviso de ...", "nueva incidencia ..."
+  if (/\b(crea(r)?|nueva|nuevo|abre|apunta)\b[\s\S]*\b(incidencia|aviso|parte)\b|^incidencia\b|\bincidencia para\b|\baviso (para|de)\b/.test(norm(texto))) {
+    return handlerNuevaIncidencia(texto, from);
   }
 
   // C0) Conceptos / desglose de líneas de un documento (presupuesto, factura o pedido)
