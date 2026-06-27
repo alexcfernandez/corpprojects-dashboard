@@ -1216,6 +1216,59 @@ async function generarPedidoDesdeIncidencia({ incidentId, accId, descripcion, ti
   }
 }
 
+// ── CREAR PRESUPUESTO (workEstimate) desde un borrador de la IA ──
+// Estructura ya probada en /workOrders y replicada en /workEstimates:
+//   · 1 línea SECTION con las observaciones técnicas (si las hay)
+//   · 1 línea ITEM por partida, con el producto GENÉRICO "Presupuesto"
+//     (item-id reutilizable); el nombre + paso a paso van en item-description.
+// Estado por defecto: Pendiente (1120641) — en este StelOrder no existe un estado
+// "borrador" separado; un presupuesto nuevo nace Pendiente a la espera de aceptación.
+// IVA por línea NO se fija aquí (queda al de por defecto del producto): es el trozo 4.
+// Enlace opcional a incidencia vía parent-incident-id. Todo queda en stelWriteLog.
+async function crearPresupuestoStel({ accId, titulo = null, observaciones = null, partidas, incidentId = null, estadoId = 1120641, requestedBy = null }) {
+  if (!accId) throw new Error('Falta el cliente (account-id)');
+  if (!Array.isArray(partidas) || !partidas.length) throw new Error('El presupuesto no tiene partidas');
+  const db = await require('./db').getDB();
+
+  // 1) Producto genérico reutilizable (NO se crea uno por presupuesto)
+  const itemId = await getProductoGenerico('presupuesto');
+
+  // 2) Construir líneas: SECTION (observaciones) + ITEM por partida
+  const lines = [];
+  const obs = String(observaciones || '').trim();
+  if (obs) lines.push({ 'line-type': 'SECTION', 'item-description': obs.slice(0, 4000) });
+  for (const p of partidas) {
+    const nombre = String(p.nombre || 'Partida').trim();
+    const desc = String(p.descripcion || '').trim();
+    const itemDesc = (nombre + (desc ? '\n' + desc : '')).slice(0, 4000);
+    lines.push({
+      'line-type': 'ITEM',
+      'item-id': Number(itemId),
+      units: Number(p.uds) || 1,
+      'item-base-price': Number(p.precio) || 0,
+      'item-description': itemDesc
+    });
+  }
+
+  const body = { 'account-id': Number(accId), 'document-state-id': Number(estadoId), lines };
+  if (titulo) body.title = String(titulo).slice(0, 200);
+  if (incidentId) body['parent-incident-id'] = Number(incidentId);
+
+  const ins = await db.collection('stelWriteLog').insertOne({ tipo: 'presupuesto', accId, incidentId, itemId, body, requestedBy, at: new Date(), result: 'pending' });
+  try {
+    const r = await client.post('/workEstimates', body, { headers: { 'Content-Type': 'application/json; charset=utf-8' }, timeout: 25000 });
+    const d = Array.isArray(r.data) ? r.data[0] : r.data;
+    const id = d && d.id ? String(d.id) : null;
+    const ref = (d && (d['full-reference'] || d.reference)) || (id ? '#' + id : null);
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: 'ok', status: r.status, workEstimateId: id, ref } });
+    try { invalidate('workEstimates'); } catch (e) {}
+    return { ok: true, id, ref };
+  } catch (err) {
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: 'error', error: `${err.response?.status || ''} ${err.message}`, errorBody: err.response?.data || null } });
+    throw new Error(`StelOrder rechazó el presupuesto: ${err.response?.status || ''} ${JSON.stringify(err.response?.data || err.message).slice(0, 200)}`);
+  }
+}
+
 // Busca la última incidencia (más reciente) — para "el pedido de la última incidencia"
 async function ultimaIncidencia() {
   const incs = await getAllIncidents().catch(() => []);
@@ -1253,5 +1306,5 @@ module.exports = {
   getMonthlyBilling,
   getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap,
   getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA,
-  crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, ultimaIncidencia, incidenciaPorRef
+  crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, crearPresupuestoStel, ultimaIncidencia, incidenciaPorRef
 };
