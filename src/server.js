@@ -16,7 +16,7 @@ const {
   getSummary, getPendingInvoices, getInvoices, getClients,
   getEstimatesSummary, getFamiliesSummary, getAccountCategories, clearCache,
   sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw, getEntityRawByRef,
-  getWorkOrdersLive, diagProveedores, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA, diagLineaImpuesto
+  getWorkOrdersLive, diagProveedores, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA, diagLineaImpuesto, diagImpuestos
 } = require('./stelorder');
 const { sendWhatsApp, sendEmail } = require('./notifications');
 const { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail, sendWorkOrdersAlert } = require('./scheduler');
@@ -452,6 +452,10 @@ app.get('/api/diag/stel-caminoa',   requireAuth, async (req,res) => {
 });
 app.get('/api/diag/stel-iva',       requireAuth, async (req,res) => {
   try { res.json(await diagLineaImpuesto()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/diag/stel-impuestos', requireAuth, async (req,res) => {
+  try { res.json(await diagImpuestos()); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
