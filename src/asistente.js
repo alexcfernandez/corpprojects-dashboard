@@ -1030,6 +1030,7 @@ async function ejecutarCrearPresupuesto(from, pend) {
       titulo: b.titulo || null,
       observaciones: b.observaciones || null,
       partidas: b.partidas || [],
+      iva: pend.iva != null ? pend.iva : 21,
       requestedBy: from
     });
     pendiente.delete(from);
@@ -1096,8 +1097,7 @@ async function handlerPresupuesto(texto, from, imagenes = []) {
 
   if (accId) {
     pendiente.set(from, { accion: 'presuConfirmar', borrador: r, iva, accId, target, ts: Date.now() });
-    const avisoIva = iva !== 21 ? `\n_Nota: el IVA se creará al 21% por defecto; el control fino del IVA (${iva}%) llega en el siguiente paso — ajústalo en StelOrder si hace falta._` : '';
-    msg += `_⚠️ Borrador generado por IA — revisa los precios._\n\n¿Lo creo en StelOrder para *${target}* (presupuesto en estado Pendiente)? Responde *"sí"* o *"no"*.${avisoIva}`;
+    msg += `_⚠️ Borrador generado por IA — revisa los precios._\n\n¿Lo creo en StelOrder para *${target}* (IVA ${iva}%, estado Pendiente)? Responde *"sí"* o *"no"*.`;
   } else {
     pendiente.set(from, { accion: 'presuCliente', borrador: r, iva, ts: Date.now() });
     msg += `_⚠️ Borrador generado por IA — revisa los precios._\n\n🤔 ¿Para qué cliente lo creo? Dime el nombre **tal como aparece en StelOrder** y lo creo.\n_Si el cliente no existe aún, créalo primero en StelOrder._`;
@@ -1128,8 +1128,7 @@ async function responderConsulta(texto, from = 'anon', imagenes = []) {
       if (accId) {
         const b = pend.borrador || {};
         pendiente.set(from, { accion: 'presuConfirmar', borrador: b, iva: pend.iva, accId, target, ts: Date.now() });
-        const avisoIva = pend.iva !== 21 ? `\n_Nota: el IVA se creará al 21% por defecto (el control fino llega en el siguiente paso)._` : '';
-        return `📊 Presupuesto _${b.titulo || ''}_ para *${target}*.\n¿Lo creo en StelOrder (estado Pendiente)? Responde *"sí"* o *"no"*.${avisoIva}`;
+        return `📊 Presupuesto _${b.titulo || ''}_ para *${target}*.\n¿Lo creo en StelOrder (IVA ${pend.iva != null ? pend.iva : 21}%, estado Pendiente)? Responde *"sí"* o *"no"*.`;
       }
       return '⚠️ No encuentro ese cliente en StelOrder. Dime el nombre exacto tal como aparece en *Clientes*, o créalo primero allí.';
     }
