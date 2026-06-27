@@ -205,6 +205,71 @@ async function iaJsonVision(prompt, imagenes, maxTokens, fallback) {
   }
 }
 
+// Llama a Claude pasando un PDF (base64) como documento y devuelve JSON.
+async function iaJsonDoc(prompt, base64Pdf, maxTokens, fallback) {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) return fallback;
+  let raw = '', stop = '';
+  try {
+    const content = [
+      { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64Pdf } },
+      { type: 'text', text: prompt }
+    ];
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: process.env.PRESU_IA_MODEL || 'claude-sonnet-4-6',
+        max_tokens: maxTokens,
+        messages: [{ role: 'user', content }]
+      })
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(`API ${r.status}: ${JSON.stringify(data).slice(0, 200)}`);
+    raw = data.content?.[0]?.text || '';
+    stop = data.stop_reason || '';
+    return parseJsonLoose(raw);
+  } catch (e) {
+    console.error('[Amidaments] IA doc error:', e.message, '| stop:', stop, '| raw(0-400):', String(raw).slice(0, 400));
+    return fallback;
+  }
+}
+
+// Lee un "estat d'amidaments" (PDF, normalmente imágenes) y lo estructura en
+// capítulos -> subcapítulos -> partidas, listo para crearPresupuestoStel({estructura}).
+async function estructurarAmidamentPdf(base64Pdf) {
+  const prompt = `Eres un aparejador. Te paso un "estat d'amidaments" / estado de mediciones de una obra (PDF, suele venir como imágenes escaneadas, en catalán o castellano).
+
+Extrae SOLO las tablas de mediciones. IGNORA portada, planos, fotos, condiciones legales y documentación final.
+
+Jerarquía a respetar:
+- CAPÍTULO: código de 2 dígitos en banda gris oscura (ej. "00 TREBALLS PREVIS", "01 FAÇANA").
+- SUBCAPÍTULO: código de 4 dígitos en banda gris clara (ej. "00 01 SEGURETAT I SALUT", "01 02 REPARACIONS A SUPERFÍCIE DE FAÇANA").
+- PARTIDA: línea con código largo (ej. "01 01 09"), una unidad (u, m, m2, PA...), un título en negrita, una descripción larga debajo y una CANTIDAD (la cifra de la columna total/cantidad; IGNORA el desglose de mediciones por plantas como "Planta 5 1,00 16,70...").
+
+Responde SOLO un JSON VÁLIDO, sin markdown, con esta forma exacta:
+{
+ "titulo": "título de la obra",
+ "cliente": "nombre del cliente si aparece, o null",
+ "capitulos": [
+   { "codigo": "00", "nombre": "TREBALLS PREVIS",
+     "subcapitulos": [
+       { "codigo": "00 01", "nombre": "SEGURETAT I SALUT",
+         "partidas": [
+           { "codigo": "00 01 01", "unidad": "PA", "nombre": "Seguretat i salut", "cantidad": 1, "descripcion": "texto tecnico completo" }
+         ] }
+     ] }
+ ]
+}
+
+Reglas:
+- "cantidad": NÚMERO con PUNTO decimal (ej. 95.24, nunca "95,24") y sin separador de miles.
+- Copia la descripción COMPLETA de cada partida tal cual, respetando saltos de línea.
+- Si una partida cuelga del capítulo sin subcapítulo, ponla en un campo "partidas" del propio capítulo.
+- No inventes precios (no hay). No añadas ni quites partidas. Mantén el orden del documento.`;
+  return iaJsonDoc(prompt, base64Pdf, 8000, null);
+}
+
 async function clasificar(texto) {
   const prompt = `Eres el asistente del dueño de una empresa de mantenimiento de fincas. Clasifica su pregunta.
 
@@ -1570,4 +1635,4 @@ async function handlerGestionList() {
   return msg;
 }
 
-module.exports = { responderConsulta, vocabularioVoz };
+module.exports = { responderConsulta, vocabularioVoz, estructurarAmidamentPdf };
