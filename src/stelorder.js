@@ -1193,10 +1193,20 @@ async function crearIncidencia({ accId, descripcion, tipoId = null, estadoId = 1
 // Resuelve el account-id interno a partir del nombre exacto del cliente
 async function accountIdByName(nombre) {
   const { clientMap } = await getClients().catch(() => ({ clientMap: {} }));
-  const n = String(nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  const n = norm(nombre);
+  if (!n) return null;
+  // 1) Match exacto
   for (const [id, ci] of Object.entries(clientMap || {})) {
-    if (String(ci.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim() === n) return id;
+    if (norm(ci.name) === n) return id;
   }
+  // 2) Fallback por substring (en cualquier dirección). Si hay varios, el más corto.
+  const subs = [];
+  for (const [id, ci] of Object.entries(clientMap || {})) {
+    const cn = norm(ci.name);
+    if (cn && (cn.includes(n) || n.includes(cn))) subs.push({ id, cn });
+  }
+  if (subs.length) { subs.sort((a, b) => a.cn.length - b.cn.length); return subs[0].id; }
   return null;
 }
 
