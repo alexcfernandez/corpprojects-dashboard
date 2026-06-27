@@ -234,6 +234,21 @@ Responde SOLO JSON: {"target":"nombre EXACTO de la lista, o null"}`;
   return out.target || null;
 }
 
+// Similitud por bigramas (coeficiente de Dice) para casar nombres aunque no
+// sean exactos (fonéticos, espacios, sufijos). Sin librerías externas.
+function bigramas(s) {
+  const t = norm(s).replace(/\s+/g, ' ');
+  const g = new Set();
+  for (let i = 0; i < t.length - 1; i++) g.add(t.slice(i, i + 2));
+  return g;
+}
+function similitud(a, b) {
+  const A = bigramas(a), B = bigramas(b);
+  if (!A.size || !B.size) return 0;
+  let inter = 0; for (const x of A) if (B.has(x)) inter++;
+  return (2 * inter) / (A.size + B.size);
+}
+
 // Resuelve a qué cliente/familia se refiere (alias -> código -> IA).
 // Devuelve { scope:'cliente'|'familia'|null, target:string|null }
 async function resolver(texto, rawTarget) {
@@ -252,7 +267,19 @@ async function resolver(texto, rawTarget) {
   if (mc.length === 1 && mf.length === 0) return { scope: 'cliente', target: mc[0] };
 
   const union = [...new Set([...mf, ...mc])];
-  const cand = union.length ? union : [...familias, ...clientes];
+  // Si no hubo match por substring, no mandamos la lista entera (que la IA trunca
+  // a 150 y deja fuera clientes): ordenamos por parecido y pasamos los 30 mejores.
+  let cand;
+  if (union.length) {
+    cand = union;
+  } else {
+    const todos = [...familias, ...clientes];
+    cand = todos
+      .map(c => ({ c, s: similitud(r, c) }))
+      .sort((a, b) => b.s - a.s)
+      .slice(0, 30)
+      .map(x => x.c);
+  }
   const t = await elegirTarget(texto, cand);
   if (!t) return { scope: null, target: null };
   return { scope: familias.includes(t) ? 'familia' : 'cliente', target: t };
