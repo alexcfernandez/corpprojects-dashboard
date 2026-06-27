@@ -114,7 +114,7 @@ async function vocabularioVoz() {
 }
 
 // ── IA ────────────────────────────────────────────────────────────
-async function iaJson(prompt, maxTokens, fallback) {
+async function iaJson(prompt, maxTokens, fallback, model) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return fallback;
   try {
@@ -122,15 +122,15 @@ async function iaJson(prompt, maxTokens, fallback) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
-        model: process.env.EMAIL_IA_MODEL || 'claude-haiku-4-5-20251001',
+        model: model || process.env.EMAIL_IA_MODEL || 'claude-haiku-4-5-20251001',
         max_tokens: maxTokens,
         messages: [{ role: 'user', content: prompt }]
       })
     });
     const data = await r.json();
     if (!r.ok) throw new Error(`API ${r.status}: ${JSON.stringify(data).slice(0, 150)}`);
-    const txt = (data.content?.[0]?.text || '{}').replace(/```json|```/g, '').trim();
-    return JSON.parse(txt);
+    const txt = data.content?.[0]?.text || '{}';
+    return parseJsonLoose(txt);
   } catch (e) { console.error('[Asistente] IA error:', e.message); return fallback; }
 }
 
@@ -295,6 +295,32 @@ Reglas:
 - Si hay varias líneas con precio, devuelve una partida por línea.
 - Copia la descripción de los trabajos COMPLETA, respetando saltos de línea. No inventes nada.`;
   return iaJsonDoc(prompt, base64Pdf, 4000, null, mediaType);
+}
+
+// Reescribe las descripciones de unas partidas en estilo propio (pro y ampliado),
+// para que un presupuesto de la competencia no parezca copiado. No toca precios.
+async function reescribirPartidas(partidas, idioma = 'es') {
+  const lista = (partidas || []).map(p => ({ nombre: p.nombre || '', descripcion: p.descripcion || '' }));
+  if (!lista.length) return null;
+  const lang = idioma === 'ca' ? 'catalán' : 'castellano';
+  const prompt = `Eres redactor técnico de presupuestos de obra y reformas de la empresa Corp Projects (mantenimiento de fincas). Te paso unas partidas de un presupuesto de la COMPETENCIA. Reescríbelas como si fueran NUESTRAS: redacción propia, profesional y AMPLIADA, para que NO se note que están copiadas.
+
+Idioma de salida: ${lang}.
+
+Reglas:
+- Mismo trabajo y mismo alcance técnico: NO inventes partidas nuevas ni cambies cantidades ni precios; solo redacta mejor y con más detalle el CÓMO se ejecuta.
+- Estilo profesional y detallado, paso a paso: cada paso en su PROPIA LÍNEA, numerado "1) ", "2) "…, con saltos de línea reales (\\n).
+- En pintura: superficies completas (paños enteros, techos completos), nunca parches.
+- Mejora también el "nombre" de cada partida (corto y claro).
+- Mantén el MISMO número de partidas y el MISMO orden que te paso.
+
+Partidas de entrada (JSON):
+${JSON.stringify(lista)}
+
+Responde SOLO un JSON VÁLIDO, sin markdown:
+{"partidas":[{"nombre":"...","descripcion":"1) ...\\n2) ..."}]}`;
+  const out = await iaJson(prompt, 4000, null, process.env.PRESU_IA_MODEL || 'claude-sonnet-4-6');
+  return out && Array.isArray(out.partidas) ? out.partidas : null;
 }
 
 async function clasificar(texto) {
@@ -1662,4 +1688,4 @@ async function handlerGestionList() {
   return msg;
 }
 
-module.exports = { responderConsulta, vocabularioVoz, estructurarAmidamentPdf, estructurarPresupuestoPdf };
+module.exports = { responderConsulta, vocabularioVoz, estructurarAmidamentPdf, estructurarPresupuestoPdf, reescribirPartidas };
