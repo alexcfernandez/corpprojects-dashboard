@@ -557,6 +557,42 @@ app.post('/api/amidaments/crear', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Presupuesto de competencia (PDF/foto CON precio -> presupuesto con tu precio) ──
+// 1) Analizar y devolver partidas con precio e IVA
+app.post('/api/presupuesto/preview', requireAuth, uploadPdf.single('pdf'), async (req, res) => {
+  try {
+    if (!req.file || !req.file.buffer) return res.status(400).json({ error: 'Falta el archivo (campo "pdf").' });
+    const base64 = req.file.buffer.toString('base64');
+    const datos = await asistente.estructurarPresupuestoPdf(base64);
+    if (!datos || !Array.isArray(datos.partidas) || !datos.partidas.length) {
+      return res.status(422).json({ error: 'No pude extraer partidas con precio. ¿Es un presupuesto con importes?' });
+    }
+    const baseTotal = datos.partidas.reduce((s, p) => s + (Number(p.precio) || 0) * (Number(p.cantidad) || 1), 0);
+    res.json({ ok: true, datos, baseTotal });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 2) Crear en StelOrder (partidas planas, con el precio ya ajustado por el usuario)
+app.post('/api/presupuesto/crear', requireAuth, async (req, res) => {
+  try {
+    const stel = require('./stelorder');
+    const { partidas, titulo, cliente, accId: accIdRaw, iva, observaciones } = req.body || {};
+    if (!Array.isArray(partidas) || !partidas.length) return res.status(400).json({ error: 'Faltan las partidas.' });
+    let accId = accIdRaw;
+    if (!accId && cliente) accId = await stel.accountIdByName(cliente);
+    if (!accId) return res.status(400).json({ error: `No encuentro el cliente "${cliente || ''}" en StelOrder. Revísalo.` });
+    const r = await stel.crearPresupuestoStel({
+      accId,
+      titulo: titulo || 'Presupuesto',
+      observaciones: observaciones || null,
+      partidas,
+      iva: iva != null ? Number(iva) : 21,
+      requestedBy: 'presupuesto-competencia'
+    });
+    res.json(r);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Responsables por familia (a quién van los avisos de cada familia) ──
 const avisos = require('./avisos');
 
@@ -1892,6 +1928,7 @@ app.delete('/api/pagos/:id', requireAuth, async (req, res) => {
 app.get('/informe-presencia', (req, res) => res.sendFile(path.join(__dirname, '../public/informe-presencia.html')));
 app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
 app.get('/amidaments', (req, res) => res.sendFile(path.join(__dirname, '../public/amidaments.html')));
+app.get('/competencia', (req, res) => res.sendFile(path.join(__dirname, '../public/competencia.html')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
 
 app.listen(PORT, () => {
