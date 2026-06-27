@@ -178,17 +178,45 @@ async function transcribirAudio(mediaUrl, contentType, hint) {
   return ((r.data && r.data.text) || '').trim();
 }
 
-function enviarWhatsApp(to, body) {
+// Trocea un texto largo en partes <= max, respetando saltos de línea cuando puede.
+// WhatsApp/Twilio limita a ~1600 caracteres por mensaje; usamos 1450 para dejar
+// margen al indicador de parte "(i/n) ".
+function trocearMensaje(texto, max = 1450) {
+  const t = String(texto || '');
+  if (t.length <= max) return [t];
+  const partes = [];
+  let buf = '';
+  for (const linea of t.split('\n')) {
+    if (linea.length > max) {
+      // Una sola línea más larga que el máximo: vacía el buffer y trocea duro.
+      if (buf) { partes.push(buf); buf = ''; }
+      for (let i = 0; i < linea.length; i += max) partes.push(linea.slice(i, i + max));
+      continue;
+    }
+    if (buf && (buf.length + 1 + linea.length) > max) { partes.push(buf); buf = linea; }
+    else buf = buf ? buf + '\n' + linea : linea;
+  }
+  if (buf) partes.push(buf);
+  return partes;
+}
+
+// Envía por WhatsApp. Si el mensaje supera el límite de Twilio, lo trocea y
+// manda las partes en orden (en vez de cortarlo a 1500 como antes).
+async function enviarWhatsApp(to, body) {
   if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
-    console.error('[WhatsApp] Faltan credenciales de Twilio'); return Promise.resolve();
+    console.error('[WhatsApp] Faltan credenciales de Twilio'); return;
   }
   const twilio = require('twilio');
   const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-  return client.messages.create({
-    from: process.env.TWILIO_WHATSAPP_FROM,
-    to,
-    body: (body || '').slice(0, 1500)
-  });
+  const partes = trocearMensaje(body, 1450);
+  for (let i = 0; i < partes.length; i++) {
+    const prefijo = partes.length > 1 ? `(${i + 1}/${partes.length}) ` : '';
+    await client.messages.create({
+      from: process.env.TWILIO_WHATSAPP_FROM,
+      to,
+      body: prefijo + partes[i]
+    });
+  }
 }
 
 // Usa la conexión única compartida (src/db.js). Mantiene el contrato
