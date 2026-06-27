@@ -181,7 +181,7 @@ async function iaJsonVision(prompt, imagenes, maxTokens, fallback) {
   let raw = '', stop = '';
   try {
     const content = [];
-    for (const img of (imagenes || []).slice(0, 4)) {
+    for (const img of (imagenes || []).slice(0, 6)) {
       if (img && img.data) content.push({ type: 'image', source: { type: 'base64', media_type: img.media_type || 'image/jpeg', data: img.data } });
     }
     content.push({ type: 'text', text: prompt });
@@ -1190,9 +1190,9 @@ async function responderConsulta(texto, from = 'anon', imagenes = []) {
   // (distinto de "hay que hacer presupuesto para X" que registra una incidencia)
   const _np = norm(texto);
   const pidePresu =
-    /\b(haz(me)?|prepara(me)?|redacta(me)?|generame|gener[ae]me|montame|hacer un presupuesto detallado)\b[\s\S]*\bpresupuest/.test(_np) ||
+    /\b(haz(me|le|lo|les|nos)?|prepara(me|le|lo|les|nos)?|redacta(me|le|lo|les|nos)?|genera(me|le|lo|les|nos)?|monta(me|le|lo|les|nos)?)\b[\s\S]*\bpresupuest/.test(_np) ||
     /\bpresupuesto (detallado|tecnico|t\u00e9cnico|profesional)\b/.test(_np) ||
-    /\bpresupuesto (para|de)\b[\s\S]{0,80}:\s*\S/.test(_np);
+    /\bpresupuesto (a|para|de)\b[\s\S]{0,80}:\s*\S/.test(_np);
   if (pidePresu || (imagenes && imagenes.length && /presupuest/.test(_np))) {
     return handlerPresupuesto(texto, from, imagenes);
   }
