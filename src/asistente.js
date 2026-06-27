@@ -1105,7 +1105,7 @@ async function handlerPresupuesto(texto, from, imagenes = []) {
   return msg;
 }
 
-async function responderConsulta(texto, from = 'anon', imagenes = []) {
+async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
   // A) ¿Estábamos aprendiendo un alias? La respuesta es el nombre real.
   const pend = pendiente.get(from);
 
@@ -1354,16 +1354,33 @@ async function responderConsulta(texto, from = 'anon', imagenes = []) {
 }
 
 // ── Registro de fallos (retroalimentación): consultas que no se entendieron ──
-async function registrarFallo(from, texto) {
+async function registrarFallo(from, texto, tipo = 'no_entendido', respuesta = null) {
   try {
     const db = await getDB();
     await db.collection('fallosAsistente').insertOne({
       texto: String(texto || '').slice(0, 500),
       from: String(from || ''),
+      tipo,
+      respuesta: respuesta ? String(respuesta).slice(0, 300) : null,
       ts: new Date(),
       revisado: false
     });
   } catch (e) { console.error('[Asistente] registrarFallo:', e.message); }
+}
+
+// Envoltura de responderConsulta: responde con la lógica interna y, además,
+// detecta "desvíos silenciosos" — cuando el bot acaba diciendo "No encuentro el
+// {documento} {nº}", que suele ser una mala interpretación (p. ej. un número
+// suelto leído como nº de documento). Lo registra como 'posible_desvio'.
+async function responderConsulta(texto, from = 'anon', imagenes = []) {
+  const reply = await responderConsultaInterna(texto, from, imagenes);
+  try {
+    if (typeof reply === 'string' &&
+        /no encuentro (el |la |ning[u\u00fan]+ )?(presupuesto|pedido|factura|documento|incidencia)\b[\s\S]*\d/i.test(reply)) {
+      await registrarFallo(from, texto, 'posible_desvio', reply);
+    }
+  } catch (e) { /* nunca romper la respuesta por el log */ }
+  return reply;
 }
 
 async function handlerFallos(from) {
@@ -1372,18 +1389,37 @@ async function handlerFallos(from) {
     const db = await getDB();
     docs = await db.collection('fallosAsistente').find({}).sort({ ts: -1 }).limit(300).toArray();
   } catch (e) { return 'No he podido leer el registro de fallos.'; }
-  if (!docs.length) return '🎉 No tengo consultas sin entender registradas. De momento, todo lo que me preguntáis lo voy pillando.';
-  const conteo = {};
-  for (const d of docs) {
-    const k = norm(d.texto).slice(0, 60);
-    if (!k) continue;
-    if (!conteo[k]) conteo[k] = { n: 0, ej: d.texto };
-    conteo[k].n++;
+  if (!docs.length) return '🎉 No tengo nada registrado. De momento todo lo voy pillando.';
+
+  const ranking = (arr) => {
+    const c = {};
+    for (const d of arr) {
+      const k = norm(d.texto).slice(0, 60);
+      if (!k) continue;
+      if (!c[k]) c[k] = { n: 0, ej: d.texto };
+      c[k].n++;
+    }
+    return Object.values(c).sort((a, b) => b.n - a.n).slice(0, 12);
+  };
+
+  const noEntendidos = docs.filter(d => (d.tipo || 'no_entendido') === 'no_entendido');
+  const desvios = docs.filter(d => d.tipo === 'posible_desvio');
+
+  let msg = '';
+  const rNE = ranking(noEntendidos);
+  if (rNE.length) {
+    msg += `🛠️ *No entendí* (${noEntendidos.length})\n`;
+    msg += rNE.map(r => `• "${r.ej}"${r.n > 1 ? ` _×${r.n}_` : ''}`).join('\n');
   }
-  const rank = Object.values(conteo).sort((a, b) => b.n - a.n).slice(0, 15);
-  let msg = `🛠️ *Consultas que no entendí* (de las últimas ${docs.length})\n\n`;
-  msg += rank.map(r => `• "${r.ej}"${r.n > 1 ? ` _×${r.n}_` : ''}`).join('\n');
-  msg += `\n\n_Esto me sirve para ir aprendiendo qué os hace falta._`;
+  const rD = ranking(desvios);
+  if (rD.length) {
+    if (msg) msg += `\n\n`;
+    msg += `⚠️ *Posibles malas interpretaciones* (${desvios.length})\n`;
+    msg += `_Pediste algo y acabé en "No encuentro…". Mira si era un desvío:_\n`;
+    msg += rD.map(r => `• "${r.ej}"${r.n > 1 ? ` _×${r.n}_` : ''}`).join('\n');
+  }
+  if (!msg) return '🎉 No tengo nada registrado. De momento todo lo voy pillando.';
+  msg += `\n\n_Esto me sirve para ir mejorando._`;
   return msg;
 }
 
