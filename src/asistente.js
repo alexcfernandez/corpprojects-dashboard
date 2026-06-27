@@ -864,8 +864,10 @@ async function handlerNuevaIncidencia(texto, from) {
     `Frase: "${texto}"\n\n` +
     `Extrae y responde SOLO JSON:\n` +
     `{"cliente":"nombre del cliente/comunidad tal cual lo dice, o null","descripcion":"el problema descrito, redactado claro y breve","tipo":"actuacion|presupuesto|null"}\n\n` +
-    `IMPORTANTE sobre "tipo": SOLO pon "actuacion" o "presupuesto" si el usuario lo dice EXPLÍCITAMENTE (ej. "es actuación", "para hacer presupuesto", "hay que presupuestar"). ` +
-    `Si NO lo dice de forma explícita, pon "tipo":null. NUNCA lo deduzcas tú por el tipo de problema.`,
+    `Sobre "tipo":\n` +
+    `- "presupuesto": si piden valorar, presupuestar, "hacer un presupuesto", o es un trabajo grande que requiere oferta previa.\n` +
+    `- "actuacion": si es una reparación/arreglo directo (cambiar, reparar, no funciona, avería, urgencia).\n` +
+    `- null: SOLO si de verdad no hay pista suficiente para decidir.`,
     250, { cliente: null, descripcion: null, tipo: null }
   );
   if (!ex.descripcion) return '¿Qué incidencia creo y para qué comunidad? Ej: *"incidencia para Illa Verda: no funciona la luz del portal, es actuación"*.';
@@ -905,11 +907,46 @@ async function ejecutarCrearIncidencia(from, pend) {
       accId: pend.accId, descripcion: pend.descripcion,
       tipoId: TIPO_INC[pend.tipo] || null, requestedBy: from
     });
-    pendiente.delete(from);
-    return `✅ Incidencia creada: *${r.ref || r.id}*\n🏘️ ${pend.target}\n\n¿Genero el pedido de trabajo? (próximamente)`;
+    // Guardamos la incidencia recién creada para poder generar su pedido con "sí"
+    pendiente.set(from, { accion: 'genPedido', incidentId: r.id, accId: pend.accId, target: pend.target, descripcion: pend.descripcion, ref: r.ref, ts: Date.now() });
+    return `✅ Incidencia creada: *${r.ref || r.id}*\n🏘️ ${pend.target}\n\n¿Genero el pedido de trabajo? Responde *"sí"* o *"no"*.`;
   } catch (e) {
     pendiente.delete(from);
     return `⚠️ No pude crear la incidencia: ${e.message}`;
+  }
+}
+
+// Comando suelto: generar pedido desde una incidencia concreta o la última
+async function handlerGenerarPedido(texto, from) {
+  const nn = norm(texto);
+  let inc;
+  if (/\b(ultima|última)\b/.test(nn)) {
+    inc = await stel.ultimaIncidencia();
+    if (!inc) return 'No encuentro ninguna incidencia reciente.';
+  } else {
+    const m = texto.match(/\d{2,6}/);
+    if (!m) return 'Dime de qué incidencia: *"haz el pedido de INC00575"* o *"pedido de la última incidencia"*.';
+    inc = await stel.incidenciaPorRef(m[0]);
+    if (!inc) return `No encuentro la incidencia ${m[0]}.`;
+  }
+  if (!inc.accId) return `La incidencia ${inc.ref} no tiene cliente asignado; no puedo generar el pedido.`;
+  // Resolver nombre del cliente para mostrarlo
+  let nombre = '';
+  try { const { clientMap } = await stel.getClients(); nombre = (clientMap[String(inc.accId)] || {}).name || ''; } catch (e) {}
+  pendiente.set(from, { accion: 'genPedido', incidentId: inc.id, accId: inc.accId, target: nombre, descripcion: inc.descripcion, ref: inc.ref, ts: Date.now() });
+  return `📋 *Voy a generar un pedido de trabajo:*\n\n🔗 Desde: *${inc.ref}*\n🏘️ Cliente: *${nombre || '—'}*\n📝 ${inc.descripcion || '(sin descripción)'}\n\n¿Lo genero? Responde *"sí"* o *"no"*.`;
+}
+
+async function ejecutarGenerarPedido(from, datos) {
+  try {
+    const r = await stel.generarPedidoDesdeIncidencia({
+      incidentId: datos.incidentId, accId: datos.accId, descripcion: datos.descripcion, requestedBy: from
+    });
+    pendiente.delete(from);
+    return `✅ Pedido de trabajo generado: *${r.ref || r.id}*\n🏘️ ${datos.target || ''}\n🔗 Enlazado a ${datos.ref || 'la incidencia'}`;
+  } catch (e) {
+    pendiente.delete(from);
+    return `⚠️ No pude generar el pedido: ${e.message}`;
   }
 }
 
@@ -920,6 +957,11 @@ async function responderConsulta(texto, from = 'anon') {
   // A.inc) Flujo de creación de incidencia (cliente / tipo / confirmación)
   if (pend && (Date.now() - pend.ts) < 10 * 60 * 1000) {
     const nn = norm(texto);
+    if (pend.accion === 'genPedido') {
+      if (/^(s[ií]|si|vale|ok|dale|confirmo|adelante|correcto|genera(lo)?|hazlo)\b/.test(nn)) return ejecutarGenerarPedido(from, pend);
+      if (/^(no|cancela|para|anula|dejalo|mejor no|ahora no)\b/.test(nn)) { pendiente.delete(from); return '👍 Vale, no genero el pedido. La incidencia queda creada.'; }
+      // si no responde sí/no, dejamos pasar al resto (puede querer otra cosa)
+    }
     if (pend.accion === 'incConfirmar') {
       if (/^(s[ií]|si|vale|ok|dale|confirmo|adelante|correcto|crea(la)?)\b/.test(nn)) return ejecutarCrearIncidencia(from, pend);
       if (/^(no|cancela|para|anula|dejalo|mejor no)\b/.test(nn)) { pendiente.delete(from); return '👍 Cancelado, no he creado nada.'; }
@@ -972,6 +1014,12 @@ async function responderConsulta(texto, from = 'anon') {
     const prev = ultima.get(from);
     if (prev && prev.mostradas < prev.items.length) return pintar(from, prev, prev.mostradas);
     return 'No tengo nada más que mostrar 🙂 Pregúntame por un cliente, p. ej.: *"¿qué debe Illa Verda?"*';
+  }
+
+  // C0.ped) Generar pedido desde incidencia: "haz el pedido de INC00575" / "pedido de la última incidencia"
+  if (/\b(haz|genera(r)?|crea(r)?|saca)\b[\s\S]*\bpedido\b[\s\S]*\b(incidencia|inc\s*\d|ultima|última)/.test(norm(texto)) ||
+      /\bpedido (de|para) (la )?(ultima|última) incidencia\b/.test(norm(texto))) {
+    return handlerGenerarPedido(texto, from);
   }
 
   // C0.inc) Crear incidencia: "incidencia para X ...", "crea un aviso de ...", "hay que hacer presupuesto para X ..."
