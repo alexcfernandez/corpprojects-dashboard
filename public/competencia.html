@@ -42,7 +42,7 @@ textarea{min-height:54px;resize:vertical}
 .banner{padding:11px 14px;border-radius:var(--rs);font-size:14px;margin-bottom:12px}
 .banner.err{background:rgba(240,82,82,.12);border:1px solid rgba(240,82,82,.4);color:#ffb4b4}
 .banner.ok{background:rgba(34,196,135,.12);border:1px solid rgba(34,196,135,.4);color:#9af0cf}
-.hide{display:none}
+.hide{display:none!important}
 .spin{width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;display:inline-block}
 @keyframes sp{to{transform:rotate(360deg)}}
 .row2{display:grid;grid-template-columns:1fr 110px;gap:10px}
@@ -187,6 +187,10 @@ function initPaso2(){
   $('titulo').value = datos.titulo||'';
   $('cliente').value = datos.cliente||'';
   $('iva').value = String(datos.iva!=null?datos.iva:21);
+  // reset del ajuste de precio
+  mode='none'; $('pctVal').value=''; $('fixVal').value='';
+  $('modeSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x.dataset.mode==='none'));
+  $('blkPct').classList.add('hide'); $('blkFix').classList.add('hide');
   recalc();
 }
 
