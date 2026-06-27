@@ -1152,6 +1152,70 @@ async function accountIdByName(nombre) {
   return null;
 }
 
+// ── CREAR PRODUCTO de catálogo (necesario para líneas ITEM) ──
+async function crearProducto({ nombre, descripcion = null, precio = 0 }) {
+  if (!nombre) throw new Error('Falta el nombre del producto');
+  const body = { name: String(nombre).slice(0, 200), 'base-price': Number(precio) || 0 };
+  if (descripcion) body.description = String(descripcion);
+  const r = await client.post('/products', body, { headers: { 'Content-Type': 'application/json' }, timeout: 25000 });
+  const d = Array.isArray(r.data) ? r.data[0] : r.data;
+  const id = d && d.id ? String(d.id) : null;
+  if (!id) throw new Error('StelOrder no devolvió id de producto');
+  return { id, ref: d.reference || null };
+}
+
+// ── GENERAR PEDIDO DE TRABAJO desde una incidencia (réplica del "Generar" nativo) ──
+// Crea un producto con la descripción y un pedido con esa línea ITEM, enlazado por parent-incident-id.
+async function generarPedidoDesdeIncidencia({ incidentId, accId, descripcion, estadoId = 1120651, requestedBy = null }) {
+  if (!incidentId || !accId) throw new Error('Faltan datos (incidencia o cliente)');
+  const desc = String(descripcion || 'Trabajo a realizar').trim();
+  const db = await require('./db').getDB();
+
+  // 1) Producto con la descripción (nombre = primeras palabras, descripción = texto completo)
+  const nombreCorto = desc.length > 60 ? desc.slice(0, 57).trim() + '…' : desc;
+  const prod = await crearProducto({ nombre: nombreCorto, descripcion: desc, precio: 0 });
+
+  // 2) Pedido enlazado a la incidencia con la línea ITEM
+  const body = {
+    'account-id': Number(accId),
+    'document-state-id': Number(estadoId),
+    'parent-incident-id': Number(incidentId),
+    lines: [{ 'line-type': 'ITEM', 'item-id': Number(prod.id), units: 1, 'item-base-price': 0, 'item-description': desc }]
+  };
+  const ins = await db.collection('stelWriteLog').insertOne({ tipo: 'pedido-desde-incidencia', incidentId, productId: prod.id, body, requestedBy, at: new Date(), result: 'pending' });
+  try {
+    const r = await client.post('/workOrders', body, { headers: { 'Content-Type': 'application/json' }, timeout: 25000 });
+    const d = Array.isArray(r.data) ? r.data[0] : r.data;
+    const id = d && d.id ? String(d.id) : null;
+    const ref = (d && (d['full-reference'] || (d.reference ? 'PDT' + d.reference : null))) || (id ? '#' + id : null);
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: 'ok', status: r.status, workOrderId: id, ref } });
+    try { invalidate('workOrders'); } catch (e) {}
+    return { ok: true, id, ref, productId: prod.id };
+  } catch (err) {
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: 'error', error: `${err.response?.status || ''} ${err.message}`, errorBody: err.response?.data || null } });
+    throw new Error(`StelOrder rechazó el pedido: ${err.response?.status || ''} ${JSON.stringify(err.response?.data || err.message).slice(0, 200)}`);
+  }
+}
+
+// Busca la última incidencia (más reciente) — para "el pedido de la última incidencia"
+async function ultimaIncidencia() {
+  const incs = await getAllIncidents().catch(() => []);
+  const vivas = (incs || []).filter(i => !i.deleted);
+  if (!vivas.length) return null;
+  vivas.sort((a, b) => new Date(b['creation-date'] || b.date || 0) - new Date(a['creation-date'] || a.date || 0));
+  const i = vivas[0];
+  return { id: String(i.id), accId: String(i['account-id'] || ''), descripcion: i.description || '', ref: i['full-reference'] || (i.reference ? 'INC' + i.reference : '#' + i.id) };
+}
+
+// Busca una incidencia por su referencia (ej. "INC00575" o "575")
+async function incidenciaPorRef(ref) {
+  const incs = await getAllIncidents().catch(() => []);
+  const q = parseInt(String(ref || '').replace(/\D/g, ''), 10);
+  const i = (incs || []).filter(x => !x.deleted).find(x => parseInt(String(x['full-reference'] || x.reference || '').replace(/\D/g, ''), 10) === q);
+  if (!i) return null;
+  return { id: String(i.id), accId: String(i['account-id'] || ''), descripcion: i.description || '', ref: i['full-reference'] || (i.reference ? 'INC' + i.reference : '#' + i.id) };
+}
+
 module.exports = {
   getInvoices, getAllReceipts, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary, diagProveedores,
@@ -1162,5 +1226,5 @@ module.exports = {
   getMonthlyBilling,
   getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap,
   getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA,
-  crearIncidencia, accountIdByName
+  crearIncidencia, accountIdByName, crearProducto, generarPedidoDesdeIncidencia, ultimaIncidencia, incidenciaPorRef
 };
