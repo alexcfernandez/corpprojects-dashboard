@@ -40,7 +40,7 @@ app.use(cors({
   origin: ['https://dashboard.corpprojects.es','http://localhost:3000',
            'https://corpprojects-dashboard-production.up.railway.app']
 }));
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
 
 const UPLOADS_DIR = path.join(__dirname, '../uploads');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -53,6 +53,12 @@ const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 const uploadMemory = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024, files: 15 }
+});
+
+// PDFs de amidaments (más grandes; en memoria)
+const uploadPdf = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024, files: 1 }
 });
 
 app.use(express.static(path.join(__dirname, '../public')));
@@ -504,6 +510,50 @@ app.get('/api/diag/stel-multiseccion', requireAuth, async (req,res) => {
     if (!accId && req.query.cliente) accId = await stel.accountIdByName(req.query.cliente);
     if (!accId) return res.status(400).json({ error: 'Pasa ?accId=NNN o ?cliente=Nombre' });
     res.json(await stel.crearPresupuestoMultiSeccionPrueba(accId));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Importador de amidaments (PDF del arquitecto -> presupuesto en StelOrder) ──
+// 1) Analizar el PDF y devolver la estructura (capítulos/subcapítulos/partidas)
+app.post('/api/amidaments/preview', requireAuth, uploadPdf.single('pdf'), async (req, res) => {
+  try {
+    if (!req.file || !req.file.buffer) return res.status(400).json({ error: 'Falta el PDF (campo "pdf").' });
+    const base64 = req.file.buffer.toString('base64');
+    const est = await asistente.estructurarAmidamentPdf(base64);
+    if (!est || !Array.isArray(est.capitulos) || !est.capitulos.length) {
+      return res.status(422).json({ error: 'No pude extraer partidas del PDF. ¿Es un estado de mediciones con tablas?' });
+    }
+    // Conteo para el resumen
+    let nPart = 0, nSub = 0;
+    for (const c of est.capitulos) {
+      nPart += (c.partidas || []).length;
+      for (const s of (c.subcapitulos || [])) { nSub++; nPart += (s.partidas || []).length; }
+    }
+    res.json({ ok: true, estructura: est, resumen: { capitulos: est.capitulos.length, subcapitulos: nSub, partidas: nPart } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 2) Crear el presupuesto en StelOrder a partir de la estructura confirmada
+app.post('/api/amidaments/crear', requireAuth, async (req, res) => {
+  try {
+    const stel = require('./stelorder');
+    const { estructura, titulo, cliente, accId: accIdRaw, iva, observaciones } = req.body || {};
+    if (!estructura || !Array.isArray(estructura.capitulos) || !estructura.capitulos.length) {
+      return res.status(400).json({ error: 'Falta la estructura (capítulos).' });
+    }
+    let accId = accIdRaw;
+    const nombreCli = cliente || estructura.cliente;
+    if (!accId && nombreCli) accId = await stel.accountIdByName(nombreCli);
+    if (!accId) return res.status(400).json({ error: `No encuentro el cliente "${nombreCli || ''}" en StelOrder. Revísalo.` });
+    const r = await stel.crearPresupuestoStel({
+      accId,
+      titulo: titulo || estructura.titulo || 'Presupuesto importado',
+      observaciones: observaciones || null,
+      estructura: estructura.capitulos,
+      iva: iva != null ? Number(iva) : 21,
+      requestedBy: 'amidaments-import'
+    });
+    res.json(r);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1841,6 +1891,7 @@ app.delete('/api/pagos/:id', requireAuth, async (req, res) => {
 // ── Rutas HTML ────────────────────────────────────────────────────
 app.get('/informe-presencia', (req, res) => res.sendFile(path.join(__dirname, '../public/informe-presencia.html')));
 app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
+app.get('/amidaments', (req, res) => res.sendFile(path.join(__dirname, '../public/amidaments.html')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
 
 app.listen(PORT, () => {
