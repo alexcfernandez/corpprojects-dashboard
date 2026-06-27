@@ -557,6 +557,32 @@ async function getEntityRawByRef(ref) {
   return found;
 }
 
+// ── SONDA (solo lectura): descubrir el campo de IMPUESTO de una línea ──
+// Lee presupuestos reales y vuelca, de una línea ITEM, las claves y cualquier
+// campo que huela a impuesto (tax/vat/iva), con su valor. Para saber cómo se
+// llama el campo del IVA y a qué corresponde 21/10/0 ANTES de escribirlo.
+async function diagLineaImpuesto() {
+  const list = await fetchAllPages('/workEstimates');
+  const out = { totalPresupuestos: list.length, traeLineasEnListado: false, ejemplos: [], clavesPresupuesto: null };
+  if (list.length) out.clavesPresupuesto = Object.keys(list[0]);
+  let n = 0;
+  for (const est of list) {
+    const lines = est.lines || est.items || est['document-lines'] || [];
+    if (!Array.isArray(lines) || !lines.length) continue;
+    out.traeLineasEnListado = true;
+    const linea = lines.find(l => String(l['line-type'] || '').toUpperCase() === 'ITEM') || lines[0];
+    out.ejemplos.push({
+      ref: est['full-reference'] || est.reference || ('#' + est.id),
+      estadoId: est['document-state-id'],
+      clavesDeLinea: Object.keys(linea),
+      camposImpuesto: Object.fromEntries(Object.entries(linea).filter(([k]) => /tax|vat|iva|impue/i.test(k))),
+      lineaCompleta: linea
+    });
+    if (++n >= 4) break;
+  }
+  return out;
+}
+
 // Resuelve el ID interno de una factura a partir de su número (ej. "FAC00791").
 async function findInvoiceIdByNumber(number) {
   const invoices = await getInvoices();
@@ -1305,6 +1331,6 @@ module.exports = {
   getWorkOrdersLive, getWorkOrderAlertLevel, setWorkOrderState, setWorkOrderStateLight,
   getMonthlyBilling,
   getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap,
-  getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA,
+  getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA, diagLineaImpuesto,
   crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, crearPresupuestoStel, ultimaIncidencia, incidenciaPorRef
 };
