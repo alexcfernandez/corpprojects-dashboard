@@ -109,6 +109,34 @@ async function descargarFoto(url, type) {
   } catch (e) { console.error('[WhatsApp] descargarFoto:', e.message); return null; }
 }
 
+// ── BUFFER DE FOTOS por usuario ──────────────────────────────────────────
+// WhatsApp manda cada foto en un mensaje aparte, y la instrucción (texto/voz)
+// llega en otro. Guardamos las fotos sueltas en una cola ligera (solo URL/tipo,
+// no la imagen) y, cuando llega la instrucción, las recogemos como contexto.
+const bufferFotos = new Map();           // from -> { fotos:[{url,type}], ts }
+const FOTO_BUFFER_TTL = 15 * 60 * 1000;  // 15 min
+const FOTO_BUFFER_MAX = 8;               // cuántas guardamos como máximo
+const FOTO_IA_MAX = 6;                   // cuántas pasamos a la IA
+
+function bufferGuardarFotos(from, fotos) {
+  const ahora = Date.now();
+  let entry = bufferFotos.get(from);
+  const vacioAntes = !entry || (ahora - entry.ts) > FOTO_BUFFER_TTL || !entry.fotos.length;
+  if (vacioAntes) entry = { fotos: [], ts: ahora };
+  for (const f of fotos) if (f && f.url) entry.fotos.push({ url: f.url, type: f.type });
+  if (entry.fotos.length > FOTO_BUFFER_MAX) entry.fotos = entry.fotos.slice(-FOTO_BUFFER_MAX);
+  entry.ts = ahora;
+  bufferFotos.set(from, entry);
+  return vacioAntes; // true si era la primera (para el único acuse)
+}
+
+function bufferRecogerFotos(from) {
+  const entry = bufferFotos.get(from);
+  bufferFotos.delete(from);
+  if (!entry || (Date.now() - entry.ts) > FOTO_BUFFER_TTL) return [];
+  return entry.fotos || [];
+}
+
 async function procesarWhatsApp(from, body, media = {}) {
   const soloDigitos = s => String(s || '').replace(/\D/g, '');
   const mio = soloDigitos(process.env.MI_WHATSAPP);
@@ -131,10 +159,21 @@ async function procesarWhatsApp(from, body, media = {}) {
     }
   }
 
-  // Descargar fotos (si las hay) para pasárselas a la IA
+  const fotosMsg = Array.isArray(media.fotos) ? media.fotos : [];
+
+  // CASO A: llegan SOLO fotos (sin instrucción) -> al buffer, sin procesar.
+  // Acuse solo en la primera para no gastar mensajes ni spamear.
+  if (!texto && fotosMsg.length) {
+    const primera = bufferGuardarFotos(from, fotosMsg);
+    if (primera) return enviarWhatsApp(from, '📸 Foto(s) recibida(s). Manda las que quieras y al final dime qué hago (p. ej.: *"hazme un presupuesto de esto para Illa Verda"*).');
+    return; // siguientes fotos: silencio
+  }
+
+  // CASO B: hay instrucción -> juntar fotos del buffer + las de este mensaje
   let imagenes = [];
-  if (Array.isArray(media.fotos) && media.fotos.length) {
-    const descargas = await Promise.all(media.fotos.slice(0, 4).map(f => descargarFoto(f.url, f.type)));
+  const fotosTotales = [...bufferRecogerFotos(from), ...fotosMsg].slice(0, FOTO_IA_MAX);
+  if (fotosTotales.length) {
+    const descargas = await Promise.all(fotosTotales.map(f => descargarFoto(f.url, f.type)));
     imagenes = descargas.filter(Boolean);
   }
 
