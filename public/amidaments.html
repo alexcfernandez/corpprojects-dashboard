@@ -47,6 +47,7 @@ textarea{min-height:60px;resize:vertical}
 .spin{width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;display:inline-block}
 @keyframes sp{to{transform:rotate(360deg)}}
 .row2{display:grid;grid-template-columns:1fr 110px;gap:10px}
+.row3{display:grid;grid-template-columns:90px 1fr 1fr;gap:10px}
 </style>
 </head>
 <body>
@@ -98,6 +99,16 @@ textarea{min-height:60px;resize:vertical}
     </div>
     <label>Cliente (debe existir en StelOrder)</label>
     <input id="cliente" type="text" placeholder="Comunitat de Propietaris...">
+    <button class="btn ghost" id="btnNuevoCli" style="margin-top:8px;font-size:13px;padding:9px">➕ Crear cliente nuevo</button>
+    <div id="panelCli" class="hide" style="margin-top:10px;border:1px solid var(--border2);border-radius:10px;padding:12px;background:var(--bg3)">
+      <div class="row2"><div><label>Nombre</label><input id="cliNombre" type="text"></div><div><label>NIF/CIF</label><input id="cliNif" type="text"></div></div>
+      <label>Dirección</label><input id="cliDir" type="text">
+      <div class="row3"><div><label>CP</label><input id="cliCp" type="text"></div><div><label>Ciudad</label><input id="cliCiudad" type="text"></div><div><label>Provincia</label><input id="cliProv" type="text"></div></div>
+      <div class="row2" style="grid-template-columns:1fr 1fr"><div><label>Teléfono</label><input id="cliTel" type="text"></div><div><label>Email</label><input id="cliEmail" type="text"></div></div>
+      <label>Familia</label><select id="cliFamilia"></select>
+      <div id="msgCli" class="small" style="margin-top:8px"></div>
+      <button class="btn green" id="btnAltaCli" style="margin-top:10px">Dar de alta en StelOrder</button>
+    </div>
     <label>Observaciones (opcional)</label>
     <textarea id="obs" placeholder="Texto que irá al principio del presupuesto"></textarea>
 
@@ -114,6 +125,7 @@ textarea{min-height:60px;resize:vertical}
 <script>
 const TOKEN = localStorage.getItem('cp_token');
 let estructura = null;
+let accIdCreado = null, creadoNombre = null, familias = [];
 const $ = id => document.getElementById(id);
 
 if (!TOKEN) { $('noauth').classList.remove('hide'); $('step1').classList.add('hide'); }
@@ -157,6 +169,13 @@ function pintar(data){
   $('titulo').value = estructura.titulo || '';
   $('cliente').value = estructura.cliente || '';
   if (window.initClienteAutocomplete) initClienteAutocomplete($('cliente'), TOKEN);
+  accIdCreado = null; creadoNombre = null;
+  $('panelCli').classList.add('hide'); $('msgCli').innerHTML='';
+  const cd = estructura.clienteDatos || {};
+  $('cliNombre').value = estructura.cliente||''; $('cliNif').value = cd.nif||''; $('cliDir').value = cd.direccion||'';
+  $('cliCp').value = cd.cp||''; $('cliCiudad').value = cd.ciudad||''; $('cliProv').value = cd.provincia||'';
+  $('cliTel').value = cd.telefono||''; $('cliEmail').value = cd.email||'';
+  cargarFamilias();
   const R = data.resumen || {};
   $('resumen').textContent = `Detectado: ${R.capitulos||0} capítulos · ${R.subcapitulos||0} subcapítulos · ${R.partidas||0} partidas. Revísalo y ajusta antes de crear.`;
   const tree = $('tree'); tree.innerHTML = '';
@@ -187,6 +206,36 @@ function partidaEl(p){
 
 $('btnVolver').onclick = () => { $('step2').classList.add('hide'); $('step1').classList.remove('hide'); $('msg2').innerHTML=''; };
 
+// ---- alta de cliente nuevo ----
+async function cargarFamilias(){
+  if(familias.length){ pintarFamilias(); return; }
+  try{ const r=await fetch('/api/familias',{headers:{Authorization:'Bearer '+TOKEN}}); familias=await r.json()||[]; pintarFamilias(); }catch(e){}
+}
+function pintarFamilias(){ $('cliFamilia').innerHTML = familias.map(f=>'<option value="'+f.id+'">'+(f.name||f.id)+'</option>').join(''); }
+$('btnNuevoCli').onclick=()=>{ $('panelCli').classList.toggle('hide'); };
+$('btnAltaCli').onclick = async () => {
+  const b=$('btnAltaCli'); $('msgCli').innerHTML='';
+  const nombre=$('cliNombre').value.trim();
+  if(!nombre){ $('msgCli').innerHTML='<span style="color:#ffb4b4">Pon al menos el nombre.</span>'; return; }
+  b.disabled=true; b.innerHTML='<span class="spin"></span> Dando de alta…';
+  try{
+    const payload={ nombre, nif:$('cliNif').value.trim()||null, direccion:$('cliDir').value.trim()||null,
+      cp:$('cliCp').value.trim()||null, ciudad:$('cliCiudad').value.trim()||null, provincia:$('cliProv').value.trim()||null,
+      telefono:$('cliTel').value.trim()||null, email:$('cliEmail').value.trim()||null, categoriaId:$('cliFamilia').value||null };
+    const r=await fetch('/api/clientes/crear',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+TOKEN},body:JSON.stringify(payload)});
+    const d=await r.json(); if(!r.ok) throw new Error(d.error||('Error '+r.status));
+    if(d.duplicado){
+      accIdCreado=d.existente.id; creadoNombre=d.existente.nombre; $('cliente').value=creadoNombre;
+      $('msgCli').innerHTML='<span style="color:var(--amber)">⚠️ Ya existe un cliente con ese '+(d.motivo==='nif'?'NIF':'nombre')+': <b>'+(d.existente.nombre||'')+'</b>. Lo he seleccionado (no he creado un duplicado).</span>';
+      setTimeout(()=>$('panelCli').classList.add('hide'), 2000); return;
+    }
+    accIdCreado=d.id; creadoNombre=d.nombre||nombre; $('cliente').value=creadoNombre;
+    $('msgCli').innerHTML='<span style="color:var(--green)">✓ Cliente creado ('+(d.ref||d.id)+') y seleccionado.</span>';
+    setTimeout(()=>$('panelCli').classList.add('hide'), 1300);
+  }catch(e){ $('msgCli').innerHTML='<span style="color:#ffb4b4">No se pudo crear: '+e.message+'</span>'; }
+  finally{ b.disabled=false; b.textContent='Dar de alta en StelOrder'; }
+};
+
 $('btnCrear').onclick = async () => {
   const b = $('btnCrear');
   b.disabled = true; b.innerHTML = '<span class="spin"></span> Creando…';
@@ -199,6 +248,7 @@ $('btnCrear').onclick = async () => {
       iva: $('iva').value,
       observaciones: $('obs').value.trim() || null
     };
+    if (accIdCreado && $('cliente').value.trim() === creadoNombre) payload.accId = accIdCreado;
     const r = await fetch('/api/amidaments/crear', {
       method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+TOKEN },
       body: JSON.stringify(payload)
