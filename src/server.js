@@ -134,8 +134,8 @@ async function descargarArchivo(url) {
 // no la imagen) y, cuando llega la instrucción, las recogemos como contexto.
 const bufferFotos = new Map();           // from -> { fotos:[{url,type}], ts }
 const FOTO_BUFFER_TTL = 15 * 60 * 1000;  // 15 min
-const FOTO_BUFFER_MAX = 8;               // cuántas guardamos como máximo
-const FOTO_IA_MAX = 6;                   // cuántas pasamos a la IA
+const FOTO_BUFFER_MAX = 12;              // cuántas guardamos como máximo
+const FOTO_IA_MAX = 12;                  // cuántas pasamos a la IA
 
 function bufferGuardarFotos(from, fotos) {
   const ahora = Date.now();
