@@ -1363,6 +1363,18 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
       }
       return '⚠️ Sigo sin encontrar ese cliente. Dime el nombre exacto tal como aparece en *Clientes*.';
     }
+    if (pend.accion === 'presApodo') {
+      const actual = pend.cola[pend.idx];
+      if (/^(ninguno|ningun|omitir|saltar|skip|nadie|dejalo|paso|no se|ni idea)\b/.test(nn)) {
+        return avanzarApodo(from, pend, `Vale, omito a *"${actual.nombre}"*.\n`);
+      }
+      const workers = await attendance.getWorkers();
+      const w = resolverTrabajador(texto, workers, await cargarAliasTrabajadores());
+      if (!w) return `No encuentro a *"${texto}"* en la plantilla. Dime su nombre tal como aparece (Paula, Abdellah, David, Diego, Huaca, Javi, Jose, Mamadou…) o *"ninguno"*.`;
+      await guardarAliasTrabajador(norm(actual.nombre), w.id, w.name);
+      pend.entries.push(construirEntryPresencia(w, actual.estado, actual.resueltas, pend.date));
+      return avanzarApodo(from, pend, `✅ Aprendido: *"${actual.nombre}"* = *${w.name}*.\n`);
+    }
     if (pend.accion === 'presConfirmar') {
       if (/^(s[ií]|si|vale|ok|dale|confirmo|adelante|correcto|guarda(la|lo)?|hazlo)\b/.test(nn)) return ejecutarGuardarPresencia(from, pend);
       if (/^(no|cancela|para|anula|dejalo|mejor no|ahora no)\b/.test(nn)) { pendiente.delete(from); return '👍 Vale, no guardo la presencia.'; }
@@ -2161,6 +2173,29 @@ async function handlerEnsenarApodo(texto, from) {
   return `✅ Apuntado: cuando diga *"${apodo}"* me refiero a *${w.name}*.`;
 }
 
+function construirEntryPresencia(w, estado, resueltas, date) {
+  const e = { workerId: w.id, workerName: w.name, date, estado, color: w.color || '#22c487', notas: 'Dictado por WhatsApp', origen: 'whatsapp-admin' };
+  if (estado === 'obra' || estado === 'oficina') e.horas = 8;
+  if (estado === 'obra' && resueltas && resueltas.length) {
+    const h = Math.round((8 / resueltas.length) * 100) / 100;
+    e.obras = resueltas.map(x => ({ clientName: x.nombre, horas: h, ...(x.id ? { accountId: x.id } : {}) }));
+    e.clientName = resueltas[0].nombre;
+  }
+  return e;
+}
+
+// Pasa al siguiente apodo por preguntar; si no quedan, pasa a confirmar la presencia.
+function avanzarApodo(from, pend, prefijo = '') {
+  pend.idx++;
+  if (pend.cola[pend.idx]) {
+    pendiente.set(from, { ...pend, ts: Date.now() });
+    return `${prefijo}🤔 ¿Y *"${pend.cola[pend.idx].nombre}"*? Dime el nombre del trabajador (o *"ninguno"*).`;
+  }
+  if (!pend.entries.length) { pendiente.delete(from); return prefijo + 'No queda nadie para guardar. 👍'; }
+  pendiente.set(from, { accion: 'presConfirmar', entries: pend.entries, date: pend.date, ts: Date.now() });
+  return prefijo + resumenPresencia(pend.entries, pend.date, []);
+}
+
 async function handlerPresencia(texto, from) {
   const workers = await attendance.getWorkers();
   const aliasMap = await cargarAliasTrabajadores();
@@ -2171,7 +2206,7 @@ async function handlerPresencia(texto, from) {
   const offset = parsed.fecha === 'manana' ? 1 : (parsed.fecha === 'ayer' ? -1 : 0);
   const date = hoyISO(offset);
   const validos = ['obra', 'oficina', 'vacaciones', 'baja', 'libre'];
-  const entries = []; const noReconocidos = new Set();
+  const entries = []; const cola = [];
   for (const a of parsed.asignaciones) {
     const estado = validos.includes(a.estado) ? a.estado : 'obra';
     const obrasRaw = Array.isArray(a.obras) ? a.obras.filter(Boolean).map(String) : [];
@@ -2185,22 +2220,19 @@ async function handlerPresencia(texto, from) {
     }
     for (const nom of (a.trabajadores || [])) {
       const w = resolverTrabajador(nom, workers, aliasMap);
-      if (!w) { noReconocidos.add(nom); continue; }
-      const e = { workerId: w.id, workerName: w.name, date, estado, color: w.color || '#22c487', notas: 'Dictado por WhatsApp', origen: 'whatsapp-admin' };
-      if (estado === 'obra' || estado === 'oficina') e.horas = 8;
-      if (estado === 'obra' && resueltas.length) {
-        const h = Math.round((8 / resueltas.length) * 100) / 100;
-        e.obras = resueltas.map(x => ({ clientName: x.nombre, horas: h, ...(x.id ? { accountId: x.id } : {}) }));
-        e.clientName = resueltas[0].nombre;
-      }
-      entries.push(e);
+      if (!w) { cola.push({ nombre: nom, estado, resueltas }); continue; }
+      entries.push(construirEntryPresencia(w, estado, resueltas, date));
     }
   }
-  if (!entries.length) {
-    return `🤔 No he reconocido a ningún trabajador${noReconocidos.size ? ` (${[...noReconocidos].join(', ')})` : ''}. Usa sus nombres tal como están en la plantilla, o enséñame el apodo: *"el largo es Javi el largo"*.`;
+  if (!entries.length && !cola.length) {
+    return '🤔 No he reconocido a ningún trabajador. Usa sus nombres tal como están en la plantilla.';
+  }
+  if (cola.length) {
+    pendiente.set(from, { accion: 'presApodo', entries, date, cola, idx: 0, ts: Date.now() });
+    return `🤔 No conozco a *"${cola[0].nombre}"*. ¿Quién es? Dime el nombre del trabajador tal como está en la plantilla (o *"ninguno"* para omitirlo).`;
   }
   pendiente.set(from, { accion: 'presConfirmar', entries, date, ts: Date.now() });
-  return resumenPresencia(entries, date, [...noReconocidos]);
+  return resumenPresencia(entries, date, []);
 }
 
 function resumenPresencia(entries, date, noReconocidos) {
