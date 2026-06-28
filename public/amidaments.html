@@ -110,6 +110,7 @@ textarea{min-height:60px;resize:vertical}
   </div>
 </div>
 
+<script src="/cliente-autocomplete.js"></script>
 <script>
 const TOKEN = localStorage.getItem('cp_token');
 let estructura = null;
@@ -155,6 +156,7 @@ $('btnAnalizar').onclick = async () => {
 function pintar(data){
   $('titulo').value = estructura.titulo || '';
   $('cliente').value = estructura.cliente || '';
+  if (window.initClienteAutocomplete) initClienteAutocomplete($('cliente'), TOKEN);
   const R = data.resumen || {};
   $('resumen').textContent = `Detectado: ${R.capitulos||0} capítulos · ${R.subcapitulos||0} subcapítulos · ${R.partidas||0} partidas. Revísalo y ajusta antes de crear.`;
   const tree = $('tree'); tree.innerHTML = '';
