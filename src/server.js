@@ -503,6 +503,10 @@ app.get('/api/diag/stel-impuestos', requireAuth, async (req,res) => {
   try { res.json(await diagImpuestos()); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
+app.get('/api/diag/stel-cliente-campos', requireAuth, async (req,res) => {
+  try { res.json(await require('./stelorder').diagClienteCampos()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
 app.get('/api/diag/stel-multiseccion', requireAuth, async (req,res) => {
   try {
     const stel = require('./stelorder');
