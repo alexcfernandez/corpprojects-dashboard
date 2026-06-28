@@ -70,6 +70,28 @@ async function guardarAliasProv(aliasNorm, target) {
     console.log(`[Asistente] alias proveedor: "${aliasNorm}" -> ${target}`);
   } catch (e) { console.error('[Asistente] aliasProv write:', e.message); }
 }
+
+// Alias de TRABAJADOR (apodos): "el largo" -> workerId. Diccionario que el jefe enseña.
+async function cargarAliasTrabajadores() {
+  try {
+    const db = await getDB();
+    const docs = await db.collection('aliasTrabajadores').find({}).toArray();
+    const map = {};
+    docs.forEach(d => { if (d.alias) map[d.alias] = { workerId: d.workerId, workerName: d.workerName }; });
+    return map;
+  } catch (e) { console.error('[Asistente] aliasTrab read:', e.message); return {}; }
+}
+async function guardarAliasTrabajador(aliasNorm, workerId, workerName) {
+  try {
+    const db = await getDB();
+    await db.collection('aliasTrabajadores').updateOne(
+      { alias: aliasNorm },
+      { $set: { alias: aliasNorm, workerId, workerName, updatedAt: new Date() } },
+      { upsert: true }
+    );
+    console.log(`[Asistente] apodo aprendido: "${aliasNorm}" -> ${workerName}`);
+  } catch (e) { console.error('[Asistente] aliasTrab write:', e.message); }
+}
 // Palabras genéricas en nombres de proveedor que no distinguen
 const STOPPROV = new Set(['sl', 'slu', 'sa', 'sau', 'sccl', 'sociedad', 'limitada', 'unipersonal',
   'espana', 'iberica', 'iberia', 'comercial', 'comercializadora', 'distribuciones', 'distribucion',
@@ -1465,6 +1487,12 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
     return handlerNuevaIncidencia(texto, from);
   }
 
+  // C0.apodo) Enseñar un apodo de trabajador: "el largo es Javi el largo"
+  if (!imagenes.length && /\bes\b/.test(_ni) && !/\?/.test(texto)) {
+    const ens = await handlerEnsenarApodo(texto, from);
+    if (ens) return ens;
+  }
+
   // C0.pres) Dictado de PRESENCIA: "Diego y Javi a Montseny; José a obras Pedrosa"
   // Sin imágenes, menciona un trabajador y una pista de ubicación/estado, y no es
   // una consulta financiera ni una pregunta. Confirma antes de guardar.
@@ -1996,16 +2024,21 @@ async function ejecutarCrearCompetencia(from, pend) {
 // ── Presencia por WhatsApp (dictado del jefe: quién está dónde hoy) ──────────
 function hoyISO(offsetDias = 0) { return new Date(Date.now() + offsetDias * 86400000).toISOString().slice(0, 10); }
 
-// Resuelve un nombre dictado ("Diego", "Javi") a un trabajador de la plantilla.
-function resolverTrabajador(nombre, workers) {
+// Resuelve un nombre dictado ("Diego", "Javi", "el largo") a un trabajador.
+// aliasMap: diccionario de apodos { aliasNorm -> {workerId,workerName} }.
+function resolverTrabajador(nombre, workers, aliasMap) {
   const q = norm(nombre);
   if (!q) return null;
-  let m = workers.find(w => norm(w.name) === q);                      // exacto
+  if (aliasMap && aliasMap[q]) {                                        // apodo aprendido
+    const w = workers.find(x => x.id === aliasMap[q].workerId);
+    if (w) return w;
+  }
+  let m = workers.find(w => norm(w.name) === q);                       // exacto
   if (m) return m;
-  m = workers.find(w => norm(w.name).split(/\s+/)[0] === q);          // nombre de pila exacto
+  m = workers.find(w => norm(w.name).split(/\s+/)[0] === q);           // nombre de pila exacto
   if (m) return m;
   const subs = workers.filter(w => norm(w.name).includes(q) || q.includes(norm(w.name).split(/\s+/)[0]));
-  if (subs.length === 1) return subs[0];
+  if (subs.length === 1) return subs[0];                               // un único parecido por contención
   const rank = workers.map(w => ({ w, s: similitud(q, norm(w.name).split(/\s+/)[0]) })).sort((a, b) => b.s - a.s);
   if (rank[0] && rank[0].s >= 0.6 && (!rank[1] || rank[0].s - rank[1].s >= 0.15)) return rank[0].w;
   return null;
@@ -2073,8 +2106,24 @@ async function resolverObra(texto) {
   return { nombre: t };
 }
 
+// Aprende un apodo: "el largo es Javi el largo". Devuelve null si no aplica.
+async function handlerEnsenarApodo(texto, from) {
+  const m = String(texto).match(/^\s*(.{2,30}?)\s+es\s+(.{2,40})\s*$/i);
+  if (!m) return null;
+  const apodo = m[1].trim();
+  const destino = m[2].trim();
+  const workers = await attendance.getWorkers();
+  // si el "apodo" ya es un trabajador real, no lo tratamos como apodo
+  if (resolverTrabajador(apodo, workers, {})) return null;
+  const w = resolverTrabajador(destino, workers, {});
+  if (!w) return null; // el destino no es un trabajador -> no es enseñanza de apodo
+  await guardarAliasTrabajador(norm(apodo), w.id, w.name);
+  return `✅ Apuntado: cuando diga *"${apodo}"* me refiero a *${w.name}*.`;
+}
+
 async function handlerPresencia(texto, from) {
   const workers = await attendance.getWorkers();
+  const aliasMap = await cargarAliasTrabajadores();
   const parsed = await parsearPresencia(texto, workers);
   if (!parsed || !Array.isArray(parsed.asignaciones) || !parsed.asignaciones.length) {
     return '🤔 No te he pillado la presencia. Dímelo tipo: *"Diego y Javi a Montseny 3; José a obras Pedrosa"*.';
@@ -2086,7 +2135,6 @@ async function handlerPresencia(texto, from) {
   for (const a of parsed.asignaciones) {
     const estado = validos.includes(a.estado) ? a.estado : 'obra';
     const obrasRaw = Array.isArray(a.obras) ? a.obras.filter(Boolean).map(String) : [];
-    // resolver cada obra contra StelOrder y fusionar las que sean el mismo cliente
     let resueltas = [];
     if (estado === 'obra' && obrasRaw.length) {
       for (const o of obrasRaw) {
@@ -2096,7 +2144,7 @@ async function handlerPresencia(texto, from) {
       }
     }
     for (const nom of (a.trabajadores || [])) {
-      const w = resolverTrabajador(nom, workers);
+      const w = resolverTrabajador(nom, workers, aliasMap);
       if (!w) { noReconocidos.add(nom); continue; }
       const e = { workerId: w.id, workerName: w.name, date, estado, color: w.color || '#22c487', notas: 'Dictado por WhatsApp', origen: 'whatsapp-admin' };
       if (estado === 'obra' || estado === 'oficina') e.horas = 8;
@@ -2109,7 +2157,7 @@ async function handlerPresencia(texto, from) {
     }
   }
   if (!entries.length) {
-    return `🤔 No he reconocido a ningún trabajador${noReconocidos.size ? ` (${[...noReconocidos].join(', ')})` : ''}. Usa sus nombres tal como están en la plantilla.`;
+    return `🤔 No he reconocido a ningún trabajador${noReconocidos.size ? ` (${[...noReconocidos].join(', ')})` : ''}. Usa sus nombres tal como están en la plantilla, o enséñame el apodo: *"el largo es Javi el largo"*.`;
   }
   pendiente.set(from, { accion: 'presConfirmar', entries, date, ts: Date.now() });
   return resumenPresencia(entries, date, [...noReconocidos]);
