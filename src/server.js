@@ -95,9 +95,10 @@ app.post('/api/whatsapp', express.urlencoded({ extended: false }), (req, res) =>
     if (url) medios.push({ url, type });
   }
   const audioM = medios.find(m => /audio/i.test(m.type));
+  const pdfM = medios.find(m => /pdf/i.test(m.type));
   const fotos = medios.filter(m => /image/i.test(m.type));
   console.log(`[WhatsApp] De ${from}: "${body}"${numMedia ? ` (+${numMedia} media: ${medios.map(m => m.type).join(',')})` : ''}`);
-  procesarWhatsApp(from, body, { numMedia, mediaUrl: audioM ? audioM.url : (medios[0] && medios[0].url), mediaType: audioM ? audioM.type : (medios[0] && medios[0].type), fotos })
+  procesarWhatsApp(from, body, { numMedia, mediaUrl: audioM ? audioM.url : (medios[0] && medios[0].url), mediaType: audioM ? audioM.type : (medios[0] && medios[0].type), fotos, pdf: pdfM })
     .catch(err => console.error('[WhatsApp] Error:', err.message));
 });
 
@@ -113,6 +114,18 @@ async function descargarFoto(url, type) {
     if (!/^image\/(jpeg|png|gif|webp)$/.test(mt)) mt = 'image/jpeg';
     return { media_type: mt, data: Buffer.from(r.data).toString('base64') };
   } catch (e) { console.error('[WhatsApp] descargarFoto:', e.message); return null; }
+}
+
+// Descarga genérica (p. ej. PDF) de Twilio y la devuelve como base64.
+async function descargarArchivo(url) {
+  try {
+    const r = await axios.get(url, {
+      responseType: 'arraybuffer',
+      auth: { username: process.env.TWILIO_ACCOUNT_SID, password: process.env.TWILIO_AUTH_TOKEN },
+      timeout: 30000
+    });
+    return Buffer.from(r.data).toString('base64');
+  } catch (e) { console.error('[WhatsApp] descargarArchivo:', e.message); return null; }
 }
 
 // ── BUFFER DE FOTOS por usuario ──────────────────────────────────────────
@@ -166,6 +179,15 @@ async function procesarWhatsApp(from, body, media = {}) {
   }
 
   const fotosMsg = Array.isArray(media.fotos) ? media.fotos : [];
+
+  // CASO PDF: llega un PDF -> importador de presupuesto (amidament del arquitecto)
+  if (media.pdf && media.pdf.url) {
+    const b64 = await descargarArchivo(media.pdf.url);
+    if (!b64) return enviarWhatsApp(from, '📄 He recibido el PDF pero no he podido descargarlo. Inténtalo de nuevo.');
+    await enviarWhatsApp(from, '📄 Leyendo el PDF, dame unos segundos…');
+    const reply = await asistente.importarDocumento(from, b64, media.pdf.type || 'application/pdf', texto);
+    return enviarWhatsApp(from, prefijo + reply);
+  }
 
   // CASO A: llegan SOLO fotos (sin instrucción) -> al buffer, sin procesar.
   // Acuse solo en la primera para no gastar mensajes ni spamear.
