@@ -2038,16 +2038,34 @@ Reglas:
   return iaJson(prompt, 1500, null, process.env.PRESU_IA_MODEL || 'claude-sonnet-4-6');
 }
 
-// Casa el texto de una obra con un cliente de StelOrder (nombre exacto) SOLO si
-// el parecido es claro; si no, lo deja como texto libre (sitio suelto).
+// Casa el texto de una obra con un cliente de StelOrder (nombre exacto). Igual que
+// el desplegable del panel: primero por CONTENCIÓN (substring), luego por parecido.
+// Si no hay match claro, lo deja como texto libre (sitio suelto).
 async function resolverObra(texto) {
   const t = String(texto || '').trim();
   if (!t) return { nombre: t };
   let clients = [];
   try { clients = (await stel.getClients()).clients || []; } catch (e) {}
   const lista = clients.map(c => ({ id: String(c.id || c['account-id'] || ''), nombre: c['legal-name'] || c.name || '' })).filter(c => c.nombre && c.id);
-  const ex = lista.find(c => norm(c.nombre) === norm(t));
+  const nt = norm(t);
+  // 1) exacto
+  const ex = lista.find(c => norm(c.nombre) === nt);
   if (ex) return { id: ex.id, nombre: ex.nombre };
+  // 2) por palabras clave distintivas (robusto a catalán/castellano y al orden):
+  //    "obras pedrosa" -> casa "CONSTRUCCIONS I OBRES PEDROSA S.L" por "pedrosa".
+  const stop = new Set(['obra', 'obras', 'obres', 'de', 'del', 'la', 'el', 'els', 'les', 'i', 'y', 'sl', 'slu', 'sc', 'sa', 'comunitat', 'comunidad', 'propietaris', 'propietarios', 'carrer', 'calle', 'avinguda', 'avenida']);
+  const tokens = nt.split(/[^a-z0-9]+/).filter(w => w.length >= 4 && !stop.has(w));
+  if (tokens.length) {
+    const scored = lista.map(c => {
+      const n = norm(c.nombre);
+      let hits = 0; for (const tok of tokens) if (n.includes(tok)) hits++;
+      return { c, hits };
+    }).filter(x => x.hits > 0).sort((a, b) => b.hits - a.hits || a.c.nombre.length - b.c.nombre.length);
+    if (scored.length && (scored.length === 1 || scored[0].hits > scored[1].hits)) {
+      return { id: scored[0].c.id, nombre: scored[0].c.nombre };
+    }
+  }
+  // 3) por parecido claro
   const calle = extraerCalle(t);
   const rank = lista.map(c => ({ ...c, s: Math.max(similitud(t, c.nombre), calle ? similitud(calle, c.nombre) : 0) })).sort((a, b) => b.s - a.s);
   const top = rank[0], seg = rank[1];
