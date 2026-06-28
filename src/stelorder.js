@@ -1390,6 +1390,28 @@ function _incInfo(i) {
 async function crearClienteStel({ nombre, nif = null, direccion = null, cp = null, ciudad = null, provincia = null, pais = 'ES', telefono = null, email = null, categoriaId = null, comentarios = null }) {
   if (!nombre || !String(nombre).trim()) throw new Error('Falta el nombre del cliente');
   const n = String(nombre).trim().slice(0, 200);
+
+  // Anti-duplicados: si ya existe un cliente con ese NIF (o, sin NIF, con el
+  // mismo nombre exacto), NO creamos otro; devolvemos el existente para usarlo.
+  const k = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\s.\-]/g, '').trim();
+  const nifK = nif ? k(nif) : '';
+  try {
+    const { clients } = await getClients();
+    for (const c of clients || []) {
+      const idc = String(c.id || c['account-id'] || '');
+      if (nifK && k(c['tax-identification-number']) === nifK && nifK.length > 3) {
+        return { ok: false, duplicado: true, motivo: 'nif', existente: { id: idc, nombre: c['legal-name'] || c.name || '', nif: c['tax-identification-number'] || '' } };
+      }
+    }
+    if (!nifK) {
+      for (const c of clients || []) {
+        if (k(c['legal-name'] || c.name) === k(n)) {
+          return { ok: false, duplicado: true, motivo: 'nombre', existente: { id: String(c.id || c['account-id'] || ''), nombre: c['legal-name'] || c.name || '', nif: c['tax-identification-number'] || '' } };
+        }
+      }
+    }
+  } catch (e) { /* si no podemos leer la lista, seguimos e intentamos crear */ }
+
   const body = { 'legal-name': n, 'name': n };
   if (nif) body['tax-identification-number'] = String(nif).trim();
   if (email) body['email'] = String(email).trim();
