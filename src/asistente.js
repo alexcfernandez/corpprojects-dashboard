@@ -1487,6 +1487,14 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
     return handlerNuevaIncidencia(texto, from);
   }
 
+  // C0.quien) "¿quién trabaja hoy?" -> resumen de presencia del día (solo lee)
+  if (!imagenes.length && (
+        /\bquien(es)? (trabaja|trabajan|hay|esta|est[aá]|est[aá]n|estan|fue|fueron|va|van|estuvo|estuvieron)\b/.test(_ni) ||
+        /\bpresencia (de )?(hoy|manana|ayer)\b/.test(_ni) ||
+        /\b(donde|que hace) (esta|est[aá]n|estan|cada uno|todos|la gente)\b/.test(_ni))) {
+    return handlerQuienTrabaja(texto, from);
+  }
+
   // C0.apodo) Enseñar un apodo de trabajador: "el largo es Javi el largo"
   if (!imagenes.length && /\bes\b/.test(_ni) && !/\?/.test(texto)) {
     const ens = await handlerEnsenarApodo(texto, from);
@@ -2104,6 +2112,38 @@ async function resolverObra(texto) {
   const top = rank[0], seg = rank[1];
   if (top && top.s >= 0.62 && (!seg || (top.s - seg.s) >= 0.12)) return { id: top.id, nombre: top.nombre };
   return { nombre: t };
+}
+
+// "¿Quién trabaja hoy?" -> resumen de la presencia del día, agrupada por obra.
+async function handlerQuienTrabaja(texto, from) {
+  const nn = norm(texto);
+  const offset = /\bmanana\b/.test(nn) ? 1 : (/\bayer\b/.test(nn) ? -1 : 0);
+  const date = hoyISO(offset);
+  const cuando = offset === 1 ? 'mañana' : (offset === -1 ? 'ayer' : 'hoy');
+  let entries = [];
+  try { entries = await attendance.getAttendance({ from: date, to: date }); } catch (e) {}
+  if (!entries || !entries.length) return `🗓️ *${cuando}* (${date}): aún no hay presencia registrada.`;
+  const EMO = { obra: '🏗️', oficina: '🏢', vacaciones: '🌴', baja: '🏥', falta_j: '📋', falta_i: '❌', libre: '⏸️' };
+  const enObra = entries.filter(e => e.estado === 'obra');
+  const otros = entries.filter(e => e.estado !== 'obra');
+  let s = `🗓️ *Presencia ${cuando}* (${date})\n\n`;
+  if (enObra.length) {
+    const porObra = {};
+    enObra.forEach(e => {
+      const obras = (e.obras && e.obras.length) ? e.obras : [{ clientName: e.clientName || 'Sin obra', horas: e.horas || 8 }];
+      obras.forEach(o => {
+        const k = o.clientName || 'Sin obra';
+        (porObra[k] = porObra[k] || []).push(`${e.workerName}${obras.length > 1 ? ` (${o.horas}h)` : ''}`);
+      });
+    });
+    Object.keys(porObra).sort().forEach(obra => { s += `🏗️ *${obra}*\n   ${porObra[obra].join(', ')}\n`; });
+  }
+  if (otros.length) {
+    s += `\n`;
+    otros.forEach(e => { s += `${EMO[e.estado] || '•'} ${e.workerName} — ${e.estado}\n`; });
+  }
+  s += `\n_${entries.length} trabajador${entries.length > 1 ? 'es' : ''} con presencia._`;
+  return s;
 }
 
 // Aprende un apodo: "el largo es Javi el largo". Devuelve null si no aplica.
