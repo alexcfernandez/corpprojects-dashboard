@@ -565,6 +565,21 @@ app.post('/api/amidaments/crear', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Familias (categorías de cliente) para el selector del alta
+app.get('/api/familias', requireAuth, async (req, res) => {
+  try { const { list } = await require('./stelorder').getAccountCategories(); res.json((list || []).map(c => ({ id: c.id, name: c.name }))); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Alta de cliente nuevo en StelOrder
+app.post('/api/clientes/crear', requireAuth, async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.nombre || !String(b.nombre).trim()) return res.status(400).json({ error: 'Falta el nombre del cliente.' });
+    res.json(await require('./stelorder').crearClienteStel(b));
+  } catch (e) { res.status(500).json({ error: e.message, data: e.response && e.response.data }); }
+});
+
 // ── Presupuesto de competencia (PDF/foto CON precio -> presupuesto con tu precio) ──
 // 1) Analizar y devolver partidas con precio e IVA
 app.post('/api/presupuesto/preview', requireAuth, uploadPdf.single('pdf'), async (req, res) => {
