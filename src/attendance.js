@@ -393,7 +393,7 @@ async function getClientExtract(clientName, from, to) {
 }
 
 module.exports = {
-  WORKERS, ESTADOS,
+  WORKERS, ESTADOS, getWorkers,
   saveAttendance, deleteAttendance, getAttendance, syncPresenceFromParte,
   getMonthlySummary, buildClientSummary, getClientExtract,
   _invalidateWorkersCache,
