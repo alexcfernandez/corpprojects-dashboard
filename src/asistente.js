@@ -1294,13 +1294,22 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
       return 'Responde *"sí"* para crear el presupuesto en StelOrder o *"no"* para descartarlo.';
     }
     if (pend.accion === 'importCliente') {
-      const { target } = await resolver(texto, texto);
-      const accId = target ? await stel.accountIdByName(target) : null;
-      if (accId) {
-        pendiente.set(from, { ...pend, accion: 'importConfirmar', accId, target, ts: Date.now() });
-        return resumenImport(pend.estructura, target, pend.iva);
+      const mNum = nn.match(/^\s*(\d{1,2})\b/);
+      if (mNum && Array.isArray(pend.candidatos) && pend.candidatos[+mNum[1] - 1]) {
+        const c = pend.candidatos[+mNum[1] - 1];
+        pendiente.set(from, { ...pend, accion: 'importConfirmar', accId: c.id, target: c.nombre, ts: Date.now() });
+        return resumenImport(pend.estructura, c.nombre, pend.iva);
       }
-      return '⚠️ Sigo sin encontrar ese cliente en StelOrder. Dime el nombre exacto tal como aparece en *Clientes*.';
+      const res = await resolverClienteImport(texto, '');
+      if (res.accId) {
+        pendiente.set(from, { ...pend, accion: 'importConfirmar', accId: res.accId, target: res.target, ts: Date.now() });
+        return resumenImport(pend.estructura, res.target, pend.iva);
+      }
+      if (res.candidatos && res.candidatos.length) {
+        pendiente.set(from, { ...pend, candidatos: res.candidatos, ts: Date.now() });
+        return '¿Cuál de estos? Responde con el *número*:\n' + res.candidatos.map((c, i) => `*${i + 1}.* ${c.nombre}`).join('\n') + '\n\nO escríbeme el nombre exacto.';
+      }
+      return '⚠️ Sigo sin encontrar ese cliente. Dime el nombre exacto tal como aparece en *Clientes*.';
     }
     if (pend.accion === 'incConfirmar') {
       if (/^(s[ií]|si|vale|ok|dale|confirmo|adelante|correcto|crea(la)?)\b/.test(nn)) return ejecutarCrearIncidencia(from, pend);
@@ -1718,6 +1727,35 @@ function resumenImport(est, target, iva) {
     `¿Lo creo en StelOrder (IVA ${iva}%, sin precios, estado Pendiente)? Responde *"sí"* o *"no"*.`;
 }
 
+// Extrae la calle+número de una dirección (quita tipo de vía, CP y ciudad),
+// que es lo que identifica a las comunidades (se nombran por la calle).
+function extraerCalle(dir) {
+  if (!dir) return '';
+  let s = norm(dir).replace(/\d{5}/g, ' ');
+  s = s.replace(/\b(girona|barcelona|espanya|espana)\b/g, ' ');
+  s = s.replace(/\b(carrer|calle|avinguda|avenida|avda|av|passeig|paseo|placa|plaza|pl|travessera|travessia|trav|ronda|via|cami|camino|ctra|carretera|c)\b/g, ' ');
+  s = s.replace(/\b(de|del|la|el|els|les|d)\b/g, ' ');
+  return s.replace(/[.,;:]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Resuelve a qué cliente va un documento, priorizando la CALLE de la dirección.
+// Devuelve {accId,target} si es inequívoco, {candidatos:[...]} si hay duda, o {}.
+async function resolverClienteImport(nombre, direccion) {
+  let clients = [];
+  try { clients = (await stel.getClients()).clients || []; } catch (e) {}
+  const lista = clients.map(c => ({ id: String(c.id || c['account-id'] || ''), nombre: c['legal-name'] || c.name || '' })).filter(c => c.nombre && c.id);
+  if (!lista.length) return {};
+  const ex = lista.find(c => norm(c.nombre) === norm(nombre || ''));
+  if (ex) return { accId: ex.id, target: ex.nombre };
+  const calle = extraerCalle(direccion);
+  const consulta = `${nombre || ''} ${calle}`.trim();
+  const rank = lista.map(c => ({ ...c, s: Math.max(similitud(consulta, c.nombre), calle ? similitud(calle, c.nombre) : 0) }))
+    .sort((a, b) => b.s - a.s);
+  const top = rank[0], seg = rank[1];
+  if (top && top.s >= 0.5 && (!seg || (top.s - seg.s) >= 0.12)) return { accId: top.id, target: top.nombre };
+  return { candidatos: rank.filter(c => c.s > 0.25).slice(0, 5) };
+}
+
 // Llega un PDF por WhatsApp -> lo lee como amidament y deja el alta a falta de confirmar.
 async function importarDocumento(from, base64, mediaType, instruccion) {
   const est = await estructurarAmidamentPdf(base64, mediaType || 'application/pdf');
@@ -1725,15 +1763,20 @@ async function importarDocumento(from, base64, mediaType, instruccion) {
     return '😕 No he podido leer las partidas de ese PDF. ¿Es un estado de mediciones (amidament) con tablas?';
   }
   const iva = 21;
-  const target0 = est.cliente || '';
-  const accId = target0 ? await stel.accountIdByName(target0) : null;
-  if (accId) {
-    pendiente.set(from, { accion: 'importConfirmar', tipo: 'amidament', estructura: est, accId, target: target0, iva, ts: Date.now() });
-    return resumenImport(est, target0, iva);
+  const direccion = (est.clienteDatos && est.clienteDatos.direccion) || '';
+  const res = await resolverClienteImport(est.cliente || '', direccion);
+  if (res.accId) {
+    pendiente.set(from, { accion: 'importConfirmar', tipo: 'amidament', estructura: est, accId: res.accId, target: res.target, iva, ts: Date.now() });
+    return resumenImport(est, res.target, iva);
   }
-  pendiente.set(from, { accion: 'importCliente', tipo: 'amidament', estructura: est, iva, ts: Date.now() });
-  const cli = target0 ? `el cliente *"${target0}"*` : 'el cliente';
-  return `📋 *Amidament leído:* ${est.titulo || 'Sin título'}\nNo encuentro ${cli} en StelOrder. Dime el nombre exacto del cliente (tal como aparece en *Clientes*).`;
+  const cands = res.candidatos || [];
+  pendiente.set(from, { accion: 'importCliente', tipo: 'amidament', estructura: est, iva, candidatos: cands, ts: Date.now() });
+  let msg = `📋 *Amidament leído:* ${est.titulo || 'Sin título'}\n`;
+  if (direccion) msg += `Dirección: ${direccion}\n`;
+  msg += `\nNo tengo claro a qué cliente va.`;
+  if (cands.length) msg += ` ¿Es alguno de estos? Responde con el *número*:\n` + cands.map((c, i) => `*${i + 1}.* ${c.nombre}`).join('\n') + `\n\nO escríbeme el nombre exacto.`;
+  else msg += ` Dime el nombre exacto del cliente (como aparece en *Clientes*).`;
+  return msg;
 }
 
 async function ejecutarCrearImport(from, pend) {
