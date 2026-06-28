@@ -181,7 +181,7 @@ async function iaJsonVision(prompt, imagenes, maxTokens, fallback) {
   let raw = '', stop = '';
   try {
     const content = [];
-    for (const img of (imagenes || []).slice(0, 6)) {
+    for (const img of (imagenes || []).slice(0, 12)) {
       if (img && img.data) content.push({ type: 'image', source: { type: 'base64', media_type: img.media_type || 'image/jpeg', data: img.data } });
     }
     content.push({ type: 'text', text: prompt });
@@ -298,6 +298,35 @@ Reglas:
 - Si hay varias líneas con precio, devuelve una partida por línea.
 - Copia la descripción de los trabajos COMPLETA, respetando saltos de línea. No inventes nada.`;
   return iaJsonDoc(prompt, base64Pdf, 4000, null, mediaType);
+}
+
+// Igual que estructurarPresupuestoPdf pero desde VARIAS imágenes (páginas de un
+// presupuesto enviadas como fotos sueltas por WhatsApp). Mantén el prompt alineado
+// con estructurarPresupuestoPdf.
+async function estructurarPresupuestoImagenes(imagenes) {
+  if (!imagenes || !imagenes.length) return null;
+  const prompt = `Eres un perito de presupuestos de obra/reformas. Te paso VARIAS imágenes que son las PÁGINAS del MISMO presupuesto ("pressupost", catalán o castellano) que SÍ lleva precios. Léelas EN ORDEN y combina todas las partidas en un solo presupuesto.
+
+Extrae los datos del trabajo y los precios. IGNORA datos de la empresa que emite, condiciones de pago, firmas y avisos legales.
+
+Responde SOLO un JSON VÁLIDO, sin markdown:
+{
+ "titulo": "título corto del trabajo (ej. Terrassa nova)",
+ "cliente": "nombre del cliente/destinatario tal cual aparece, o null",
+ "clienteDatos": { "nif": null, "direccion": null, "cp": null, "ciudad": null, "provincia": null, "telefono": null, "email": null },
+ "iva": 21,
+ "partidas": [
+   { "nombre": "nombre corto de la partida", "descripcion": "texto/descripción de los trabajos tal cual, cada punto en su línea", "cantidad": 1, "precio": 13235.00 }
+ ]
+}
+
+Reglas:
+- "clienteDatos" = datos del DESTINATARIO (a quién va dirigido), NUNCA los de la empresa que lo emite. Rellena solo lo que aparezca; el resto déjalo null.
+- "precio" = precio UNITARIO SIN IVA (base), NÚMERO con PUNTO decimal y SIN separador de miles (13235.00, nunca "13.235,00").
+- "iva" = porcentaje de IVA que aparece (21, 10, 4 o 0). Si no aparece, pon 21.
+- Una partida por línea con precio. Si es un único importe global, devuelve UNA partida con cantidad 1.
+- Combina TODAS las páginas. No repitas partidas que se repiten en cabeceras/pies. Copia la descripción COMPLETA respetando saltos de línea. No inventes nada.`;
+  return iaJsonVision(prompt, imagenes, 8000, null);
 }
 
 // Reescribe las descripciones de unas partidas en estilo propio (pro y ampliado),
@@ -1311,6 +1340,29 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
       }
       return '⚠️ Sigo sin encontrar ese cliente. Dime el nombre exacto tal como aparece en *Clientes*.';
     }
+    if (pend.accion === 'compConfirmar') {
+      if (/^(s[ií]|si|vale|ok|dale|confirmo|adelante|correcto|crea(lo)?|hazlo)\b/.test(nn)) return ejecutarCrearCompetencia(from, pend);
+      if (/^(no|cancela|para|anula|dejalo|mejor no|ahora no)\b/.test(nn)) { pendiente.delete(from); return '👍 Vale, no lo creo. Presupuesto descartado.'; }
+      return 'Responde *"sí"* para crear el presupuesto en StelOrder o *"no"* para descartarlo.';
+    }
+    if (pend.accion === 'compCliente') {
+      const mNum = nn.match(/^\s*(\d{1,2})\b/);
+      if (mNum && Array.isArray(pend.candidatos) && pend.candidatos[+mNum[1] - 1]) {
+        const c = pend.candidatos[+mNum[1] - 1];
+        pendiente.set(from, { ...pend, accion: 'compConfirmar', accId: c.id, target: c.nombre, ts: Date.now() });
+        return resumenCompetencia(pend.datos, c.nombre, pend.iva, pend.ajuste, pend.nFotos);
+      }
+      const res = await resolverClienteImport(texto, '');
+      if (res.accId) {
+        pendiente.set(from, { ...pend, accion: 'compConfirmar', accId: res.accId, target: res.target, ts: Date.now() });
+        return resumenCompetencia(pend.datos, res.target, pend.iva, pend.ajuste, pend.nFotos);
+      }
+      if (res.candidatos && res.candidatos.length) {
+        pendiente.set(from, { ...pend, candidatos: res.candidatos, ts: Date.now() });
+        return '¿Cuál de estos? Responde con el *número*:\n' + res.candidatos.map((c, i) => `*${i + 1}.* ${c.nombre}`).join('\n') + '\n\nO escríbeme el nombre exacto.';
+      }
+      return '⚠️ Sigo sin encontrar ese cliente. Dime el nombre exacto tal como aparece en *Clientes*.';
+    }
     if (pend.accion === 'incConfirmar') {
       if (/^(s[ií]|si|vale|ok|dale|confirmo|adelante|correcto|crea(la)?)\b/.test(nn)) return ejecutarCrearIncidencia(from, pend);
       if (/^(no|cancela|para|anula|dejalo|mejor no)\b/.test(nn)) { pendiente.delete(from); return '👍 Cancelado, no he creado nada.'; }
@@ -1368,6 +1420,15 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
   // C0.presu) PIEZA B — generar presupuesto técnico: "hazme/prepara/redacta un presupuesto de ..."
   // (distinto de "hay que hacer presupuesto para X" que registra una incidencia)
   const _np = norm(texto);
+  // ¿Importar un presupuesto de la COMPETENCIA? (foto/s con precio + ajuste)
+  // Solo si hay imágenes y la instrucción lo señala, para no pisar el presupuesto por voz.
+  if (imagenes && imagenes.length) {
+    const pideCompetencia =
+      /\b(competencia|de la competencia|este presupuesto|este pressupost|copia(lo)?|c[oó]pialo|recrea(lo)?|recr[eé]alo|p[aá]salo|cl[oó]nalo|mejora(lo)?|igualalo|igu[aá]lalo)\b/.test(_np) ||
+      parseAjustePrecio(texto).modo !== 'none';
+    if (pideCompetencia) return handlerCompetencia(texto, from, imagenes);
+  }
+
   const pidePresu =
     /\b(haz(me|le|lo|les|nos)?|prepara(me|le|lo|les|nos)?|redacta(me|le|lo|les|nos)?|genera(me|le|lo|les|nos)?|monta(me|le|lo|les|nos)?)\b[\s\S]*\bpresupuest/.test(_np) ||
     /\bpresupuesto (detallado|tecnico|t\u00e9cnico|profesional)\b/.test(_np) ||
@@ -1794,6 +1855,105 @@ async function ejecutarCrearImport(from, pend) {
   } catch (e) {
     console.error('[Asistente] crearImport:', e.message);
     return '⚠️ No he podido crear el presupuesto en StelOrder. Inténtalo de nuevo o créalo desde el panel /amidaments.';
+  }
+}
+
+// ── Presupuesto de competencia por WhatsApp (foto/s con precio + ajuste) ────
+// Parsea el ajuste de precio de la instrucción: "bájalo un 8%", "súbelo 5%",
+// "ponlo a 12750", "a 12.750 €". Decimal español: 12.750 -> 12750 ; 12750,50 -> 12750.50
+function parseAjustePrecio(texto) {
+  const s = norm(texto);
+  const total = /\b(total|con iva|iva incluido|impuestos incluidos)\b/.test(s);
+  const baja = /\b(baja|bajalo|rebaja|rebajalo|descuenta|descuentale|menos|reduce|reducelo|abarata)\b/.test(s);
+  const sube = /\b(sube|subelo|incrementa|aumenta|recargo|encarece|encarecelo)\b/.test(s);
+  const mp = s.match(/(\d+(?:[.,]\d+)?)\s*(?:%|por ?ciento)/);
+  if (mp && (baja || sube)) return { modo: 'pct', dir: baja ? -1 : 1, pct: parseFloat(mp[1].replace(',', '.')), base: total ? 'total' : 'base' };
+  const mf = s.match(/\b(?:ponlo a|dejalo en|ponlo en|a|en|por)\s*([\d][\d.\s]*(?:,\d+)?)\s*(?:euros?|eur|€)?/);
+  if (mf) {
+    const num = parseFloat(mf[1].replace(/[.\s]/g, '').replace(',', '.'));
+    if (num > 0) return { modo: 'fix', fijo: num, base: total ? 'total' : 'base' };
+  }
+  if (mp) return { modo: 'pct', dir: -1, pct: parseFloat(mp[1].replace(',', '.')), base: total ? 'total' : 'base' };
+  return { modo: 'none' };
+}
+
+function totalesCompetencia(partidas, iva, ajuste) {
+  const base = (partidas || []).reduce((a, p) => a + (Number(p.precio) || 0) * (Number(p.cantidad) || 1), 0);
+  let baseFinal = base, factor = 1;
+  if (ajuste.modo === 'pct') { factor = 1 + ajuste.dir * (ajuste.pct / 100); baseFinal = base * factor; }
+  else if (ajuste.modo === 'fix') {
+    baseFinal = ajuste.base === 'total' ? ajuste.fijo / (1 + iva / 100) : ajuste.fijo;
+    factor = base ? baseFinal / base : 1;
+  }
+  const ivaImp = baseFinal * (iva / 100);
+  return { base, baseFinal, factor, iva: ivaImp, total: baseFinal + ivaImp };
+}
+
+// Formato de euros sin depender de locale (Railway no tiene ICU): 13235 -> "13.235,00"
+function eur(n) {
+  const x = (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
+  const [e, d] = x.split('.');
+  return e.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + d;
+}
+
+function resumenCompetencia(datos, target, iva, ajuste, nFotos) {
+  const t = totalesCompetencia(datos.partidas, iva, ajuste);
+  let ajusteTxt;
+  if (ajuste.modo === 'pct') ajusteTxt = `${ajuste.dir < 0 ? 'Bajada' : 'Subida'} del ${ajuste.pct}%`;
+  else if (ajuste.modo === 'fix') ajusteTxt = `Precio fijo (${ajuste.base === 'total' ? 'total' : 'base'}) ${eur(ajuste.fijo)} €`;
+  else ajusteTxt = 'Sin cambios de precio';
+  let s = `📄 *Presupuesto leído* (${nFotos} foto${nFotos > 1 ? 's' : ''}): ${datos.titulo || 'Sin título'}\n`;
+  s += `Cliente: *${target}*\n`;
+  s += `${datos.partidas.length} partida${datos.partidas.length > 1 ? 's' : ''} · IVA ${iva}%\n`;
+  s += `Ajuste: ${ajusteTxt}\n\n`;
+  if (ajuste.modo !== 'none' && Math.abs(t.base - t.baseFinal) > 0.005) s += `Base: ~${eur(t.base)} €~ → *${eur(t.baseFinal)} €*\n`;
+  else s += `Base: *${eur(t.baseFinal)} €*\n`;
+  s += `IVA ${iva}%: ${eur(t.iva)} €\nTotal: *${eur(t.total)} €*\n\n`;
+  s += `¿Lo creo en StelOrder (estado Pendiente)? Responde *"sí"* o *"no"*.`;
+  return s;
+}
+
+async function handlerCompetencia(texto, from, imagenes) {
+  if (!imagenes || !imagenes.length) return 'Mándame la foto (o fotos) del presupuesto de la competencia y dime el ajuste (p. ej. *"bájalo un 8%"*).';
+  const datos = await estructurarPresupuestoImagenes(imagenes);
+  if (!datos || !Array.isArray(datos.partidas) || !datos.partidas.length) {
+    return '😕 No he podido leer las partidas del presupuesto. ¿Puedes mandar las fotos más nítidas y en orden?';
+  }
+  const iva = datos.iva != null ? Number(datos.iva) : 21;
+  const ajuste = parseAjustePrecio(texto);
+  const direccion = (datos.clienteDatos && datos.clienteDatos.direccion) || '';
+  const res = await resolverClienteImport(datos.cliente || '', direccion);
+  const pendBase = { tipo: 'competencia', datos, iva, ajuste, nFotos: imagenes.length, ts: Date.now() };
+  if (res.accId) {
+    pendiente.set(from, { ...pendBase, accion: 'compConfirmar', accId: res.accId, target: res.target });
+    return resumenCompetencia(datos, res.target, iva, ajuste, imagenes.length);
+  }
+  const cands = res.candidatos || [];
+  pendiente.set(from, { ...pendBase, accion: 'compCliente', candidatos: cands });
+  let msg = `📄 *Presupuesto leído* (${imagenes.length} foto${imagenes.length > 1 ? 's' : ''}): ${datos.titulo || 'Sin título'}\n`;
+  if (direccion) msg += `Dirección: ${direccion}\n`;
+  msg += `\nNo tengo claro a qué cliente va.`;
+  if (cands.length) msg += ` ¿Es alguno? Responde con el *número*:\n` + cands.map((c, i) => `*${i + 1}.* ${c.nombre}`).join('\n') + `\n\nO escríbeme el nombre exacto.`;
+  else msg += ` Dime el nombre exacto del cliente (como aparece en *Clientes*).`;
+  return msg;
+}
+
+async function ejecutarCrearCompetencia(from, pend) {
+  pendiente.delete(from);
+  try {
+    const { datos, iva, ajuste } = pend;
+    const t = totalesCompetencia(datos.partidas, iva, ajuste);
+    const partidas = datos.partidas.map(p => ({
+      nombre: p.nombre || 'Partida',
+      descripcion: p.descripcion || '',
+      cantidad: Number(p.cantidad) || 1,
+      precio: (Number(p.precio) || 0) * t.factor
+    }));
+    const r = await stel.crearPresupuestoStel({ accId: pend.accId, titulo: datos.titulo || 'Presupuesto', partidas, iva, requestedBy: 'whatsapp-competencia' });
+    return `✅ Presupuesto creado en StelOrder: *${r.ref || r.id}*`;
+  } catch (e) {
+    console.error('[Asistente] crearCompetencia:', e.message);
+    return '⚠️ No he podido crear el presupuesto. Inténtalo de nuevo o usa el panel /competencia.';
   }
 }
 
