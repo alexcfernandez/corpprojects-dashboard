@@ -1385,6 +1385,35 @@ function _incInfo(i) {
   };
 }
 
+// Alta de un cliente nuevo en StelOrder. La dirección va anidada en el mismo POST
+// (confirmado). Tras crear, invalida la caché para que aparezca enseguida.
+async function crearClienteStel({ nombre, nif = null, direccion = null, cp = null, ciudad = null, provincia = null, pais = 'ES', telefono = null, email = null, categoriaId = null, comentarios = null }) {
+  if (!nombre || !String(nombre).trim()) throw new Error('Falta el nombre del cliente');
+  const n = String(nombre).trim().slice(0, 200);
+  const body = { 'legal-name': n, 'name': n };
+  if (nif) body['tax-identification-number'] = String(nif).trim();
+  if (email) body['email'] = String(email).trim();
+  if (telefono) body['phone'] = String(telefono).trim();
+  if (categoriaId) body['account-category-id'] = Number(categoriaId);
+  if (comentarios) body['comments'] = String(comentarios).slice(0, 1000);
+  if (direccion || cp || ciudad || provincia) {
+    body['main-address'] = {
+      'address-data': direccion ? String(direccion).trim() : null,
+      'postal-code': cp ? String(cp).trim() : null,
+      'city-town': ciudad ? String(ciudad).trim() : null,
+      'province': provincia ? String(provincia).trim() : null,
+      'country-code': pais || 'ES',
+      'address-type': 'DEFAULT',
+      'name': 'Dirección por defecto'
+    };
+  }
+  const r = await client.post('/clients', body, { headers: { 'Content-Type': 'application/json; charset=utf-8' }, timeout: 25000 });
+  const d = Array.isArray(r.data) ? r.data[0] : r.data;
+  const id = d && (d.id || d['account-id']);
+  invalidate('clients');
+  return { ok: true, id: id ? String(id) : null, ref: (d && d['full-reference']) || null, nombre: (d && (d['legal-name'] || d.name)) || n };
+}
+
 // SONDA: sin crear -> lista familias (lectura). Con crear=1 -> crea un cliente
 // de prueba en la familia indicada y devuelve lo que quedó guardado (borrable).
 async function diagCrearCliente({ categoria, crear } = {}) {
@@ -1458,5 +1487,5 @@ module.exports = {
   getMonthlyBilling,
   getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap,
   getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA, diagLineaImpuesto, diagImpuestos,
-  crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, crearPresupuestoStel, crearPresupuestoMultiSeccionPrueba, diagClienteCampos, diagCrearCliente, ultimaIncidencia, incidenciaPorRef
+  crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, crearPresupuestoStel, crearPresupuestoMultiSeccionPrueba, diagClienteCampos, diagCrearCliente, crearClienteStel, getAccountCategories, ultimaIncidencia, incidenciaPorRef
 };
