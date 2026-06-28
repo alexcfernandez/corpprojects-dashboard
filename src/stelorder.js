@@ -1385,6 +1385,17 @@ function _incInfo(i) {
   };
 }
 
+// SONDA de solo lectura: vuelca los campos reales de un cliente para diseñar el alta.
+async function diagClienteCampos() {
+  const r = await client.get('/clients?limit=3');
+  const arr = Array.isArray(r.data) ? r.data : (r.data && r.data.data) || [];
+  return {
+    total: arr.length,
+    claves: arr[0] ? Object.keys(arr[0]) : [],
+    muestra: arr.slice(0, 2)
+  };
+}
+
 // SONDA temporal (borrable): crea un presupuesto de prueba con DOS variantes de
 // línea SECTION para ver cómo pinta StelOrder los capítulos/subcapítulos.
 async function crearPresupuestoMultiSeccionPrueba(accId) {
@@ -1416,5 +1427,5 @@ module.exports = {
   getMonthlyBilling,
   getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap,
   getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA, diagLineaImpuesto, diagImpuestos,
-  crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, crearPresupuestoStel, crearPresupuestoMultiSeccionPrueba, ultimaIncidencia, incidenciaPorRef
+  crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, crearPresupuestoStel, crearPresupuestoMultiSeccionPrueba, diagClienteCampos, ultimaIncidencia, incidenciaPorRef
 };
