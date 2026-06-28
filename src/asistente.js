@@ -1345,18 +1345,24 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
       if (/^(no|cancela|para|anula|dejalo|mejor no|ahora no)\b/.test(nn)) { pendiente.delete(from); return '👍 Vale, no lo creo. Presupuesto descartado.'; }
       return 'Responde *"sí"* para crear el presupuesto en StelOrder o *"no"* para descartarlo.';
     }
+    if (pend.accion === 'compDir') {
+      const baja = /\b(baj\w*|rebaj\w*|menos|descuent\w*|reduc\w*)\b/.test(nn);
+      const sube = /\b(sub\w*|mas|m[aá]s|increment\w*|aument\w*)\b/.test(nn);
+      if (baja || sube) {
+        const ajuste = { modo: 'pct', dir: baja ? -1 : 1, pct: pend.ajuste.pct, base: pend.ajuste.base };
+        pendiente.set(from, { ...pend, accion: 'compConfirmar', ajuste, ts: Date.now() });
+        return resumenCompetencia(pend.datos, pend.target, pend.iva, ajuste, pend.nFotos);
+      }
+      return 'Responde *"subir"* o *"bajar"* para ese porcentaje.';
+    }
     if (pend.accion === 'compCliente') {
       const mNum = nn.match(/^\s*(\d{1,2})\b/);
       if (mNum && Array.isArray(pend.candidatos) && pend.candidatos[+mNum[1] - 1]) {
         const c = pend.candidatos[+mNum[1] - 1];
-        pendiente.set(from, { ...pend, accion: 'compConfirmar', accId: c.id, target: c.nombre, ts: Date.now() });
-        return resumenCompetencia(pend.datos, c.nombre, pend.iva, pend.ajuste, pend.nFotos);
+        return avanzarCompetencia(from, pend, c.id, c.nombre);
       }
       const res = await resolverClienteImport(texto, '');
-      if (res.accId) {
-        pendiente.set(from, { ...pend, accion: 'compConfirmar', accId: res.accId, target: res.target, ts: Date.now() });
-        return resumenCompetencia(pend.datos, res.target, pend.iva, pend.ajuste, pend.nFotos);
-      }
+      if (res.accId) return avanzarCompetencia(from, pend, res.accId, res.target);
       if (res.candidatos && res.candidatos.length) {
         pendiente.set(from, { ...pend, candidatos: res.candidatos, ts: Date.now() });
         return '¿Cuál de estos? Responde con el *número*:\n' + res.candidatos.map((c, i) => `*${i + 1}.* ${c.nombre}`).join('\n') + '\n\nO escríbeme el nombre exacto.';
@@ -1864,16 +1870,19 @@ async function ejecutarCrearImport(from, pend) {
 function parseAjustePrecio(texto) {
   const s = norm(texto);
   const total = /\b(total|con iva|iva incluido|impuestos incluidos)\b/.test(s);
-  const baja = /\b(baja|bajalo|rebaja|rebajalo|descuenta|descuentale|menos|reduce|reducelo|abarata)\b/.test(s);
-  const sube = /\b(sube|subelo|incrementa|aumenta|recargo|encarece|encarecelo)\b/.test(s);
+  const baja = /\b(baja\w*|bajar\w*|rebaj\w*|descuent\w*|descont\w*|menos|reduc\w*|abarat\w*)\b/.test(s);
+  const sube = /\b(sub[ei]\w*|subir\w*|increment\w*|aument\w*|recarg\w*|encarec\w*|m[aá]s)\b/.test(s);
   const mp = s.match(/(\d+(?:[.,]\d+)?)\s*(?:%|por ?ciento)/);
-  if (mp && (baja || sube)) return { modo: 'pct', dir: baja ? -1 : 1, pct: parseFloat(mp[1].replace(',', '.')), base: total ? 'total' : 'base' };
+  if (mp && (baja || sube) && !(baja && sube)) {
+    return { modo: 'pct', dir: baja ? -1 : 1, pct: parseFloat(mp[1].replace(',', '.')), base: total ? 'total' : 'base' };
+  }
   const mf = s.match(/\b(?:ponlo a|dejalo en|ponlo en|a|en|por)\s*([\d][\d.\s]*(?:,\d+)?)\s*(?:euros?|eur|€)?/);
-  if (mf) {
+  if (mf && !mp) {
     const num = parseFloat(mf[1].replace(/[.\s]/g, '').replace(',', '.'));
     if (num > 0) return { modo: 'fix', fijo: num, base: total ? 'total' : 'base' };
   }
-  if (mp) return { modo: 'pct', dir: -1, pct: parseFloat(mp[1].replace(',', '.')), base: total ? 'total' : 'base' };
+  // hay % pero la dirección no está clara (o se contradice) -> no adivinar
+  if (mp) return { modo: 'pct_ambiguo', pct: parseFloat(mp[1].replace(',', '.')), base: total ? 'total' : 'base' };
   return { modo: 'none' };
 }
 
@@ -1913,6 +1922,15 @@ function resumenCompetencia(datos, target, iva, ajuste, nFotos) {
   return s;
 }
 
+function avanzarCompetencia(from, pend, accId, target) {
+  if (pend.ajuste && pend.ajuste.modo === 'pct_ambiguo') {
+    pendiente.set(from, { ...pend, accion: 'compDir', accId, target, ts: Date.now() });
+    return `📄 *${pend.datos.titulo || 'Presupuesto'}* para *${target}*.\n¿El *${pend.ajuste.pct}%* es para *subir* o *bajar* el precio? Responde *"subir"* o *"bajar"*.`;
+  }
+  pendiente.set(from, { ...pend, accion: 'compConfirmar', accId, target, ts: Date.now() });
+  return resumenCompetencia(pend.datos, target, pend.iva, pend.ajuste, pend.nFotos);
+}
+
 async function handlerCompetencia(texto, from, imagenes) {
   if (!imagenes || !imagenes.length) return 'Mándame la foto (o fotos) del presupuesto de la competencia y dime el ajuste (p. ej. *"bájalo un 8%"*).';
   const datos = await estructurarPresupuestoImagenes(imagenes);
@@ -1924,10 +1942,7 @@ async function handlerCompetencia(texto, from, imagenes) {
   const direccion = (datos.clienteDatos && datos.clienteDatos.direccion) || '';
   const res = await resolverClienteImport(datos.cliente || '', direccion);
   const pendBase = { tipo: 'competencia', datos, iva, ajuste, nFotos: imagenes.length, ts: Date.now() };
-  if (res.accId) {
-    pendiente.set(from, { ...pendBase, accion: 'compConfirmar', accId: res.accId, target: res.target });
-    return resumenCompetencia(datos, res.target, iva, ajuste, imagenes.length);
-  }
+  if (res.accId) return avanzarCompetencia(from, pendBase, res.accId, res.target);
   const cands = res.candidatos || [];
   pendiente.set(from, { ...pendBase, accion: 'compCliente', candidatos: cands });
   let msg = `📄 *Presupuesto leído* (${imagenes.length} foto${imagenes.length > 1 ? 's' : ''}): ${datos.titulo || 'Sin título'}\n`;
