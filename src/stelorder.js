@@ -1385,6 +1385,37 @@ function _incInfo(i) {
   };
 }
 
+// SONDA: sin crear -> lista familias (lectura). Con crear=1 -> crea un cliente
+// de prueba en la familia indicada y devuelve lo que quedó guardado (borrable).
+async function diagCrearCliente({ categoria, crear } = {}) {
+  const { list } = await getAccountCategories();
+  const familias = list.map(c => ({ id: c.id, name: c.name }));
+  if (!crear) return { familias, nota: 'Pasa ?crear=1&categoria=ID para crear un cliente de prueba en esa familia.' };
+  const catId = categoria || (familias[0] && familias[0].id);
+  const body = {
+    'legal-name': 'PRUEBA API - BORRAR',
+    'name': 'PRUEBA API - BORRAR',
+    'tax-identification-number': 'X0000000T',
+    'account-category-id': Number(catId),
+    'comments': 'Cliente de prueba creado por API. Borrar.',
+    'main-address': {
+      'address-data': 'Carrer de Prova 1',
+      'postal-code': '17001',
+      'city-town': 'Girona',
+      'province': 'Girona',
+      'country-code': 'ES',
+      'address-type': 'DEFAULT',
+      'name': 'Dirección por defecto'
+    }
+  };
+  const r = await client.post('/clients', body, { headers: { 'Content-Type': 'application/json; charset=utf-8' }, timeout: 25000 });
+  const d = Array.isArray(r.data) ? r.data[0] : r.data;
+  const id = d && (d.id || d['account-id']);
+  let verificacion = null;
+  if (id) { try { const g = await client.get('/clients/' + id); verificacion = Array.isArray(g.data) ? g.data[0] : g.data; } catch (e) { verificacion = { error: e.message }; } }
+  return { familias_count: familias.length, categoria_usada: catId, enviado: body, creado: d, verificacion };
+}
+
 // SONDA de solo lectura: vuelca los campos reales de un cliente para diseñar el alta.
 async function diagClienteCampos() {
   const r = await client.get('/clients?limit=3');
@@ -1427,5 +1458,5 @@ module.exports = {
   getMonthlyBilling,
   getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap,
   getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA, diagLineaImpuesto, diagImpuestos,
-  crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, crearPresupuestoStel, crearPresupuestoMultiSeccionPrueba, diagClienteCampos, ultimaIncidencia, incidenciaPorRef
+  crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, crearPresupuestoStel, crearPresupuestoMultiSeccionPrueba, diagClienteCampos, diagCrearCliente, ultimaIncidencia, incidenciaPorRef
 };
