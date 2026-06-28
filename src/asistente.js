@@ -2054,7 +2054,12 @@ async function handlerPresencia(texto, from) {
       const w = resolverTrabajador(nom, workers);
       if (!w) { noReconocidos.add(nom); continue; }
       const e = { workerId: w.id, workerName: w.name, date, estado, color: w.color || '#22c487', notas: 'Dictado por WhatsApp', origen: 'whatsapp-admin' };
-      if (estado === 'obra' && obras.length) { e.obras = obras.map(o => ({ clientName: o, horas: 0 })); e.clientName = obras[0]; }
+      if (estado === 'obra' || estado === 'oficina') e.horas = 8;
+      if (estado === 'obra' && obras.length) {
+        const h = Math.round((8 / obras.length) * 100) / 100;
+        e.obras = obras.map(o => ({ clientName: o, horas: h }));
+        e.clientName = obras[0];
+      }
       entries.push(e);
     }
   }
@@ -2070,7 +2075,7 @@ function resumenPresencia(entries, date, noReconocidos) {
   let s = `🗓️ *Presencia ${date}*\n\n`;
   for (const e of entries) {
     const em = ESTADO_EMOJI[e.estado] || '🏗️';
-    if (e.estado === 'obra') s += `${em} *${e.workerName}* → ${(e.obras || []).map(o => o.clientName).join(', ') || '—'}\n`;
+    if (e.estado === 'obra') s += `${em} *${e.workerName}* → ${(e.obras || []).map(o => `${o.clientName} (${o.horas}h)`).join(', ') || '—'}\n`;
     else s += `${em} *${e.workerName}* → ${e.estado}\n`;
   }
   if (noReconocidos && noReconocidos.length) s += `\n⚠️ No reconozco a: ${noReconocidos.join(', ')} (revisa el nombre).`;
