@@ -1288,6 +1288,20 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
       }
       return '⚠️ No encuentro ese cliente en StelOrder. Dime el nombre exacto tal como aparece en *Clientes*, o créalo primero allí.';
     }
+    if (pend.accion === 'importConfirmar') {
+      if (/^(s[ií]|si|vale|ok|dale|confirmo|adelante|correcto|crea(lo)?|hazlo)\b/.test(nn)) return ejecutarCrearImport(from, pend);
+      if (/^(no|cancela|para|anula|dejalo|mejor no|ahora no)\b/.test(nn)) { pendiente.delete(from); return '👍 Vale, no lo creo. Documento descartado.'; }
+      return 'Responde *"sí"* para crear el presupuesto en StelOrder o *"no"* para descartarlo.';
+    }
+    if (pend.accion === 'importCliente') {
+      const { target } = await resolver(texto, texto);
+      const accId = target ? await stel.accountIdByName(target) : null;
+      if (accId) {
+        pendiente.set(from, { ...pend, accion: 'importConfirmar', accId, target, ts: Date.now() });
+        return resumenImport(pend.estructura, target, pend.iva);
+      }
+      return '⚠️ Sigo sin encontrar ese cliente en StelOrder. Dime el nombre exacto tal como aparece en *Clientes*.';
+    }
     if (pend.accion === 'incConfirmar') {
       if (/^(s[ií]|si|vale|ok|dale|confirmo|adelante|correcto|crea(la)?)\b/.test(nn)) return ejecutarCrearIncidencia(from, pend);
       if (/^(no|cancela|para|anula|dejalo|mejor no)\b/.test(nn)) { pendiente.delete(from); return '👍 Cancelado, no he creado nada.'; }
@@ -1691,4 +1705,53 @@ async function handlerGestionList() {
   return msg;
 }
 
-module.exports = { responderConsulta, vocabularioVoz, estructurarAmidamentPdf, estructurarPresupuestoPdf, reescribirPartidas };
+// ── Importador de documentos por WhatsApp (PDF de amidaments) ───────────────
+function resumenImport(est, target, iva) {
+  let nPart = 0, nSub = 0;
+  for (const c of (est.capitulos || [])) {
+    nPart += (c.partidas || []).length;
+    for (const s of (c.subcapitulos || [])) { nSub++; nPart += (s.partidas || []).length; }
+  }
+  return `📋 *Amidament leído:* ${est.titulo || 'Sin título'}\n` +
+    `Cliente: *${target}*\n` +
+    `${(est.capitulos || []).length} capítulos · ${nSub} subcapítulos · ${nPart} partidas\n\n` +
+    `¿Lo creo en StelOrder (IVA ${iva}%, sin precios, estado Pendiente)? Responde *"sí"* o *"no"*.`;
+}
+
+// Llega un PDF por WhatsApp -> lo lee como amidament y deja el alta a falta de confirmar.
+async function importarDocumento(from, base64, mediaType, instruccion) {
+  const est = await estructurarAmidamentPdf(base64, mediaType || 'application/pdf');
+  if (!est || !Array.isArray(est.capitulos) || !est.capitulos.length) {
+    return '😕 No he podido leer las partidas de ese PDF. ¿Es un estado de mediciones (amidament) con tablas?';
+  }
+  const iva = 21;
+  const target0 = est.cliente || '';
+  const accId = target0 ? await stel.accountIdByName(target0) : null;
+  if (accId) {
+    pendiente.set(from, { accion: 'importConfirmar', tipo: 'amidament', estructura: est, accId, target: target0, iva, ts: Date.now() });
+    return resumenImport(est, target0, iva);
+  }
+  pendiente.set(from, { accion: 'importCliente', tipo: 'amidament', estructura: est, iva, ts: Date.now() });
+  const cli = target0 ? `el cliente *"${target0}"*` : 'el cliente';
+  return `📋 *Amidament leído:* ${est.titulo || 'Sin título'}\nNo encuentro ${cli} en StelOrder. Dime el nombre exacto del cliente (tal como aparece en *Clientes*).`;
+}
+
+async function ejecutarCrearImport(from, pend) {
+  pendiente.delete(from);
+  try {
+    const est = pend.estructura || {};
+    const r = await stel.crearPresupuestoStel({
+      accId: pend.accId,
+      titulo: est.titulo || 'Presupuesto importado',
+      estructura: est.capitulos,
+      iva: pend.iva != null ? pend.iva : 21,
+      requestedBy: 'whatsapp-amidament'
+    });
+    return `✅ Presupuesto creado en StelOrder: *${r.ref || r.id}*\n\n_Recuerda poner los precios en StelOrder._`;
+  } catch (e) {
+    console.error('[Asistente] crearImport:', e.message);
+    return '⚠️ No he podido crear el presupuesto en StelOrder. Inténtalo de nuevo o créalo desde el panel /amidaments.';
+  }
+}
+
+module.exports = { responderConsulta, vocabularioVoz, estructurarAmidamentPdf, estructurarPresupuestoPdf, reescribirPartidas, importarDocumento };
