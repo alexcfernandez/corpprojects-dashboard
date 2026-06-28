@@ -252,6 +252,7 @@ Responde SOLO un JSON VÁLIDO, sin markdown, con esta forma exacta:
 {
  "titulo": "título de la obra",
  "cliente": "nombre del cliente si aparece, o null",
+ "clienteDatos": { "nif": null, "direccion": null, "cp": null, "ciudad": null, "provincia": null, "telefono": null, "email": null },
  "capitulos": [
    { "codigo": "00", "nombre": "TREBALLS PREVIS",
      "subcapitulos": [
@@ -282,6 +283,7 @@ Responde SOLO un JSON VÁLIDO, sin markdown:
 {
  "titulo": "título corto del trabajo (ej. Terrassa nova)",
  "cliente": "nombre del cliente/destinatario tal cual aparece, o null",
+ "clienteDatos": { "nif": null, "direccion": null, "cp": null, "ciudad": null, "provincia": null, "telefono": null, "email": null },
  "iva": 21,
  "partidas": [
    { "nombre": "nombre corto de la partida", "descripcion": "texto/descripción de los trabajos tal cual, cada punto en su línea", "cantidad": 1, "precio": 13235.00 }
@@ -289,6 +291,7 @@ Responde SOLO un JSON VÁLIDO, sin markdown:
 }
 
 Reglas:
+- "clienteDatos" = datos del DESTINATARIO (a quién va dirigido el presupuesto), NUNCA los de la empresa que lo emite. Rellena solo lo que aparezca; el resto déjalo null.
 - "precio" = precio UNITARIO SIN IVA (base), NÚMERO con PUNTO decimal y SIN separador de miles (13235.00, nunca "13.235,00").
 - "iva" = porcentaje de IVA que aparece (21, 10, 4 o 0). Si no aparece, pon 21.
 - Si el presupuesto es una sola partida global, devuelve UNA partida con su importe como "precio" y "cantidad" 1.
