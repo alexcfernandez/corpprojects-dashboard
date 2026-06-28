@@ -2033,8 +2033,26 @@ Reglas:
 - "con X" = X va a las MISMAS obras del grupo en el que se menciona.
 - "estado": "obra" si va a una obra/cliente; "vacaciones", "baja", "libre" u "oficina" si lo dice. Por defecto "obra".
 - "obras": nombre corto de cada obra/cliente/calle, tal como lo diga. Si dice "aquí"/"allá" u otra ubicación poco clara, ponla igual como texto.
+- Si el jefe ACLARA que una obra es la MISMA que otra ("la obra de Calonge, que es la de Pedrosa", "X o sea Y", "X que es Y"), es UNA SOLA obra: devuelve solo UNA (usa el nombre más formal del cliente/obra). NUNCA la dupliques.
 - Usa los nombres de trabajador tal como los diga (yo los caso luego). No inventes trabajadores que no menciona.`;
   return iaJson(prompt, 1500, null, process.env.PRESU_IA_MODEL || 'claude-sonnet-4-6');
+}
+
+// Casa el texto de una obra con un cliente de StelOrder (nombre exacto) SOLO si
+// el parecido es claro; si no, lo deja como texto libre (sitio suelto).
+async function resolverObra(texto) {
+  const t = String(texto || '').trim();
+  if (!t) return { nombre: t };
+  let clients = [];
+  try { clients = (await stel.getClients()).clients || []; } catch (e) {}
+  const lista = clients.map(c => ({ id: String(c.id || c['account-id'] || ''), nombre: c['legal-name'] || c.name || '' })).filter(c => c.nombre && c.id);
+  const ex = lista.find(c => norm(c.nombre) === norm(t));
+  if (ex) return { id: ex.id, nombre: ex.nombre };
+  const calle = extraerCalle(t);
+  const rank = lista.map(c => ({ ...c, s: Math.max(similitud(t, c.nombre), calle ? similitud(calle, c.nombre) : 0) })).sort((a, b) => b.s - a.s);
+  const top = rank[0], seg = rank[1];
+  if (top && top.s >= 0.62 && (!seg || (top.s - seg.s) >= 0.12)) return { id: top.id, nombre: top.nombre };
+  return { nombre: t };
 }
 
 async function handlerPresencia(texto, from) {
@@ -2049,16 +2067,25 @@ async function handlerPresencia(texto, from) {
   const entries = []; const noReconocidos = new Set();
   for (const a of parsed.asignaciones) {
     const estado = validos.includes(a.estado) ? a.estado : 'obra';
-    const obras = Array.isArray(a.obras) ? a.obras.filter(Boolean).map(String) : [];
+    const obrasRaw = Array.isArray(a.obras) ? a.obras.filter(Boolean).map(String) : [];
+    // resolver cada obra contra StelOrder y fusionar las que sean el mismo cliente
+    let resueltas = [];
+    if (estado === 'obra' && obrasRaw.length) {
+      for (const o of obrasRaw) {
+        const r = await resolverObra(o);
+        const key = r.id ? 'id:' + r.id : 'nom:' + norm(r.nombre);
+        if (!resueltas.some(x => x.key === key)) resueltas.push({ key, nombre: r.nombre, id: r.id });
+      }
+    }
     for (const nom of (a.trabajadores || [])) {
       const w = resolverTrabajador(nom, workers);
       if (!w) { noReconocidos.add(nom); continue; }
       const e = { workerId: w.id, workerName: w.name, date, estado, color: w.color || '#22c487', notas: 'Dictado por WhatsApp', origen: 'whatsapp-admin' };
       if (estado === 'obra' || estado === 'oficina') e.horas = 8;
-      if (estado === 'obra' && obras.length) {
-        const h = Math.round((8 / obras.length) * 100) / 100;
-        e.obras = obras.map(o => ({ clientName: o, horas: h }));
-        e.clientName = obras[0];
+      if (estado === 'obra' && resueltas.length) {
+        const h = Math.round((8 / resueltas.length) * 100) / 100;
+        e.obras = resueltas.map(x => ({ clientName: x.nombre, horas: h, ...(x.id ? { accountId: x.id } : {}) }));
+        e.clientName = resueltas[0].nombre;
       }
       entries.push(e);
     }
