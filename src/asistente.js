@@ -92,6 +92,10 @@ async function guardarAliasTrabajador(aliasNorm, workerId, workerName) {
     console.log(`[Asistente] apodo aprendido: "${aliasNorm}" -> ${workerName}`);
   } catch (e) { console.error('[Asistente] aliasTrab write:', e.message); }
 }
+async function olvidarApodoTrabajador(aliasNorm) {
+  try { const db = await getDB(); const r = await db.collection('aliasTrabajadores').deleteOne({ alias: aliasNorm }); return r.deletedCount > 0; }
+  catch (e) { console.error('[Asistente] aliasTrab del:', e.message); return false; }
+}
 // Palabras genéricas en nombres de proveedor que no distinguen
 const STOPPROV = new Set(['sl', 'slu', 'sa', 'sau', 'sccl', 'sociedad', 'limitada', 'unipersonal',
   'espana', 'iberica', 'iberia', 'comercial', 'comercializadora', 'distribuciones', 'distribucion',
@@ -1507,6 +1511,22 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
     return handlerQuienTrabaja(texto, from);
   }
 
+  // C0.apodos) Ver / borrar apodos guardados
+  if (!imagenes.length) {
+    if (/^\s*(apodos|ver apodos|lista de apodos|mis apodos|que apodos|qu[eé] apodos)\b/.test(_ni)) {
+      const map = await cargarAliasTrabajadores();
+      const keys = Object.keys(map);
+      if (!keys.length) return 'No tengo apodos guardados todavía. Enséñame uno: *"el largo es Javi el largo"*.';
+      return '🔖 *Apodos guardados:*\n' + keys.map(k => `• *${k}* → ${map[k].workerName}`).join('\n') + '\n\nPara borrar uno: *"olvida el apodo X"*.';
+    }
+    const mo = _ni.match(/\b(olvida|borra|elimina|quita)\b[\s\S]*\bapodo\b\s+(.+)$/);
+    if (mo) {
+      const ali = norm(mo[2]);
+      const ok = await olvidarApodoTrabajador(ali);
+      return ok ? `🗑️ Olvidado el apodo *"${mo[2].trim()}"*.` : `No tenía guardado el apodo *"${mo[2].trim()}"*.`;
+    }
+  }
+
   // C0.apodo) Enseñar un apodo de trabajador: "el largo es Javi el largo"
   if (!imagenes.length && /\bes\b/.test(_ni) && !/\?/.test(texto)) {
     const ens = await handlerEnsenarApodo(texto, from);
@@ -2165,10 +2185,13 @@ async function handlerEnsenarApodo(texto, from) {
   const apodo = m[1].trim();
   const destino = m[2].trim();
   const workers = await attendance.getWorkers();
-  // si el "apodo" ya es un trabajador real, no lo tratamos como apodo
-  if (resolverTrabajador(apodo, workers, {})) return null;
   const w = resolverTrabajador(destino, workers, {});
   if (!w) return null; // el destino no es un trabajador -> no es enseñanza de apodo
+  const yaTrab = resolverTrabajador(apodo, workers, {});
+  if (yaTrab) {
+    if (yaTrab.id === w.id) return `👍 Ya reconozco *"${apodo}"* como *${w.name}*. Dilo tal cual y lo pillo.`;
+    return `⚠️ *"${apodo}"* ya es otro trabajador (*${yaTrab.name}*). No creo el apodo para no liarlo. Usa una palabra que no sea un nombre de la plantilla.`;
+  }
   await guardarAliasTrabajador(norm(apodo), w.id, w.name);
   return `✅ Apuntado: cuando diga *"${apodo}"* me refiero a *${w.name}*.`;
 }
