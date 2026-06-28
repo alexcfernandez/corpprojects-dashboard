@@ -7,6 +7,7 @@
 
 const stel = require('./stelorder');
 const com  = require('./comunidades');
+const attendance = require('./attendance');
 
 const ultima    = new Map(); // from -> estado de paginación ("ver más")
 const pendiente = new Map(); // from -> { accion:'aprender', aliasRaw, intent, ts }
@@ -1340,6 +1341,11 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
       }
       return '⚠️ Sigo sin encontrar ese cliente. Dime el nombre exacto tal como aparece en *Clientes*.';
     }
+    if (pend.accion === 'presConfirmar') {
+      if (/^(s[ií]|si|vale|ok|dale|confirmo|adelante|correcto|guarda(la|lo)?|hazlo)\b/.test(nn)) return ejecutarGuardarPresencia(from, pend);
+      if (/^(no|cancela|para|anula|dejalo|mejor no|ahora no)\b/.test(nn)) { pendiente.delete(from); return '👍 Vale, no guardo la presencia.'; }
+      return 'Responde *"sí"* para guardar la presencia o *"no"* para descartarla.';
+    }
     if (pend.accion === 'compConfirmar') {
       if (/^(s[ií]|si|vale|ok|dale|confirmo|adelante|correcto|crea(lo)?|hazlo)\b/.test(nn)) return ejecutarCrearCompetencia(from, pend);
       if (/^(no|cancela|para|anula|dejalo|mejor no|ahora no)\b/.test(nn)) { pendiente.delete(from); return '👍 Vale, no lo creo. Presupuesto descartado.'; }
@@ -1457,6 +1463,21 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
     /\bpresupuest[oa]r\b[\s\S]*\b(para|de|en)\b/.test(_ni);
   if (intencionCrear) {
     return handlerNuevaIncidencia(texto, from);
+  }
+
+  // C0.pres) Dictado de PRESENCIA: "Diego y Javi a Montseny; José a obras Pedrosa"
+  // Sin imágenes, menciona un trabajador y una pista de ubicación/estado, y no es
+  // una consulta financiera ni una pregunta. Confirma antes de guardar.
+  if (!imagenes.length) {
+    const esFinanza = /\b(debe|deuda|factura|facturas|presupuest|incidencia|aviso|cobr|pag(a|o|os|ar|ado)|gasto|albaran|pedido|moroso|gestion)\b/.test(_ni);
+    const esPregunta = /\?/.test(texto) || /^(que|qu[eé]|cuant|cu[aá]nt|cual|cu[aá]l|quien|qui[eé]n|cuando|cu[aá]ndo|donde|d[oó]nde)\b/.test(_ni);
+    if (!esFinanza && !esPregunta) {
+      const workers = await attendance.getWorkers().catch(() => []);
+      const primeros = (workers || []).map(w => norm(w.name).split(/\s+/)[0]).filter(n => n.length > 2);
+      const mencionaTrab = primeros.some(n => new RegExp('\\b' + n + '\\b').test(_ni));
+      const cueAsign = /\b(a|en|al|presencia|hoy|manana|ma[nñ]ana|ayer|vacaciones|baja|libre|oficina|obra|obras|va|van|ha ido|han ido|fue|fueron|esta|estan|est[aá]n)\b/.test(_ni);
+      if (mencionaTrab && cueAsign) return handlerPresencia(texto, from);
+    }
   }
 
   // C0) Conceptos / desglose de líneas de un documento (presupuesto, factura o pedido)
@@ -1970,6 +1991,102 @@ async function ejecutarCrearCompetencia(from, pend) {
     console.error('[Asistente] crearCompetencia:', e.message);
     return '⚠️ No he podido crear el presupuesto. Inténtalo de nuevo o usa el panel /competencia.';
   }
+}
+
+// ── Presencia por WhatsApp (dictado del jefe: quién está dónde hoy) ──────────
+function hoyISO(offsetDias = 0) { return new Date(Date.now() + offsetDias * 86400000).toISOString().slice(0, 10); }
+
+// Resuelve un nombre dictado ("Diego", "Javi") a un trabajador de la plantilla.
+function resolverTrabajador(nombre, workers) {
+  const q = norm(nombre);
+  if (!q) return null;
+  let m = workers.find(w => norm(w.name) === q);                      // exacto
+  if (m) return m;
+  m = workers.find(w => norm(w.name).split(/\s+/)[0] === q);          // nombre de pila exacto
+  if (m) return m;
+  const subs = workers.filter(w => norm(w.name).includes(q) || q.includes(norm(w.name).split(/\s+/)[0]));
+  if (subs.length === 1) return subs[0];
+  const rank = workers.map(w => ({ w, s: similitud(q, norm(w.name).split(/\s+/)[0]) })).sort((a, b) => b.s - a.s);
+  if (rank[0] && rank[0].s >= 0.6 && (!rank[1] || rank[0].s - rank[1].s >= 0.15)) return rank[0].w;
+  return null;
+}
+
+// Pide a la IA que estructure el dictado en asignaciones {trabajadores, estado, obras}.
+async function parsearPresencia(texto, workers) {
+  const nombres = workers.map(w => w.name).join(', ');
+  const prompt = `Eres un asistente que registra la PRESENCIA diaria de trabajadores de una empresa de mantenimiento de fincas. El jefe dice en lenguaje natural a qué obra va cada trabajador.
+
+Trabajadores conocidos: ${nombres}.
+
+Frase del jefe: """${texto}"""
+
+Responde SOLO un JSON VÁLIDO, sin markdown:
+{
+ "fecha": "hoy",
+ "asignaciones": [
+   { "trabajadores": ["Diego","Javi"], "estado": "obra", "obras": ["Montseny 3","Montseny 2"] }
+ ]
+}
+
+Reglas:
+- "fecha": "hoy", "manana" o "ayer" según lo que diga (por defecto "hoy").
+- "con X" = X va a las MISMAS obras del grupo en el que se menciona.
+- "estado": "obra" si va a una obra/cliente; "vacaciones", "baja", "libre" u "oficina" si lo dice. Por defecto "obra".
+- "obras": nombre corto de cada obra/cliente/calle, tal como lo diga. Si dice "aquí"/"allá" u otra ubicación poco clara, ponla igual como texto.
+- Usa los nombres de trabajador tal como los diga (yo los caso luego). No inventes trabajadores que no menciona.`;
+  return iaJson(prompt, 1500, null, process.env.PRESU_IA_MODEL || 'claude-sonnet-4-6');
+}
+
+async function handlerPresencia(texto, from) {
+  const workers = await attendance.getWorkers();
+  const parsed = await parsearPresencia(texto, workers);
+  if (!parsed || !Array.isArray(parsed.asignaciones) || !parsed.asignaciones.length) {
+    return '🤔 No te he pillado la presencia. Dímelo tipo: *"Diego y Javi a Montseny 3; José a obras Pedrosa"*.';
+  }
+  const offset = parsed.fecha === 'manana' ? 1 : (parsed.fecha === 'ayer' ? -1 : 0);
+  const date = hoyISO(offset);
+  const validos = ['obra', 'oficina', 'vacaciones', 'baja', 'libre'];
+  const entries = []; const noReconocidos = new Set();
+  for (const a of parsed.asignaciones) {
+    const estado = validos.includes(a.estado) ? a.estado : 'obra';
+    const obras = Array.isArray(a.obras) ? a.obras.filter(Boolean).map(String) : [];
+    for (const nom of (a.trabajadores || [])) {
+      const w = resolverTrabajador(nom, workers);
+      if (!w) { noReconocidos.add(nom); continue; }
+      const e = { workerId: w.id, workerName: w.name, date, estado, color: w.color || '#22c487', notas: 'Dictado por WhatsApp', origen: 'whatsapp-admin' };
+      if (estado === 'obra' && obras.length) { e.obras = obras.map(o => ({ clientName: o, horas: 0 })); e.clientName = obras[0]; }
+      entries.push(e);
+    }
+  }
+  if (!entries.length) {
+    return `🤔 No he reconocido a ningún trabajador${noReconocidos.size ? ` (${[...noReconocidos].join(', ')})` : ''}. Usa sus nombres tal como están en la plantilla.`;
+  }
+  pendiente.set(from, { accion: 'presConfirmar', entries, date, ts: Date.now() });
+  return resumenPresencia(entries, date, [...noReconocidos]);
+}
+
+function resumenPresencia(entries, date, noReconocidos) {
+  const ESTADO_EMOJI = { obra: '🏗️', oficina: '🏢', vacaciones: '🌴', baja: '🏥', libre: '⏸️' };
+  let s = `🗓️ *Presencia ${date}*\n\n`;
+  for (const e of entries) {
+    const em = ESTADO_EMOJI[e.estado] || '🏗️';
+    if (e.estado === 'obra') s += `${em} *${e.workerName}* → ${(e.obras || []).map(o => o.clientName).join(', ') || '—'}\n`;
+    else s += `${em} *${e.workerName}* → ${e.estado}\n`;
+  }
+  if (noReconocidos && noReconocidos.length) s += `\n⚠️ No reconozco a: ${noReconocidos.join(', ')} (revisa el nombre).`;
+  s += `\n\n¿Guardo esta presencia? Responde *"sí"* o *"no"*.`;
+  return s;
+}
+
+async function ejecutarGuardarPresencia(from, pend) {
+  pendiente.delete(from);
+  let ok = 0;
+  for (const e of (pend.entries || [])) {
+    try { await attendance.saveAttendance(e); ok++; }
+    catch (err) { console.error('[Asistente] saveAttendance:', err.message); }
+  }
+  if (!ok) return '⚠️ No he podido guardar la presencia. Inténtalo de nuevo.';
+  return `✅ Presencia guardada (${ok} trabajador${ok > 1 ? 'es' : ''}) para el ${pend.date}.`;
 }
 
 module.exports = { responderConsulta, vocabularioVoz, estructurarAmidamentPdf, estructurarPresupuestoPdf, reescribirPartidas, importarDocumento };
