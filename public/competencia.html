@@ -145,6 +145,7 @@ textarea{min-height:54px;resize:vertical}
   </div>
 </div>
 
+<script src="/cliente-autocomplete.js"></script>
 <script>
 const TOKEN = localStorage.getItem('cp_token');
 const $ = id => document.getElementById(id);
@@ -186,6 +187,7 @@ function initPaso2(){
   partidasOriginal = JSON.parse(JSON.stringify(datos.partidas||[]));
   $('titulo').value = datos.titulo||'';
   $('cliente').value = datos.cliente||'';
+  if (window.initClienteAutocomplete) initClienteAutocomplete($('cliente'), TOKEN);
   $('iva').value = String(datos.iva!=null?datos.iva:21);
   // reset del ajuste de precio
   mode='none'; $('pctVal').value=''; $('fixVal').value='';
