@@ -507,6 +507,10 @@ app.get('/api/diag/stel-cliente-campos', requireAuth, async (req,res) => {
   try { res.json(await require('./stelorder').diagClienteCampos()); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
+app.get('/api/diag/stel-crear-cliente', requireAuth, async (req,res) => {
+  try { res.json(await require('./stelorder').diagCrearCliente({ categoria: req.query.categoria, crear: req.query.crear })); }
+  catch (e) { res.status(500).json({ error: e.message, data: e.response && e.response.data }); }
+});
 app.get('/api/diag/stel-multiseccion', requireAuth, async (req,res) => {
   try {
     const stel = require('./stelorder');
