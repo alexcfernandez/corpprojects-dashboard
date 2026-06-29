@@ -750,13 +750,27 @@ function rEst(){
   const tot=list.length;list=list.slice(0,(ep+1)*PS);
   const el=document.getElementById('estTable');
   if(!list.length){el.innerHTML='<div class="empty"><div class="ei">📋</div><div class="et">Sin resultados</div></div>';return;}
-  el.innerHTML=`<table><thead><tr><th>Nº</th><th>Cliente</th><th>Familia</th><th>Fecha</th><th style="text-align:right">Importe</th><th>Estado</th><th>Días</th></tr></thead>
+  el.innerHTML=`<table><thead><tr><th>Nº</th><th>Cliente</th><th>Familia</th><th>Fecha</th><th style="text-align:right">Importe</th><th>Estado</th><th>Días</th><th>IVA</th></tr></thead>
   <tbody>${list.map(e=>`<tr><td><strong>${e.number}</strong></td><td>${e.client}</td><td>${fP(e.family)}</td><td>${dt(e.date)}</td>
   <td style="text-align:right;font-weight:600">${eur(e.total)}</td><td>${eB(e.stateKey)}</td>
-  <td style="color:${e.daysOld>60?'var(--red)':e.daysOld>30?'var(--amber)':'var(--text2)'}">${e.daysOld}d</td></tr>`).join('')}</tbody>
+  <td style="color:${e.daysOld>60?'var(--red)':e.daysOld>30?'var(--amber)':'var(--text2)'}">${e.daysOld}d</td><td><button class="btn bgh" style="padding:3px 8px;font-size:11px" onclick="cambiarIva('${e.id}','${e.ref||e.number}')">IVA</button></td></tr>`).join('')}</tbody>
   <tfoot><tr style="background:rgba(255,255,255,.02)"><td colspan="4" style="padding:8px 9px;font-weight:600">${tot} presupuestos</td>
-  <td style="text-align:right;padding:8px 9px;font-weight:600;color:var(--green)">${eur(list.reduce((s,e)=>s+e.total,0))}</td><td colspan="2"></td></tr></tfoot></table>
+  <td style="text-align:right;padding:8px 9px;font-weight:600;color:var(--green)">${eur(list.reduce((s,e)=>s+e.total,0))}</td><td colspan="3"></td></tr></tfoot></table>
   ${tot>(ep+1)*PS?`<button class="btn bgh" style="width:100%;margin-top:10px" onclick="ep++;rEst()">Ver más (${tot-(ep+1)*PS} restantes)</button>`:''}`;
+}
+
+// ── CAMBIAR IVA de un presupuesto (usa el núcleo cambiarIvaPresupuesto) ──
+async function cambiarIva(id,ref){
+  const v=prompt('Nuevo IVA % para '+ref+' (21, 10, 4 o 0):','21');
+  if(v===null)return;
+  const iva=parseInt(String(v).replace(/[^\d]/g,''),10);
+  if(![21,10,4,0].includes(iva)){alert('IVA no válido. Usa 21, 10, 4 o 0.');return;}
+  if(!confirm('¿Cambiar el IVA de '+ref+' a '+iva+'%?\nSe modifican todas las líneas de producto del presupuesto en StelOrder.'))return;
+  const d=await af('/api/presupuesto/iva',{method:'POST',body:JSON.stringify({id,iva})});
+  if(!d)return;
+  if(d.error){alert('No se pudo cambiar el IVA: '+d.error);return;}
+  alert('✅ '+(d.ref||ref)+' ahora al '+iva+'% ('+(d.lineasTocadas||0)+' línea/s actualizadas).');
+  loadEst();
 }
 
 // ── CHARTS ────────────────────────────────────────────────────────
