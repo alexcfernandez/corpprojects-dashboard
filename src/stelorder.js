@@ -1564,6 +1564,63 @@ async function diagPresupuestoConLineas({ ref = null, id = null } = {}) {
   return out;
 }
 
+// ── SONDA (4b) cambiar el IVA de un presupuesto existente. SIMULACIÓN salvo go=1 ──
+// Estrategia leer-modificar-reescribir: GET el presupuesto entero, cambia solo el
+// IVA de las líneas ITEM (primary-tax-*), PUT al mismo id, y re-lee para confirmar.
+// USAR SOLO SOBRE UN PRESUPUESTO DE PRUEBA hasta validar el método.
+async function diagCambiarIvaPrueba({ id = null, iva = 21, go = false } = {}) {
+  const out = { id, ivaObjetivo: Number(iva), pasos: [] };
+  const estId = String(id || '').replace(/\D/g, '');
+  if (!estId) { out.error = 'Pasa ?id=NNN (usa un presupuesto de PRUEBA, no uno real)'; return out; }
+  const taxId = IVA_TAX_IDS[Number(iva)];
+  if (taxId == null) { out.error = `IVA ${iva} no está en el mapa (21/10/4/0)`; return out; }
+
+  // 1) Leer el presupuesto entero
+  let obj;
+  try {
+    const r = await client.get(`/workEstimates/${estId}`);
+    obj = Array.isArray(r.data) ? r.data[0] : r.data;
+    out.pasos.push({ paso: 'leer', status: r.status, nLineas: (obj && obj.lines || []).length });
+  } catch (e) { out.pasos.push({ paso: 'leer', error: e.response?.status || e.message }); return out; }
+  if (!obj) { out.error = 'No encontré el presupuesto'; return out; }
+
+  out.ivaAntes = (obj.lines || []).filter(l => l['line-type'] === 'ITEM').map(l => ({ id: l.id, ivaPct: l['primary-tax-percentage'], ivaId: l['primary-tax-id'] }));
+
+  // 2) Modificar SOLO el IVA principal de las líneas ITEM (las SECTION no llevan impuesto)
+  const nuevasLineas = (obj.lines || []).map(l => {
+    if (l['line-type'] !== 'ITEM' || l.deleted) return l;
+    return { ...l, 'primary-tax-percentage': Number(iva), 'primary-tax-id': taxId, 'primary-tax-path': `app.stelorder.com/app/taxLines/${taxId}` };
+  });
+  const body = { ...obj, lines: nuevasLineas };
+
+  if (!go) {
+    out.nota = 'SIMULACIÓN — no he escrito nada. Añade &go=1 para intentar el PUT de verdad (SOLO sobre un presupuesto de prueba).';
+    out.bodyPreview = { id: body.id, lineasITEM: nuevasLineas.filter(l => l['line-type'] === 'ITEM').map(l => ({ id: l.id, ivaPct: l['primary-tax-percentage'], ivaId: l['primary-tax-id'] })) };
+    return out;
+  }
+
+  // 3) PUT (read-modify-write completo)
+  try {
+    const r = await client.put(`/workEstimates/${estId}`, body, { headers: { 'Content-Type': 'application/json; charset=utf-8' }, timeout: 25000 });
+    out.pasos.push({ paso: 'PUT', status: r.status });
+  } catch (e) {
+    out.pasos.push({ paso: 'PUT', error: e.response?.status || e.message, data: e.response?.data ? String(JSON.stringify(e.response.data)).slice(0, 300) : null });
+    out.nota = 'El PUT falló. Si es 404/405 el método de actualización es otro (lo vemos antes de seguir). Si es 400, suele ser un campo del cuerpo que no acepta.';
+    return out;
+  }
+
+  // 4) Re-leer para confirmar que el cambio cuajó
+  try {
+    await new Promise(r => setTimeout(r, 1200));
+    const r2 = await client.get(`/workEstimates/${estId}`);
+    const o2 = Array.isArray(r2.data) ? r2.data[0] : r2.data;
+    out.ivaDespues = (o2.lines || []).filter(l => l['line-type'] === 'ITEM').map(l => ({ id: l.id, ivaPct: l['primary-tax-percentage'], ivaId: l['primary-tax-id'] }));
+    out.exito = out.ivaDespues.length > 0 && out.ivaDespues.every(l => l.ivaPct === Number(iva));
+  } catch (e) { out.pasos.push({ paso: 'releer', error: e.message }); }
+
+  return out;
+}
+
 module.exports = {
   getInvoices, getAllReceipts, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary, diagProveedores,
@@ -1574,5 +1631,5 @@ module.exports = {
   getMonthlyBilling,
   getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap,
   getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA, diagLineaImpuesto, diagImpuestos,
-  crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, crearPresupuestoStel, crearPresupuestoMultiSeccionPrueba, diagClienteCampos, diagCrearCliente, crearClienteStel, getAccountCategories, ultimaIncidencia, incidenciaPorRef, diagPresupuestoConLineas
+  crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, crearPresupuestoStel, crearPresupuestoMultiSeccionPrueba, diagClienteCampos, diagCrearCliente, crearClienteStel, getAccountCategories, ultimaIncidencia, incidenciaPorRef, diagPresupuestoConLineas, diagCambiarIvaPrueba
 };
