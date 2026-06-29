@@ -866,7 +866,8 @@ async function rWorkers(){
     const sal=w.salarioNeto?eur(w.salarioNeto):dash, ss=c.ssEmpresa?eur(c.ssEmpresa):dash, cm=c.costeMes?eur(c.costeMes):dash;
     const ch=c.costeHora?e2(c.costeHora):dash, cd=c.costeDia?eur(c.costeDia):dash;
     const p30=c.costeHora?e2(c.costeHora*1.3):dash, p50=c.costeHora?e2(c.costeHora*1.5):dash;
-    const sub=w.tipo==='externo'?'<br><span style="font-size:10px;color:var(--text3)">por horas</span>':(w.notas?'<br><span style="font-size:10px;color:var(--text3)">'+w.notas+'</span>':'');
+    const tlbl=w.tipo==='externo'?'por horas':(w.tipo==='autonomo'||w.esAutonomo?'autónomo':'');
+    const sub=tlbl?'<br><span style="font-size:10px;color:var(--text3)">'+tlbl+'</span>':'';
     return `<tr><td><strong>${w.nombre}</strong>${sub}</td><td style="text-align:right">${sal}</td><td style="text-align:right;color:var(--amber)">${ss}</td><td style="text-align:right;color:var(--red);font-weight:600">${cm}</td><td style="text-align:right">${ch}</td><td style="text-align:right">${cd}</td><td style="text-align:right;color:var(--amber)">${p30}</td><td style="text-align:right;color:var(--green)">${p50}</td><td style="text-align:right"><button onclick="abrirFichaTrab('${w.slug}')" style="background:none;border:none;cursor:pointer;font-size:14px">✏️</button></td></tr>`;}).join('');
   const tf=document.getElementById('wTf');
   const fijos=activos.filter(w=>w.salarioNeto>0);
@@ -908,39 +909,67 @@ function abrirFichaTrab(slug){
 }
 async function loadLedger(slug){
   const box=document.getElementById('f-ledger'); if(!box)return;
-  let s,m; try{ s=await af(`/api/trabajadores/${slug}/saldo`); m=await af(`/api/trabajadores/${slug}/movimientos`); }
-  catch(e){ box.textContent='No se pudo cargar la cuenta'; return; }
-  const movs=(m&&m.movimientos)||[];
-  const e2=n=>(n||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
-  const pend=s?s.pendiente:0;
-  const lbl={adelanto:'Adelanto',pago:'Pago',devengado:'Trabajo',descuento:'Descuento',devolucion:'Devolución'};
   box.style.color='inherit';
-  box.innerHTML=`
-    <div style="font-weight:700;margin-bottom:8px">💶 Cuenta de efectivo</div>
+  const w=TRAB.find(x=>x.slug===slug); if(!w){box.textContent='';return;}
+  const e2=n=>(n||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+  if(!w.colaboradorId){
+    let cols=[]; try{ const r=await af('/api/colaboradores'); cols=Array.isArray(r)?r:((r&&r.colaboradores)||[]); }catch(e){}
+    const opts=cols.map(c=>`<option value="${c._id}">${c.nombre}${c.tarifaHora?(' · '+c.tarifaHora+'€/h'):''}</option>`).join('');
+    box.innerHTML=`<div style="font-weight:700;margin-bottom:8px">💶 Cuenta de efectivo</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Sin cuenta enlazada. Enlázala a una cuenta de colaborador existente (con su histórico) o crea una nueva.</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <select id="lk-colab" style="padding:6px;min-width:170px">${opts||'<option value="">(no hay cuentas)</option>'}</select>
+        <button onclick="linkColab('${slug}')" style="background:var(--accent,#4d9cf8);color:#fff;border:none;border-radius:8px;padding:6px 12px;cursor:pointer">Enlazar</button>
+        <button onclick="crearCuentaColab('${slug}')" style="background:none;border:1px solid var(--accent,#4d9cf8);color:var(--accent,#4d9cf8);border-radius:8px;padding:6px 12px;cursor:pointer">Crear nueva</button>
+      </div>`;
+    return;
+  }
+  let s,m; try{ s=await af('/api/colaboradores/'+w.colaboradorId); m=await af('/api/colaboradores/'+w.colaboradorId+'/movimientos'); }
+  catch(e){ box.textContent='No se pudo cargar la cuenta'; return; }
+  const movs=Array.isArray(m)?m:((m&&m.movimientos)||[]);
+  const dev=(s&&s.totalDevengado)||0, ent=(s&&s.totalEntregado)||0, pend=(s&&s.saldoPendiente)||0;
+  const lbl={semana_trabajada:'Trabajo',pago_semana:'Pago',pago_dias:'Pago días',adelanto:'Adelanto',descuento:'Descuento',devolucion:'Devolución'};
+  box.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-weight:700">💶 Cuenta de efectivo</div><span style="font-size:11px;color:var(--text3)">enlazada · ${movs.length} mov.</span></div>
     <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px">
-      <div>Devengado<br><strong>${e2(s&&s.devengado)}</strong></div>
-      <div>Entregado<br><strong>${e2(s&&s.entregado)}</strong></div>
+      <div>Devengado<br><strong>${e2(dev)}</strong></div>
+      <div>Pagado<br><strong>${e2(ent)}</strong></div>
       <div>Pendiente<br><strong style="color:${pend>=0?'var(--green,#22c487)':'var(--red,#f05252)'}">${e2(pend)}</strong></div>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
       <select id="mv-tipo" style="padding:6px"><option value="adelanto">Adelanto</option><option value="pago">Pago</option><option value="devengado">Trabajo (devengado)</option><option value="descuento">Descuento</option><option value="devolucion">Devolución</option></select>
       <input id="mv-importe" type="number" placeholder="€" style="width:90px;padding:6px">
       <input id="mv-concepto" placeholder="concepto (opcional)" style="flex:1;min-width:110px;padding:6px">
-      <button onclick="addMovTrab('${slug}')" style="background:var(--accent,#4d9cf8);color:#fff;border:none;border-radius:8px;padding:6px 12px;cursor:pointer">Añadir</button>
+      <button onclick="addMovColab('${w.colaboradorId}','${slug}')" style="background:var(--accent,#4d9cf8);color:#fff;border:none;border-radius:8px;padding:6px 12px;cursor:pointer">Añadir</button>
     </div>
     <div style="max-height:150px;overflow:auto;font-size:12px">
-      ${movs.length?movs.map(x=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid var(--border,#f0f0f0)"><span>${x.fecha} · ${lbl[x.tipo]||x.tipo}${x.concepto?' · '+x.concepto:''}</span><span style="white-space:nowrap">${e2(x.importe)} <button onclick="delMovTrab('${x._id}','${slug}')" style="background:none;border:none;cursor:pointer;color:var(--red,#f05252)">✕</button></span></div>`).join(''):'<div style="color:var(--text3)">Sin movimientos aún</div>'}
+      ${movs.length?movs.slice(0,40).map(x=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid var(--border,#f0f0f0)"><span>${x.fecha} · ${lbl[x.tipo]||x.tipo}${x.concepto?' · '+x.concepto:''}</span><span style="white-space:nowrap">${e2(x.importe)} <button onclick="delMovColab('${x._id}','${slug}')" style="background:none;border:none;cursor:pointer;color:var(--red,#f05252)">✕</button></span></div>`).join(''):'<div style="color:var(--text3)">Sin movimientos aún</div>'}
     </div>`;
 }
-async function addMovTrab(slug){
-  const tipo=document.getElementById('mv-tipo').value, importe=document.getElementById('mv-importe').value, concepto=document.getElementById('mv-concepto').value;
-  if(!importe||parseFloat(importe)<=0){alert('Importe inválido');return;}
-  try{ await af(`/api/trabajadores/${slug}/movimientos`,{method:'POST',body:JSON.stringify({tipo,importe,concepto})}); loadLedger(slug); }
+async function linkColab(slug){
+  const sel=document.getElementById('lk-colab'); const id=sel&&sel.value; if(!id){alert('Elige una cuenta');return;}
+  try{ await af('/api/trabajadores/'+slug,{method:'PUT',body:JSON.stringify({colaboradorId:id})}); await rWorkers(); loadLedger(slug); }
   catch(e){alert('Error: '+e.message);}
 }
-async function delMovTrab(movId,slug){
+async function crearCuentaColab(slug){
+  const w=TRAB.find(x=>x.slug===slug); if(!w)return;
+  try{
+    const c=await af('/api/colaboradores',{method:'POST',body:JSON.stringify({nombre:w.nombre,tarifaHora:w.costeHora||0,tipoTarifa:'hora',oficio:w.tipo==='externo'?'Operario':''})});
+    const id=c&&(c.id||c._id); if(!id)throw new Error('No se pudo crear la cuenta');
+    await af('/api/trabajadores/'+slug,{method:'PUT',body:JSON.stringify({colaboradorId:String(id)})});
+    await rWorkers(); loadLedger(slug);
+  }catch(e){alert('Error: '+e.message);}
+}
+async function addMovColab(colabId,slug){
+  const MAP={adelanto:'adelanto',pago:'pago_semana',devengado:'semana_trabajada',descuento:'descuento',devolucion:'devolucion'};
+  const tipo=MAP[document.getElementById('mv-tipo').value]||'adelanto';
+  const importe=document.getElementById('mv-importe').value, concepto=document.getElementById('mv-concepto').value;
+  if(!importe||parseFloat(importe)<=0){alert('Importe inválido');return;}
+  try{ await af('/api/colaboradores/'+colabId+'/movimientos',{method:'POST',body:JSON.stringify({tipo,importe,concepto})}); loadLedger(slug); }
+  catch(e){alert('Error: '+e.message);}
+}
+async function delMovColab(movId,slug){
   if(!confirm('¿Borrar este movimiento?'))return;
-  try{ await af(`/api/trabajadores/movimientos/${movId}`,{method:'DELETE'}); loadLedger(slug); }
+  try{ await af('/api/colaboradores/movimientos/'+movId,{method:'DELETE'}); loadLedger(slug); }
   catch(e){alert('Error: '+e.message);}
 }
 function cerrarFichaTrab(){const o=document.getElementById('fichaOverlay');if(o)o.remove();}
