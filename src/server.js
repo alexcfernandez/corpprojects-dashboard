@@ -542,6 +542,10 @@ app.get('/api/diag/stel-multiseccion', requireAuth, async (req,res) => {
     res.json(await stel.crearPresupuestoMultiSeccionPrueba(accId));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+app.get('/api/diag/stel-presu-lineas', requireAuth, async (req,res) => {
+  try { res.json(await require('./stelorder').diagPresupuestoConLineas({ ref: req.query.ref || null, id: req.query.id || null })); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // ── Importador de amidaments (PDF del arquitecto -> presupuesto en StelOrder) ──
 // 1) Analizar el PDF y devolver la estructura (capítulos/subcapítulos/partidas)
