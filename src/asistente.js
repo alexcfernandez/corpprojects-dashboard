@@ -370,6 +370,7 @@ Reglas:
 - Mismo trabajo y mismo alcance técnico: NO inventes partidas nuevas ni cambies cantidades ni precios; solo redacta mejor y con más detalle el CÓMO se ejecuta.
 - Estilo profesional y detallado, paso a paso: cada paso en su PROPIA LÍNEA, SIN numerar (empieza cada paso con un guion "- "), con saltos de línea reales (\\n).
 - En pintura: superficies completas (paños enteros, techos completos), nunca parches.
+- LENGUAJE PRUDENTE: describe QUÉ se hace, SIN prometer resultados. EVITA "profunda/profundidad", "exhaustiva", "perfecta", "impecable", "como nuevo", "reluciente", "garantizado", "100%", "eliminación total", "óptimo", "totalidad". (Los términos técnicos de alcance como "paños completos" sí valen.)
 - Mejora también el "nombre" de cada partida (corto y claro).
 - Mantén el MISMO número de partidas y el MISMO orden que te paso.
 
@@ -1272,6 +1273,7 @@ async function handlerPresupuesto(texto, from, imagenes = []) {
     `- Redacta en español, profesional, como un presupuesto real de construcción. El paso a paso de la mano de obra debe ser detallado.\n` +
     `- FORMATO del paso a paso: cada paso en su PROPIA LÍNEA, con salto de línea real (\\n) entre pasos, SIN numerar; empieza cada paso con un guion "- ". No los pongas seguidos en un mismo párrafo. Ejemplo de "descripcion": "- Desmontaje de sanitarios.\\n- Arranque de alicatado.\\n- Retirada de escombros."\n` +
     `- En pintura: superficies completas (paños enteros, techos completos), nunca parches.\n` +
+    `- LENGUAJE PRUDENTE: describe QUÉ se hace, SIN prometer resultados. EVITA adjetivos de resultado/calidad: "profunda/profundidad", "exhaustiva", "perfecta", "impecable", "como nuevo", "reluciente", "garantizado/garantizamos", "100%", "eliminación total", "óptimo", "totalidad". Ej: escribe "fregado a presión de la superficie", NO "fregado hasta dejarla impecable". (Los términos TÉCNICOS de alcance como "paños completos"/"techos completos" en pintura SÍ se pueden usar.)\n` +
     `- JSON VÁLIDO OBLIGATORIO: "precio" y "uds" deben ser NÚMEROS con PUNTO decimal y sin separador de miles (ej: 180.00, 1250.5), NUNCA con coma (no "180,00"). No pongas el símbolo € dentro del JSON. Escapa correctamente comillas y saltos de línea dentro de los textos.`;
 
   const r = await iaJsonVision(prompt, imagenes, 4000, null);
