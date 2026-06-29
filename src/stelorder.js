@@ -1621,6 +1621,60 @@ async function diagCambiarIvaPrueba({ id = null, iva = 21, go = false } = {}) {
   return out;
 }
 
+// ── 4b PRODUCCIÓN: leer el IVA actual de un presupuesto (para proponer el cambio) ──
+async function getPresupuestoIva({ ref = null, id = null } = {}) {
+  let estId = id ? String(id).replace(/\D/g, '') : null;
+  if (!estId && ref) {
+    const list = await fetchAllPages('/workEstimates');
+    const n = s => String(s || '').toLowerCase().replace(/\s+/g, '');
+    const hit = list.find(e => n(e['full-reference']) === n(ref) || n(e.reference) === n(ref) || n(e['document-number']) === n(ref));
+    if (hit) estId = String(hit.id);
+  }
+  if (!estId) return null;
+  const r = await client.get(`/workEstimates/${estId}`);
+  const obj = Array.isArray(r.data) ? r.data[0] : r.data;
+  if (!obj) return null;
+  const items = (obj.lines || []).filter(l => l['line-type'] === 'ITEM' && !l.deleted);
+  const ivas = [...new Set(items.map(l => l['primary-tax-percentage']))];
+  return { id: estId, ref: obj['full-reference'] || obj.reference || ('#' + estId), title: obj.title || null, ivaActual: ivas, nItems: items.length };
+}
+
+// ── 4b PRODUCCIÓN: cambiar el IVA principal de TODAS las líneas ITEM (no toca recargo) ──
+// Estrategia leer-modificar-reescribir vía PUT /workEstimates/{id}. Registra en stelWriteLog.
+async function cambiarIvaPresupuesto({ id = null, iva = 21, requestedBy = null } = {}) {
+  const estId = String(id || '').replace(/\D/g, '');
+  if (!estId) throw new Error('Falta el id del presupuesto');
+  const taxId = IVA_TAX_IDS[Number(iva)];
+  if (taxId == null) throw new Error(`IVA ${iva} no válido (usa 21, 10, 4 o 0)`);
+
+  const r = await client.get(`/workEstimates/${estId}`);
+  const obj = Array.isArray(r.data) ? r.data[0] : r.data;
+  if (!obj) throw new Error('No encuentro el presupuesto');
+  const ref = obj['full-reference'] || obj.reference || ('#' + estId);
+  const antes = [...new Set((obj.lines || []).filter(l => l['line-type'] === 'ITEM' && !l.deleted).map(l => l['primary-tax-percentage']))];
+
+  let tocadas = 0;
+  const nuevasLineas = (obj.lines || []).map(l => {
+    if (l['line-type'] !== 'ITEM' || l.deleted) return l;
+    tocadas++;
+    return { ...l, 'primary-tax-percentage': Number(iva), 'primary-tax-id': taxId, 'primary-tax-path': `app.stelorder.com/app/taxLines/${taxId}` };
+  });
+  if (!tocadas) throw new Error('El presupuesto no tiene líneas de producto que cambiar');
+  const body = { ...obj, lines: nuevasLineas };
+
+  const db = await getDB();
+  const ins = await db.collection('stelWriteLog').insertOne({ tipo: 'cambio-iva', workEstimateId: estId, ref, ivaAntes: antes, ivaNuevo: Number(iva), lineasTocadas: tocadas, requestedBy, at: new Date(), result: 'pending' });
+  try {
+    const put = await client.put(`/workEstimates/${estId}`, body, { headers: { 'Content-Type': 'application/json; charset=utf-8' }, timeout: 25000 });
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: 'ok', status: put.status } });
+    try { invalidate('workEstimates'); } catch (e) {}
+    return { ok: true, ref, id: estId, ivaAntes: antes, ivaNuevo: Number(iva), lineasTocadas: tocadas };
+  } catch (err) {
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: 'error', error: err.message, data: err.response?.data || null } });
+    throw new Error(`StelOrder rechazó el cambio de IVA: ${err.response?.status || ''} ${JSON.stringify(err.response?.data || err.message).slice(0, 200)}`);
+  }
+}
+
 module.exports = {
   getInvoices, getAllReceipts, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary, diagProveedores,
@@ -1631,5 +1685,5 @@ module.exports = {
   getMonthlyBilling,
   getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap,
   getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA, diagLineaImpuesto, diagImpuestos,
-  crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, crearPresupuestoStel, crearPresupuestoMultiSeccionPrueba, diagClienteCampos, diagCrearCliente, crearClienteStel, getAccountCategories, ultimaIncidencia, incidenciaPorRef, diagPresupuestoConLineas, diagCambiarIvaPrueba
+  crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, crearPresupuestoStel, crearPresupuestoMultiSeccionPrueba, diagClienteCampos, diagCrearCliente, crearClienteStel, getAccountCategories, ultimaIncidencia, incidenciaPorRef, diagPresupuestoConLineas, diagCambiarIvaPrueba, getPresupuestoIva, cambiarIvaPresupuesto
 };
