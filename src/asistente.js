@@ -1345,6 +1345,24 @@ function _candidatosTrab(term, all) {
   return out;
 }
 
+// Cruce con PRESENCIA: ¿cuántos días trabajó este trabajador esa semana, según
+// el fichaje? Cruza por NOMBRE (el fichaje usa otra identidad que el libro de pagos).
+function _matchNombre(w, nombre) {
+  const a = norm(nombre); if (!a) return false;
+  if (a === norm(w.nombre)) return true;
+  if ((w.alias || []).some(x => x && (a === x || a.includes(x) || x.includes(a)))) return true;
+  const toks = norm(w.nombre).split(/\s+/).filter(t => t.length > 2);
+  return toks.some(t => a.includes(t));
+}
+async function presenciaSemanaTrab(w, desde, hasta) {
+  let entries = [];
+  try { entries = await attendance.getAttendance({ from: desde, to: hasta }); } catch (e) { return { encontrada: false, dias: 0, fechas: [] }; }
+  const mias = (entries || []).filter(e => _matchNombre(w, e.workerName || ''));
+  const trabajados = mias.filter(e => e.estado === 'obra' || e.estado === 'oficina');
+  const fechas = [...new Set(trabajados.map(e => e.date))].sort();
+  return { encontrada: mias.length > 0, dias: fechas.length, fechas };
+}
+
 async function handlerPagoTrabajador(texto, from) {
   const all = await trabajadores.getTrabajadores(false).catch(() => []);
   if (!all.length) return null;
@@ -1362,13 +1380,13 @@ async function handlerPagoTrabajador(texto, from) {
     `Eres un parser de mensajes sobre pagos a trabajadores de una empresa de mantenimiento. Hoy es ${hoy}.
 Mensaje: "${texto}"
 Devuelve SOLO JSON:
-{"accion":"movimiento|saldo|informe|otro",
+{"accion":"movimiento|saldo|informe|cerrar|otro",
  "trabajador":"nombre o apodo mencionado (p.ej. javi, huaca, david, diego)",
  "tipo":"adelanto|pago|trabajo|prestamo|descuento|devolucion|null",
  "importe": <numero o null>, "dias": <numero o null>, "completa": <true|false>,
  "semana":"actual|pasada|siguiente|null", "periodo":"semana|mes|ano|todo|null",
  "concepto":"<texto corto opcional>"}
-Pistas: 'adelanto'/'adelanté'=adelanto; 'pagué'/'pago'/'le di'/'pago faltante'=pago; 'trabajó'/'semana trabajada'/'devengado'/'hizo N días'/'N días'=trabajo; 'presté'/'préstamo'/'prestado'=prestamo; 'descuento'=descuento; 'devolución'/'me devolvió'=devolucion. 'cuánto le debo'/'saldo'/'cuánto lleva'=saldo. 'informe'/'resumen'=informe. Para periodo: 'esta semana'/'última semana'/'la semana'=semana, 'este mes'/'del mes'=mes, 'este año'=ano, 'todo'/'total'/'en total'/'histórico'=todo; si no se dice nada, periodo=null.`,
+Pistas: 'adelanto'/'adelanté'=adelanto; 'pagué'/'pago'/'le di'/'pago faltante'=pago; 'trabajó'/'semana trabajada'/'devengado'/'hizo N días'/'N días'=trabajo; 'presté'/'préstamo'/'prestado'=prestamo; 'descuento'=descuento; 'devolución'/'me devolvió'=devolucion. 'cuánto le debo'/'saldo'/'cuánto lleva'=saldo. 'informe'/'resumen'=informe. 'cierra la semana'/'cerrar semana'/'cuántos días trabajó esta semana'=cerrar. Para periodo: 'esta semana'/'última semana'/'la semana'=semana, 'este mes'/'del mes'=mes, 'este año'=ano, 'todo'/'total'/'en total'/'histórico'=todo; si no se dice nada, periodo=null.`,
     260, { accion: 'otro' });
   if (!r || r.accion === 'otro') return null;
 
@@ -1388,15 +1406,16 @@ Pistas: 'adelanto'/'adelanté'=adelanto; 'pagué'/'pago'/'le di'/'pago faltante'
       return '¿A cuál te refieres? Responde el *número*:\n' + lista.map((c, i) => `*${i + 1}.* ${c.nombre}`).join('\n');
     }
   }
-  return ejecutarPagoTrab(w, r);
+  return ejecutarPagoTrab(w, r, from);
 }
 
-async function ejecutarPagoTrab(w, r) {
+async function ejecutarPagoTrab(w, r, from) {
   if (!w.colaboradorId) {
     return `⚠️ *${w.nombre}* no tiene cuenta de efectivo enlazada. Entra en *Personal → ${w.nombre} → Cuenta de efectivo* y enlázala (o créala). Luego ya le apunto pagos por aquí.`;
   }
   if (r.accion === 'saldo') return saldoTrabajadorTxt(w, r.periodo);
   if (r.accion === 'informe') return informeTrabajadorTxt(w, r.periodo || 'todo');
+  if (r.accion === 'cerrar') return cerrarSemanaPresencia(w, r, from);
 
   const tipoBruto = r.tipo || ((r.dias != null || r.completa) ? 'trabajo' : 'adelanto');
   const tipoLibro = pagosT.TIPO_MAP[tipoBruto];
@@ -1440,8 +1459,31 @@ async function ejecutarPagoTrab(w, r) {
   const saldoTxt = s.saldoPendiente >= 0
     ? `le debemos *${pagosT.eur(s.saldoPendiente)}*`
     : (esFijo ? `a descontar de nómina *${pagosT.eur(-s.saldoPendiente)}*` : `nos debe *${pagosT.eur(-s.saldoPendiente)}*`);
-  const avisoPres = (!esFijo && tipoBruto === 'trabajo') ? `\nℹ️ Recuerda rellenar la *presencia* de esa semana si aún no lo has hecho.` : '';
+  let avisoPres = '';
+  if (tipoBruto === 'trabajo') {
+    try {
+      const pr = await presenciaSemanaTrab(w, sem.desde, sem.hasta);
+      if (!pr.encontrada) avisoPres = `\n⚠️ No encuentro *presencia* de ${w.nombre.split(' ')[0]} esa semana. Acuérdate de marcarla.`;
+      else if (diasTrab && pr.dias && pr.dias !== diasTrab) avisoPres = `\n📋 Ojo: en *presencia* constan *${pr.dias} días* esa semana (tú has puesto ${diasTrab}). Revisa festivo/día extra.`;
+      else if (pr.dias) avisoPres = `\n📋 Presencia: ${pr.dias} día(s) ✔️`;
+    } catch (e) {}
+  }
   return `✅ Apuntado a *${w.nombre}*: ${pagosT.ETIQUETA[tipoBruto]} de *${pagosT.eur(importe)}* — ${periodoTxt} ${sem.label}.\n💶 Saldo: ${saldoTxt}.${avisoPres}`;
+}
+
+// "Cierra la semana de Javi": cuenta los días desde el FICHAJE (festivos/extras
+// incluidos) y PROPONE el devengado. Tú confirmas, el sistema escribe.
+async function cerrarSemanaPresencia(w, r, from) {
+  const hoy = new Date().toISOString().slice(0, 10);
+  const sem = pagosT.semanaLaboral(hoy, pagosT.offsetSemana(r.semana));
+  const pr = await presenciaSemanaTrab(w, sem.desde, sem.hasta);
+  if (!pr.encontrada || !pr.dias) {
+    return `⚠️ No encuentro *presencia* de *${w.nombre}* en la semana ${sem.label}. Rellénala en el fichaje, o dime los días: _"${(w.nombre.split(' ')[0] || 'javi').toLowerCase()} trabajó 3 días"_.`;
+  }
+  const costeDia = (Number(w.costeHora) || 0) * (Number(w.horasDia) || 8);
+  const importe = Math.round(pr.dias * costeDia * 100) / 100;
+  pendiente.set(from, { accion: 'cerrarSemConfirm', colaboradorId: w.colaboradorId, nombre: w.nombre, sem, importe, dias: pr.dias, ts: Date.now() });
+  return `📋 Según presencia, *${w.nombre}* trabajó *${pr.dias} día(s)* la semana ${sem.label} = *${pagosT.eur(importe)}*.\n¿Lo apunto como semana trabajada? Responde *sí* o *no*.`;
 }
 
 async function saldoTrabajadorTxt(w, periodo) {
@@ -1536,6 +1578,22 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
   // A.inc) Flujo de creación de incidencia (cliente / tipo / confirmación)
   if (pend && (Date.now() - pend.ts) < 10 * 60 * 1000) {
     const nn = norm(texto);
+    if (pend.accion === 'cerrarSemConfirm') {
+      if (/^(s[ií]|si|vale|ok|dale|confirmo|adelante|correcto|apunta(lo)?|hazlo)\b/.test(nn)) {
+        const hoyISO = new Date().toISOString().slice(0, 10);
+        await colaboradores.createMovimiento(pend.colaboradorId, {
+          fecha: hoyISO, tipo: 'semana_trabajada', importe: pend.importe,
+          semanaDesde: pend.sem.desde, semanaHasta: pend.sem.hasta,
+          diasTrabajados: pend.dias, concepto: `Semana ${pend.sem.label} — ${pend.dias} días (de presencia)`,
+        });
+        pendiente.delete(from);
+        const s = await colaboradores.getSaldoColaborador(pend.colaboradorId);
+        const saldoTxt = s.saldoPendiente >= 0 ? `le faltan por cobrar *${pagosT.eur(s.saldoPendiente)}*` : `le has adelantado *${pagosT.eur(-s.saldoPendiente)}* a cuenta`;
+        return `✅ Semana ${pend.sem.label} cerrada para *${pend.nombre}*: ${pend.dias} días = *${pagosT.eur(pend.importe)}*.\n💶 Tras cerrar: ${saldoTxt}.`;
+      }
+      if (/^(no|cancela|para|anula|dejalo|mejor no|ahora no)\b/.test(nn)) { pendiente.delete(from); return '👍 Vale, no cierro la semana.'; }
+      return `Responde *"sí"* para apuntar la semana de ${pend.nombre} (${pend.dias} días = ${pagosT.eur(pend.importe)}) o *"no"*.`;
+    }
     if (pend.accion === 'pagoTrabClarif') {
       const mNum = nn.match(/^\s*(\d{1,2})\b/);
       let elegido = null;
@@ -1544,7 +1602,7 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
       if (/^(no|cancela|dejalo|nada)\b/.test(nn)) { pendiente.delete(from); return '👍 Vale, no apunto nada.'; }
       if (!elegido) return 'No te he pillado. Responde el *número* de la lista o el nombre exacto.';
       pendiente.delete(from);
-      return ejecutarPagoTrab(elegido, pend.r);
+      return ejecutarPagoTrab(elegido, pend.r, from);
     }
     if (pend.accion === 'genPedido') {
       if (/^(s[ií]|si|vale|ok|dale|confirmo|adelante|correcto|genera(lo)?|hazlo)\b/.test(nn)) return ejecutarGenerarPedido(from, pend);
@@ -1816,7 +1874,7 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
 
   // C0.pago) Pagos / adelantos / trabajo / saldo / informe de un TRABAJADOR
   if (!imagenes.length) {
-    const esPagoKw = /\b(adelant\w*|prestad\w*|prest[eé]\w*|prestam\w*|pag\w*|le di|descuent\w*|devoluci\w*|devolv\w*|devengad\w*|semana trabajad\w*|cuanto le debo|cuanto (lleva|ha cobrado)|saldo|informe|resumen)\b/.test(_ni)
+    const esPagoKw = /\b(adelant\w*|prestad\w*|prest[eé]\w*|prestam\w*|pag\w*|le di|descuent\w*|devoluci\w*|devolv\w*|devengad\w*|cierr\w*|cerrar|semana trabajad\w*|cuanto le debo|cuanto (lleva|ha cobrado)|saldo|informe|resumen)\b/.test(_ni)
       || /\btrabaj\w*\s+\d/.test(_ni) || /\b\d+\s*d[ií]as\b/.test(_ni);
     if (esPagoKw) {
       const res = await handlerPagoTrabajador(texto, from);
