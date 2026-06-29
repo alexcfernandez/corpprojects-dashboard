@@ -1499,6 +1499,71 @@ async function crearPresupuestoMultiSeccionPrueba(accId) {
   return { ok: true, id: d && d.id ? String(d.id) : null, ref: (d && (d['full-reference'] || d.reference)) || null };
 }
 
+// ── SONDA (SOLO LECTURA) para el 4b: leer UN presupuesto con sus LÍNEAS ──
+// El listado de /workEstimates no trae líneas. Probamos varias formas de pedir
+// un presupuesto suelto (por id en la ruta y por filtro) para ver dónde vienen
+// las líneas, sus id y los campos de IVA actuales. NO escribe nada.
+async function diagPresupuestoConLineas({ ref = null, id = null } = {}) {
+  const out = { entrada: { ref, id }, idResuelto: null, estrategias: {}, lineas: null };
+  const norm = s => String(s || '').toLowerCase().replace(/\s+/g, '');
+  let estId = id ? String(id).replace(/\D/g, '') : null;
+  let estListado = null;
+
+  // 1) Resolver id desde el listado (y de paso ver si el listado trae líneas)
+  try {
+    const list = await fetchAllPages('/workEstimates');
+    out.totalEnListado = list.length;
+    if (!estId && ref) {
+      const r = norm(ref);
+      estListado = list.find(e => norm(e['full-reference']) === r || norm(e.reference) === r || norm(e['document-number']) === r) || null;
+      if (estListado) estId = String(estListado.id);
+    } else if (estId) {
+      estListado = list.find(e => String(e.id) === estId) || null;
+    }
+    out.idResuelto = estId;
+    if (estListado) {
+      const l = estListado.lines || estListado.items || estListado['document-lines'] || null;
+      out.estrategias.listado = { encontrado: true, traeLineas: Array.isArray(l) && l.length > 0, nLineas: Array.isArray(l) ? l.length : 0, clavesPresupuesto: Object.keys(estListado) };
+      if (Array.isArray(l) && l.length) out.lineas = l;
+    } else {
+      out.estrategias.listado = { encontrado: false };
+    }
+  } catch (e) { out.estrategias.listado = { error: e.message }; }
+
+  if (!estId) { out.nota = 'No he podido resolver el id. Pasa ?id=NNN o una ?ref= que exista en el listado.'; return out; }
+
+  // 2) GET /workEstimates/{id} (recurso suelto en la ruta)
+  try {
+    const r = await client.get(`/workEstimates/${estId}`);
+    const obj = Array.isArray(r.data) ? r.data[0] : r.data;
+    const l = (obj && (obj.lines || obj.items || obj['document-lines'])) || null;
+    out.estrategias.ruta_id = { status: r.status, traeLineas: Array.isArray(l) && l.length > 0, nLineas: Array.isArray(l) ? l.length : 0, clavesPresupuesto: obj ? Object.keys(obj) : null };
+    if (Array.isArray(l) && l.length && !out.lineas) out.lineas = l;
+  } catch (e) { out.estrategias.ruta_id = { error: e.response?.status || e.message, data: e.response?.data ? String(JSON.stringify(e.response.data)).slice(0, 150) : null }; }
+
+  // 3) GET /workEstimates?id={id} (filtro por query)
+  try {
+    const r = await client.get(`/workEstimates?id=${estId}`);
+    const obj = Array.isArray(r.data) ? r.data[0] : r.data;
+    const l = (obj && (obj.lines || obj.items || obj['document-lines'])) || null;
+    out.estrategias.filtro_id = { status: r.status, traeLineas: Array.isArray(l) && l.length > 0, nLineas: Array.isArray(l) ? l.length : 0 };
+    if (Array.isArray(l) && l.length && !out.lineas) out.lineas = l;
+  } catch (e) { out.estrategias.filtro_id = { error: e.response?.status || e.message }; }
+
+  // Resumen legible de las líneas (la info que necesito para el 4b)
+  if (Array.isArray(out.lineas) && out.lineas.length) {
+    out.resumenLineas = out.lineas.map(l => ({
+      id: l.id, tipo: l['line-type'], itemId: l['item-id'], nombre: l['item-name'],
+      uds: l.units, precio: l['item-base-price'],
+      ivaPct: l['primary-tax-percentage'], ivaId: l['primary-tax-id'], borrada: l.deleted
+    }));
+    out.clavesPrimeraLinea = Object.keys(out.lineas[0]);
+  } else {
+    out.nota = 'Ninguna estrategia trajo líneas. Mira clavesPresupuesto por si vienen bajo otro nombre o por otro endpoint.';
+  }
+  return out;
+}
+
 module.exports = {
   getInvoices, getAllReceipts, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary, diagProveedores,
@@ -1509,5 +1574,5 @@ module.exports = {
   getMonthlyBilling,
   getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap,
   getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA, diagLineaImpuesto, diagImpuestos,
-  crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, crearPresupuestoStel, crearPresupuestoMultiSeccionPrueba, diagClienteCampos, diagCrearCliente, crearClienteStel, getAccountCategories, ultimaIncidencia, incidenciaPorRef
+  crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, crearPresupuestoStel, crearPresupuestoMultiSeccionPrueba, diagClienteCampos, diagCrearCliente, crearClienteStel, getAccountCategories, ultimaIncidencia, incidenciaPorRef, diagPresupuestoConLineas
 };
