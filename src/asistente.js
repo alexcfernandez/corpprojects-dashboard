@@ -1329,6 +1329,11 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
       if (/^(no|cancela|para|anula|dejalo|mejor no|ahora no)\b/.test(nn)) { pendiente.delete(from); return '👍 Vale, no genero el pedido. La incidencia queda creada.'; }
       // si no responde sí/no, dejamos pasar al resto (puede querer otra cosa)
     }
+    if (pend.accion === 'cambioIvaConfirmar') {
+      if (/^(s[ií]|si|vale|ok|dale|confirmo|adelante|correcto|cambia(lo)?|hazlo)\b/.test(nn)) return ejecutarCambioIva(from, pend);
+      if (/^(no|cancela|para|anula|dejalo|mejor no|ahora no)\b/.test(nn)) { pendiente.delete(from); return '👍 Vale, dejo el IVA como estaba.'; }
+      return `Responde *"sí"* para cambiar el IVA del ${pend.ref} a ${pend.iva}% o *"no"* para dejarlo.`;
+    }
     if (pend.accion === 'presuConfirmar') {
       if (/^(s[ií]|si|vale|ok|dale|confirmo|adelante|correcto|crea(lo)?|hazlo)\b/.test(nn)) return ejecutarCrearPresupuesto(from, pend);
       if (/^(no|cancela|para|anula|dejalo|mejor no|ahora no)\b/.test(nn)) { pendiente.delete(from); return '👍 Vale, no creo el presupuesto. El borrador queda descartado.'; }
@@ -1477,6 +1482,12 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
       /\b(competencia|de la competencia|este presupuesto|este pressupost|copia(lo)?|c[oó]pialo|recrea(lo)?|recr[eé]alo|p[aá]salo|cl[oó]nalo|mejora(lo)?|igualalo|igu[aá]lalo)\b/.test(_np) ||
       parseAjustePrecio(texto).modo !== 'none';
     if (pideCompetencia) return handlerCompetencia(texto, from, imagenes);
+  }
+
+  // C0.iva) Cambiar el IVA de un presupuesto existente: "cambia el IVA del PRT00795 al 21%"
+  if (!imagenes.length && /\biva\b/.test(_np) && /\bPRT\s*0*\d+\b/i.test(texto)) {
+    const r = await handlerCambioIva(texto, from);
+    if (r) return r;
   }
 
   const pidePresu =
@@ -2036,6 +2047,39 @@ function avanzarCompetencia(from, pend, accId, target) {
   }
   pendiente.set(from, { ...pend, accion: 'compConfirmar', accId, target, ts: Date.now() });
   return resumenCompetencia(pend.datos, target, pend.iva, pend.ajuste, pend.nFotos);
+}
+
+// 4b) Cambiar el IVA de un presupuesto existente. Lee el actual, propone y espera confirmación.
+async function handlerCambioIva(texto, from) {
+  const n = norm(texto);
+  if (!/\biva\b/.test(n)) return null;
+  if (!/(cambi|pon|ponle|modific|actualiz|deja(lo)?\b)/.test(n)) return null;
+  const mRef = texto.match(/\bPRT\s*0*\d+\b/i);
+  if (!mRef) return null;
+  const sinRef = n.replace(/prt\s*0*\d+/i, ' ');
+  const mPct = sinRef.match(/\b(21|10|4|0)\b/);
+  if (!mPct) return null;
+  const ref = mRef[0].toUpperCase().replace(/\s+/g, '');
+  const iva = Number(mPct[1]);
+  let info;
+  try { info = await stel.getPresupuestoIva({ ref }); }
+  catch (e) { return `No he podido leer *${ref}*: ${e.message}`; }
+  if (!info) return `No encuentro el presupuesto *${ref}* en StelOrder.`;
+  if (!info.nItems) return `El presupuesto *${info.ref}* no tiene líneas de producto que cambiar.`;
+  const actual = info.ivaActual.length === 1 ? `${info.ivaActual[0]}%` : `${info.ivaActual.join('% / ')}% (mezcla)`;
+  if (info.ivaActual.length === 1 && info.ivaActual[0] === iva) return `El presupuesto *${info.ref}* ya está al *${iva}%*. No hay nada que cambiar.`;
+  pendiente.set(from, { accion: 'cambioIvaConfirmar', id: info.id, ref: info.ref, iva, ts: Date.now() });
+  return `🧾 *${info.ref}*${info.title ? ` — ${info.title}` : ''}\nIVA actual: *${actual}* (${info.nItems} línea/s)\n¿Lo cambio a *${iva}%*? Responde *"sí"* o *"no"*.`;
+}
+
+async function ejecutarCambioIva(from, pend) {
+  pendiente.delete(from);
+  try {
+    const r = await stel.cambiarIvaPresupuesto({ id: pend.id, iva: pend.iva, requestedBy: from });
+    return `✅ Hecho. *${r.ref}* ahora está al *${pend.iva}%* (${r.lineasTocadas} línea/s actualizadas).`;
+  } catch (e) {
+    return `⚠️ No he podido cambiar el IVA: ${e.message}`;
+  }
 }
 
 async function handlerCompetencia(texto, from, imagenes) {
