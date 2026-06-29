@@ -238,7 +238,58 @@ async function diag() {
   };
 }
 
+// ── LIBRO DE EFECTIVO POR TRABAJADOR ────────────────────────────────────────
+// Adelantos, pagos en mano y devengado (lo trabajado). Saldo = devengado − entregado.
+// Es la cara que el banco NO ve (Javi y quien cobre en efectivo).
+async function addMovimientoTrab(slug, data) {
+  const db = await getDB();
+  const w = await db.collection('trabajadores').findOne({ slug });
+  if (!w) throw new Error('Trabajador no encontrado');
+  const tipo = data.tipo || 'adelanto'; // devengado | adelanto | pago | descuento | devolucion
+  const mov = {
+    trabajadorSlug: slug,
+    trabajadorNombre: w.nombre,
+    fecha: data.fecha || new Date().toISOString().slice(0, 10),
+    tipo,
+    importe: Math.abs(parseFloat(data.importe || 0)),
+    concepto: (data.concepto || '').trim(),
+    origen: data.origen || 'dashboard', // dashboard | whatsapp (paso 2)
+    createdAt: new Date(),
+  };
+  if (!mov.importe || mov.importe <= 0) throw new Error('El importe debe ser mayor que 0');
+  await db.collection('trabajadorMovimientos').createIndex({ trabajadorSlug: 1, fecha: -1 }).catch(() => {});
+  const r = await db.collection('trabajadorMovimientos').insertOne(mov);
+  console.log(`[Trabajadores] ${w.nombre}: ${tipo} ${mov.importe}€`);
+  return { id: r.insertedId, ...mov };
+}
+
+async function getMovimientosTrab(slug, { limit = 200 } = {}) {
+  const db = await getDB();
+  return db.collection('trabajadorMovimientos').find({ trabajadorSlug: slug }).sort({ fecha: -1, createdAt: -1 }).limit(limit).toArray();
+}
+
+async function getSaldoTrab(slug) {
+  const db = await getDB();
+  const movs = await db.collection('trabajadorMovimientos').find({ trabajadorSlug: slug }).toArray();
+  let devengado = 0, entregado = 0, descuentos = 0;
+  for (const m of movs) {
+    if (m.tipo === 'devengado') devengado += m.importe;
+    else if (m.tipo === 'adelanto' || m.tipo === 'pago') entregado += m.importe;
+    else if (m.tipo === 'descuento') { entregado += m.importe; descuentos += m.importe; }
+    else if (m.tipo === 'devolucion') entregado -= m.importe;
+  }
+  // pendiente > 0 = le debemos | < 0 = ha recibido de más (adelantos por descontar)
+  return { devengado, entregado, descuentos, pendiente: +(devengado - entregado).toFixed(2), n: movs.length };
+}
+
+async function deleteMovimientoTrab(movId) {
+  const db = await getDB();
+  const { ObjectId } = require('mongodb');
+  return db.collection('trabajadorMovimientos').deleteOne({ _id: new ObjectId(movId) });
+}
+
 module.exports = {
   getTrabajadores, getTrabajador, createTrabajador, updateTrabajador, bajaTrabajador,
   resolverTrabajador, seedDesdeConfig, resyncAliases, aplicarReconciliacion, diag, calcCoste, slugify, norm, DEFAULTS,
+  addMovimientoTrab, getMovimientosTrab, getSaldoTrab, deleteMovimientoTrab,
 };
