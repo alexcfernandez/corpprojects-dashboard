@@ -534,13 +534,13 @@ app.get('/api/diag/stel-crear-cliente', requireAuth, async (req,res) => {
   catch (e) { res.status(500).json({ error: e.message, data: e.response && e.response.data }); }
 });
 app.get('/api/diag/stel-multiseccion', requireAuth, async (req,res) => {
+  let accId = req.query.accId;
   try {
     const stel = require('./stelorder');
-    let accId = req.query.accId;
     if (!accId && req.query.cliente) accId = await stel.accountIdByName(req.query.cliente);
-    if (!accId) return res.status(400).json({ error: 'Pasa ?accId=NNN o ?cliente=Nombre' });
+    if (!accId) return res.status(400).json({ error: 'Pasa ?accId=NNN (de un CLIENTE, no de una familia) o ?cliente=Nombre' });
     res.json(await stel.crearPresupuestoMultiSeccionPrueba(accId));
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(500).json({ error: e.message, accIdUsado: accId || null, stelOrder: e.response?.data || null }); }
 });
 app.get('/api/diag/stel-presu-lineas', requireAuth, async (req,res) => {
   try { res.json(await require('./stelorder').diagPresupuestoConLineas({ ref: req.query.ref || null, id: req.query.id || null })); }
