@@ -1381,7 +1381,7 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
       const w = resolverTrabajador(texto, workers, await cargarAliasTrabajadores());
       if (!w) return `No encuentro a *"${texto}"* en la plantilla. Dime su nombre tal como aparece (Paula, Abdellah, David, Diego, Huaca, Javi, Jose, Mamadou…) o *"ninguno"*.`;
       await guardarAliasTrabajador(norm(actual.nombre), w.id, w.name);
-      pend.entries.push(construirEntryPresencia(w, actual.estado, actual.resueltas, pend.date));
+      pend.entries.push(construirEntryPresencia(w, actual.estado, actual.resueltas, pend.date, actual.horas));
       return avanzarApodo(from, pend, `✅ Aprendido: *"${actual.nombre}"* = *${w.name}*.\n`);
     }
     if (pend.accion === 'presConfirmar') {
@@ -2159,7 +2159,7 @@ Responde SOLO un JSON VÁLIDO, sin markdown:
 {
  "fecha": "hoy",
  "asignaciones": [
-   { "trabajadores": ["Diego","Javi"], "estado": "obra", "obras": ["Montseny 3","Montseny 2"] }
+   { "trabajadores": ["Diego","Javi"], "estado": "obra", "obras": ["Montseny 3","Montseny 2"], "horas": 8 }
  ]
 }
 
@@ -2168,6 +2168,7 @@ Reglas:
 - "con X" = X va a las MISMAS obras del grupo en el que se menciona.
 - "estado": "obra" si va a una obra/cliente; "vacaciones", "baja", "libre" u "oficina" si lo dice. Por defecto "obra".
 - "obras": nombre corto de cada obra/cliente/calle, tal como lo diga. Si dice "aquí"/"allá" u otra ubicación poco clara, ponla igual como texto.
+- "horas": horas de jornada de esos trabajadores. "media jornada"/"medio día"/"mitja jornada" = 4; "jornada completa" o si no dice nada = 8; "N horas"/"Nh" = N. Si distintos trabajadores tienen DISTINTAS horas, sepáralos en asignaciones distintas.
 - Si el jefe ACLARA que una obra es la MISMA que otra ("la obra de Calonge, que es la de Pedrosa", "X o sea Y", "X que es Y"), es UNA SOLA obra: devuelve solo UNA (usa el nombre más formal del cliente/obra). NUNCA la dupliques.
 - Usa los nombres de trabajador tal como los diga (yo los caso luego). No inventes trabajadores que no menciona.`;
   return iaJson(prompt, 1500, null, process.env.PRESU_IA_MODEL || 'claude-sonnet-4-6');
@@ -2258,11 +2259,20 @@ async function handlerEnsenarApodo(texto, from) {
   return `✅ Apuntado: cuando diga *"${apodo}"* me refiero a *${w.name}*.`;
 }
 
-function construirEntryPresencia(w, estado, resueltas, date) {
+function parseHoras(v) {
+  if (typeof v === 'number' && v > 0 && v <= 24) return v;
+  const s = norm(String(v || ''));
+  if (/media|medio dia|mitja/.test(s)) return 4;
+  const m = s.match(/(\d+(?:[.,]\d+)?)/);
+  if (m) { const n = parseFloat(m[1].replace(',', '.')); if (n > 0 && n <= 24) return n; }
+  return 8;
+}
+function construirEntryPresencia(w, estado, resueltas, date, horas = 8) {
+  const H = parseHoras(horas);
   const e = { workerId: w.id, workerName: w.name, date, estado, color: w.color || '#22c487', notas: 'Dictado por WhatsApp', origen: 'whatsapp-admin' };
-  if (estado === 'obra' || estado === 'oficina') e.horas = 8;
+  if (estado === 'obra' || estado === 'oficina') e.horas = H;
   if (estado === 'obra' && resueltas && resueltas.length) {
-    const h = Math.round((8 / resueltas.length) * 100) / 100;
+    const h = Math.round((H / resueltas.length) * 100) / 100;
     e.obras = resueltas.map(x => ({ clientName: x.nombre, horas: h, ...(x.id ? { accountId: x.id } : {}) }));
     e.clientName = resueltas[0].nombre;
   }
@@ -2294,6 +2304,7 @@ async function handlerPresencia(texto, from) {
   const entries = []; const cola = [];
   for (const a of parsed.asignaciones) {
     const estado = validos.includes(a.estado) ? a.estado : 'obra';
+    const horas = parseHoras(a.horas);
     const obrasRaw = Array.isArray(a.obras) ? a.obras.filter(Boolean).map(String) : [];
     let resueltas = [];
     if (estado === 'obra' && obrasRaw.length) {
@@ -2305,8 +2316,8 @@ async function handlerPresencia(texto, from) {
     }
     for (const nom of (a.trabajadores || [])) {
       const w = resolverTrabajador(nom, workers, aliasMap);
-      if (!w) { cola.push({ nombre: nom, estado, resueltas }); continue; }
-      entries.push(construirEntryPresencia(w, estado, resueltas, date));
+      if (!w) { cola.push({ nombre: nom, estado, resueltas, horas }); continue; }
+      entries.push(construirEntryPresencia(w, estado, resueltas, date, horas));
     }
   }
   if (!entries.length && !cola.length) {
