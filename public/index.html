@@ -899,7 +899,9 @@ async function loadBInfo(){
   const d=await af('/api/bank/info');
   const el=document.getElementById('bUpInfo');if(!el)return;
   if(!d||!d.uploaded){el.textContent='No hay ningún extracto subido aún.';return;}
-  el.textContent=`✅ Último: ${d.originalname} — ${new Date(d.uploadedAt).toLocaleDateString('es-ES')} (${Math.round(d.size/1024)} KB)`;
+  const per=d.periodo?` · ${d.periodo.desde}→${d.periodo.hasta}`:'';
+  const cnt=(d.total!=null)?` · ${d.nuevos} nuevos / ${d.total} en archivo`:'';
+  el.textContent=`✅ Último: ${d.originalname||'extracto'} — ${new Date(d.uploadedAt).toLocaleDateString('es-ES')}${per}${cnt}`;
 }
 async function bUpload(file){
   if(!file)return;
