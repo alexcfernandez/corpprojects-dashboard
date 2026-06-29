@@ -1311,8 +1311,8 @@ async function handlerPresupuesto(texto, from, imagenes = []) {
     pendiente.set(from, { accion: 'presuConfirmar', borrador: r, iva, accId, target, ts: Date.now() });
     msg += `_⚠️ Borrador generado por IA — revisa los precios._\n\n¿Lo creo en StelOrder para *${target}* (IVA ${iva}%, estado Pendiente)? Responde *"sí"* o *"no"*.`;
   } else {
-    pendiente.set(from, { accion: 'presuCliente', borrador: r, iva, ts: Date.now() });
-    msg += `_⚠️ Borrador generado por IA — revisa los precios._\n\n🤔 ¿Para qué cliente lo creo? Dime el nombre **tal como aparece en StelOrder** y lo creo.\n_Si el cliente no existe aún, créalo primero en StelOrder._`;
+    pendiente.set(from, { accion: 'presuCliente', borrador: r, iva, nombreIntento: r.cliente || null, ts: Date.now() });
+    msg += `_⚠️ Borrador generado por IA — revisa los precios._\n\n🤔 ¿Para qué cliente lo creo? Dime su nombre **tal como aparece en StelOrder**. Si es nuevo, dime *"créalo"* (con NIF y familia si quieres) y lo doy de alta yo y sigo con el presupuesto.`;
   }
   return msg;
 }
@@ -1334,7 +1334,7 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
       if (!nombre || /^(no|cancela|dejalo)\b/.test(nn)) { pendiente.delete(from); return '👍 Vale, no doy de alta a nadie.'; }
       pend.datos.nombre = nombre;
       const fam = await resolverFamiliaCategoria(pend.datos.familia);
-      pendiente.set(from, { accion: 'altaClienteConfirmar', datos: pend.datos, fam, ts: Date.now() });
+      pendiente.set(from, { accion: 'altaClienteConfirmar', datos: pend.datos, fam, resumePresu: pend.resumePresu, ts: Date.now() });
       return resumenAltaCliente(pend.datos, fam);
     }
     if (pend.accion === 'altaClienteConfirmar') {
@@ -1348,7 +1348,7 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
           if (extra[k] != null && String(extra[k]).trim() !== '') merged[k] = extra[k];
         }
         const fam = await resolverFamiliaCategoria(merged.familia);
-        pendiente.set(from, { accion: 'altaClienteConfirmar', datos: merged, fam, ts: Date.now() });
+        pendiente.set(from, { accion: 'altaClienteConfirmar', datos: merged, fam, resumePresu: pend.resumePresu, ts: Date.now() });
         return resumenAltaCliente(merged, fam);
       }
       return 'Responde *"sí"* para crear el cliente o *"no"* para cancelar.';
@@ -1364,6 +1364,17 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
       return 'Responde *"sí"* para crear el presupuesto en StelOrder o *"no"* para descartarlo.';
     }
     if (pend.accion === 'presuCliente') {
+      // ¿Pide darlo de alta? -> encadena alta de cliente y luego retoma el presupuesto.
+      if (/\b(crea(lo|r)?|nuevo|no existe|da(le)? de alta|alta|registra(lo|r)?)\b/.test(nn)) {
+        const d = await parsearAltaCliente(texto);
+        const datos = (d && typeof d === 'object') ? d : {};
+        if (!datos.nombre) datos.nombre = pend.nombreIntento || null;
+        if (!datos.nombre) { pendiente.set(from, { ...pend, ts: Date.now() }); return 'Dime el nombre del cliente nuevo (y si quieres, NIF, dirección y familia).'; }
+        const fam = await resolverFamiliaCategoria(datos.familia);
+        pendiente.set(from, { accion: 'altaClienteConfirmar', datos, fam, resumePresu: { borrador: pend.borrador, iva: pend.iva }, ts: Date.now() });
+        return resumenAltaCliente(datos, fam);
+      }
+      // Si no, intentar resolverlo como cliente EXISTENTE.
       const { target } = await resolver(texto, texto);
       const accId = target ? await stel.accountIdByName(target) : null;
       if (accId) {
@@ -1371,7 +1382,8 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
         pendiente.set(from, { accion: 'presuConfirmar', borrador: b, iva: pend.iva, accId, target, ts: Date.now() });
         return `📊 Presupuesto _${b.titulo || ''}_ para *${target}*.\n¿Lo creo en StelOrder (IVA ${pend.iva != null ? pend.iva : 21}%, estado Pendiente)? Responde *"sí"* o *"no"*.`;
       }
-      return '⚠️ No encuentro ese cliente en StelOrder. Dime el nombre exacto tal como aparece en *Clientes*, o créalo primero allí.';
+      pendiente.set(from, { ...pend, ts: Date.now() });
+      return `⚠️ No encuentro ese cliente en StelOrder. Si ya existe, escríbeme su *nombre exacto*. Si es nuevo, dime *"créalo"* (con NIF y familia si quieres) y lo doy de alta yo y sigo con el presupuesto.`;
     }
     if (pend.accion === 'importConfirmar') {
       if (/^(s[ií]|si|vale|ok|dale|confirmo|adelante|correcto|crea(lo)?|hazlo)\b/.test(nn)) return ejecutarCrearImport(from, pend);
@@ -2171,19 +2183,34 @@ async function handlerAltaCliente(texto, from) {
 }
 
 async function ejecutarAltaCliente(from, pend) {
-  pendiente.delete(from);
   const d = pend.datos || {};
+  const rp = pend.resumePresu || null;
+  let r;
   try {
-    const r = await stel.crearClienteStel({
+    r = await stel.crearClienteStel({
       nombre: d.nombre, nif: d.nif, direccion: d.direccion, cp: d.cp, ciudad: d.ciudad,
       provincia: d.provincia, telefono: d.telefono, email: d.email,
       categoriaId: pend.fam ? pend.fam.id : null, comentarios: 'Alta por WhatsApp'
     });
-    if (r && r.duplicado) return `⚠️ Ya existe un cliente con ese ${r.motivo === 'nif' ? 'NIF' : 'nombre'}: *${r.existente.nombre}*${r.existente.nif ? ` (${r.existente.nif})` : ''}. No he creado un duplicado.`;
-    return `✅ Cliente creado: *${r.nombre}*${r.ref ? ` (${r.ref})` : ''}.`;
-  } catch (e) {
-    return `⚠️ No he podido crear el cliente: ${e.message}`;
+  } catch (e) { pendiente.delete(from); return `⚠️ No he podido crear el cliente: ${e.message}`; }
+
+  // Cliente que ya existía (duplicado): si veníamos de un presupuesto, lo usamos igual.
+  if (r && r.duplicado) {
+    if (rp) {
+      pendiente.set(from, { accion: 'presuConfirmar', borrador: rp.borrador, iva: rp.iva, accId: r.existente.id, target: r.existente.nombre, ts: Date.now() });
+      return `⚠️ Ya existía *${r.existente.nombre}*, así que lo uso para el presupuesto.\n\n¿Lo creo en StelOrder (IVA ${rp.iva != null ? rp.iva : 21}%, estado Pendiente)? Responde *"sí"* o *"no"*.`;
+    }
+    pendiente.delete(from);
+    return `⚠️ Ya existe un cliente con ese ${r.motivo === 'nif' ? 'NIF' : 'nombre'}: *${r.existente.nombre}*${r.existente.nif ? ` (${r.existente.nif})` : ''}. No he creado un duplicado.`;
   }
+
+  // Cliente creado: si veníamos de un presupuesto, retomamos con el nuevo cliente.
+  if (rp && r && r.id) {
+    pendiente.set(from, { accion: 'presuConfirmar', borrador: rp.borrador, iva: rp.iva, accId: r.id, target: r.nombre, ts: Date.now() });
+    return `✅ Cliente creado: *${r.nombre}*${r.ref ? ` (${r.ref})` : ''}.\n\nAhora, ¿creo el presupuesto para *${r.nombre}* (IVA ${rp.iva != null ? rp.iva : 21}%, estado Pendiente)? Responde *"sí"* o *"no"*.`;
+  }
+  pendiente.delete(from);
+  return `✅ Cliente creado: *${r.nombre}*${r.ref ? ` (${r.ref})` : ''}.`;
 }
 
 async function handlerCompetencia(texto, from, imagenes) {
