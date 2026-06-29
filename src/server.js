@@ -1955,6 +1955,22 @@ app.post('/api/trabajadores/:id/baja', requireAuth, async (req, res) => {
   try { res.json(await trabajadores.bajaTrabajador(req.params.id, req.body && req.body.fecha)); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+app.get('/api/trabajadores/:id/saldo', requireAuth, async (req, res) => {
+  try { res.json(await trabajadores.getSaldoTrab(req.params.id)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/trabajadores/:id/movimientos', requireAuth, async (req, res) => {
+  try { res.json({ movimientos: await trabajadores.getMovimientosTrab(req.params.id) }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/trabajadores/:id/movimientos', requireAuth, async (req, res) => {
+  try { res.json(await trabajadores.addMovimientoTrab(req.params.id, req.body || {})); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.delete('/api/trabajadores/movimientos/:movId', requireAuth, async (req, res) => {
+  try { await trabajadores.deleteMovimientoTrab(req.params.movId); res.json({ ok: true }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 
 app.get('/api/colaboradores', requireAuth, async (req, res) => {
   try { res.json(await colaboradores.getColaboradores()); }
