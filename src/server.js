@@ -1935,6 +1935,10 @@ app.post('/api/trabajadores/seed', requireAuth, async (req, res) => {
   try { res.json(await trabajadores.seedDesdeConfig()); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
+app.post('/api/trabajadores/reconciliar', requireAuth, async (req, res) => {
+  try { res.json(await trabajadores.aplicarReconciliacion()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
 app.get('/api/trabajadores/:id', requireAuth, async (req, res) => {
   try { const t = await trabajadores.getTrabajador(req.params.id); if (!t) return res.status(404).json({ error: 'No encontrado' }); res.json(t); }
   catch (err) { res.status(500).json({ error: err.message }); }
