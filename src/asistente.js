@@ -1329,6 +1329,30 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
       if (/^(no|cancela|para|anula|dejalo|mejor no|ahora no)\b/.test(nn)) { pendiente.delete(from); return '👍 Vale, no genero el pedido. La incidencia queda creada.'; }
       // si no responde sí/no, dejamos pasar al resto (puede querer otra cosa)
     }
+    if (pend.accion === 'altaClienteNombre') {
+      const nombre = String(texto || '').trim();
+      if (!nombre || /^(no|cancela|dejalo)\b/.test(nn)) { pendiente.delete(from); return '👍 Vale, no doy de alta a nadie.'; }
+      pend.datos.nombre = nombre;
+      const fam = await resolverFamiliaCategoria(pend.datos.familia);
+      pendiente.set(from, { accion: 'altaClienteConfirmar', datos: pend.datos, fam, ts: Date.now() });
+      return resumenAltaCliente(pend.datos, fam);
+    }
+    if (pend.accion === 'altaClienteConfirmar') {
+      if (/^(s[ií]|si|vale|ok|dale|confirmo|adelante|correcto|crea(lo)?|hazlo)\b/.test(nn)) return ejecutarAltaCliente(from, pend);
+      if (/^(no|cancela|para|anula|dejalo|mejor no|ahora no)\b/.test(nn)) { pendiente.delete(from); return '👍 Vale, no doy de alta al cliente.'; }
+      // No es sí/no: tomarlo como datos adicionales y fusionar
+      const extra = await parsearAltaCliente(texto);
+      if (extra && typeof extra === 'object') {
+        const merged = { ...pend.datos };
+        for (const k of ['nombre', 'nif', 'direccion', 'cp', 'ciudad', 'provincia', 'telefono', 'email', 'familia']) {
+          if (extra[k] != null && String(extra[k]).trim() !== '') merged[k] = extra[k];
+        }
+        const fam = await resolverFamiliaCategoria(merged.familia);
+        pendiente.set(from, { accion: 'altaClienteConfirmar', datos: merged, fam, ts: Date.now() });
+        return resumenAltaCliente(merged, fam);
+      }
+      return 'Responde *"sí"* para crear el cliente o *"no"* para cancelar.';
+    }
     if (pend.accion === 'cambioIvaConfirmar') {
       if (/^(s[ií]|si|vale|ok|dale|confirmo|adelante|correcto|cambia(lo)?|hazlo)\b/.test(nn)) return ejecutarCambioIva(from, pend);
       if (/^(no|cancela|para|anula|dejalo|mejor no|ahora no)\b/.test(nn)) { pendiente.delete(from); return '👍 Vale, dejo el IVA como estaba.'; }
@@ -1506,6 +1530,13 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
 
   // C0.inc) Crear incidencia: "incidencia para X ...", "crea un aviso de ...", "hay que hacer presupuesto para X ..."
   const _ni = norm(texto);
+  // C0.cli) Alta de CLIENTE: "crea el cliente X", "da de alta a X", "nuevo cliente X"
+  if (!imagenes.length && !/\?/.test(texto) &&
+      /\bcliente\b/.test(_ni) &&
+      /\b(crea(r)?|nuev[oa]|alta|registra(r)?|a[nñ]ade|agrega|apunta|da de alta|dar de alta|dale de alta)\b/.test(_ni) &&
+      !/\b(presupuest|incidencia|aviso|pedido|factura|parte|albaran)/.test(_ni)) {
+    return handlerAltaCliente(texto, from);
+  }
   const intencionCrear =
     /\b(crea(r)?|nueva|nuevo|abre|apunta)\b[\s\S]*\b(incidencia|aviso|parte)\b|^incidencia\b|\bincidencia (para|de|en|por)\b|\baviso (para|de)\b/.test(_ni) ||
     /\b(hay que|tenemos que|tengo que|necesito|toca)\b[\s\S]*\b(hacer|preparar|sacar)\b[\s\S]*\bpresupuest/.test(_ni) ||
@@ -2079,6 +2110,79 @@ async function ejecutarCambioIva(from, pend) {
     return `✅ Hecho. *${r.ref}* ahora está al *${pend.iva}%* (${r.lineasTocadas} línea/s actualizadas).`;
   } catch (e) {
     return `⚠️ No he podido cambiar el IVA: ${e.message}`;
+  }
+}
+
+// 2/3) Alta de cliente por WhatsApp: parser de datos + confirmación + creación.
+async function parsearAltaCliente(texto) {
+  let familias = [];
+  try { familias = (await stel.getAccountCategories()).list.map(c => c.name); } catch (e) {}
+  const prompt = `Eres un asistente que da de alta CLIENTES de una empresa de mantenimiento de fincas. Extrae los datos del cliente de la frase del jefe.
+
+Familias disponibles: ${familias.join(', ') || '(ninguna)'}.
+
+Frase: """${texto}"""
+
+Responde SOLO un JSON VÁLIDO, sin markdown:
+{ "nombre": null, "nif": null, "direccion": null, "cp": null, "ciudad": null, "provincia": null, "telefono": null, "email": null, "familia": null }
+
+Reglas:
+- "nombre": razón social o nombre del cliente. Para comunidades suele ser la calle ("C.P. Carrer Major 12").
+- "nif": NIF/CIF/DNI si lo dice; si no, null.
+- "familia": si menciona una de las familias disponibles (o muy parecida), devuelve ese nombre tal cual de la lista; si no, null.
+- Pon null en lo que no se diga. No inventes nada.`;
+  return iaJson(prompt, 800, null, process.env.PRESU_IA_MODEL || 'claude-sonnet-4-6');
+}
+
+async function resolverFamiliaCategoria(nombre) {
+  if (!nombre) return null;
+  try {
+    const { list } = await stel.getAccountCategories();
+    const n = norm(nombre);
+    const hit = list.find(c => norm(c.name) === n) || list.find(c => norm(c.name).includes(n) || n.includes(norm(c.name)));
+    return hit ? { id: hit.id, name: hit.name } : null;
+  } catch (e) { return null; }
+}
+
+function resumenAltaCliente(d, fam) {
+  let s = `🧑‍💼 *Alta de cliente*\n`;
+  s += `• Nombre: *${d.nombre}*\n`;
+  s += `• NIF: ${d.nif || '_(sin NIF)_'}\n`;
+  if (fam) s += `• Familia: ${fam.name}\n`;
+  const dir = [d.direccion, d.cp, d.ciudad, d.provincia].filter(Boolean).join(', ');
+  if (dir) s += `• Dirección: ${dir}\n`;
+  if (d.telefono) s += `• Tel: ${d.telefono}\n`;
+  if (d.email) s += `• Email: ${d.email}\n`;
+  if (!d.nif) s += `\n⚠️ Sin NIF solo puedo evitar duplicados por nombre exacto.`;
+  s += `\n\n¿Lo creo en StelOrder? Responde *"sí"* o *"no"* (o mándame más datos, p. ej. el NIF).`;
+  return s;
+}
+
+async function handlerAltaCliente(texto, from) {
+  const d = await parsearAltaCliente(texto);
+  if (!d || typeof d !== 'object') return '🤔 No te he pillado los datos. Dímelo tipo: *"crea el cliente C.P. Carrer Major 12, NIF H17xxxxxx, familia Cinc Comunitats"*.';
+  if (!d.nombre) {
+    pendiente.set(from, { accion: 'altaClienteNombre', datos: d, ts: Date.now() });
+    return '¿Cómo se llama el cliente? (razón social o, si es comunidad, la calle).';
+  }
+  const fam = await resolverFamiliaCategoria(d.familia);
+  pendiente.set(from, { accion: 'altaClienteConfirmar', datos: d, fam, ts: Date.now() });
+  return resumenAltaCliente(d, fam);
+}
+
+async function ejecutarAltaCliente(from, pend) {
+  pendiente.delete(from);
+  const d = pend.datos || {};
+  try {
+    const r = await stel.crearClienteStel({
+      nombre: d.nombre, nif: d.nif, direccion: d.direccion, cp: d.cp, ciudad: d.ciudad,
+      provincia: d.provincia, telefono: d.telefono, email: d.email,
+      categoriaId: pend.fam ? pend.fam.id : null, comentarios: 'Alta por WhatsApp'
+    });
+    if (r && r.duplicado) return `⚠️ Ya existe un cliente con ese ${r.motivo === 'nif' ? 'NIF' : 'nombre'}: *${r.existente.nombre}*${r.existente.nif ? ` (${r.existente.nif})` : ''}. No he creado un duplicado.`;
+    return `✅ Cliente creado: *${r.nombre}*${r.ref ? ` (${r.ref})` : ''}.`;
+  } catch (e) {
+    return `⚠️ No he podido crear el cliente: ${e.message}`;
   }
 }
 
