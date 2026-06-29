@@ -84,6 +84,7 @@ const CAT = {
   ingreso_comunidad: { label: '🏘️ Cobro comunidad',  flujo: 'entrada' },
   ingreso_otro:      { label: '⬇️ Otro ingreso',      flujo: 'entrada' },
   devolucion:        { label: '↩️ Devolución/abono',  flujo: 'entrada' },
+  ahorro:            { label: '💜 Ahorro 10%',         flujo: 'salida' },
   nomina:            { label: '👷 Nómina/pago trabajador', flujo: 'salida' },
   seguridad_social:  { label: '🏛️ Seguridad Social',  flujo: 'salida' },
   impuesto:          { label: '🧾 Impuesto',          flujo: 'salida' },
@@ -124,6 +125,8 @@ function clasificar(concepto, codigo, importe) {
   if (/tgss|seguridad social|cotizacion|autonomos|regimen general/.test(n))
     return mk('seguridad_social', concepto);
 
+  // ahorro propio: los traspasos "Com. 10%" no son gasto, son ahorro a otra cuenta
+  if (/traspaso:.*com\.\s*10/.test(n)) return mk('ahorro', concepto);
   // comisiones / liquidaciones de banco
   if (cod === '002' || cod === '100' || cod === '070' ||
       /traspaso:.*com\.|liquidacion de las tarjetas|notificaciones sir/.test(n))
@@ -330,11 +333,89 @@ async function getUltimoImport() {
   return db.collection('bancoImports').find({}).sort({ fecha: -1 }).limit(1).next().catch(() => null);
 }
 
+// ── DATOS PARA LA UI DE "BANCO Y GASTOS" ────────────────────────────────────
+// Devuelve exactamente la forma que consumen las constantes del frontend:
+//   BD[año] = { i:[12], g:[12], a:[12] }  (ingresos / gastos reales / ahorro)
+//   EC = [{ n, y5, y6, c, t }]  categorías de gasto    (y5=2025, y6=2026)
+//   IC = [{ n, y5, y6, c, t }]  fuentes de ingreso
+// "gastos reales" excluye el ahorro 10% (traspasos propios), igual que el análisis a mano.
+const EC_MAP = {
+  material:         ['Proveedores y materiales', '#f05252', 'Variable obra'],
+  pago_proveedor:   ['Otros proveedores',        '#e879a1', 'Variable obra'],
+  seguridad_social: ['TGSS Seg. Social',         '#f59e0b', 'Variable personal'],
+  nomina:           ['Personal (nóminas)',       '#f97316', 'Variable personal'],
+  impuesto:         ['AEAT / Hacienda',          '#f59e0b', 'Obligatorio'],
+  comision:         ['Comisiones banco',         '#a78bfa', 'Variable'],
+  seguro:           ['Seguros',                  '#4d9cf8', 'Fijo/trimestral'],
+  gestoria:         ['Gestión y admin',          '#22c487', 'Fijo mensual'],
+  software_suscrip: ['Digital y software',       '#22c487', 'Fijo mensual'],
+  telefonia:        ['Telefonía',                '#22c487', 'Fijo mensual'],
+  combustible:      ['Combustible',              '#6b7280', 'Variable'],
+  publicidad_rrhh:  ['Publicidad / RRHH',        '#e879a1', 'Variable'],
+  parking:          ['Parking',                  '#6b7280', 'Variable'],
+  tarjeta_otro:     ['Compras con tarjeta',      '#6b7280', 'Variable'],
+  otro_gasto:       ['Otros gastos',             '#6b7280', 'Variable'],
+};
+const IC_MAP = {
+  ingreso_comunidad: ['Cobros comunidades', '#22c487', 'Recurrente'],
+  ingreso_otro:      ['Otros ingresos',     '#4d9cf8', 'Variable'],
+  devolucion:        ['Devoluciones/abonos','#a78bfa', 'Puntual'],
+};
+
+async function getDashboardData() {
+  const db = await getDB();
+  const movs = await db.collection('bancoMovimientos').find({}).toArray();
+
+  const BD = { 2025: blank(), 2026: blank() };
+  const ec = {}, ic = {};
+  let ahorroTotal = 0;
+
+  for (const m of movs) {
+    const yr = m.mes.slice(0, 4);
+    const mo = parseInt(m.mes.slice(5, 7), 10) - 1;
+    if (!BD[yr]) BD[yr] = blank();
+    const esY = yr === '2025' ? 'y5' : (yr === '2026' ? 'y6' : null);
+
+    if (m.categoria === 'ahorro') {
+      BD[yr].a[mo] += Math.abs(m.importe);
+      ahorroTotal += Math.abs(m.importe);
+      continue;
+    }
+    if (m.flujo === 'entrada') {
+      BD[yr].i[mo] += m.importe;
+      if (esY) acc(ic, m.categoria, IC_MAP, esY, m.importe);
+    } else {
+      BD[yr].g[mo] += Math.abs(m.importe);
+      if (esY) acc(ec, m.categoria, EC_MAP, esY, Math.abs(m.importe));
+    }
+  }
+
+  const EC = Object.values(ec).sort((a, b) => (b.y5 + b.y6) - (a.y5 + a.y6));
+  const IC = Object.values(ic).sort((a, b) => (b.y5 + b.y6) - (a.y5 + a.y6));
+
+  // KPIs por año
+  const kpis = {};
+  for (const yr of Object.keys(BD)) {
+    const ing = sum(BD[yr].i), gas = sum(BD[yr].g), aho = sum(BD[yr].a);
+    const meses = BD[yr].i.filter((v, k) => BD[yr].i[k] || BD[yr].g[k] || BD[yr].a[k]).length || 1;
+    kpis[yr] = { ingresos: ing, gastos: gas, ahorro: aho, balance: ing - gas, meses,
+                 ingresosMes: ing / meses, gastosMes: gas / meses, ahorroMes: aho / meses, balanceMes: (ing - gas) / meses };
+  }
+
+  return { BD, EC, IC, kpis, ahorroTotal };
+}
+function blank() { return { i: Array(12).fill(0), g: Array(12).fill(0), a: Array(12).fill(0) }; }
+function sum(arr) { return arr.reduce((a, b) => a + b, 0); }
+function acc(bucket, cat, map, yKey, val) {
+  if (!bucket[cat]) { const [n, c, t] = map[cat] || [cat, '#6b7280', 'Variable']; bucket[cat] = { n, c, t, y5: 0, y6: 0 }; }
+  bucket[cat][yKey] += val;
+}
+
 module.exports = {
   // núcleo
   parseExcelBuffer, ingestExcelBuffer,
   // lectura dashboard
-  getMovimientos, getResumen, getRecurrentesMensuales, getUltimoImport,
+  getMovimientos, getResumen, getRecurrentesMensuales, getUltimoImport, getDashboardData,
   // utilidades expuestas por si las quiere reusar el asistente
   clasificar, CAT, RECURRENTES, TRABAJADORES,
 };
