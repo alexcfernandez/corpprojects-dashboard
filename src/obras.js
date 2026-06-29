@@ -93,41 +93,72 @@ async function getRentabilidad(obraId) {
     ]
   }).sort({ date: 1 }).toArray();
 
-  // 2. Calcular coste de personal
-  const RATES = {
-    jose:     26.72,
-    diego:    19.05,
-    abdellah: 13.28,
-    mamadou:  13.28,
-    paula:    8.66,
+  // 2. Coste de personal — desde PARTES y, si no hay parte ese día, desde PRESENCIA.
+  //    Tarifa real = coste/hora de la plantilla (con fallback razonable).
+  const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  const RATES = { jose: 26.72, diego: 19.05, abdellah: 13.28, mamadou: 13.28, paula: 8.66 };
+  let trabs = [];
+  try { trabs = await require('./trabajadores').getTrabajadores(false); } catch (e) {}
+  const rateFor = (name, id) => {
+    const n = norm(name);
+    for (const w of trabs) {
+      if (!w.costeHora) continue;
+      const toks = norm(w.nombre).split(/\s+/).filter(t => t.length > 2);
+      if (n && (n === norm(w.nombre) || toks.some(t => n.includes(t)) || (w.alias || []).some(a => a && n.includes(a)))) return w.costeHora;
+    }
+    return RATES[id] || 15;
   };
+
+  // Presencia asociada a la obra (por nombre de obra o de cliente)
+  const esc = s => String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const nRef = norm(obra.reference || ''), nCli = norm(obra.clientName || '');
+  const matchObra = name => { const a = norm(name); if (!a) return false; return (nRef && (a.includes(nRef) || nRef.includes(a))) || (nCli && (a.includes(nCli) || nCli.includes(a))); };
+  let presencias = [];
+  try {
+    presencias = await db.collection('attendance').find({
+      $or: [
+        { clientName: { $regex: esc(obra.reference || '___nada___'), $options: 'i' } },
+        { clientName: { $regex: esc(obra.clientName || '___nada___'), $options: 'i' } },
+        { 'obras.clientName': { $regex: esc(obra.reference || '___nada___'), $options: 'i' } },
+        { 'obras.clientName': { $regex: esc(obra.clientName || '___nada___'), $options: 'i' } },
+      ]
+    }).toArray();
+  } catch (e) {}
 
   let totalHoras = 0;
   let totalCostePersonal = 0;
   let totalMateriales = 0;
   const byWorker = {};
   const byDate = {};
+  const cubierto = new Set(); // workerId|date ya contado por un parte
 
+  // 2a. Partes (prioridad: traen materiales y horas explícitas)
   partes.forEach(p => {
-    const rate = RATES[p.workerId] || 15;
-    const coste = (p.horas || 8) * rate;
-    totalHoras += p.horas || 8;
-    totalCostePersonal += coste;
+    const horas = p.horas || 8, rate = rateFor(p.workerName, p.workerId), coste = horas * rate;
+    totalHoras += horas; totalCostePersonal += coste;
+    const wk = p.workerId || p.workerName;
+    cubierto.add(wk + '|' + p.date);
+    if (!byWorker[wk]) byWorker[wk] = { name: p.workerName, dias: 0, horas: 0, coste: 0 };
+    byWorker[wk].dias++; byWorker[wk].horas += horas; byWorker[wk].coste += coste;
+    (byDate[p.date] = byDate[p.date] || []).push({ worker: p.workerName, horas, coste, src: 'parte' });
+    (p.materiales || []).forEach(m => { totalMateriales += (m.cantidad || 0) * (m.precio || 0); });
+  });
 
-    // Por trabajador
-    if (!byWorker[p.workerId]) byWorker[p.workerId] = { name: p.workerName, dias: 0, horas: 0, coste: 0 };
-    byWorker[p.workerId].dias++;
-    byWorker[p.workerId].horas += p.horas || 8;
-    byWorker[p.workerId].coste += coste;
-
-    // Por fecha
-    byDate[p.date] = (byDate[p.date] || []);
-    byDate[p.date].push({ worker: p.workerName, horas: p.horas || 8, coste });
-
-    // Materiales de los partes
-    (p.materiales || []).forEach(m => {
-      totalMateriales += (m.cantidad || 0) * (m.precio || 0);
-    });
+  // 2b. Presencia (rellena los días sin parte de esa obra)
+  presencias.forEach(e => {
+    let horas = 0;
+    if (Array.isArray(e.obras) && e.obras.length) {
+      e.obras.forEach(o => { if (matchObra(o.clientName)) horas += (o.horas || 0); });
+      if (!horas && matchObra(e.clientName)) horas = e.horas || 8;
+    } else if (matchObra(e.clientName)) horas = e.horas || 8;
+    if (!horas) return;
+    const wk = e.workerId || e.workerName;
+    if (cubierto.has(wk + '|' + e.date)) return; // ya contado por un parte ese día
+    const rate = rateFor(e.workerName, e.workerId), coste = horas * rate;
+    totalHoras += horas; totalCostePersonal += coste;
+    if (!byWorker[wk]) byWorker[wk] = { name: e.workerName, dias: 0, horas: 0, coste: 0 };
+    byWorker[wk].dias++; byWorker[wk].horas += horas; byWorker[wk].coste += coste;
+    (byDate[e.date] = byDate[e.date] || []).push({ worker: e.workerName, horas, coste, src: 'presencia' });
   });
 
   const totalCoste = totalCostePersonal + totalMateriales;
