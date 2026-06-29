@@ -1662,7 +1662,7 @@ async function cambiarIvaPresupuesto({ id = null, iva = 21, requestedBy = null }
   if (!tocadas) throw new Error('El presupuesto no tiene líneas de producto que cambiar');
   const body = { ...obj, lines: nuevasLineas };
 
-  const db = await getDB();
+  const db = await require('./db').getDB();
   const ins = await db.collection('stelWriteLog').insertOne({ tipo: 'cambio-iva', workEstimateId: estId, ref, ivaAntes: antes, ivaNuevo: Number(iva), lineasTocadas: tocadas, requestedBy, at: new Date(), result: 'pending' });
   try {
     const put = await client.put(`/workEstimates/${estId}`, body, { headers: { 'Content-Type': 'application/json; charset=utf-8' }, timeout: 25000 });
