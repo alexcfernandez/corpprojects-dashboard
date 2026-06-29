@@ -1461,7 +1461,11 @@ async function saldoTrabajadorTxt(w, periodo) {
     const y = new Date(hoy + 'T12:00:00Z').getUTCFullYear(); from = `${y}-01-01`; to = `${y}-12-31`; etiqueta = `año ${y}`;
   } // 'todo' -> sin filtro
 
-  const movs = (from && to) ? all.filter(m => m.fecha >= from && m.fecha <= to) : all;
+  // En la SEMANA agrupamos por la semana ASIGNADA (semanaDesde) si la tiene
+  // —así un adelanto dado el viernes "para la semana que viene" cae donde toca—;
+  // si no la tiene (apuntes antiguos), por fecha.
+  const keyOf = m => (scope === 'semana' && m.semanaDesde) ? m.semanaDesde : m.fecha;
+  const movs = (from && to) ? all.filter(m => { const k = keyOf(m); return k >= from && k <= to; }) : all;
   let dev = 0, ent = 0;
   for (const m of movs) {
     const im = Number(m.importe) || 0;
