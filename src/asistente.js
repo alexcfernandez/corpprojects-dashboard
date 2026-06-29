@@ -1816,7 +1816,7 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
 
   // C0.pago) Pagos / adelantos / trabajo / saldo / informe de un TRABAJADOR
   if (!imagenes.length) {
-    const esPagoKw = /\b(adelant|prestad|prest[eé]|prestam|pagu[eé]|le pag|le di|pago faltante|semana trabajad|devengad|descuent|devoluci|me devolvi|cuanto le debo|cuanto (lleva|ha cobrado)|saldo|informe|resumen)\b/.test(_ni)
+    const esPagoKw = /\b(adelant\w*|prestad\w*|prest[eé]\w*|prestam\w*|pag\w*|le di|descuent\w*|devoluci\w*|devolv\w*|devengad\w*|semana trabajad\w*|cuanto le debo|cuanto (lleva|ha cobrado)|saldo|informe|resumen)\b/.test(_ni)
       || /\btrabaj\w*\s+\d/.test(_ni) || /\b\d+\s*d[ií]as\b/.test(_ni);
     if (esPagoKw) {
       const res = await handlerPagoTrabajador(texto, from);
