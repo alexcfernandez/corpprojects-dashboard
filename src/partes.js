@@ -159,9 +159,39 @@ async function getResumenFacturacion({ from, to, clientName } = {}) {
   return Object.values(byClient).map(c => ({ ...c, workers: [...c.workers] })).sort((a,b) => b.horas - a.horas);
 }
 
+// Trabajo TERMINADO que aún no figura como facturado (observador anti-fuga de facturación).
+// Solo lectura. Agrupa por cliente, con antigüedad del trabajo más viejo.
+async function getPendientesFacturar({ dias = 0, clientName } = {}) {
+  const db = await getDB();
+  const query = {
+    status:        { $in: ['pendiente', 'verificado'] }, // hecho/validado, NO facturado
+    estadoTrabajo: 'completado',                          // solo trabajo terminado (no parcial/continúa/material)
+  };
+  if (clientName) query.clientName = { $regex: clientName, $options: 'i' };
+  const partes = await db.collection('partes').find(query).sort({ date: 1 }).toArray();
+  const hoy = Date.now();
+  const byClient = {};
+  for (const p of partes) {
+    const d = p.date ? new Date(p.date) : (p.createdAt || new Date());
+    const edad = Math.max(0, Math.floor((hoy - d.getTime()) / 86400000));
+    if (dias && edad < dias) continue;
+    const k = p.clientName || 'Sin cliente';
+    if (!byClient[k]) byClient[k] = { client: k, partes: 0, horas: 0, materiales: [], maxEdad: 0, workers: new Set() };
+    const c = byClient[k];
+    c.partes++;
+    c.horas += p.horas || 0;
+    c.maxEdad = Math.max(c.maxEdad, edad);
+    if (p.workerName) c.workers.add(p.workerName);
+    (p.materiales || []).forEach(m => c.materiales.push(m));
+  }
+  return Object.values(byClient)
+    .map(c => ({ ...c, workers: [...c.workers] }))
+    .sort((a, b) => b.maxEdad - a.maxEdad);
+}
+
 module.exports = {
   WORKERS, ESTADOS_PARTE, ESTADOS_TRABAJO, TIPOS_JORNADA,
   workerLogin, verifyWorkerToken,
   createParte, getPartes, getParte, updateParte,
-  getResumenFacturacion
+  getResumenFacturacion, getPendientesFacturar
 };
