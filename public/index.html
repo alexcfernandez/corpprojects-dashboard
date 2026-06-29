@@ -943,9 +943,9 @@ async function loadLedger(slug){
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
       <span style="font-size:12px;color:var(--text3)">📄 Informe:</span>
-      <button onclick="exportarInformeColab('${w.colaboradorId}',${JSON.stringify(w.nombre)},'mes')" style="background:none;border:1px solid var(--accent,#4d9cf8);color:var(--accent,#4d9cf8);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:12px">Este mes</button>
-      <button onclick="exportarInformeColab('${w.colaboradorId}',${JSON.stringify(w.nombre)},'ano')" style="background:none;border:1px solid var(--accent,#4d9cf8);color:var(--accent,#4d9cf8);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:12px">Este año</button>
-      <button onclick="exportarInformeColab('${w.colaboradorId}',${JSON.stringify(w.nombre)},'todo')" style="background:none;border:1px solid var(--accent,#4d9cf8);color:var(--accent,#4d9cf8);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:12px">Todo</button>
+      <button onclick="exportarInformeColab('${w.colaboradorId}','${slug}','mes')" style="background:none;border:1px solid var(--accent,#4d9cf8);color:var(--accent,#4d9cf8);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:12px">Este mes</button>
+      <button onclick="exportarInformeColab('${w.colaboradorId}','${slug}','ano')" style="background:none;border:1px solid var(--accent,#4d9cf8);color:var(--accent,#4d9cf8);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:12px">Este año</button>
+      <button onclick="exportarInformeColab('${w.colaboradorId}','${slug}','todo')" style="background:none;border:1px solid var(--accent,#4d9cf8);color:var(--accent,#4d9cf8);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:12px">Todo</button>
     </div>
     <div style="max-height:150px;overflow:auto;font-size:12px">
       ${movs.length?movs.slice(0,40).map(x=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid var(--border,#f0f0f0)"><span>${x.fecha} · ${lbl[x.tipo]||x.tipo}${x.concepto?' · '+x.concepto:''}</span><span style="white-space:nowrap">${e2(x.importe)} <button onclick="delMovColab('${x._id}','${slug}')" style="background:none;border:none;cursor:pointer;color:var(--red,#f05252)">✕</button></span></div>`).join(''):'<div style="color:var(--text3)">Sin movimientos aún</div>'}
@@ -978,7 +978,9 @@ async function delMovColab(movId,slug){
   try{ await af('/api/colaboradores/movimientos/'+movId,{method:'DELETE'}); loadLedger(slug); }
   catch(e){alert('Error: '+e.message);}
 }
-async function exportarInformeColab(colabId,nombre,periodo){
+async function exportarInformeColab(colabId,slug,periodo){
+  const _w=(typeof TRAB!=='undefined'&&TRAB)?TRAB.find(x=>x.slug===slug):null;
+  const nombre=_w?_w.nombre:'Trabajador';
   const MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   let movs=[];
   try{ const m=await af('/api/colaboradores/'+colabId+'/movimientos'); movs=Array.isArray(m)?m:((m&&m.movimientos)||[]); }
