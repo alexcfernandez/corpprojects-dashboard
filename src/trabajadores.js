@@ -72,7 +72,7 @@ async function createTrabajador(data) {
   const w = {
     slug,
     nombre,
-    alias: Array.isArray(data.alias) ? data.alias.map(norm).filter(Boolean) : [],
+    alias: Array.isArray(data.alias) ? data.alias.map(norm).filter(Boolean) : (data.alias ? String(data.alias).split(',').map(norm).filter(Boolean) : []),
     activo: data.activo !== false,
     tipo: data.tipo || 'fijo',            // fijo | externo | autonomo
     esAutonomo: !!data.esAutonomo,
@@ -133,6 +133,49 @@ async function resolverTrabajador(texto) {
 
 // SEED idempotente: importa lo que ya existe SIN pisar ediciones manuales.
 // $setOnInsert solo escribe al crear; si ya existe el trabajador, no toca nada.
+// Re-sincroniza los apodos (aliasTrabajadores) sobre la plantilla. Los apodos
+// apuntan a workerName/workerId, así que mapeamos por ambos.
+async function resyncAliases() {
+  const db = await getDB();
+  const aliasMap = {};
+  try {
+    const docs = await db.collection('aliasTrabajadores').find({}).toArray();
+    for (const a of docs) {
+      const k1 = norm(a.workerName), k2 = norm(a.workerId);
+      if (k1) (aliasMap[k1] = aliasMap[k1] || []).push(norm(a.alias));
+      if (k2) (aliasMap[k2] = aliasMap[k2] || []).push(norm(a.alias));
+    }
+  } catch (e) {}
+  const all = await db.collection('trabajadores').find({}).toArray();
+  let tocados = 0;
+  for (const w of all) {
+    const al = [...new Set([...(w.alias || []), ...(aliasMap[norm(w.nombre)] || []), ...(aliasMap[w.slug] || [])])];
+    if (al.length !== (w.alias || []).length) { await db.collection('trabajadores').updateOne({ _id: w._id }, { $set: { alias: al, updatedAt: new Date() } }); tocados++; }
+  }
+  return tocados;
+}
+
+// Aplica las decisiones confirmadas (idempotente): apodos, alta Javi el largo,
+// David Taladros a fijo. Re-ejecutable sin efectos secundarios.
+async function aplicarReconciliacion() {
+  const db = await getDB();
+  const aliasTocados = await resyncAliases();
+  await db.collection('trabajadores').updateOne(
+    { slug: 'javi-el-largo' },
+    { $setOnInsert: {
+        slug: 'javi-el-largo', nombre: 'Javi el largo', alias: [], activo: true,
+        tipo: 'externo', esAutonomo: false, pin: null, color: '#0ea5e9',
+        salarioNeto: null, baseCotizacion: null, ssEmpresaPct: DEFAULTS.ssEmpresaPct,
+        diasLaborablesAno: DEFAULTS.diasLaborablesAno, horasDia: DEFAULTS.horasDia,
+        costeHora: 18, fechaAlta: new Date().toISOString().slice(0, 10), fechaBaja: null,
+        notas: 'Por horas', createdAt: new Date(),
+      }, $set: { updatedAt: new Date() } },
+    { upsert: true }
+  );
+  await db.collection('trabajadores').updateOne({ slug: 'david' }, { $set: { tipo: 'fijo', activo: true, notas: '', updatedAt: new Date() } });
+  return { ok: true, aliasTocados };
+}
+
 async function seedDesdeConfig() {
   const db = await getDB();
   // apodos guardados → mapa slug→[alias]
@@ -197,5 +240,5 @@ async function diag() {
 
 module.exports = {
   getTrabajadores, getTrabajador, createTrabajador, updateTrabajador, bajaTrabajador,
-  resolverTrabajador, seedDesdeConfig, diag, calcCoste, slugify, norm, DEFAULTS,
+  resolverTrabajador, seedDesdeConfig, resyncAliases, aplicarReconciliacion, diag, calcCoste, slugify, norm, DEFAULTS,
 };
