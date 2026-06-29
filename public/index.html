@@ -270,29 +270,24 @@
   <div id="btab-personal" class="bpanel">
     <div class="alert ain" style="margin-bottom:16px"><div>👥</div><div><strong>Coste real por trabajador</strong> — calculado con el recibo de SS real (marzo 2026: 4.040,47 €, base 9.214,28 €). SS empresa = 43,9% sobre base. 218 días laborables reales/año.</div></div>
     <div class="metrics-row">
-      <div class="mc"><div class="ml">Nóminas brutas/mes</div><div class="mv r">7.100 €</div><div class="ms">Suma 5 trabajadores</div></div>
-      <div class="mc"><div class="ml">SS empresa/mes</div><div class="mv a">4.040 €</div><div class="ms">Real recibo 03/2026</div></div>
+      <div class="mc"><div class="ml">Nóminas netas/mes</div><div class="mv r" id="p-nom">7.100 €</div><div class="ms" id="p-noms">Suma fijos</div></div>
+      <div class="mc"><div class="ml">SS empresa/mes</div><div class="mv a" id="p-ss">4.040 €</div><div class="ms">Estimada (43,9%)</div></div>
       <div class="mc"><div class="ml">Autónomos/mes</div><div class="mv a">410 €</div><div class="ms">315 + 94,50 €</div></div>
-      <div class="mc"><div class="ml">TOTAL personal/mes</div><div class="mv r">11.550 €</div><div class="ms">Nóminas + SS + autónomos</div></div>
+      <div class="mc"><div class="ml">TOTAL personal/mes</div><div class="mv r" id="p-tot">11.550 €</div><div class="ms">Nóminas + SS estimada</div></div>
       <div class="mc"><div class="ml">Días laborables/año</div><div class="mv b">218</div><div class="ms">L–V sin festivos ni vacaciones</div></div>
       <div class="mc"><div class="ml">Horas facturables/año</div><div class="mv b">1.744 h</div><div class="ms">Por trabajador</div></div>
     </div>
     <div class="wgrid" id="wCards"></div>
     <div class="card">
-      <div class="card-title">Coste real y precio mínimo de venta por hora</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+        <div class="card-title" style="margin:0">Coste real y precio mínimo de venta por hora</div>
+        <button onclick="abrirFichaTrab()" style="font-size:12px;padding:6px 12px;background:var(--accent,#4d9cf8);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600">➕ Añadir trabajador</button>
+      </div>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:8px">⚠️ SS empresa estimada (43,9%) hasta subir la nómina real de la gestoría.</div>
       <table>
-        <thead><tr><th>Trabajador</th><th style="text-align:right">Salario</th><th style="text-align:right">SS empresa</th><th style="text-align:right">Coste/mes</th><th style="text-align:right">Coste/hora</th><th style="text-align:right">Coste/día</th><th style="text-align:right">PVP mín +30%</th><th style="text-align:right">PVP rec. +50%</th></tr></thead>
-        <tbody>
-          <tr><td><strong>Jose Beliard</strong><br><span style="font-size:10px;color:var(--text3)">1.800 + 600 plus fijo</span></td><td style="text-align:right">2.400 €</td><td style="text-align:right;color:var(--amber)">1.184 €</td><td style="text-align:right;color:var(--red);font-weight:600">3.584 €</td><td style="text-align:right">26,72 €</td><td style="text-align:right">213,80 €</td><td style="text-align:right;color:var(--amber)">34,74 €</td><td style="text-align:right;color:var(--green)">40,09 €</td></tr>
-          <tr><td><strong>Diego Campillo</strong><br><span style="font-size:10px;color:var(--text3)">1.650 € base</span></td><td style="text-align:right">1.650 €</td><td style="text-align:right;color:var(--amber)">844 €</td><td style="text-align:right;color:var(--red);font-weight:600">2.494 €</td><td style="text-align:right">19,05 €</td><td style="text-align:right">152,43 €</td><td style="text-align:right;color:var(--amber)">24,77 €</td><td style="text-align:right;color:var(--green)">28,58 €</td></tr>
-          <tr><td><strong>Abdellah Souiri</strong><br><span style="font-size:10px;color:var(--text3)">1.150 € base</span></td><td style="text-align:right">1.150 €</td><td style="text-align:right;color:var(--amber)">588 €</td><td style="text-align:right;color:var(--red);font-weight:600">1.738 €</td><td style="text-align:right">13,28 €</td><td style="text-align:right">106,24 €</td><td style="text-align:right;color:var(--amber)">17,26 €</td><td style="text-align:right;color:var(--green)">19,92 €</td></tr>
-          <tr><td><strong>Mamadou Barry</strong><br><span style="font-size:10px;color:var(--text3)">1.150 € base</span></td><td style="text-align:right">1.150 €</td><td style="text-align:right;color:var(--amber)">588 €</td><td style="text-align:right;color:var(--red);font-weight:600">1.738 €</td><td style="text-align:right">13,28 €</td><td style="text-align:right">106,24 €</td><td style="text-align:right;color:var(--amber)">17,26 €</td><td style="text-align:right;color:var(--green)">19,92 €</td></tr>
-          <tr><td><strong>Paula Morales</strong><br><span style="font-size:10px;color:var(--text3)">750 € base</span></td><td style="text-align:right">750 €</td><td style="text-align:right;color:var(--amber)">384 €</td><td style="text-align:right;color:var(--red);font-weight:600">1.134 €</td><td style="text-align:right">8,66 €</td><td style="text-align:right">69,29 €</td><td style="text-align:right;color:var(--amber)">11,26 €</td><td style="text-align:right;color:var(--green)">12,99 €</td></tr>
-        </tbody>
-        <tfoot>
-          <tr style="background:rgba(255,255,255,.03)"><td><strong>TOTAL equipo</strong></td><td style="text-align:right;font-weight:600">7.100 €</td><td style="text-align:right;color:var(--amber);font-weight:600">4.040 €</td><td style="text-align:right;color:var(--red);font-weight:700">11.140 €</td><td colspan="4"></td></tr>
-          <tr style="background:rgba(240,82,82,.05)"><td><strong>TOTAL REAL PERSONAL</strong></td><td colspan="2"></td><td style="text-align:right;color:var(--red);font-weight:700;font-size:14px">11.550 €</td><td colspan="4"></td></tr>
-        </tfoot>
+        <thead><tr><th>Trabajador</th><th style="text-align:right">Salario</th><th style="text-align:right">SS empresa</th><th style="text-align:right">Coste/mes</th><th style="text-align:right">Coste/hora</th><th style="text-align:right">Coste/día</th><th style="text-align:right">PVP mín +30%</th><th style="text-align:right">PVP rec. +50%</th><th></th></tr></thead>
+        <tbody id="wTb"></tbody>
+        <tfoot id="wTf"></tfoot>
       </table>
     </div>
     <div class="g2">
@@ -856,9 +851,73 @@ function rCats(y){
   const tb=document.getElementById('catTb');
   if(tb)tb.innerHTML=cats.map(c=>`<tr><td>${c.n}</td><td style="text-align:right">${eur(c.y5)}</td><td style="text-align:right">${eur(c.y6)}</td><td style="text-align:right;font-weight:600;color:${c.c}">${eur(c.y5+c.y6)}</td><td style="text-align:right;color:var(--text2)">${eur((c.y5+c.y6)/17)}</td><td><span class="badge" style="background:var(--bg3);color:var(--text2);font-size:9px">${c.t}</span></td></tr>`).join('');
 }
-function rWorkers(){
-  const wg=document.getElementById('wCards');if(!wg)return;
-  wg.innerHTML=WD.filter(w=>w.y5+w.y6>0).map(w=>`<div class="wcard"><div class="wname">👤 ${w.n}</div><div class="wtotal">${eur(w.y5+w.y6)}</div><div class="wsub">2025: ${eur(w.y5)}${w.y6>0?' · 2026: '+eur(w.y6):''}</div><div class="wsub">${w.o5+w.o6} operaciones totales</div></div>`).join('');
+let TRAB=[];
+async function rWorkers(){
+  let d; try{ d=await af('/api/trabajadores'); }catch(e){ return; }
+  TRAB=(d&&d.trabajadores)||[];
+  const e2=n=>(n||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+  const activos=TRAB.filter(w=>w.activo!==false);
+  const wg=document.getElementById('wCards');
+  if(wg) wg.innerHTML=activos.map(w=>{const c=w.coste||{};const tag=w.tipo==='externo'?'🔧 por horas':(w.esAutonomo?'autónomo':'fijo');
+    return `<div class="wcard" style="cursor:pointer" onclick="abrirFichaTrab('${w.slug}')"><div class="wname">👤 ${w.nombre}</div><div class="wtotal">${e2(c.costeHora)}/h</div><div class="wsub">${tag}${w.salarioNeto?' · neto '+eur(w.salarioNeto):''}</div><div class="wsub">${(w.alias||[]).length?'apodos: '+w.alias.join(', '):'&nbsp;'}</div></div>`;}).join('');
+  const tb=document.getElementById('wTb');
+  if(tb) tb.innerHTML=activos.map(w=>{const c=w.coste||{};
+    const dash='—';
+    const sal=w.salarioNeto?eur(w.salarioNeto):dash, ss=c.ssEmpresa?eur(c.ssEmpresa):dash, cm=c.costeMes?eur(c.costeMes):dash;
+    const ch=c.costeHora?e2(c.costeHora):dash, cd=c.costeDia?eur(c.costeDia):dash;
+    const p30=c.costeHora?e2(c.costeHora*1.3):dash, p50=c.costeHora?e2(c.costeHora*1.5):dash;
+    const sub=w.tipo==='externo'?'<br><span style="font-size:10px;color:var(--text3)">por horas</span>':(w.notas?'<br><span style="font-size:10px;color:var(--text3)">'+w.notas+'</span>':'');
+    return `<tr><td><strong>${w.nombre}</strong>${sub}</td><td style="text-align:right">${sal}</td><td style="text-align:right;color:var(--amber)">${ss}</td><td style="text-align:right;color:var(--red);font-weight:600">${cm}</td><td style="text-align:right">${ch}</td><td style="text-align:right">${cd}</td><td style="text-align:right;color:var(--amber)">${p30}</td><td style="text-align:right;color:var(--green)">${p50}</td><td style="text-align:right"><button onclick="abrirFichaTrab('${w.slug}')" style="background:none;border:none;cursor:pointer;font-size:14px">✏️</button></td></tr>`;}).join('');
+  const tf=document.getElementById('wTf');
+  const fijos=activos.filter(w=>w.salarioNeto>0);
+  const tNom=fijos.reduce((s,w)=>s+(w.salarioNeto||0),0);
+  const tSS=fijos.reduce((s,w)=>s+((w.coste&&w.coste.ssEmpresa)||0),0);
+  const tMes=fijos.reduce((s,w)=>s+((w.coste&&w.coste.costeMes)||0),0);
+  if(tf) tf.innerHTML=`<tr style="background:rgba(255,255,255,.03)"><td><strong>TOTAL fijos</strong></td><td style="text-align:right;font-weight:600">${eur(tNom)}</td><td style="text-align:right;color:var(--amber);font-weight:600">${eur(tSS)}</td><td style="text-align:right;color:var(--red);font-weight:700">${eur(tMes)}</td><td colspan="5"></td></tr>`;
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+  set('p-nom',eur(tNom)); set('p-noms','Suma '+fijos.length+' fijos'); set('p-ss',eur(tSS)); set('p-tot',eur(tMes));
+}
+function abrirFichaTrab(slug){
+  const w=slug?TRAB.find(x=>x.slug===slug):null;
+  const v=x=>(x!=null?x:'');
+  const html=`<div id="fichaOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px" onclick="if(event.target.id==='fichaOverlay')cerrarFichaTrab()">
+    <div style="background:var(--bg2,#fff);color:var(--text,#111);border:1px solid var(--border,#ddd);border-radius:12px;padding:20px;width:min(440px,94vw);max-height:90vh;overflow:auto">
+      <div style="font-weight:700;font-size:16px;margin-bottom:14px">${w?'Editar: '+w.nombre:'Nuevo trabajador'}</div>
+      <div style="display:grid;gap:10px;font-size:13px">
+        <label>Nombre<input id="f-nombre" value="${v(w&&w.nombre)}" style="width:100%;box-sizing:border-box;padding:7px;margin-top:3px"></label>
+        <label>Tipo<select id="f-tipo" style="width:100%;box-sizing:border-box;padding:7px;margin-top:3px">
+          <option value="fijo" ${w&&w.tipo==='fijo'?'selected':''}>Fijo (nómina)</option>
+          <option value="externo" ${w&&w.tipo==='externo'?'selected':''}>Externo (por horas)</option>
+          <option value="autonomo" ${w&&w.tipo==='autonomo'?'selected':''}>Autónomo</option>
+        </select></label>
+        <label>Salario neto/mes (€)<input id="f-salario" type="number" value="${v(w&&w.salarioNeto)}" style="width:100%;box-sizing:border-box;padding:7px;margin-top:3px"></label>
+        <label>Base cotización (€, opcional)<input id="f-base" type="number" value="${v(w&&w.baseCotizacion)}" style="width:100%;box-sizing:border-box;padding:7px;margin-top:3px"></label>
+        <label>Coste/hora (€, si va por horas)<input id="f-coste" type="number" step="0.01" value="${v(w&&w.costeHora)}" style="width:100%;box-sizing:border-box;padding:7px;margin-top:3px"></label>
+        <label>Apodos (separados por coma)<input id="f-alias" value="${v(w&&(w.alias||[]).join(', '))}" style="width:100%;box-sizing:border-box;padding:7px;margin-top:3px"></label>
+        <label style="display:flex;align-items:center;gap:8px"><input id="f-activo" type="checkbox" ${(!w||w.activo!==false)?'checked':''}> Activo</label>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        ${w?`<button onclick="bajaTrab('${w.slug}')" style="margin-right:auto;background:none;border:1px solid var(--red,#f05252);color:var(--red,#f05252);border-radius:8px;padding:8px 12px;cursor:pointer">Dar de baja</button>`:''}
+        <button onclick="cerrarFichaTrab()" style="background:var(--bg3,#eee);border:none;border-radius:8px;padding:8px 14px;cursor:pointer">Cancelar</button>
+        <button onclick="guardarFichaTrab('${slug||''}')" style="background:var(--accent,#4d9cf8);color:#fff;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:600">Guardar</button>
+      </div>
+    </div></div>`;
+  const tmp=document.createElement('div'); tmp.innerHTML=html; document.body.appendChild(tmp.firstElementChild);
+}
+function cerrarFichaTrab(){const o=document.getElementById('fichaOverlay');if(o)o.remove();}
+async function guardarFichaTrab(slug){
+  const g=id=>document.getElementById(id);
+  const body={nombre:g('f-nombre').value.trim(),tipo:g('f-tipo').value,
+    salarioNeto:g('f-salario').value||null,baseCotizacion:g('f-base').value||null,
+    costeHora:g('f-coste').value||null,alias:g('f-alias').value,activo:g('f-activo').checked};
+  if(!body.nombre){alert('El nombre es obligatorio');return;}
+  try{ await af(slug?`/api/trabajadores/${slug}`:'/api/trabajadores',{method:slug?'PUT':'POST',body:JSON.stringify(body)}); cerrarFichaTrab(); rWorkers(); }
+  catch(e){alert('Error: '+e.message);}
+}
+async function bajaTrab(slug){
+  if(!confirm('¿Dar de baja a este trabajador? Se conserva el histórico.'))return;
+  try{ await af(`/api/trabajadores/${slug}/baja`,{method:'POST',body:'{}'}); cerrarFichaTrab(); rWorkers(); }
+  catch(e){alert('Error: '+e.message);}
 }
 function rFc(){
   dc('fc');
