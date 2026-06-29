@@ -444,6 +444,14 @@ app.get('/api/invoices/pending',   requireAuth, async (req,res) => res.json(awai
 app.get('/api/invoices',           requireAuth, async (req,res) => res.json(await getInvoices()));
 app.get('/api/clients',            requireAuth, async (req,res) => { const {clients} = await getClients(); res.json(clients); });
 app.get('/api/estimates',          requireAuth, async (req,res) => res.json(await getEstimatesSummary()));
+app.post('/api/presupuesto/iva', requireAuth, async (req,res) => {
+  try {
+    const { id, iva } = req.body || {};
+    if (!id || iva == null) return res.status(400).json({ error: 'Faltan id o iva' });
+    const r = await require('./stelorder').cambiarIvaPresupuesto({ id, iva: Number(iva), requestedBy: (req.user && req.user.email) || 'dashboard' });
+    res.json(r);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // ── Fichas técnicas de comunidad ──
 const _com = require('./comunidades');
