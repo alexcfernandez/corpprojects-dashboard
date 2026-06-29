@@ -1921,6 +1921,37 @@ app.get('/api/emails/stats', requireAuth, async (req, res) => {
 // ── COLABORADORES EXTERNOS ────────────────────────────────────────
 const colaboradores = require('./colaboradores');
 
+// ── PLANTILLA ÚNICA DE TRABAJADORES ───────────────────────────────
+const trabajadores = require('./trabajadores');
+app.get('/api/trabajadores', requireAuth, async (req, res) => {
+  try { res.json({ trabajadores: await trabajadores.getTrabajadores(req.query.activos === '1') }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/trabajadores/diag', requireAuth, async (req, res) => {
+  try { res.json(await trabajadores.diag()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/trabajadores/seed', requireAuth, async (req, res) => {
+  try { res.json(await trabajadores.seedDesdeConfig()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/trabajadores/:id', requireAuth, async (req, res) => {
+  try { const t = await trabajadores.getTrabajador(req.params.id); if (!t) return res.status(404).json({ error: 'No encontrado' }); res.json(t); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/trabajadores', requireAuth, async (req, res) => {
+  try { res.json(await trabajadores.createTrabajador(req.body || {})); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.put('/api/trabajadores/:id', requireAuth, async (req, res) => {
+  try { res.json(await trabajadores.updateTrabajador(req.params.id, req.body || {})); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/trabajadores/:id/baja', requireAuth, async (req, res) => {
+  try { res.json(await trabajadores.bajaTrabajador(req.params.id, req.body && req.body.fecha)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 app.get('/api/colaboradores', requireAuth, async (req, res) => {
   try { res.json(await colaboradores.getColaboradores()); }
   catch(err) { res.status(500).json({ error: err.message }); }
