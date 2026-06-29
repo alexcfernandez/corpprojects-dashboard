@@ -65,13 +65,17 @@ async function construirAviso(opts = {}) {
     .filter(e => (e.daysOld || 0) >= diasPresu)
     .sort((a, b) => (b.daysOld || 0) - (a.daysOld || 0));
 
-  const hayAlgo = vencidas.length > 0 || aceptados.length > 0;
+  // Tercera fuente: trabajo TERMINADO en partes que aún no figura como facturado.
+  const diasSinFact = parseInt(opts.diasSinFact || process.env.AVISO_DIAS_SINFACT || 7, 10);
+  const sinFacturar = await require('./partes').getPendientesFacturar({ dias: diasSinFact }).catch(() => []);
+
+  const hayAlgo = vencidas.length > 0 || aceptados.length > 0 || sinFacturar.length > 0;
 
   let texto = `🔔 *Cosas a revisar*\n`;
   if (!hayAlgo) {
-    texto += `\n✅ Nada nuevo que perseguir: sin facturas vencidas (+${diasUmbral}d) ni presupuestos aceptados parados.`;
+    texto += `\n✅ Nada nuevo que perseguir: sin facturas vencidas (+${diasUmbral}d), sin presupuestos aceptados parados y sin trabajo hecho por facturar.`;
     if (nOcultas) texto += `\n🔕 (${nOcultas} en gestión, ocultas — siguen recibiendo correos.)`;
-    return { texto, hayAlgo, nVencidas: 0, totalVencido: 0, nOcultas };
+    return { texto, hayAlgo, nVencidas: 0, totalVencido: 0, nOcultas, nSinFacturar: 0 };
   }
   if (vencidas.length) {
     texto += `\n💰 *Sin cobrar (+${diasUmbral} días): ${vencidas.length}* — total *${fmtEur(totalVencido)}*\n`;
@@ -89,7 +93,17 @@ async function construirAviso(opts = {}) {
     texto += `\n_Revisa si ya están convertidos en pedido._`;
   }
   if (nOcultas) texto += `\n\n🔕 ${nOcultas} en gestión (ocultas — siguen recibiendo correos).`;
-  return { texto, hayAlgo, nVencidas: vencidas.length, totalVencido, nOcultas };
+  if (sinFacturar.length) {
+    const totH = sinFacturar.reduce((s, c) => s + (c.horas || 0), 0);
+    texto += `\n\n🧾 *Trabajo hecho sin facturar (+${diasSinFact}d): ${sinFacturar.length} cliente(s)* — ${totH.toFixed(0)}h\n`;
+    texto += sinFacturar.slice(0, 6).map(c => {
+      const mat = c.materiales.length ? ` · ${c.materiales.length} mat.` : '';
+      return `• ${c.client} — ${c.partes} parte(s), ${(c.horas || 0).toFixed(0)}h${mat} _(${c.maxEdad}d)_`;
+    }).join('\n');
+    if (sinFacturar.length > 6) texto += `\n…y ${sinFacturar.length - 6} más.`;
+    texto += `\n_Partes terminados que aún no figuran como facturados._`;
+  }
+  return { texto, hayAlgo, nVencidas: vencidas.length, totalVencido, nOcultas, nSinFacturar: sinFacturar.length };
 }
 
 // ── Panel de cobros: prioriza a quién reclamar (tiempo × importe) ──
