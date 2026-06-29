@@ -191,14 +191,14 @@
     <button class="btab" onclick="showBTab('subir',this)">📤 Actualizar datos</button>
   </div>
   <div id="btab-resumen" class="bpanel active">
-    <div class="alert apu" style="margin-bottom:16px"><div>💜</div><div><strong>Gastos reales corregidos</strong> — traspasos "Com. 10%" excluidos (son ahorro propio). Balance real 2026: <strong>+56.706 €</strong> en 5 meses.</div></div>
+    <div class="alert apu" style="margin-bottom:16px"><div>💜</div><div><strong>Gastos reales corregidos</strong> — traspasos "Com. 10%" excluidos (son ahorro propio). Balance real 2026: <strong id="k-alert">+56.706 €</strong> <span id="k-alerts">en 5 meses</span>.</div></div>
     <div class="metrics-row">
-      <div class="mc"><div class="ml">Ingresos 2025</div><div class="mv g">639.776 €</div><div class="ms">12 meses completos</div></div>
-      <div class="mc"><div class="ml">Gastos reales 2025</div><div class="mv r">643.645 €</div><div class="ms">Sin ahorro 10%</div></div>
-      <div class="mc"><div class="ml">Balance 2025</div><div class="mv r">−3.870 €</div><div class="ms">Año muy ajustado</div></div>
-      <div class="mc"><div class="ml">Ingresos 2026</div><div class="mv g">237.169 €</div><div class="ms">Ene–May (5 meses)</div></div>
-      <div class="mc"><div class="ml">Gastos reales 2026</div><div class="mv r">180.463 €</div><div class="ms">Sin ahorro 10%</div></div>
-      <div class="mc"><div class="ml">Balance real 2026</div><div class="mv g">+56.706 €</div><div class="ms">+11.341 €/mes</div></div>
+      <div class="mc"><div class="ml">Ingresos 2025</div><div class="mv g" id="k-i25">639.776 €</div><div class="ms">12 meses completos</div></div>
+      <div class="mc"><div class="ml">Gastos reales 2025</div><div class="mv r" id="k-g25">643.645 €</div><div class="ms">Sin ahorro 10%</div></div>
+      <div class="mc"><div class="ml">Balance 2025</div><div class="mv r" id="k-b25">−3.870 €</div><div class="ms" id="k-b25s">Año muy ajustado</div></div>
+      <div class="mc"><div class="ml">Ingresos 2026</div><div class="mv g" id="k-i26">237.169 €</div><div class="ms" id="k-i26s">Ene–May (5 meses)</div></div>
+      <div class="mc"><div class="ml">Gastos reales 2026</div><div class="mv r" id="k-g26">180.463 €</div><div class="ms">Sin ahorro 10%</div></div>
+      <div class="mc"><div class="ml">Balance real 2026</div><div class="mv g" id="k-b26">+56.706 €</div><div class="ms" id="k-b26s">+11.341 €/mes</div></div>
     </div>
     <div class="card">
       <div class="card-title">Ingresos vs Gastos reales 2025–2026</div>
@@ -210,10 +210,10 @@
         <div class="card-title">Medias mensuales comparadas</div>
         <table>
           <tr><th>Concepto</th><th style="text-align:right">2025</th><th style="text-align:right">2026</th></tr>
-          <tr><td style="color:var(--text2)">Ingresos/mes</td><td style="text-align:right;color:var(--green)">53.315 €</td><td style="text-align:right;color:var(--green)">47.434 €</td></tr>
-          <tr><td style="color:var(--text2)">Gastos reales/mes</td><td style="text-align:right;color:var(--red)">53.637 €</td><td style="text-align:right;color:var(--red)">36.093 €</td></tr>
-          <tr><td style="color:var(--text2)">Ahorro 10%/mes</td><td style="text-align:right;color:var(--purple)">0 €</td><td style="text-align:right;color:var(--purple)">3.567 €</td></tr>
-          <tr style="background:rgba(77,156,248,.05)"><td><strong>Balance neto/mes</strong></td><td style="text-align:right;color:var(--red)"><strong>−322 €</strong></td><td style="text-align:right;color:var(--green)"><strong>+11.341 €</strong></td></tr>
+          <tr><td style="color:var(--text2)">Ingresos/mes</td><td style="text-align:right;color:var(--green)" id="m-i25">53.315 €</td><td style="text-align:right;color:var(--green)" id="m-i26">47.434 €</td></tr>
+          <tr><td style="color:var(--text2)">Gastos reales/mes</td><td style="text-align:right;color:var(--red)" id="m-g25">53.637 €</td><td style="text-align:right;color:var(--red)" id="m-g26">36.093 €</td></tr>
+          <tr><td style="color:var(--text2)">Ahorro 10%/mes</td><td style="text-align:right;color:var(--purple)" id="m-a25">0 €</td><td style="text-align:right;color:var(--purple)" id="m-a26">3.567 €</td></tr>
+          <tr style="background:rgba(77,156,248,.05)"><td><strong>Balance neto/mes</strong></td><td style="text-align:right;color:var(--red)" id="m-b25"><strong>−322 €</strong></td><td style="text-align:right;color:var(--green)" id="m-b26"><strong>+11.341 €</strong></td></tr>
         </table>
       </div>
       <div class="card">
@@ -503,11 +503,11 @@ let aP=[], aE=[], eD={}, aF=[];
 let pf='all', ef='all', pp=0, ep=0;
 const PS = 20;
 const MN = ['Ene','Feb','Mar','Apr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-const BD = {
+let BD = {
   2025:{i:[42591,46049,37617,36972,36454,79906,54599,12683,60884,177818,25479,28722],g:[44321,44680,30031,38980,32041,61353,80714,29187,41084,188064,23392,29799],a:[0,0,0,0,0,0,0,0,0,0,0,0]},
   2026:{i:[38466,36687,57378,25639,79000,null,null,null,null,null,null,null],g:[38343,34439,34659,41772,31250,null,null,null,null,null,null,null],a:[0,1650,6215,993,8975,null,null,null,null,null,null,null]}
 };
-const EC=[
+let EC=[
   {n:'Proveedores materiales',  y5:89420,y6:38200,c:'#f05252',t:'Variable obra'},
   {n:'TGSS Seg. Social',        y5:64121,y6:16319,c:'#f59e0b',t:'Variable personal'},
   {n:'Personal (pagos directos)',y5:62462,y6:34715,c:'#f97316',t:'Variable personal'},
@@ -519,7 +519,7 @@ const EC=[
   {n:'Digital y software',       y5:2800, y6:1200, c:'#22c487',t:'Fijo mensual'},
   {n:'Combustible/consumibles',  y5:4200, y6:1800, c:'#6b7280',t:'Variable'},
 ];
-const IC=[
+let IC=[
   {n:'Cobro clientes (facturas)',y5:330000,y6:180000,c:'#22c487'},
   {n:'Cobro comunidades',        y5:83359, y6:40000, c:'#4d9cf8'},
   {n:'Ingresos varios',          y5:180000,y6:17000, c:'#a78bfa'},
@@ -790,7 +790,7 @@ function showBTab(id,btn){
   if(btn)btn.classList.add('active');
   if(id==='resumen'){rOv();rMCells();}
   if(id==='mensual')rMo();
-  if(id==='categorias')rCats(cy);
+  if(id==='categorias')rCats(catY);
   if(id==='personal')rWorkers();
   if(id==='prevision')rFc();
   if(id==='ahorro'){rSv();upSim();}
@@ -798,10 +798,11 @@ function showBTab(id,btn){
 }
 function rOv(){
   dc('ov');
-  const l25=MN.map(m=>m+"'25"),l26=MN.slice(0,5).map(m=>m+"'26");
+  let n26=0; for(let i=0;i<12;i++) if(BD[2026].i[i]||BD[2026].g[i]||BD[2026].a[i]) n26=i+1;
+  const l25=MN.map(m=>m+"'25"),l26=MN.slice(0,n26).map(m=>m+"'26");
   const labels=[...l25,...l26];
-  const ing=[...BD[2025].i,...BD[2026].i.slice(0,5)];
-  const gas=[...BD[2025].g,...BD[2026].g.slice(0,5)];
+  const ing=[...BD[2025].i,...BD[2026].i.slice(0,n26)];
+  const gas=[...BD[2025].g,...BD[2026].g.slice(0,n26)];
   const bal=ing.map((v,i)=>v-gas[i]);
   CH['ov']=new Chart(document.getElementById('ovChart'),{data:{labels,datasets:[
     {type:'bar',label:'Ingresos',data:ing,backgroundColor:'#22c487',yAxisID:'y'},
@@ -827,7 +828,7 @@ function rMo(){
   [2025,2026].forEach(yr=>{
     if(!sY[yr])return;
     BD[yr].i.forEach((v,i)=>{
-      if(v===null)return;
+      if(v===null || (!v && !BD[yr].g[i] && !BD[yr].a[i]))return;
       labels.push(MN[i]+"'"+String(yr).slice(2));
       ing.push(v);gas.push(BD[yr].g[i]);
       rows.push({label:MN[i]+' '+yr,i:v,g:BD[yr].g[i],a:BD[yr].a[i]||0});
@@ -876,10 +877,12 @@ function rFc(){
 let svC;
 function rSv(){
   if(svC)svC.destroy();
-  const mo=[0,1650,6215,993,8975];
-  const cu=mo.reduce((acc,v,i)=>{acc.push((acc[i-1]||0)+v);return acc;},[]);
-  svC=new Chart(document.getElementById('svChart'),{data:{labels:MN.slice(0,5).map(m=>m+"'26"),datasets:[
-    {type:'bar',data:mo,backgroundColor:'rgba(167,139,250,.4)',borderColor:'#a78bfa',borderWidth:1},
+  const A=(BD['2026']&&BD['2026'].a)?BD['2026'].a:[];
+  const mo=A.filter((v,i)=>v||BD['2026'].i[i]||BD['2026'].g[i]);
+  const moArr=mo.length?mo:[0,1650,6215,993,8975];
+  const cu=moArr.reduce((acc,v,i)=>{acc.push((acc[i-1]||0)+v);return acc;},[]);
+  svC=new Chart(document.getElementById('svChart'),{data:{labels:moArr.map((_,i)=>MN[i]+"'26"),datasets:[
+    {type:'bar',data:moArr,backgroundColor:'rgba(167,139,250,.4)',borderColor:'#a78bfa',borderWidth:1},
     {type:'line',data:cu,borderColor:'#a78bfa',backgroundColor:'rgba(167,139,250,.05)',fill:true,tension:.35,pointRadius:4,pointBackgroundColor:'#a78bfa',borderWidth:2}
   ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${eur(ctx.raw)}`}}},scales:{y:{ticks:{callback:v=>(v/1000).toFixed(1)+'k',color:'#5a6278',font:{size:10}},grid:{color:'rgba(255,255,255,.05)'},border:{color:'rgba(255,255,255,.1)'}},x:{ticks:{color:'#5a6278',font:{size:11}},grid:{display:false},border:{color:'rgba(255,255,255,.1)'}}}}});
 }
@@ -892,6 +895,43 @@ function upSim(){
   document.getElementById('s1').textContent=eur(men);
   document.getElementById('s2').textContent=eur(tot);
   document.getElementById('s3').textContent=eur(acu);
+}
+
+// ── DATOS EN VIVO DEL BANCO ───────────────────────────────────────
+async function loadBanco(){
+  let d; try{ d=await af('/api/bank/dashboard'); }catch(e){ return; }
+  if(!d||!d.BD) return;
+  BD=d.BD; if(d.EC)EC=d.EC; if(d.IC)IC=d.IC;
+  if(!BD['2025'])BD['2025']={i:Array(12).fill(0),g:Array(12).fill(0),a:Array(12).fill(0)};
+  if(!BD['2026'])BD['2026']={i:Array(12).fill(0),g:Array(12).fill(0),a:Array(12).fill(0)};
+  const k=d.kpis||{}, k5=k['2025']||{}, k6=k['2026']||{};
+  const eS=n=>(n>=0?'+':'−')+eur(Math.abs(n||0));
+  const set=(id,v)=>{const el=document.getElementById(id); if(el)el.textContent=v;};
+  set('k-i25',eur(k5.ingresos)); set('k-g25',eur(k5.gastos)); set('k-b25',eS(k5.balance));
+  set('k-i26',eur(k6.ingresos)); set('k-g26',eur(k6.gastos)); set('k-b26',eS(k6.balance));
+  const col=(id,n)=>{const el=document.getElementById(id); if(el)el.className='mv '+(n>=0?'g':'r');};
+  col('k-b25',k5.balance); col('k-b26',k6.balance);
+  let last26=0; const b26=BD['2026']; for(let i=0;i<12;i++) if(b26.i[i]||b26.g[i]||b26.a[i]) last26=i;
+  set('k-i26s',`Ene–${MN[last26]} (${k6.meses||0} meses)`);
+  set('k-b26s',eS(k6.balanceMes)+' /mes');
+  set('k-b25s',(k5.balance>=0?'Año positivo':'Año ajustado'));
+  set('k-alert',eS(k6.balance)); set('k-alerts',`en ${k6.meses||0} meses`);
+  const al=document.getElementById('k-alert'); if(al)al.style.color=k6.balance>=0?'var(--green)':'var(--red)';
+  set('m-i25',eur(k5.ingresosMes)); set('m-i26',eur(k6.ingresosMes));
+  set('m-g25',eur(k5.gastosMes));  set('m-g26',eur(k6.gastosMes));
+  set('m-a25',eur(k5.ahorroMes));  set('m-a26',eur(k6.ahorroMes));
+  const sb=(id,n)=>{const el=document.getElementById(id); if(el)el.innerHTML='<strong>'+eS(n)+'</strong>';};
+  sb('m-b25',k5.balanceMes); sb('m-b26',k6.balanceMes);
+  reRenderBanco();
+}
+function reRenderBanco(){
+  const a=document.querySelector('.bpanel.active'); if(!a)return;
+  const id=a.id.replace('btab-','');
+  if(id==='resumen'){rOv();rMCells();}
+  else if(id==='mensual')rMo();
+  else if(id==='categorias')rCats(catY);
+  else if(id==='prevision')rFc();
+  else if(id==='ahorro')rSv();
 }
 
 // ── BANK UPLOAD ───────────────────────────────────────────────────
@@ -911,7 +951,7 @@ async function bUpload(file){
   try{
     const r=await fetch(`${API}/api/bank/upload`,{method:'POST',headers:{'Authorization':`Bearer ${tok}`},body:form});
     const d=await r.json();fill.style.width='100%';msg.textContent=d.message||'Subido';
-    setTimeout(()=>{prog.style.display='none';loadBInfo();},2000);
+    setTimeout(()=>{prog.style.display='none';loadBInfo();loadBanco();},2000);
   }catch(e){msg.textContent='Error: '+e.message;fill.style.background='var(--red)';}
 }
 function bDrop(e){e.preventDefault();document.querySelector('.uzn').classList.remove('drag');const f=e.dataTransfer.files[0];if(f&&(f.name.endsWith('.xlsx')||f.name.endsWith('.xls')))bUpload(f);}
@@ -1085,7 +1125,7 @@ function showTab(id, btn){
     renderInicio();
     return;
   }
-  if(id==='banco') showBTab('resumen', document.querySelector('.btab'));
+  if(id==='banco'){ showBTab('resumen', document.querySelector('.btab')); loadBanco(); }
   startAutoRefresh(id);
   if(id==='emails'){
     if(window.initEmails) window.initEmails();
