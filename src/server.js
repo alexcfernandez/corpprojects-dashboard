@@ -949,20 +949,59 @@ app.get('/api/invoices/by-family/:family', requireAuth, async (req, res) => {
 });
 
 // ── Banco ─────────────────────────────────────────────────────────
-app.post('/api/bank/upload', requireAuth, upload.single('file'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
-  const metaPath = path.join(UPLOADS_DIR, 'latest.json');
-  fs.writeFileSync(metaPath, JSON.stringify({
-    filename: req.file.filename, originalname: req.file.originalname,
-    uploadedAt: new Date().toISOString(), size: req.file.size
-  }));
-  res.json({ message: 'Fichero subido correctamente.', filename: req.file.filename });
+// Sube el Excel descargado del Santander (.xls/.xlsx): lo parsea, categoriza
+// e ingiere en `bancoMovimientos` con clave anti-duplicado (resubir rangos
+// solapados no duplica).
+app.post('/api/bank/upload', requireAuth, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
+    const buf = fs.readFileSync(req.file.path);
+    const r = await require('./banco').ingestExcelBuffer(buf, { originalname: req.file.originalname });
+    if (!r.ok) return res.status(422).json(r);
+    // compat: mantenemos latest.json por si la UI antigua lo consulta
+    try {
+      fs.writeFileSync(path.join(UPLOADS_DIR, 'latest.json'), JSON.stringify({
+        filename: req.file.filename, originalname: req.file.originalname,
+        uploadedAt: new Date().toISOString(), size: req.file.size,
+        periodo: r.periodo, total: r.total, nuevos: r.nuevos, repetidos: r.repetidos,
+      }));
+    } catch (e) {}
+    res.json({ message: `Importados ${r.nuevos} movimientos nuevos (${r.repetidos} ya existían).`, ...r });
+  } catch (err) {
+    console.error('[Banco] upload error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.get('/api/bank/info', requireAuth, (req, res) => {
-  const metaPath = path.join(UPLOADS_DIR, 'latest.json');
-  if (!fs.existsSync(metaPath)) return res.json({ uploaded: false });
-  res.json({ uploaded: true, ...JSON.parse(fs.readFileSync(metaPath, 'utf8')) });
+app.get('/api/bank/info', requireAuth, async (req, res) => {
+  try {
+    const last = await require('./banco').getUltimoImport();
+    if (!last) return res.json({ uploaded: false });
+    res.json({
+      uploaded: true,
+      originalname: last.archivo,
+      uploadedAt: last.fecha,
+      periodo: last.periodo,
+      total: last.total, nuevos: last.nuevos, repetidos: last.repetidos,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/bank/movimientos', requireAuth, async (req, res) => {
+  try {
+    const { from, to, categoria, flujo, q, limit } = req.query;
+    res.json({ movimientos: await require('./banco').getMovimientos({ from, to, categoria, flujo, q, limit: limit ? Number(limit) : undefined }) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/bank/resumen', requireAuth, async (req, res) => {
+  try { res.json(await require('./banco').getResumen({ from: req.query.from, to: req.query.to })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/bank/recurrentes', requireAuth, async (req, res) => {
+  try { res.json({ recurrentes: await require('./banco').getRecurrentesMensuales() }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ── Notificaciones ────────────────────────────────────────────────
