@@ -1004,6 +1004,11 @@ app.get('/api/bank/recurrentes', requireAuth, async (req, res) => {
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.get('/api/bank/dashboard', requireAuth, async (req, res) => {
+  try { res.json(await require('./banco').getDashboardData()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── Notificaciones ────────────────────────────────────────────────
 app.post('/api/check-alerts',      requireAuth, (req,res) => { checkPendingInvoices().catch(console.error); res.json({message:'Revisión iniciada.'}); });
 app.post('/api/send-summary',      requireAuth, (req,res) => { runDailySummary().catch(console.error); res.json({message:'Resumen enviado.'}); });
