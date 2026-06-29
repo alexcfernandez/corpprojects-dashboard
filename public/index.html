@@ -896,6 +896,7 @@ function abrirFichaTrab(slug){
         <label>Apodos (separados por coma)<input id="f-alias" value="${v(w&&(w.alias||[]).join(', '))}" style="width:100%;box-sizing:border-box;padding:7px;margin-top:3px"></label>
         <label style="display:flex;align-items:center;gap:8px"><input id="f-activo" type="checkbox" ${(!w||w.activo!==false)?'checked':''}> Activo</label>
       </div>
+      ${slug?'<div id="f-ledger" style="margin-top:16px;border-top:1px solid var(--border,#eee);padding-top:14px;font-size:13px;color:var(--text3)">Cargando cuenta…</div>':''}
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
         ${w?`<button onclick="bajaTrab('${w.slug}')" style="margin-right:auto;background:none;border:1px solid var(--red,#f05252);color:var(--red,#f05252);border-radius:8px;padding:8px 12px;cursor:pointer">Dar de baja</button>`:''}
         <button onclick="cerrarFichaTrab()" style="background:var(--bg3,#eee);border:none;border-radius:8px;padding:8px 14px;cursor:pointer">Cancelar</button>
@@ -903,6 +904,44 @@ function abrirFichaTrab(slug){
       </div>
     </div></div>`;
   const tmp=document.createElement('div'); tmp.innerHTML=html; document.body.appendChild(tmp.firstElementChild);
+  if(slug) loadLedger(slug);
+}
+async function loadLedger(slug){
+  const box=document.getElementById('f-ledger'); if(!box)return;
+  let s,m; try{ s=await af(`/api/trabajadores/${slug}/saldo`); m=await af(`/api/trabajadores/${slug}/movimientos`); }
+  catch(e){ box.textContent='No se pudo cargar la cuenta'; return; }
+  const movs=(m&&m.movimientos)||[];
+  const e2=n=>(n||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+  const pend=s?s.pendiente:0;
+  const lbl={adelanto:'Adelanto',pago:'Pago',devengado:'Trabajo',descuento:'Descuento',devolucion:'Devolución'};
+  box.style.color='inherit';
+  box.innerHTML=`
+    <div style="font-weight:700;margin-bottom:8px">💶 Cuenta de efectivo</div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px">
+      <div>Devengado<br><strong>${e2(s&&s.devengado)}</strong></div>
+      <div>Entregado<br><strong>${e2(s&&s.entregado)}</strong></div>
+      <div>Pendiente<br><strong style="color:${pend>=0?'var(--green,#22c487)':'var(--red,#f05252)'}">${e2(pend)}</strong></div>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+      <select id="mv-tipo" style="padding:6px"><option value="adelanto">Adelanto</option><option value="pago">Pago</option><option value="devengado">Trabajo (devengado)</option><option value="descuento">Descuento</option><option value="devolucion">Devolución</option></select>
+      <input id="mv-importe" type="number" placeholder="€" style="width:90px;padding:6px">
+      <input id="mv-concepto" placeholder="concepto (opcional)" style="flex:1;min-width:110px;padding:6px">
+      <button onclick="addMovTrab('${slug}')" style="background:var(--accent,#4d9cf8);color:#fff;border:none;border-radius:8px;padding:6px 12px;cursor:pointer">Añadir</button>
+    </div>
+    <div style="max-height:150px;overflow:auto;font-size:12px">
+      ${movs.length?movs.map(x=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid var(--border,#f0f0f0)"><span>${x.fecha} · ${lbl[x.tipo]||x.tipo}${x.concepto?' · '+x.concepto:''}</span><span style="white-space:nowrap">${e2(x.importe)} <button onclick="delMovTrab('${x._id}','${slug}')" style="background:none;border:none;cursor:pointer;color:var(--red,#f05252)">✕</button></span></div>`).join(''):'<div style="color:var(--text3)">Sin movimientos aún</div>'}
+    </div>`;
+}
+async function addMovTrab(slug){
+  const tipo=document.getElementById('mv-tipo').value, importe=document.getElementById('mv-importe').value, concepto=document.getElementById('mv-concepto').value;
+  if(!importe||parseFloat(importe)<=0){alert('Importe inválido');return;}
+  try{ await af(`/api/trabajadores/${slug}/movimientos`,{method:'POST',body:JSON.stringify({tipo,importe,concepto})}); loadLedger(slug); }
+  catch(e){alert('Error: '+e.message);}
+}
+async function delMovTrab(movId,slug){
+  if(!confirm('¿Borrar este movimiento?'))return;
+  try{ await af(`/api/trabajadores/movimientos/${movId}`,{method:'DELETE'}); loadLedger(slug); }
+  catch(e){alert('Error: '+e.message);}
 }
 function cerrarFichaTrab(){const o=document.getElementById('fichaOverlay');if(o)o.remove();}
 async function guardarFichaTrab(slug){
