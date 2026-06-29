@@ -8,6 +8,9 @@
 const stel = require('./stelorder');
 const com  = require('./comunidades');
 const attendance = require('./attendance');
+const trabajadores = require('./trabajadores');
+const colaboradores = require('./colaboradores');
+const pagosT = require('./pagos-trab');
 
 const ultima    = new Map(); // from -> estado de paginación ("ver más")
 const pendiente = new Map(); // from -> { accion:'aprender', aliasRaw, intent, ts }
@@ -1319,6 +1322,136 @@ async function handlerPresupuesto(texto, from, imagenes = []) {
   return msg;
 }
 
+// ============ PAGOS A TRABAJADORES (WhatsApp) ============
+// "adelanto 50 a javi" · "pagué 135 a huaca" · "javi trabajó 3 días" ·
+// "cuánto le debo a javi" · "informe de javi de junio"
+// Escribe en el MISMO libro que el dashboard (colaborador_movimientos vía colaboradorId).
+
+// Candidatos de la plantilla que casan con el término hablado.
+function _candidatosTrab(term, all) {
+  const t = norm(term || '');
+  if (!t) return [];
+  const out = [];
+  for (const w of all) {
+    let hit = false;
+    if (t === norm(w.nombre)) hit = true;
+    else if ((w.alias || []).some(a => a && (t === a || t.includes(a)))) hit = true;
+    else {
+      const toks = norm(w.nombre).split(/\s+/).filter(x => x.length > 2);
+      if (toks.some(x => t.includes(x))) hit = true;
+    }
+    if (hit) out.push(w);
+  }
+  return out;
+}
+
+async function handlerPagoTrabajador(texto, from) {
+  const all = await trabajadores.getTrabajadores(false).catch(() => []);
+  if (!all.length) return null;
+  const _ni = norm(texto);
+  // Pre-filtro barato: ¿menciona a alguien de la plantilla? Si no, no gastamos IA.
+  const mencion = all.some(w => {
+    const toks = norm(w.nombre).split(/\s+/).filter(t => t.length > 2);
+    if (toks.some(t => new RegExp('\\b' + t + '\\b').test(_ni))) return true;
+    return (w.alias || []).some(a => a && a.length >= 3 && _ni.includes(a));
+  });
+  if (!mencion) return null;
+
+  const hoy = new Date().toISOString().slice(0, 10);
+  const r = await iaJson(
+    `Eres un parser de mensajes sobre pagos a trabajadores de una empresa de mantenimiento. Hoy es ${hoy}.
+Mensaje: "${texto}"
+Devuelve SOLO JSON:
+{"accion":"movimiento|saldo|informe|otro",
+ "trabajador":"nombre o apodo mencionado (p.ej. javi, huaca, david, diego)",
+ "tipo":"adelanto|pago|trabajo|prestamo|descuento|devolucion|null",
+ "importe": <numero o null>, "dias": <numero o null>, "completa": <true|false>,
+ "semana":"actual|pasada|siguiente|null", "periodo":"mes|ano|todo|null",
+ "concepto":"<texto corto opcional>"}
+Pistas: 'adelanto'/'adelanté'=adelanto; 'pagué'/'pago'/'le di'/'pago faltante'=pago; 'trabajó'/'semana trabajada'/'devengado'/'hizo N días'/'N días'=trabajo; 'presté'/'préstamo'/'prestado'=prestamo; 'descuento'=descuento; 'devolución'/'me devolvió'=devolucion. 'cuánto le debo'/'saldo'/'cuánto lleva'=saldo. 'informe'/'resumen'=informe; periodo 'mes'=este mes,'ano'=este año,'todo'=histórico. Si no encaja en pagos a un trabajador, accion='otro'.`,
+    260, { accion: 'otro' });
+  if (!r || r.accion === 'otro') return null;
+
+  let cand = _candidatosTrab(r.trabajador || texto, all);
+  if (!cand.length) return `🤔 No encuentro a *"${r.trabajador || texto}"* en la plantilla. Dime su nombre o enséñame el apodo: _"el largo es Javi el largo"_.`;
+
+  // Si hay varios, preferimos a quien SÍ tiene cuenta de efectivo (no se puede
+  // apuntar dinero a quien no la tiene). Así "javi" → Huaca Javier sin preguntar.
+  let w = null;
+  if (cand.length === 1) w = cand[0];
+  else {
+    const conCuenta = cand.filter(c => c.colaboradorId);
+    if (conCuenta.length === 1) w = conCuenta[0];
+    else {
+      const lista = (conCuenta.length ? conCuenta : cand);
+      pendiente.set(from, { accion: 'pagoTrabClarif', cand: lista, r, ts: Date.now() });
+      return '¿A cuál te refieres? Responde el *número*:\n' + lista.map((c, i) => `*${i + 1}.* ${c.nombre}`).join('\n');
+    }
+  }
+  return ejecutarPagoTrab(w, r);
+}
+
+async function ejecutarPagoTrab(w, r) {
+  if (!w.colaboradorId) {
+    return `⚠️ *${w.nombre}* no tiene cuenta de efectivo enlazada. Entra en *Personal → ${w.nombre} → Cuenta de efectivo* y enlázala (o créala). Luego ya le apunto pagos por aquí.`;
+  }
+  if (r.accion === 'saldo') return saldoTrabajadorTxt(w);
+  if (r.accion === 'informe') return informeTrabajadorTxt(w, r.periodo || 'todo');
+
+  const tipoBruto = r.tipo || ((r.dias != null || r.completa) ? 'trabajo' : 'adelanto');
+  const tipoLibro = pagosT.TIPO_MAP[tipoBruto];
+  if (!tipoLibro) return null;
+
+  const costeDia = (Number(w.costeHora) || 0) * (Number(w.horasDia) || 8);
+  let importe = (r.importe != null) ? Number(r.importe) : null;
+  let diasTrab = 0;
+  if (tipoBruto === 'trabajo') {
+    if (r.completa) { importe = costeDia * 5; diasTrab = 5; }
+    else if (r.dias != null) { diasTrab = Number(r.dias); importe = costeDia * diasTrab; }
+  }
+  if (importe == null || isNaN(importe) || importe <= 0) {
+    const ej = (w.nombre.split(' ')[0] || 'javi').toLowerCase();
+    return `🤔 Apunto un *${pagosT.ETIQUETA[tipoBruto]}* a *${w.nombre}* pero me falta el importe. Dímelo: _"${tipoBruto} 50 a ${ej}"_.`;
+  }
+
+  const hoy = new Date().toISOString().slice(0, 10);
+  const sem = pagosT.semanaLaboral(hoy, pagosT.offsetSemana(r.semana));
+  let concepto = (r.concepto || '').trim();
+  if (tipoBruto === 'prestamo') concepto = 'Préstamo' + (concepto ? ' · ' + concepto : '');
+  if (!concepto) { const e = pagosT.ETIQUETA[tipoBruto]; concepto = `${e[0].toUpperCase()}${e.slice(1)} semana ${sem.label}`; }
+
+  await colaboradores.createMovimiento(w.colaboradorId, {
+    fecha: hoy, tipo: tipoLibro, importe,
+    semanaDesde: sem.desde, semanaHasta: sem.hasta, diasTrabajados: diasTrab, concepto,
+  });
+
+  const s = await colaboradores.getSaldoColaborador(w.colaboradorId);
+  const saldoTxt = s.saldoPendiente >= 0 ? `le debemos *${pagosT.eur(s.saldoPendiente)}*` : `nos debe *${pagosT.eur(-s.saldoPendiente)}*`;
+  const avisoPres = (tipoBruto === 'trabajo') ? `\nℹ️ Recuerda rellenar la *presencia* de esa semana si aún no lo has hecho.` : '';
+  return `✅ Apuntado a *${w.nombre}*: ${pagosT.ETIQUETA[tipoBruto]} de *${pagosT.eur(importe)}* — semana ${sem.label}.\n💶 Saldo: ${saldoTxt}.${avisoPres}`;
+}
+
+async function saldoTrabajadorTxt(w) {
+  const s = await colaboradores.getSaldoColaborador(w.colaboradorId);
+  const saldoTxt = s.saldoPendiente >= 0 ? `Le debemos *${pagosT.eur(s.saldoPendiente)}*` : `Nos debe *${pagosT.eur(-s.saldoPendiente)}* (ha cobrado de más)`;
+  return `💶 *${w.nombre}*\nDevengado: ${pagosT.eur(s.totalDevengado)}\nEntregado: ${pagosT.eur(s.totalEntregado)}\n${saldoTxt}`;
+}
+
+async function informeTrabajadorTxt(w, periodo) {
+  const hoy = new Date();
+  let from = null, to = null, titulo = 'todo el histórico';
+  if (periodo === 'mes') {
+    const y = hoy.getUTCFullYear(), m = hoy.getUTCMonth();
+    from = `${y}-${String(m + 1).padStart(2, '0')}-01`; to = `${y}-${String(m + 1).padStart(2, '0')}-31`;
+    titulo = `${pagosT.mesNombre(m, true)} ${y}`;
+  } else if (periodo === 'ano') {
+    const y = hoy.getUTCFullYear(); from = `${y}-01-01`; to = `${y}-12-31`; titulo = `año ${y}`;
+  }
+  const allMovs = await colaboradores.getMovimientos(w.colaboradorId, { limit: 1000 });
+  const movs = (from && to) ? allMovs.filter(m => m.fecha >= from && m.fecha <= to) : allMovs;
+  return pagosT.formatInforme(movs, { nombre: w.nombre, tituloPeriodo: titulo });
+}
+
 async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
   // A) ¿Estábamos aprendiendo un alias? La respuesta es el nombre real.
   const pend = pendiente.get(from);
@@ -1326,6 +1459,16 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
   // A.inc) Flujo de creación de incidencia (cliente / tipo / confirmación)
   if (pend && (Date.now() - pend.ts) < 10 * 60 * 1000) {
     const nn = norm(texto);
+    if (pend.accion === 'pagoTrabClarif') {
+      const mNum = nn.match(/^\s*(\d{1,2})\b/);
+      let elegido = null;
+      if (mNum && pend.cand[+mNum[1] - 1]) elegido = pend.cand[+mNum[1] - 1];
+      else { const c = _candidatosTrab(texto, pend.cand); if (c.length === 1) elegido = c[0]; }
+      if (/^(no|cancela|dejalo|nada)\b/.test(nn)) { pendiente.delete(from); return '👍 Vale, no apunto nada.'; }
+      if (!elegido) return 'No te he pillado. Responde el *número* de la lista o el nombre exacto.';
+      pendiente.delete(from);
+      return ejecutarPagoTrab(elegido, pend.r);
+    }
     if (pend.accion === 'genPedido') {
       if (/^(s[ií]|si|vale|ok|dale|confirmo|adelante|correcto|genera(lo)?|hazlo)\b/.test(nn)) return ejecutarGenerarPedido(from, pend);
       if (/^(no|cancela|para|anula|dejalo|mejor no|ahora no)\b/.test(nn)) { pendiente.delete(from); return '👍 Vale, no genero el pedido. La incidencia queda creada.'; }
@@ -1587,6 +1730,16 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
   if (!imagenes.length && /\bes\b/.test(_ni) && !/\?/.test(texto)) {
     const ens = await handlerEnsenarApodo(texto, from);
     if (ens) return ens;
+  }
+
+  // C0.pago) Pagos / adelantos / trabajo / saldo / informe de un TRABAJADOR
+  if (!imagenes.length) {
+    const esPagoKw = /\b(adelant|prestad|prest[eé]|prestam|pagu[eé]|le pag|le di|pago faltante|semana trabajad|devengad|descuent|devoluci|me devolvi|cuanto le debo|cuanto (lleva|ha cobrado)|saldo|informe|resumen)\b/.test(_ni)
+      || /\btrabaj\w*\s+\d/.test(_ni) || /\b\d+\s*d[ií]as\b/.test(_ni);
+    if (esPagoKw) {
+      const res = await handlerPagoTrabajador(texto, from);
+      if (res) return res;
+    }
   }
 
   // C0.pres) Dictado de PRESENCIA: "Diego y Javi a Montseny; José a obras Pedrosa"
