@@ -1415,10 +1415,21 @@ async function ejecutarPagoTrab(w, r) {
   }
 
   const hoy = new Date().toISOString().slice(0, 10);
-  const sem = pagosT.semanaLaboral(hoy, pagosT.offsetSemana(r.semana));
+  const esFijo = w.tipo !== 'externo';
+  let sem;
+  if (esFijo) {
+    // Fijos: cuadran por MES (cobran nómina). El periodo es el mes en curso.
+    const d = new Date(hoy + 'T12:00:00Z');
+    const y = d.getUTCFullYear(), m = d.getUTCMonth(), mm = String(m + 1).padStart(2, '0');
+    sem = { desde: `${y}-${mm}-01`, hasta: `${y}-${mm}-31`, label: `${pagosT.mesNombre(m, true)} ${y}` };
+  } else {
+    sem = pagosT.semanaLaboral(hoy, pagosT.offsetSemana(r.semana));
+  }
+  const periodoTxt = esFijo ? 'mes' : 'semana';
   let concepto = (r.concepto || '').trim();
   if (tipoBruto === 'prestamo') concepto = 'Préstamo' + (concepto ? ' · ' + concepto : '');
-  if (!concepto) { const e = pagosT.ETIQUETA[tipoBruto]; concepto = `${e[0].toUpperCase()}${e.slice(1)} semana ${sem.label}`; }
+  if (!concepto) { const e = pagosT.ETIQUETA[tipoBruto]; concepto = `${e[0].toUpperCase()}${e.slice(1)} ${periodoTxt} ${sem.label}`; }
+  else concepto = `${concepto} (${sem.label})`;
 
   await colaboradores.createMovimiento(w.colaboradorId, {
     fecha: hoy, tipo: tipoLibro, importe,
@@ -1426,15 +1437,48 @@ async function ejecutarPagoTrab(w, r) {
   });
 
   const s = await colaboradores.getSaldoColaborador(w.colaboradorId);
-  const saldoTxt = s.saldoPendiente >= 0 ? `le debemos *${pagosT.eur(s.saldoPendiente)}*` : `nos debe *${pagosT.eur(-s.saldoPendiente)}*`;
-  const avisoPres = (tipoBruto === 'trabajo') ? `\nℹ️ Recuerda rellenar la *presencia* de esa semana si aún no lo has hecho.` : '';
-  return `✅ Apuntado a *${w.nombre}*: ${pagosT.ETIQUETA[tipoBruto]} de *${pagosT.eur(importe)}* — semana ${sem.label}.\n💶 Saldo: ${saldoTxt}.${avisoPres}`;
+  const saldoTxt = s.saldoPendiente >= 0
+    ? `le debemos *${pagosT.eur(s.saldoPendiente)}*`
+    : (esFijo ? `a descontar de nómina *${pagosT.eur(-s.saldoPendiente)}*` : `nos debe *${pagosT.eur(-s.saldoPendiente)}*`);
+  const avisoPres = (!esFijo && tipoBruto === 'trabajo') ? `\nℹ️ Recuerda rellenar la *presencia* de esa semana si aún no lo has hecho.` : '';
+  return `✅ Apuntado a *${w.nombre}*: ${pagosT.ETIQUETA[tipoBruto]} de *${pagosT.eur(importe)}* — ${periodoTxt} ${sem.label}.\n💶 Saldo: ${saldoTxt}.${avisoPres}`;
 }
 
 async function saldoTrabajadorTxt(w) {
   const s = await colaboradores.getSaldoColaborador(w.colaboradorId);
-  const saldoTxt = s.saldoPendiente >= 0 ? `Le debemos *${pagosT.eur(s.saldoPendiente)}*` : `Nos debe *${pagosT.eur(-s.saldoPendiente)}* (ha cobrado de más)`;
+  const esFijo = w.tipo !== 'externo';
+  const saldoTxt = s.saldoPendiente >= 0
+    ? `Le debemos *${pagosT.eur(s.saldoPendiente)}*`
+    : (esFijo ? `A descontar de nómina *${pagosT.eur(-s.saldoPendiente)}*` : `Nos debe *${pagosT.eur(-s.saldoPendiente)}* (ha cobrado de más)`);
   return `💶 *${w.nombre}*\nDevengado: ${pagosT.eur(s.totalDevengado)}\nEntregado: ${pagosT.eur(s.totalEntregado)}\n${saldoTxt}`;
+}
+
+async function handlerResumenAdelantos() {
+  const all = await trabajadores.getTrabajadores(false).catch(() => []);
+  const conCuenta = all.filter(w => w.colaboradorId);
+  if (!conCuenta.length) return 'Aún no hay trabajadores con cuenta de efectivo enlazada.';
+  const filas = [];
+  for (const w of conCuenta) {
+    try {
+      const s = await colaboradores.getSaldoColaborador(w.colaboradorId);
+      if (Math.abs(s.saldoPendiente) < 0.01) continue;
+      filas.push({ nombre: w.nombre, saldo: s.saldoPendiente });
+    } catch (e) {}
+  }
+  if (!filas.length) return '✅ Nadie tiene saldo pendiente ahora mismo. Todo cuadrado.';
+  filas.sort((a, b) => a.saldo - b.saldo);
+  const aDescontar = filas.filter(f => f.saldo < 0);
+  const lesDebemos = filas.filter(f => f.saldo > 0);
+  let out = '💼 *Cuadre de cuentas con la gente*';
+  if (aDescontar.length) {
+    const tot = aDescontar.reduce((s, f) => s - f.saldo, 0);
+    out += `\n\n*A descontar / han cobrado de más* — total ${pagosT.eur(tot)}\n` + aDescontar.map(f => `• ${f.nombre}: *${pagosT.eur(-f.saldo)}*`).join('\n');
+  }
+  if (lesDebemos.length) {
+    const tot = lesDebemos.reduce((s, f) => s + f.saldo, 0);
+    out += `\n\n*Les debemos* — total ${pagosT.eur(tot)}\n` + lesDebemos.map(f => `• ${f.nombre}: *${pagosT.eur(f.saldo)}*`).join('\n');
+  }
+  return out;
 }
 
 async function informeTrabajadorTxt(w, periodo) {
@@ -1730,6 +1774,11 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
   if (!imagenes.length && /\bes\b/.test(_ni) && !/\?/.test(texto)) {
     const ens = await handlerEnsenarApodo(texto, from);
     if (ens) return ens;
+  }
+
+  // C0.adel) Cuadre/resumen de adelantos de TODOS (fin de mes)
+  if (!imagenes.length && /\b(adelantos? (del mes|pendientes|de todos|de la gente)|resumen de adelantos|cuadre (del mes|de cuentas|de la gente)|a qui[eé]n (le )?descuent|qu[eé] descuento a cada)\b/.test(_ni)) {
+    return handlerResumenAdelantos();
   }
 
   // C0.pago) Pagos / adelantos / trabajo / saldo / informe de un TRABAJADOR
