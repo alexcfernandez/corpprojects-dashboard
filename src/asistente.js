@@ -1366,9 +1366,9 @@ Devuelve SOLO JSON:
  "trabajador":"nombre o apodo mencionado (p.ej. javi, huaca, david, diego)",
  "tipo":"adelanto|pago|trabajo|prestamo|descuento|devolucion|null",
  "importe": <numero o null>, "dias": <numero o null>, "completa": <true|false>,
- "semana":"actual|pasada|siguiente|null", "periodo":"mes|ano|todo|null",
+ "semana":"actual|pasada|siguiente|null", "periodo":"semana|mes|ano|todo|null",
  "concepto":"<texto corto opcional>"}
-Pistas: 'adelanto'/'adelanté'=adelanto; 'pagué'/'pago'/'le di'/'pago faltante'=pago; 'trabajó'/'semana trabajada'/'devengado'/'hizo N días'/'N días'=trabajo; 'presté'/'préstamo'/'prestado'=prestamo; 'descuento'=descuento; 'devolución'/'me devolvió'=devolucion. 'cuánto le debo'/'saldo'/'cuánto lleva'=saldo. 'informe'/'resumen'=informe; periodo 'mes'=este mes,'ano'=este año,'todo'=histórico. Si no encaja en pagos a un trabajador, accion='otro'.`,
+Pistas: 'adelanto'/'adelanté'=adelanto; 'pagué'/'pago'/'le di'/'pago faltante'=pago; 'trabajó'/'semana trabajada'/'devengado'/'hizo N días'/'N días'=trabajo; 'presté'/'préstamo'/'prestado'=prestamo; 'descuento'=descuento; 'devolución'/'me devolvió'=devolucion. 'cuánto le debo'/'saldo'/'cuánto lleva'=saldo. 'informe'/'resumen'=informe. Para periodo: 'esta semana'/'última semana'/'la semana'=semana, 'este mes'/'del mes'=mes, 'este año'=ano, 'todo'/'total'/'en total'/'histórico'=todo; si no se dice nada, periodo=null.`,
     260, { accion: 'otro' });
   if (!r || r.accion === 'otro') return null;
 
@@ -1395,7 +1395,7 @@ async function ejecutarPagoTrab(w, r) {
   if (!w.colaboradorId) {
     return `⚠️ *${w.nombre}* no tiene cuenta de efectivo enlazada. Entra en *Personal → ${w.nombre} → Cuenta de efectivo* y enlázala (o créala). Luego ya le apunto pagos por aquí.`;
   }
-  if (r.accion === 'saldo') return saldoTrabajadorTxt(w);
+  if (r.accion === 'saldo') return saldoTrabajadorTxt(w, r.periodo);
   if (r.accion === 'informe') return informeTrabajadorTxt(w, r.periodo || 'todo');
 
   const tipoBruto = r.tipo || ((r.dias != null || r.completa) ? 'trabajo' : 'adelanto');
@@ -1444,13 +1444,42 @@ async function ejecutarPagoTrab(w, r) {
   return `✅ Apuntado a *${w.nombre}*: ${pagosT.ETIQUETA[tipoBruto]} de *${pagosT.eur(importe)}* — ${periodoTxt} ${sem.label}.\n💶 Saldo: ${saldoTxt}.${avisoPres}`;
 }
 
-async function saldoTrabajadorTxt(w) {
-  const s = await colaboradores.getSaldoColaborador(w.colaboradorId);
+async function saldoTrabajadorTxt(w, periodo) {
   const esFijo = w.tipo !== 'externo';
-  const saldoTxt = s.saldoPendiente >= 0
-    ? `Le debemos *${pagosT.eur(s.saldoPendiente)}*`
-    : (esFijo ? `A descontar de nómina *${pagosT.eur(-s.saldoPendiente)}*` : `Nos debe *${pagosT.eur(-s.saldoPendiente)}* (ha cobrado de más)`);
-  return `💶 *${w.nombre}*\nDevengado: ${pagosT.eur(s.totalDevengado)}\nEntregado: ${pagosT.eur(s.totalEntregado)}\n${saldoTxt}`;
+  const all = await colaboradores.getMovimientos(w.colaboradorId, { limit: 1000 });
+  const sTot = await colaboradores.getSaldoColaborador(w.colaboradorId);
+
+  let scope = (periodo && periodo !== 'null') ? periodo : (esFijo ? 'mes' : 'semana');
+  const hoy = new Date().toISOString().slice(0, 10);
+  let from = null, to = null, etiqueta = 'todo el histórico';
+  if (scope === 'semana') {
+    const sem = pagosT.semanaLaboral(hoy); from = sem.desde; to = sem.hasta; etiqueta = `semana ${sem.label}`;
+  } else if (scope === 'mes') {
+    const d = new Date(hoy + 'T12:00:00Z'); const y = d.getUTCFullYear(), m = d.getUTCMonth(), mm = String(m + 1).padStart(2, '0');
+    from = `${y}-${mm}-01`; to = `${y}-${mm}-31`; etiqueta = `${pagosT.mesNombre(m, true)} ${y}`;
+  } else if (scope === 'ano') {
+    const y = new Date(hoy + 'T12:00:00Z').getUTCFullYear(); from = `${y}-01-01`; to = `${y}-12-31`; etiqueta = `año ${y}`;
+  } // 'todo' -> sin filtro
+
+  const movs = (from && to) ? all.filter(m => m.fecha >= from && m.fecha <= to) : all;
+  let dev = 0, ent = 0;
+  for (const m of movs) {
+    const im = Number(m.importe) || 0;
+    if (m.tipo === 'semana_trabajada') dev += im;
+    else if (m.tipo === 'pago_semana' || m.tipo === 'pago_dias' || m.tipo === 'adelanto') ent += im;
+    else if (m.tipo === 'descuento') ent += im;
+    else if (m.tipo === 'devolucion') ent -= im;
+  }
+  const ps = dev - ent;
+  let linea;
+  if (Math.abs(ps) < 0.01) linea = 'Cuadrado ✅';
+  else if (ps > 0) linea = `Le faltan por cobrar *${pagosT.eur(ps)}*`;
+  else linea = esFijo ? `Le has adelantado *${pagosT.eur(-ps)}* (a descontar)` : `Le has adelantado *${pagosT.eur(-ps)}* a cuenta`;
+
+  const totTxt = sTot.saldoPendiente >= 0 ? `le debemos ${pagosT.eur(sTot.saldoPendiente)}` : `nos debe ${pagosT.eur(-sTot.saldoPendiente)}`;
+  let out = `💶 *${w.nombre}* — ${etiqueta}\nTrabajado: ${pagosT.eur(dev)}\nEntregado: ${pagosT.eur(ent)}\n${linea}`;
+  if (scope !== 'todo') out += `\n_(Acumulado total: ${totTxt})_`;
+  return out;
 }
 
 async function handlerResumenAdelantos() {
