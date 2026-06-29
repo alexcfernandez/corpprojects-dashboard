@@ -368,7 +368,7 @@ Idioma de salida: ${lang}.
 
 Reglas:
 - Mismo trabajo y mismo alcance técnico: NO inventes partidas nuevas ni cambies cantidades ni precios; solo redacta mejor y con más detalle el CÓMO se ejecuta.
-- Estilo profesional y detallado, paso a paso: cada paso en su PROPIA LÍNEA, numerado "1) ", "2) "…, con saltos de línea reales (\\n).
+- Estilo profesional y detallado, paso a paso: cada paso en su PROPIA LÍNEA, SIN numerar (empieza cada paso con un guion "- "), con saltos de línea reales (\\n).
 - En pintura: superficies completas (paños enteros, techos completos), nunca parches.
 - Mejora también el "nombre" de cada partida (corto y claro).
 - Mantén el MISMO número de partidas y el MISMO orden que te paso.
@@ -1270,7 +1270,7 @@ async function handlerPresupuesto(texto, from, imagenes = []) {
     `- "iva": 21 por defecto; si el usuario dice "al 10" pon 10; si dice "al 0" o "sin iva" pon 0.\n` +
     `- PRECIOS: si el usuario da un total, REPARTE ese total entre las partidas de forma realista (la suma debe cuadrar). Si da precios por partida, respétalos. Si no da ningún precio, propón importes de referencia razonables para España.\n` +
     `- Redacta en español, profesional, como un presupuesto real de construcción. El paso a paso de la mano de obra debe ser detallado.\n` +
-    `- FORMATO del paso a paso: cada paso en su PROPIA LÍNEA, con salto de línea real (\\n) entre pasos, numerados "1) ", "2) "… No los pongas seguidos en un mismo párrafo. Ejemplo de "descripcion": "1) Desmontaje de sanitarios.\\n2) Arranque de alicatado.\\n3) Retirada de escombros."\n` +
+    `- FORMATO del paso a paso: cada paso en su PROPIA LÍNEA, con salto de línea real (\\n) entre pasos, SIN numerar; empieza cada paso con un guion "- ". No los pongas seguidos en un mismo párrafo. Ejemplo de "descripcion": "- Desmontaje de sanitarios.\\n- Arranque de alicatado.\\n- Retirada de escombros."\n` +
     `- En pintura: superficies completas (paños enteros, techos completos), nunca parches.\n` +
     `- JSON VÁLIDO OBLIGATORIO: "precio" y "uds" deben ser NÚMEROS con PUNTO decimal y sin separador de miles (ej: 180.00, 1250.5), NUNCA con coma (no "180,00"). No pongas el símbolo € dentro del JSON. Escapa correctamente comillas y saltos de línea dentro de los textos.`;
 
