@@ -187,6 +187,8 @@ async function aplicarReconciliacion() {
       }, $set: { updatedAt: new Date() } },
     { upsert: true }
   );
+  // Apodos para que el bot resuelva a Huaca Javier al decir "javi"/"huaca".
+  await db.collection('trabajadores').updateOne({ slug: 'huaca-javier' }, { $set: { alias: ['javi', 'huaca', 'huaca javier'], updatedAt: new Date() } });
   // Javi el largo ya es fijo: quitamos la nota "Por horas" que arrastraba.
   await db.collection('trabajadores').updateOne({ slug: 'javi-el-largo' }, { $set: { notas: '', updatedAt: new Date() } });
   return { ok: true, aliasTocados };
