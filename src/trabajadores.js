@@ -84,6 +84,7 @@ async function createTrabajador(data) {
     diasLaborablesAno: parseInt(data.diasLaborablesAno || DEFAULTS.diasLaborablesAno),
     horasDia: parseInt(data.horasDia || DEFAULTS.horasDia),
     costeHora: data.costeHora != null ? parseFloat(data.costeHora) : null,
+    colaboradorId: data.colaboradorId || null,   // enlace a su cuenta de efectivo (colección colaboradores)
     fechaAlta: data.fechaAlta || new Date().toISOString().slice(0, 10),
     fechaBaja: data.fechaBaja || null,
     notas: (data.notas || '').trim(),
@@ -98,7 +99,7 @@ async function updateTrabajador(slugOrId, data) {
   const db = await getDB();
   const { ObjectId } = require('mongodb');
   const allowed = ['nombre', 'alias', 'activo', 'tipo', 'esAutonomo', 'pin', 'color', 'salarioNeto',
-                   'baseCotizacion', 'ssEmpresaPct', 'diasLaborablesAno', 'horasDia', 'costeHora', 'fechaAlta', 'fechaBaja', 'notas'];
+                   'baseCotizacion', 'ssEmpresaPct', 'diasLaborablesAno', 'horasDia', 'costeHora', 'colaboradorId', 'fechaAlta', 'fechaBaja', 'notas'];
   const set = { updatedAt: new Date() };
   allowed.forEach(k => { if (data[k] !== undefined) set[k] = data[k]; });
   ['salarioNeto', 'baseCotizacion', 'ssEmpresaPct', 'costeHora'].forEach(k => { if (set[k] != null && set[k] !== '') set[k] = parseFloat(set[k]); });
@@ -173,6 +174,21 @@ async function aplicarReconciliacion() {
     { upsert: true }
   );
   await db.collection('trabajadores').updateOne({ slug: 'david' }, { $set: { tipo: 'fijo', activo: true, notas: '', updatedAt: new Date() } });
+  // Huaca Javier: externo por horas. Su cuenta de efectivo (191 mov) es el colaborador "Javier" — se enlaza desde la ficha.
+  await db.collection('trabajadores').updateOne(
+    { slug: 'huaca-javier' },
+    { $setOnInsert: {
+        slug: 'huaca-javier', nombre: 'Huaca Javier', alias: [], activo: true,
+        tipo: 'externo', esAutonomo: false, pin: null, color: '#8b5cf6',
+        salarioNeto: null, baseCotizacion: null, ssEmpresaPct: DEFAULTS.ssEmpresaPct,
+        diasLaborablesAno: DEFAULTS.diasLaborablesAno, horasDia: DEFAULTS.horasDia,
+        costeHora: 7.5, colaboradorId: null,
+        fechaAlta: new Date().toISOString().slice(0, 10), fechaBaja: null, notas: '', createdAt: new Date(),
+      }, $set: { updatedAt: new Date() } },
+    { upsert: true }
+  );
+  // Javi el largo ya es fijo: quitamos la nota "Por horas" que arrastraba.
+  await db.collection('trabajadores').updateOne({ slug: 'javi-el-largo' }, { $set: { notas: '', updatedAt: new Date() } });
   return { ok: true, aliasTocados };
 }
 
