@@ -941,6 +941,12 @@ async function loadLedger(slug){
       <input id="mv-concepto" placeholder="concepto (opcional)" style="flex:1;min-width:110px;padding:6px">
       <button onclick="addMovColab('${w.colaboradorId}','${slug}')" style="background:var(--accent,#4d9cf8);color:#fff;border:none;border-radius:8px;padding:6px 12px;cursor:pointer">Añadir</button>
     </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+      <span style="font-size:12px;color:var(--text3)">📄 Informe:</span>
+      <button onclick="exportarInformeColab('${w.colaboradorId}',${JSON.stringify(w.nombre)},'mes')" style="background:none;border:1px solid var(--accent,#4d9cf8);color:var(--accent,#4d9cf8);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:12px">Este mes</button>
+      <button onclick="exportarInformeColab('${w.colaboradorId}',${JSON.stringify(w.nombre)},'ano')" style="background:none;border:1px solid var(--accent,#4d9cf8);color:var(--accent,#4d9cf8);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:12px">Este año</button>
+      <button onclick="exportarInformeColab('${w.colaboradorId}',${JSON.stringify(w.nombre)},'todo')" style="background:none;border:1px solid var(--accent,#4d9cf8);color:var(--accent,#4d9cf8);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:12px">Todo</button>
+    </div>
     <div style="max-height:150px;overflow:auto;font-size:12px">
       ${movs.length?movs.slice(0,40).map(x=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid var(--border,#f0f0f0)"><span>${x.fecha} · ${lbl[x.tipo]||x.tipo}${x.concepto?' · '+x.concepto:''}</span><span style="white-space:nowrap">${e2(x.importe)} <button onclick="delMovColab('${x._id}','${slug}')" style="background:none;border:none;cursor:pointer;color:var(--red,#f05252)">✕</button></span></div>`).join(''):'<div style="color:var(--text3)">Sin movimientos aún</div>'}
     </div>`;
@@ -971,6 +977,74 @@ async function delMovColab(movId,slug){
   if(!confirm('¿Borrar este movimiento?'))return;
   try{ await af('/api/colaboradores/movimientos/'+movId,{method:'DELETE'}); loadLedger(slug); }
   catch(e){alert('Error: '+e.message);}
+}
+async function exportarInformeColab(colabId,nombre,periodo){
+  const MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  let movs=[];
+  try{ const m=await af('/api/colaboradores/'+colabId+'/movimientos'); movs=Array.isArray(m)?m:((m&&m.movimientos)||[]); }
+  catch(e){ alert('No pude cargar los movimientos'); return; }
+  const now=new Date();
+  let from=null,to=null,titulo='Histórico completo';
+  if(periodo==='mes'){ const y=now.getFullYear(),mm=String(now.getMonth()+1).padStart(2,'0'); from=`${y}-${mm}-01`; to=`${y}-${mm}-31`; titulo=MESES[now.getMonth()][0].toUpperCase()+MESES[now.getMonth()].slice(1)+' de '+y; }
+  else if(periodo==='ano'){ const y=now.getFullYear(); from=`${y}-01-01`; to=`${y}-12-31`; titulo='Año '+y; }
+  const fil=((from&&to)?movs.filter(x=>(x.fecha||'')>=from&&(x.fecha||'')<=to):movs.slice()).sort((a,b)=>(a.fecha<b.fecha?-1:a.fecha>b.fecha?1:0));
+  const e2=n=>(Number(n)||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+  const lbl={semana_trabajada:'Trabajo',pago_semana:'Pago',pago_dias:'Pago días',adelanto:'Adelanto',descuento:'Descuento',devolucion:'Devolución'};
+  const esc=s=>String(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  let saldo=0,tDev=0,tRec=0,filas='';
+  if(!fil.length){ filas='<tr><td colspan="5" style="text-align:center;color:#888;padding:18px">Sin movimientos en este periodo.</td></tr>'; }
+  for(const x of fil){
+    const im=Number(x.importe)||0; let dev=0,rec=0;
+    if(x.tipo==='semana_trabajada')dev=im;
+    else if(['pago_semana','pago_dias','adelanto','descuento'].includes(x.tipo))rec=im;
+    else if(x.tipo==='devolucion')rec=-im;
+    saldo+=dev-rec; tDev+=dev; tRec+=rec;
+    const f=(x.fecha||'').split('-').reverse().join('/');
+    filas+=`<tr><td>${f}</td><td>${esc(lbl[x.tipo]||x.tipo)}${x.concepto?' · '+esc(x.concepto):''}</td><td class="num">${dev?e2(dev):''}</td><td class="num">${rec?e2(rec):''}</td><td class="num">${e2(saldo)}</td></tr>`;
+  }
+  const saldoFinal=tDev-tRec;
+  const cierre = saldoFinal>=0
+    ? `Saldo a favor del trabajador (pendiente de pago): <strong>${e2(saldoFinal)}</strong>`
+    : `El trabajador ha cobrado de más / a descontar: <strong>${e2(-saldoFinal)}</strong>`;
+  const hoy=now.toLocaleDateString('es-ES')||((''+now.getDate()).padStart(2,'0')+'/'+(''+(now.getMonth()+1)).padStart(2,'0')+'/'+now.getFullYear());
+  const html=`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Cuenta ${esc(nombre)} — ${esc(titulo)}</title>
+<style>
+  *{box-sizing:border-box} body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1a1a1a;margin:0;padding:32px;font-size:13px}
+  .hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1a1a1a;padding-bottom:14px;margin-bottom:18px}
+  .hd h1{font-size:20px;margin:0 0 2px} .hd .sub{color:#666;font-size:12px}
+  .meta{text-align:right;font-size:12px;color:#444}
+  .cards{display:flex;gap:12px;margin:0 0 18px}
+  .card{flex:1;border:1px solid #ddd;border-radius:8px;padding:10px 12px}
+  .card .k{font-size:11px;color:#777;text-transform:uppercase;letter-spacing:.04em} .card .v{font-size:17px;font-weight:700;margin-top:3px}
+  table{width:100%;border-collapse:collapse} th,td{padding:7px 8px;border-bottom:1px solid #eee;text-align:left;vertical-align:top}
+  th{background:#1a1a1a;color:#fff;font-size:11px;text-transform:uppercase;letter-spacing:.03em} th.num,td.num{text-align:right;white-space:nowrap}
+  tfoot td{font-weight:700;border-top:2px solid #1a1a1a;border-bottom:none}
+  .cierre{margin-top:16px;padding:12px 14px;border-radius:8px;background:#f4f6f8;font-size:14px}
+  .foot{margin-top:24px;color:#999;font-size:11px;border-top:1px solid #eee;padding-top:10px}
+  @media print{ body{padding:0} button{display:none} }
+  .pbar{margin-bottom:16px} .pbar button{background:#1a1a1a;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px}
+</style></head><body>
+<div class="pbar"><button onclick="window.print()">🖨️ Imprimir / Guardar PDF</button></div>
+<div class="hd">
+  <div><h1>${esc(nombre)}</h1><div class="sub">Extracto de cuenta · ${esc(titulo)}</div></div>
+  <div class="meta">Corp Projects Holding SL<br>Emitido: ${hoy}</div>
+</div>
+<div class="cards">
+  <div class="card"><div class="k">Trabajado (devengado)</div><div class="v">${e2(tDev)}</div></div>
+  <div class="card"><div class="k">Recibido (pagos+adelantos)</div><div class="v">${e2(tRec)}</div></div>
+  <div class="card"><div class="k">Saldo</div><div class="v">${e2(saldoFinal)}</div></div>
+</div>
+<table>
+  <thead><tr><th>Fecha</th><th>Concepto</th><th class="num">Devengado</th><th class="num">Recibido</th><th class="num">Saldo</th></tr></thead>
+  <tbody>${filas}</tbody>
+  <tfoot><tr><td colspan="2">TOTALES</td><td class="num">${e2(tDev)}</td><td class="num">${e2(tRec)}</td><td class="num">${e2(saldoFinal)}</td></tr></tfoot>
+</table>
+<div class="cierre">${cierre}</div>
+<div class="foot">Documento generado por el panel de Corp Projects Holding SL. Saldo positivo = se le debe; negativo = ha cobrado de más / a descontar.</div>
+</body></html>`;
+  const win=window.open('','_blank');
+  if(!win){ alert('Permite las ventanas emergentes para ver el informe.'); return; }
+  win.document.open(); win.document.write(html); win.document.close();
 }
 function cerrarFichaTrab(){const o=document.getElementById('fichaOverlay');if(o)o.remove();}
 async function guardarFichaTrab(slug){
