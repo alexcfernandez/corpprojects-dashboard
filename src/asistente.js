@@ -1599,6 +1599,24 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
     catch (e) { return 'No he podido montar el resumen de avisos ahora mismo.'; }
   }
 
+  // Comando: "sin facturar" / "qué falta por facturar" → trabajo hecho no facturado
+  if (/^\s*(sin facturar|por facturar)\b/.test(norm(texto)) ||
+      /(trabajo|partes?) (sin|por|que.*) factura|que (me )?falta (por |de )?factura|que no (se )?(ha )?factura|no se (ha )?factur/.test(norm(texto))) {
+    try {
+      const sf = await require('./partes').getPendientesFacturar({ dias: 0 });
+      if (!sf.length) return '✅ No hay trabajo terminado pendiente de facturar. Lo hecho está marcado como facturado (o sigue en curso).';
+      const totH = sf.reduce((s, c) => s + (c.horas || 0), 0);
+      let m = `🧾 *Trabajo hecho sin facturar: ${sf.length} cliente(s)* — ${totH.toFixed(0)}h\n\n`;
+      m += sf.slice(0, 12).map(c => {
+        const mat = c.materiales.length ? ` · ${c.materiales.length} mat.` : '';
+        return `• *${c.client}* — ${c.partes} parte(s), ${(c.horas || 0).toFixed(0)}h${mat} _(${c.maxEdad}d)_`;
+      }).join('\n');
+      if (sf.length > 12) m += `\n…y ${sf.length - 12} más.`;
+      m += `\n\n_Partes terminados que aún no figuran como facturados. Revísalos en el panel de partes._`;
+      return m;
+    } catch (e) { return 'No he podido revisar el trabajo sin facturar ahora mismo.'; }
+  }
+
   // Comando de revisión: "fallos" → consultas que no entendí (para que las veas tú)
   if (/^\s*(fallos|errores)\b/.test(norm(texto)) || /que (no )?(has )?entend|consultas que no entend|donde fallas/.test(norm(texto))) {
     return handlerFallos(from);
