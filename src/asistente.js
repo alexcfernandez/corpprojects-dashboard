@@ -1928,8 +1928,13 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
       const workers = await attendance.getWorkers().catch(() => []);
       const aliasMap = await cargarAliasTrabajadores().catch(() => ({}));
       const primeros = (workers || []).map(w => norm(w.name).split(/\s+/)[0]).filter(n => n.length > 2);
+      const plantilla = await trabajadores.getTrabajadores(false).catch(() => []);
       const mencionaTrab = primeros.some(n => new RegExp('\\b' + n + '\\b').test(_ni))
-        || Object.keys(aliasMap || {}).some(a => a && a.length >= 3 && _ni.includes(a));
+        || Object.keys(aliasMap || {}).some(a => a && a.length >= 3 && _ni.includes(a))
+        || (plantilla || []).some(w => {
+             const toks = norm(w.nombre).split(/\s+/).filter(t => t.length > 2);
+             return toks.some(t => new RegExp('\\b' + t + '\\b').test(_ni)) || (w.alias || []).some(a => a && a.length >= 3 && _ni.includes(a));
+           });
       const cueAsign = /\b(a|en|al|presencia|hoy|manana|ma[nñ]ana|ayer|vacaciones|baja|libre|oficina|obra|obras|va|van|ha ido|han ido|fue|fueron|esta|estan|est[aá]n)\b/.test(_ni);
       if (mencionaTrab && cueAsign) return handlerPresencia(texto, from);
     }
