@@ -983,7 +983,7 @@ async function exportarInformeColab(colabId,slug,periodo){
   const nombre=_w?_w.nombre:'Trabajador';
   const MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   let movs=[];
-  try{ const m=await af('/api/colaboradores/'+colabId+'/movimientos'); movs=Array.isArray(m)?m:((m&&m.movimientos)||[]); }
+  try{ const m=await af('/api/colaboradores/'+colabId+'/movimientos?limit=5000'); movs=Array.isArray(m)?m:((m&&m.movimientos)||[]); }
   catch(e){ alert('No pude cargar los movimientos'); return; }
   const now=new Date();
   let from=null,to=null,titulo='Histórico completo';
@@ -993,8 +993,8 @@ async function exportarInformeColab(colabId,slug,periodo){
   const e2=n=>(Number(n)||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
   const lbl={semana_trabajada:'Trabajo',pago_semana:'Pago',pago_dias:'Pago días',adelanto:'Adelanto',descuento:'Descuento',devolucion:'Devolución'};
   const esc=s=>String(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-  let saldo=0,tDev=0,tRec=0,filas='';
-  if(!fil.length){ filas='<tr><td colspan="5" style="text-align:center;color:#888;padding:18px">Sin movimientos en este periodo.</td></tr>'; }
+  let saldo=0,tDev=0,tRec=0,filasArr=[];
+  if(!fil.length){ filasArr.push('<tr><td colspan="5" style="text-align:center;color:#888;padding:18px">Sin movimientos en este periodo.</td></tr>'); }
   for(const x of fil){
     const im=Number(x.importe)||0; let dev=0,rec=0;
     if(x.tipo==='semana_trabajada')dev=im;
@@ -1002,8 +1002,9 @@ async function exportarInformeColab(colabId,slug,periodo){
     else if(x.tipo==='devolucion')rec=-im;
     saldo+=dev-rec; tDev+=dev; tRec+=rec;
     const f=(x.fecha||'').split('-').reverse().join('/');
-    filas+=`<tr><td>${f}</td><td>${esc(lbl[x.tipo]||x.tipo)}${x.concepto?' · '+esc(x.concepto):''}</td><td class="num">${dev?e2(dev):''}</td><td class="num">${rec?e2(rec):''}</td><td class="num">${e2(saldo)}</td></tr>`;
+    filasArr.push(`<tr><td>${f}</td><td>${esc(lbl[x.tipo]||x.tipo)}${x.concepto?' · '+esc(x.concepto):''}</td><td class="num">${dev?e2(dev):''}</td><td class="num">${rec?e2(rec):''}</td><td class="num">${e2(saldo)}</td></tr>`);
   }
+  const filas=filasArr.reverse().join('');
   const saldoFinal=tDev-tRec;
   const cierre = saldoFinal>=0
     ? `Saldo a favor del trabajador (pendiente de pago): <strong>${e2(saldoFinal)}</strong>`
