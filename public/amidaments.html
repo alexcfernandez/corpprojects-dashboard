@@ -55,7 +55,7 @@ textarea{min-height:60px;resize:vertical}
   <div class="logo">CP</div>
   <div>
     <div class="header-text">Importar amidaments</div>
-    <div class="header-sub">PDF del arquitecto → presupuesto en StelOrder</div>
+    <div class="header-sub">PDF o Excel del arquitecto → presupuesto en StelOrder</div>
   </div>
 </div>
 
@@ -67,14 +67,14 @@ textarea{min-height:60px;resize:vertical}
   <!-- PASO 1: subir -->
   <div id="step1" class="card">
     <div class="filebox" id="filebox">
-      <div id="fileinfo" class="muted">📄 Toca para elegir el PDF del estado de mediciones</div>
+      <div id="fileinfo" class="muted">📄 Toca para elegir el PDF o Excel del estado de mediciones</div>
     </div>
     <input id="file" type="file" accept="application/pdf,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" class="hide">
     <div id="msg1"></div>
     <div style="margin-top:14px">
-      <button class="btn" id="btnAnalizar" disabled>Analizar PDF</button>
+      <button class="btn" id="btnAnalizar" disabled>Analizar</button>
     </div>
-    <p class="small muted" style="margin-top:10px">Lee solo las tablas de mediciones (ignora portada, planos y fotos). Tarda unos segundos.</p>
+    <p class="small muted" style="margin-top:10px">Lee solo las tablas de mediciones (ignora portada, planos, fotos y precios). Tarda unos segundos.</p>
   </div>
 
   <!-- PASO 2: revisar y crear -->
@@ -161,7 +161,7 @@ $('btnAnalizar').onclick = async () => {
   } catch(e) {
     banner($('msg1'), 'err', 'No se pudo analizar: ' + e.message);
   } finally {
-    b.disabled = false; b.textContent = 'Analizar PDF';
+    b.disabled = false; b.textContent = 'Analizar';
   }
 };
 
