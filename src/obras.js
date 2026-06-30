@@ -34,6 +34,7 @@ async function createObra(data) {
     invoicedAmount: 0,  // Se calcula cruzando con StelOrder
 
     // Control
+    materiales:   Array.isArray(data.materiales) ? data.materiales.map(m => ({ id: String(Date.now()) + Math.random().toString(36).slice(2, 6), concepto: String(m.concepto || '').trim(), importe: parseFloat(m.importe || 0) })) : [],
     notes:        data.notes || '',
     tags:         data.tags || [],  // Weber, Nutersa, etc.
     createdAt:    new Date(),
@@ -68,10 +69,23 @@ async function getObra(id) {
 
 async function updateObra(id, data) {
   const db = await getDB();
-  const allowed = ['clientName','reference','description','address','status','startDate','endDate','budgetAmount','notes','tags'];
+  const allowed = ['clientName','reference','description','address','status','startDate','endDate','budgetAmount','notes','tags','materiales'];
   const set = { updatedAt: new Date() };
   allowed.forEach(k => { if (data[k] !== undefined) set[k] = data[k]; });
   return db.collection('obras').updateOne({ _id: new ObjectId(id) }, { $set: set });
+}
+
+// Material de obra (a mano): {concepto, importe}. Suma al coste en la rentabilidad.
+async function addMaterial(obraId, { concepto, importe }) {
+  const db = await getDB();
+  const mat = { id: String(Date.now()) + Math.random().toString(36).slice(2, 6), concepto: String(concepto || '').trim(), importe: parseFloat(importe || 0) };
+  if (!mat.importe || mat.importe <= 0) throw new Error('El importe del material debe ser mayor que 0');
+  await db.collection('obras').updateOne({ _id: new ObjectId(obraId) }, { $push: { materiales: mat }, $set: { updatedAt: new Date() } });
+  return mat;
+}
+async function deleteMaterial(obraId, matId) {
+  const db = await getDB();
+  return db.collection('obras').updateOne({ _id: new ObjectId(obraId) }, { $pull: { materiales: { id: matId } }, $set: { updatedAt: new Date() } });
 }
 
 // ── RENTABILIDAD ─────────────────────────────────────────────────
@@ -161,6 +175,9 @@ async function getRentabilidad(obraId) {
     (byDate[e.date] = byDate[e.date] || []).push({ worker: e.workerName, horas, coste, src: 'presencia' });
   });
 
+  // 2c. Material de la obra (metido a mano en la ficha)
+  (obra.materiales || []).forEach(m => { totalMateriales += parseFloat(m.importe || 0); });
+
   const totalCoste = totalCostePersonal + totalMateriales;
   const facturado  = obra.invoicedAmount || obra.budgetAmount || 0;
   const beneficio  = facturado - totalCoste;
@@ -237,4 +254,4 @@ async function getResumenGeneral() {
   return resumen;
 }
 
-module.exports = { ESTADOS_OBRA, createObra, getObras, getObra, updateObra, getRentabilidad, getResumenGeneral };
+module.exports = { ESTADOS_OBRA, createObra, getObras, getObra, updateObra, addMaterial, deleteMaterial, getRentabilidad, getResumenGeneral };
