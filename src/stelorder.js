@@ -1306,17 +1306,34 @@ async function crearPresupuestoStel({ accId, titulo = null, observaciones = null
   const ivaPct = IVA_TAX_IDS[Number(iva)] != null ? Number(iva) : 21;
   const taxId = IVA_TAX_IDS[ivaPct];
 
+  // Límite seguro para la descripción de línea: StelOrder rechaza descripciones
+  // demasiado largas (error E000163 "invalid length"). Configurable por env.
+  // Además, los amidaments de arquitecto arrastran al final un bloque de
+  // "Criteri d'amidament / de valoració / de mesura" que es relleno: lo quitamos
+  // y dejamos solo la descripción técnica de la partida.
+  const DESC_MAX = Number(process.env.STEL_ITEM_DESC_MAX) || 1000;
+  const descCorta = (s) => {
+    let t = String(s || '').replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+    const corte = t.search(/Criteri (d'amidament|de valoraci|de mesura)/i);
+    if (corte > 40) t = t.slice(0, corte).trim();   // conserva el bloque técnico, quita el relleno
+    if (t.length > DESC_MAX) t = t.slice(0, DESC_MAX - 1).trim() + '…';
+    return t;
+  };
+
   // Una partida -> línea ITEM. Acepta 'cantidad' (amidaments) o 'uds' (voz).
-  const itemLinea = (p) => ({
-    'line-type': 'ITEM',
-    'item-id': Number(itemId),
-    'item-name': String(p.nombre || 'Partida').trim().slice(0, 200),
-    units: Number(p.cantidad != null ? p.cantidad : p.uds) || 1,
-    'item-base-price': Number(p.precio) || 0,
-    'item-description': String(p.descripcion || '').trim().slice(0, 4000),
-    'primary-tax-percentage': ivaPct,
-    'primary-tax-id': taxId
-  });
+  const itemLinea = (p) => {
+    const nombre = String(p.nombre || 'Partida').trim().slice(0, 200);
+    return {
+      'line-type': 'ITEM',
+      'item-id': Number(itemId),
+      'item-name': nombre,
+      units: Number(p.cantidad != null ? p.cantidad : p.uds) || 1,
+      'item-base-price': Number(p.precio) || 0,
+      'item-description': descCorta(p.descripcion) || nombre,   // nunca vacía
+      'primary-tax-percentage': ivaPct,
+      'primary-tax-id': taxId
+    };
+  };
 
   // 2) Construir líneas en orden
   const lines = [];
