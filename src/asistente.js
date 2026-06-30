@@ -2630,7 +2630,7 @@ Responde SOLO un JSON VÁLIDO, sin markdown:
 Reglas:
 - "fecha": "hoy", "manana" o "ayer" según lo que diga (por defecto "hoy").
 - "con X" = X va a las MISMAS obras del grupo en el que se menciona.
-- "estado": "obra" si va a una obra/cliente; "vacaciones", "baja", "libre" u "oficina" si lo dice. Por defecto "obra".
+- "estado": "obra" si va a una obra/cliente; "oficina" (almacén/taller); "vacaciones"; "baja" SOLO si es baja MÉDICA / enfermo / está de baja; "falta_j" si es falta JUSTIFICADA (avisó / con justificante / médico / asuntos propios); "falta_i" si es falta INJUSTIFICADA ("falta injustificada", "baja injustificada", "no vino sin avisar", "no se presentó", "faltó sin avisar"); "libre" si día libre/fiesta. Por defecto "obra". IMPORTANTE: "baja injustificada" = "falta_i", NO "baja".
 - "obras": nombre corto de cada obra/cliente/calle, tal como lo diga. Si dice "aquí"/"allá" u otra ubicación poco clara, ponla igual como texto.
 - "horas": horas de jornada de esos trabajadores. "media jornada"/"medio día"/"mitja jornada" = 4; "jornada completa" o si no dice nada = 8; "N horas"/"Nh" = N. Si distintos trabajadores tienen DISTINTAS horas, sepáralos en asignaciones distintas.
 - Si el jefe ACLARA que una obra es la MISMA que otra ("la obra de Calonge, que es la de Pedrosa", "X o sea Y", "X que es Y"), es UNA SOLA obra: devuelve solo UNA (usa el nombre más formal del cliente/obra). NUNCA la dupliques.
@@ -2764,7 +2764,7 @@ async function handlerPresencia(texto, from) {
   }
   const offset = parsed.fecha === 'manana' ? 1 : (parsed.fecha === 'ayer' ? -1 : 0);
   const date = hoyISO(offset);
-  const validos = ['obra', 'oficina', 'vacaciones', 'baja', 'libre'];
+  const validos = ['obra', 'oficina', 'vacaciones', 'baja', 'falta_j', 'falta_i', 'libre'];
   const entries = []; const cola = [];
   for (const a of parsed.asignaciones) {
     const estado = validos.includes(a.estado) ? a.estado : 'obra';
@@ -2796,12 +2796,13 @@ async function handlerPresencia(texto, from) {
 }
 
 function resumenPresencia(entries, date, noReconocidos) {
-  const ESTADO_EMOJI = { obra: '🏗️', oficina: '🏢', vacaciones: '🌴', baja: '🏥', libre: '⏸️' };
+  const ESTADO_EMOJI = { obra: '🏗️', oficina: '🏢', vacaciones: '🌴', baja: '🏥', falta_j: '📋', falta_i: '❌', libre: '⏸️' };
+  const ESTADO_TXT = { oficina: 'oficina/almacén', vacaciones: 'vacaciones', baja: 'baja médica', falta_j: 'falta justificada', falta_i: 'falta injustificada', libre: 'libre' };
   let s = `🗓️ *Presencia ${date}*\n\n`;
   for (const e of entries) {
     const em = ESTADO_EMOJI[e.estado] || '🏗️';
     if (e.estado === 'obra') s += `${em} *${e.workerName}* → ${(e.obras || []).map(o => `${o.clientName} (${o.horas}h)`).join(', ') || '—'}\n`;
-    else s += `${em} *${e.workerName}* → ${e.estado}\n`;
+    else s += `${em} *${e.workerName}* → ${ESTADO_TXT[e.estado] || e.estado}\n`;
   }
   if (noReconocidos && noReconocidos.length) s += `\n⚠️ No reconozco a: ${noReconocidos.join(', ')} (revisa el nombre).`;
   s += `\n\n¿Guardo esta presencia? Responde *"sí"* o *"no"*.`;
