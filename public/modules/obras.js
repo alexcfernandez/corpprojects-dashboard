@@ -86,7 +86,11 @@
       </div>
       <div class="field-row">
         <span class="field-label">Referencia de obra * <span style="font-weight:400;text-transform:none;font-size:10px">(nombre interno)</span></span>
-        <input type="text" id="ob-reference" value="${obra.reference||''}" placeholder="Ej: Fachada Calle Mayor 12..." class="field-input">
+        <div style="display:flex;gap:6px">
+          <input type="text" id="ob-reference" value="${obra.reference||''}" placeholder="Ej: Pedrosa – fachada" class="field-input" style="flex:1">
+          <button type="button" class="btn bgh" style="white-space:nowrap" onclick="CP.Obras.sugerirRef()">💡 Sugerir</button>
+        </div>
+        <div style="font-size:10px;color:var(--text3);margin-top:3px">Si en una misma calle hay varias obras, dales nombres distintos (Pedrosa – fachada, Pedrosa – tejado) para separar coste y presencia.</div>
       </div>
       <div class="field-row">
         <span class="field-label">Dirección</span>
@@ -298,6 +302,16 @@
             </table>
           </div>` : ''}
 
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-title">🧱 Material de la obra</div>
+            ${(obra.materiales&&obra.materiales.length)?`<table><thead><tr><th>Concepto</th><th style="text-align:right">Importe</th><th></th></tr></thead><tbody>${obra.materiales.map(m=>`<tr><td>${String(m.concepto||'').replace(/</g,'&lt;')}</td><td style="text-align:right">${eur(m.importe)}</td><td style="text-align:right"><button class="btn bgh" style="padding:2px 8px" onclick="CP.Obras.delMaterial('${id}','${m.id}')">✕</button></td></tr>`).join('')}</tbody></table>`:'<div style="font-size:12px;color:var(--text3);margin-bottom:8px">Sin material añadido todavía.</div>'}
+            <div style="display:flex;gap:6px;margin-top:8px">
+              <input type="text" id="ob-mat-concepto" class="field-input" placeholder="Concepto (ej: sacos cemento)" style="flex:1">
+              <input type="number" id="ob-mat-importe" class="field-input" placeholder="€" style="width:90px" min="0">
+              <button class="btn bp" onclick="CP.Obras.addMaterial('${id}')">+ Añadir</button>
+            </div>
+          </div>
+
           <div class="card">
             <div class="card-title">Actualizar obra</div>
             <div class="field-grid-2" style="margin-bottom:10px">
@@ -374,6 +388,28 @@
     if (msg) msg.style.display='none';
   }
 
-  CP.Obras = { render, showTab, loadResumen, loadLista, openObra, saveObraChanges, submitObra, resetForm };
+  function sugerirRef() {
+    const c = document.getElementById('ob-client'); const r = document.getElementById('ob-reference');
+    if (!c || !r) return;
+    const base = (c.value || '').trim();
+    if (!base) { alert('Pon primero el cliente y te sugiero un nombre.'); return; }
+    if (!r.value.trim()) r.value = base + ' – ';
+    r.focus();
+  }
+
+  async function addMaterial(id) {
+    const concepto = document.getElementById('ob-mat-concepto')?.value?.trim();
+    const importe  = parseFloat(document.getElementById('ob-mat-importe')?.value || 0);
+    if (!importe || importe <= 0) { alert('Pon un importe válido para el material.'); return; }
+    try { await api(`/api/obras/${id}/material`, { method:'POST', body: JSON.stringify({ concepto, importe }) }); openObra(id); loadResumen(); }
+    catch (err) { alert('Error: ' + err.message); }
+  }
+  async function delMaterial(id, matId) {
+    if (!confirm('¿Borrar este material?')) return;
+    try { await api(`/api/obras/${id}/material/${matId}`, { method:'DELETE' }); openObra(id); loadResumen(); }
+    catch (err) { alert('Error: ' + err.message); }
+  }
+
+  CP.Obras = { render, showTab, loadResumen, loadLista, openObra, saveObraChanges, submitObra, resetForm, sugerirRef, addMaterial, delMaterial };
 
 })(window.CP = window.CP || {});
