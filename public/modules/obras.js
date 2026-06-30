@@ -388,13 +388,18 @@
     if (msg) msg.style.display='none';
   }
 
-  function sugerirRef() {
+  async function sugerirRef() {
     const c = document.getElementById('ob-client'); const r = document.getElementById('ob-reference');
+    const d = document.getElementById('ob-desc'); const a = document.getElementById('ob-address');
     if (!c || !r) return;
-    const base = (c.value || '').trim();
-    if (!base) { alert('Pon primero el cliente y te sugiero un nombre.'); return; }
-    if (!r.value.trim()) r.value = base + ' – ';
-    r.focus();
+    const clientName = (c.value || '').trim();
+    if (!clientName && !(d && d.value.trim())) { alert('Pon primero el cliente o una descripción y te sugiero un nombre.'); return; }
+    const prev = r.value; r.value = 'pensando…'; r.disabled = true;
+    try {
+      const resp = await api('/api/obras/sugerir-ref', { method: 'POST', body: JSON.stringify({ clientName, description: d ? d.value.trim() : '', address: a ? a.value.trim() : '' }) });
+      r.value = (resp && resp.nombre) ? resp.nombre : (prev || clientName + ' – ');
+    } catch (e) { r.value = prev || clientName + ' – '; }
+    r.disabled = false; r.focus();
   }
 
   async function addMaterial(id) {
