@@ -175,7 +175,7 @@ async function getRentabilidad(obraId) {
     (byDate[e.date] = byDate[e.date] || []).push({ worker: e.workerName, horas, coste, src: 'presencia' });
   });
 
-  // 2c. Material de la obra (metido a mano en la ficha)
+  // 2c. Material de la obra (metido a mano en la ficha) — cuenta como coste.
   (obra.materiales || []).forEach(m => { totalMateriales += parseFloat(m.importe || 0); });
 
   const totalCoste = totalCostePersonal + totalMateriales;
