@@ -563,11 +563,26 @@ app.get('/api/diag/stel-cambiar-iva', requireAuth, async (req,res) => {
 // 1) Analizar el PDF y devolver la estructura (capítulos/subcapítulos/partidas)
 app.post('/api/amidaments/preview', requireAuth, uploadPdf.single('pdf'), async (req, res) => {
   try {
-    if (!req.file || !req.file.buffer) return res.status(400).json({ error: 'Falta el PDF (campo "pdf").' });
-    const base64 = req.file.buffer.toString('base64');
-    const est = await asistente.estructurarAmidamentPdf(base64, req.file.mimetype);
+    if (!req.file || !req.file.buffer) return res.status(400).json({ error: 'Falta el archivo (campo "pdf").' });
+    const nombre = (req.file.originalname || '').toLowerCase();
+    const esExcel = /\.(xlsx|xls)$/.test(nombre) || /spreadsheet|ms-excel/.test(req.file.mimetype || '');
+    let est;
+    if (esExcel) {
+      const XLSX = require('xlsx');
+      const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
+      let texto = '';
+      wb.SheetNames.forEach(sn => {
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, blankrows: false, defval: '' });
+        if (!rows.length) return;
+        texto += `\n### ${sn}\n` + rows.map(r => r.map(c => (c == null ? '' : String(c))).join(' | ')).join('\n');
+      });
+      est = await asistente.estructurarAmidamentTexto(texto);
+    } else {
+      const base64 = req.file.buffer.toString('base64');
+      est = await asistente.estructurarAmidamentPdf(base64, req.file.mimetype);
+    }
     if (!est || !Array.isArray(est.capitulos) || !est.capitulos.length) {
-      return res.status(422).json({ error: 'No pude extraer partidas del PDF. ¿Es un estado de mediciones con tablas?' });
+      return res.status(422).json({ error: 'No pude extraer partidas. ¿Es un estado de mediciones con tablas (PDF o Excel)?' });
     }
     // Conteo para el resumen
     let nPart = 0, nSub = 0;
@@ -1280,6 +1295,11 @@ app.post('/api/obras/:id/material', requireAuth, async (req, res) => {
 
 app.delete('/api/obras/:id/material/:matId', requireAuth, async (req, res) => {
   try { await obras.deleteMaterial(req.params.id, req.params.matId); res.json({ ok: true }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.post('/api/obras/sugerir-ref', requireAuth, async (req, res) => {
+  try { res.json({ nombre: await asistente.sugerirNombreObra(req.body || {}) }); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 
