@@ -1273,6 +1273,16 @@ app.put('/api/obras/:id', requireAuth, async (req, res) => {
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
+app.post('/api/obras/:id/material', requireAuth, async (req, res) => {
+  try { res.json(await obras.addMaterial(req.params.id, req.body)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.delete('/api/obras/:id/material/:matId', requireAuth, async (req, res) => {
+  try { await obras.deleteMaterial(req.params.id, req.params.matId); res.json({ ok: true }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 // ── PARTES DE TRABAJO ─────────────────────────────────────────────
 const partes = require('./partes');
 
@@ -1999,8 +2009,8 @@ app.put('/api/colaboradores/:id', requireAuth, async (req, res) => {
 
 app.get('/api/colaboradores/:id/movimientos', requireAuth, async (req, res) => {
   try {
-    const { from, to } = req.query;
-    res.json(await colaboradores.getMovimientos(req.params.id, { from, to }));
+    const { from, to, limit } = req.query;
+    res.json(await colaboradores.getMovimientos(req.params.id, { from, to, limit: limit ? Number(limit) : undefined }));
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
