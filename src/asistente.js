@@ -302,6 +302,42 @@ Reglas:
   return iaJsonDoc(prompt, base64Pdf, 8000, null, mediaType);
 }
 
+// Igual que estructurarAmidamentPdf pero a partir de TEXTO (Excel volcado a filas).
+// Más robusto que un parser rígido cuando las tablas vienen desordenadas.
+async function estructurarAmidamentTexto(texto) {
+  const prompt = `Eres un aparejador. Te paso el contenido de un EXCEL de "estat d'amidaments" / estado de mediciones de una obra, volcado a texto por filas (columnas separadas por " | ", puede venir desordenado y repartido en varias hojas, en catalán o castellano).
+
+Cada fila suele ser uno de estos tipos:
+- "Obra | | n | <nombre obra>"  -> cabecera de obra (úsala para el título).
+- "Capítol | | n | <nombre>"    -> CAPÍTULO.
+- "Subcapítol | | n | <nombre>" -> SUBCAPÍTULO.
+- "<n> | <código> | <unidad> | <descripción> | <amidament/cantidad> | <precio> | <total>" -> PARTIDA.
+  (En algunas filas las columnas están corridas: la unidad puede ir en otra columna y la descripción en la siguiente. Interpreta con sentido común: unidad = m, m2, m3, u, kg, PA, ml...; cantidad = la cifra de amidament.)
+
+Responde SOLO un JSON VÁLIDO, sin markdown, con esta forma EXACTA:
+{
+ "titulo": "título de la obra",
+ "cliente": null,
+ "clienteDatos": { "nif": null, "direccion": null, "cp": null, "ciudad": null, "provincia": null, "telefono": null, "email": null },
+ "capitulos": [
+   { "codigo": "1", "nombre": "Moviment de terres",
+     "subcapitulos": [
+       { "codigo": "1", "nombre": "Moviment de terres",
+         "partidas": [
+           { "codigo": "E2213122", "unidad": "m3", "nombre": "título corto", "cantidad": 197.401, "descripcion": "descripción completa tal cual" }
+         ] }
+     ] }
+ ]
+}
+
+Reglas:
+- "cantidad": NÚMERO con PUNTO decimal (197.401, nunca "197,401") y sin separador de miles. Si la fila no trae cantidad, pon 1.
+- IGNORA precios y totales (aquí solo estructuramos las mediciones).
+- Copia la descripción COMPLETA de cada partida. No inventes ni quites partidas. Mantén el orden.
+- Si una partida cuelga del capítulo sin subcapítulo, ponla en "partidas" del propio capítulo.`;
+  return iaJson(prompt + '\n\nCONTENIDO DEL EXCEL:\n' + texto, 8000, null);
+}
+
 // Lee un PRESUPUESTO con precios (foto o PDF, p. ej. de la competencia) y lo
 // estructura plano: cliente, partidas con precio unitario (base, sin IVA) e IVA.
 async function estructurarPresupuestoPdf(base64Pdf, mediaType = 'application/pdf') {
@@ -2783,4 +2819,16 @@ async function ejecutarGuardarPresencia(from, pend) {
   return `✅ Presencia guardada (${ok} trabajador${ok > 1 ? 'es' : ''}) para el ${pend.date}.`;
 }
 
-module.exports = { responderConsulta, vocabularioVoz, estructurarAmidamentPdf, estructurarPresupuestoPdf, reescribirPartidas, importarDocumento };
+async function sugerirNombreObra({ clientName, description, address } = {}) {
+  const r = await iaJson(
+    `Propón un NOMBRE INTERNO corto para una obra de una empresa de mantenimiento/reformas, que sirva para distinguirla de otras del mismo cliente o de la misma calle.
+Cliente: ${clientName || ''}
+Dirección: ${address || ''}
+Descripción: ${description || ''}
+Formato: "Lugar – Trabajo" (ej. "Pedrosa – Fachada", "Alella – Tejado", "Olot – Pintura portal"). Máximo 4 palabras, sin comillas.
+Responde SOLO JSON: {"nombre":"..."}`,
+    40, { nombre: null });
+  return (r && r.nombre) ? String(r.nombre).trim() : null;
+}
+
+module.exports = { responderConsulta, vocabularioVoz, estructurarAmidamentPdf, estructurarAmidamentTexto, estructurarPresupuestoPdf, reescribirPartidas, importarDocumento, sugerirNombreObra };
