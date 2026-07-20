@@ -352,14 +352,6 @@
     });
   };
 
-  // También mostrar enlace en la pestaña de accesos
-  window.togglePin = function(wid) {
-    const pins = { jose:'1234', diego:'2345', abdellah:'3456', mamadou:'4567', paula:'5678' };
-    const el = document.getElementById('pin-' + wid);
-    if (!el) return;
-    el.textContent = el.textContent === '••••' ? (pins[wid] || '????') : '••••';
-  };
-
   CP.Usuarios = { render, showTab, loadUsers, editUser, deactivateUser, reactivateUser, submitUser, resetForm };
 
 })(window.CP = window.CP || {});

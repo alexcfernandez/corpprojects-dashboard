@@ -22,6 +22,7 @@ const { sendWhatsApp, sendEmail } = require('./notifications');
 const { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail, sendWorkOrdersAlert } = require('./scheduler');
 const calendarSync = require('./calendar');
 const activity = require('./activity');
+const { canonicalHostRedirect } = require('./canonical');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -40,6 +41,9 @@ app.use(cors({
   origin: ['https://dashboard.corpprojects.es','http://localhost:3000',
            'https://corpprojects-dashboard-production.up.railway.app']
 }));
+// Fuerza el dominio propio (solo si CANONICAL_HOST está definido). No toca
+// /health, /api, /auth ni peticiones que no sean GET. Ver src/canonical.js.
+app.use(canonicalHostRedirect);
 app.use(express.json({ limit: '5mb' }));
 
 const UPLOADS_DIR = path.join(__dirname, '../uploads');

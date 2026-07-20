@@ -1,0 +1,18 @@
+# Dependencias
+node_modules/
+
+# Variables de entorno (NUNCA subir credenciales)
+.env
+.env.local
+.env.*.local
+
+# Subidas temporales (extractos de banco, PDFs, fotos de partes)
+uploads/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Sistema
+.DS_Store
+Thumbs.db
