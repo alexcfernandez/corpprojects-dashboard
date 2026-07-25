@@ -73,13 +73,44 @@ async function runDailySummary() {
   }
 }
 
-// ── Resumen diario del owner (Fase 4a): array de COLECTORES para poder crecer ──
-// Cada colector devuelve una sección de texto (o null si hoy no aporta nada).
-// Reutiliza avisos (pausa global + anti-duplicado) y sendWhatsApp (canal activo).
+// ── "☀️ Buenos días" unificado (Fase 4b): UN solo mensaje WhatsApp al owner por
+// SECCIONES (colectores). Funde los avisos WhatsApp-al-owner de las 08:00:
+// pendientes + (lunes) proactivo/cobros, más una sección de calendario de hoy.
+// NOTA: sendWorkOrdersAlert es un EMAIL (otro canal/destinatario) → NO se funde
+// aquí; su cron se mantiene aparte. Cada colector devuelve texto o null.
+// Reutiliza avisos (pausa + anti-duplicado) y sendWhatsApp (canal activo).
+
+// Sección Calendario: eventos de HOY (read-only, best-effort).
+async function seccionCalendario(hoyISO) {
+  try {
+    const evs = await calendarSync.eventosDeHoy(hoyISO);
+    if (!evs || !evs.length) return null;
+    return '📅 *Hoy en el calendario:*\n' + evs.map(e => `• ${e.hora ? e.hora + ' ' : ''}${e.summary}`).join('\n');
+  } catch (e) { console.error('[Resumen] calendario:', e.message); return null; }
+}
+
+// Sección proactivo/cobros: solo los LUNES (como AVISO_CRON por defecto).
+async function seccionProactivo(dow) {
+  if (dow !== 1) return null;
+  try {
+    const { texto, hayAlgo } = await construirAviso();
+    return hayAlgo ? texto : null;
+  } catch (e) { console.error('[Resumen] proactivo:', e.message); return null; }
+}
+
 const RESUMEN_COLECTORES = [
-  { nombre: 'pendientes', fn: () => require('./pendientes').seccionResumen() },
-  // Añadir aquí futuros colectores (facturas sin cobrar, presencia, etc.).
+  { nombre: 'pendientes', fn: ({ hoyISO }) => require('./pendientes').seccionResumen(hoyISO) },
+  { nombre: 'calendario', fn: ({ hoyISO }) => seccionCalendario(hoyISO) },
+  { nombre: 'proactivo',  fn: ({ dow })    => seccionProactivo(dow) },
+  // Añadir aquí futuros colectores (presencia, etc.).
 ];
+
+// Compone el mensaje uniendo SOLO las secciones con contenido. null si no hay nada.
+function componerBuenosDias(secciones) {
+  const s = (secciones || []).filter(x => x && String(x).trim());
+  if (!s.length) return null;
+  return '☀️ *Buenos días.* Esto tienes hoy:\n\n' + s.join('\n\n');
+}
 
 async function enviarResumenDiario() {
   const isWarmup = (Date.now() - startTime) < WARMUP_MS;
@@ -88,13 +119,13 @@ async function enviarResumenDiario() {
     if (await avisos.isGlobalPaused()) { console.log('[Resumen] pausa global, no se envía.'); return; }
     const dateKey = new Date().toISOString().slice(0, 10);
     if (await avisos.wasAlertSentToday('resumen-diario', dateKey)) { console.log('[Resumen] ya enviado hoy.'); return; }
-    const secciones = [];
-    for (const c of RESUMEN_COLECTORES) {
-      try { const s = await c.fn(); if (s) secciones.push(s); }
-      catch (e) { console.error('[Resumen] colector', c.nombre, ':', e.message); }
-    }
-    if (!secciones.length) { console.log('[Resumen] nada que resumir hoy.'); return; }
-    await sendWhatsApp('☀️ *Buenos días.* Esto tienes hoy:\n\n' + secciones.join('\n\n'));
+    const hoyISO = require('./pendientes').hoyMadridISO();
+    const ctx = { hoyISO, dow: new Date(hoyISO + 'T00:00:00Z').getUTCDay() };
+    const secciones = await Promise.all(RESUMEN_COLECTORES.map(c =>
+      Promise.resolve().then(() => c.fn(ctx)).catch(e => { console.error('[Resumen] colector', c.nombre, ':', e.message); return null; })));
+    const msg = componerBuenosDias(secciones);
+    if (!msg) { console.log('[Resumen] nada que resumir hoy.'); return; }
+    await sendWhatsApp(msg);
     await avisos.markAlertSent('resumen-diario', dateKey);
     console.log('[Resumen] enviado.');
   } catch (err) { console.error('[Resumen] Error:', err.message); }
@@ -297,15 +328,16 @@ function startScheduler() {
   // Resumen diario INTERNO (al admin) 08:30 lun–vie
   cron.schedule('30 8 * * 1-5', runDailySummary, { timezone: 'Europe/Madrid' });
 
-  // Resumen diario del owner (pendientes + futuros colectores): 08:00 L-V.
+  // "☀️ Buenos días" unificado al owner por WhatsApp: 08:00 L-V. Incluye pendientes,
+  // calendario de hoy y (lunes) el aviso proactivo/cobros — todo en UN solo mensaje.
   cron.schedule('0 8 * * 1-5', enviarResumenDiario, { timezone: 'Europe/Madrid' });
 
-  // Aviso diario de PEDIDOS DE TRABAJO (rojos + ámbar) a las 08:00. Respeta su pausa.
+  // Aviso diario de PEDIDOS DE TRABAJO (rojos + ámbar) a las 08:00 → por EMAIL
+  // (otro canal/destinatario): NO se funde en el "buenos días" de WhatsApp.
   cron.schedule('0 8 * * *', () => sendWorkOrdersAlert(), { timezone: 'Europe/Madrid' });
 
-  // Aviso PROACTIVO al dueño por WhatsApp (facturas vencidas + presupuestos parados).
-  // Por defecto lunes 08:00; configurable con AVISO_CRON.
-  cron.schedule(process.env.AVISO_CRON || '0 8 * * 1', () => enviarAvisoProactivo(), { timezone: 'Europe/Madrid' });
+  // (El aviso proactivo/cobros de los lunes ya va DENTRO del "buenos días"
+  //  unificado — se retira su cron individual para no enviarlo dos veces.)
 
   // Poll de emails cada 15 minutos
   cron.schedule('*/15 * * * *', async () => {
@@ -376,4 +408,4 @@ function startScheduler() {
   }, 150 * 1000);
 }
 
-module.exports = { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail, sendWorkOrdersAlert, enviarAvisoProactivo, enviarResumenDiario };
+module.exports = { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail, sendWorkOrdersAlert, enviarAvisoProactivo, enviarResumenDiario, componerBuenosDias };
