@@ -161,9 +161,12 @@ function bufferRecogerFotos(from) {
 }
 
 async function procesarWhatsApp(from, body, media = {}) {
-  const soloDigitos = s => String(s || '').replace(/\D/g, '');
-  const mio = soloDigitos(process.env.MI_WHATSAPP);
-  if (mio && from && soloDigitos(from) !== mio) return enviarWhatsApp(from, '🔒 Este asistente es privado.');
+  // Webhook abierto SOLO al owner y a los 5 trabajadores autorizados (por número).
+  // La capa de acceso decide luego el rol; aquí solo filtramos quién puede entrar.
+  const acceso = require('./acceso');
+  if (!(acceso.esOwner(from) || acceso.esTrabajador(from))) {
+    return enviarWhatsApp(from, '🔒 Este asistente es privado.');
+  }
 
   let texto = (body || '').trim();
   let prefijo = '';
@@ -448,6 +451,15 @@ app.get('/api/invoices/pending',   requireAuth, async (req,res) => res.json(awai
 app.get('/api/invoices',           requireAuth, async (req,res) => res.json(await getInvoices()));
 app.get('/api/clients',            requireAuth, async (req,res) => { const {clients} = await getClients(); res.json(clients); });
 app.get('/api/estimates',          requireAuth, async (req,res) => res.json(await getEstimatesSummary()));
+
+// Presencia (Fase 3): lanzar el aviso a mano para probar sin esperar a las 17:30.
+//   GET  /api/presencia/aviso?dry=1  → previsualiza a QUIÉN se avisaría (NO envía)
+//   POST /api/presencia/aviso        → envía de verdad
+app.all('/api/presencia/aviso', requireAuth, async (req, res) => {
+  const dryRun = req.method === 'GET' || req.query.dry === '1' || req.query.dry === 'true';
+  try { res.json(await require('./avisoPresencia').enviarAvisoPresencia({ dryRun })); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
 app.post('/api/presupuesto/iva', requireAuth, async (req,res) => {
   try {
     const { id, iva } = req.body || {};

@@ -63,6 +63,25 @@ async function sendWhatsApp(message) {
   }
 }
 
+// ─── Enviar WhatsApp a UN destinatario concreto (no al owner fijo) ──
+// `destinatario` en formato +34XXXXXXXXX (se le antepone whatsapp: si falta).
+async function sendWhatsAppTo(destinatario, message) {
+  const client = getTwilioClient();
+  if (!client) {
+    console.log('[WhatsApp] Twilio no configurado. Para', destinatario, ':', message);
+    return false;
+  }
+  const to = /^whatsapp:/i.test(destinatario) ? destinatario : `whatsapp:${destinatario}`;
+  try {
+    await client.messages.create({ from: process.env.TWILIO_WHATSAPP_FROM, to, body: message });
+    console.log('[WhatsApp] Enviado OK a', to);
+    return true;
+  } catch (err) {
+    console.error('[WhatsApp] Error a', to, ':', err.message);
+    return false;
+  }
+}
+
 // ─── Enviar Email por la API de Gmail (HTTPS, no lo bloquea el host) ──
 // Reutiliza las mismas credenciales OAuth que ya funcionan para LEER correo.
 async function sendViaGmail({ from, to, bcc, subject, html, text }) {
@@ -406,4 +425,4 @@ async function sendWorkOrdersSummary(orders, to) {
   return { sent: true, to: dest, count: orders.length };
 }
 
-module.exports = { sendInvoiceAlert, sendDailySummary, sendFamilySummary, buildFamilySummaryEmail, buildWorkOrdersEmail, sendWorkOrdersSummary, sendWhatsApp, sendEmail };
+module.exports = { sendInvoiceAlert, sendDailySummary, sendFamilySummary, buildFamilySummaryEmail, buildWorkOrdersEmail, sendWorkOrdersSummary, sendWhatsApp, sendWhatsAppTo, sendEmail };

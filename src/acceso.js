@@ -61,12 +61,40 @@ function esOwner(from) {
   } catch (e) { return false; }
 }
 
-// ── Identidad completa (para NO-owner): número → contacto/StelOrder → desconocido ──
+// ── TRABAJADORES de plantilla autorizados a escribir (SOLO presencia) ──
+// Fuente única de los números (también se siembran en users.whatsapp desde aquí,
+// vía avisoPresencia.seedWhatsappTrabajadores). Identidad por número, nunca por texto.
+const TRABAJADORES_WA = {
+  'jose beliard':    '+34672876051',
+  'abdellah souiri': '+34642548108',
+  'david taladros':  '+34637060118',
+  'javi el largo':   '+34689936384',
+  'huaca javier':    '+34672861528',
+};
+
+// Devuelve el NOMBRE del trabajador si el número es uno de los 5, o null. Síncrono.
+function matchTrabajador(from) {
+  try {
+    const dig = ultimos9(normalizarNumero(from));
+    if (!dig) return null;
+    for (const [nombre, num] of Object.entries(TRABAJADORES_WA)) {
+      if (ultimos9(num) === dig) return nombre;
+    }
+    return null;
+  } catch (e) { return null; }
+}
+function esTrabajador(from) { return !!matchTrabajador(from); }
+
+// ── Identidad completa (para NO-owner): número → trabajador/contacto/StelOrder → desconocido ──
 async function resolverIdentidad(from) {
   const num = normalizarNumero(from);
 
   // a) OWNER (se comprueba también aquí por completitud)
   if (esOwner(from)) return { rol: 'owner', numero: num, nombre: 'Owner' };
+
+  // a.2) TRABAJADOR de plantilla (uno de los 5) → solo presencia, nada de datos.
+  const nomTrab = matchTrabajador(from);
+  if (nomTrab) return { rol: 'trabajador', numero: num, nombre: nomTrab };
 
   // b) Mapa manual de contactos (colección 'contactos')
   try {
@@ -278,6 +306,8 @@ async function pedirPin(from, texto) {
 module.exports = {
   // identidad
   esOwner, resolverIdentidad, normalizarNumero, ultimos9,
+  // trabajadores (solo presencia)
+  esTrabajador, matchTrabajador, TRABAJADORES_WA,
   // clasificación
   clasificarAccion,
   // PIN + confirmación de dinero

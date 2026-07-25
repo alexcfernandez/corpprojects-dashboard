@@ -2186,6 +2186,17 @@ async function responderConsulta(texto, from = 'anon', imagenes = []) {
     return 'Hola 👋 Para ayudarte necesito identificarte. Un compañero de Corp te contactará. Gracias.';
   }
 
+  // 2.5) TRABAJADOR (uno de los 5 autorizados) → SOLO presencia. Acuse + reenvío
+  // al owner para registrarlo a mano. NUNCA llega a datos de clientes ni a escrituras
+  // (no pasa por responderConsultaInterna). El auto-fichaje llegará en Fase 3b.
+  if (id.rol === 'trabajador') {
+    try {
+      const { sendWhatsApp } = require('./notifications');
+      await sendWhatsApp(`👷 Mensaje de *${id.nombre || id.numero}* (trabajador):\n"${String(texto).slice(0, 300)}"\n\n(Para la presencia de hoy; regístralo a mano.)`);
+    } catch (e) {}
+    return 'Gracias 🙏, se lo paso a la oficina de Corp.';
+  }
+
   // 3) CLIENTE/FAMILIA → solo lectura y solo lo suyo
   if (id.rol === 'client') {
     if (accion !== 'lectura')

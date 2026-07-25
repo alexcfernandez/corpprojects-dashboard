@@ -257,6 +257,16 @@ function startScheduler() {
   cron.schedule('30 8 * * *', () => sendReminders('morning'), { timezone: 'Europe/Madrid' });
   cron.schedule('0 17 * * *', () => sendReminders('evening'), { timezone: 'Europe/Madrid' });
 
+  // Presencia (Fase 3): sembrar los 5 whatsapp al arrancar (idempotente) y avisar
+  // a las 17:30 a quien no conste su presencia hoy (cobertura de equipo incluida).
+  const avisoPresencia = require('./avisoPresencia');
+  avisoPresencia.seedWhatsappTrabajadores()
+    .then(r => console.log('[Presencia] whatsapp seed:', JSON.stringify(r)))
+    .catch(e => console.warn('[Presencia] seed:', e.message));
+  cron.schedule('30 17 * * *', () => avisoPresencia.enviarAvisoPresencia()
+    .then(r => console.log(`[Presencia] aviso 17:30 → ${r.pendientes} pendientes`, JSON.stringify(r.resultado)))
+    .catch(e => console.error('[Presencia] aviso:', e.message)), { timezone: 'Europe/Madrid' });
+
   // Resumen diario INTERNO (al admin) 08:30 lun–vie
   cron.schedule('30 8 * * 1-5', runDailySummary, { timezone: 'Europe/Madrid' });
 
