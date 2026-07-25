@@ -6,6 +6,7 @@
 // (importes, conteos) salen SIEMPRE de StelOrder, nunca se inventan.
 
 const stel = require('./stelorder');
+const acceso = require('./acceso');   // control de acceso por número (owner/cliente/desconocido)
 const com  = require('./comunidades');
 const attendance = require('./attendance');
 const trabajadores = require('./trabajadores');
@@ -1179,7 +1180,8 @@ function despachar(intent, from, scope, target) {
 // ── CREAR INCIDENCIA por voz/texto (la IA propone, tú confirmas, el sistema escribe) ──
 const TIPO_INC = { actuacion: 3146, presupuesto: 3145 };
 
-async function handlerNuevaIncidencia(texto, from) {
+async function handlerNuevaIncidencia(texto, from, ctx = {}) {
+  if (ctx.rol && ctx.rol !== 'owner') return '🔒 Esta acción la gestiona la oficina de Corp.';
   // 1) La IA extrae cliente, descripción y tipo de la frase
   const ex = await iaJson(
     `Eres el asistente de una empresa de mantenimiento de fincas. El usuario quiere CREAR una incidencia.\n` +
@@ -1239,7 +1241,8 @@ async function ejecutarCrearIncidencia(from, pend) {
 }
 
 // Comando suelto: generar pedido desde una incidencia concreta o la última
-async function handlerGenerarPedido(texto, from) {
+async function handlerGenerarPedido(texto, from, ctx = {}) {
+  if (ctx.rol && ctx.rol !== 'owner') return '🔒 Esta acción la gestiona la oficina de Corp.';
   const nn = norm(texto);
   let inc;
   if (/\b(ultima|última)\b/.test(nn)) {
@@ -1298,7 +1301,8 @@ function fmtEurB(n) {
   return v.replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' €';
 }
 
-async function handlerPresupuesto(texto, from, imagenes = []) {
+async function handlerPresupuesto(texto, from, imagenes = [], ctx = {}) {
+  if (ctx.rol && ctx.rol !== 'owner') return '🔒 Esta acción la gestiona la oficina de Corp.';
   const prompt =
     `Eres un técnico de una empresa española de mantenimiento de fincas y reformas (fachadas, impermeabilizaciones, electricidad, fontanería, pintura). ` +
     `Vas a redactar un PRESUPUESTO profesional a partir de lo que te dice el usuario` + (imagenes && imagenes.length ? ` y de las FOTOS adjuntas (úsalas para entender el trabajo)` : '') + `.\n\n` +
@@ -1399,7 +1403,8 @@ async function presenciaSemanaTrab(w, desde, hasta) {
   return { encontrada: mias.length > 0, dias: fechas.length, fechas };
 }
 
-async function handlerPagoTrabajador(texto, from) {
+async function handlerPagoTrabajador(texto, from, ctx = {}) {
+  if (ctx.rol && ctx.rol !== 'owner') return '🔒 Esta acción la gestiona la oficina de Corp.';
   const all = await trabajadores.getTrabajadores(false).catch(() => []);
   if (!all.length) return null;
   const _ni = norm(texto);
@@ -1607,7 +1612,21 @@ async function informeTrabajadorTxt(w, periodo) {
   return pagosT.formatInforme(movs, { nombre: w.nombre, tituloPeriodo: titulo });
 }
 
-async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
+async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx = {}) {
+  // A0) AISLAMIENTO DE CLIENTE — solo su familia y solo lectura.
+  // Aditivo: si ctx viene vacío (owner/office/uso normal) NO se ejecuta nada de esto
+  // y el comportamiento es exactamente el de siempre. Cuando el gate marca a un
+  // cliente, forzamos SU familia y reutilizamos los handlers de lectura existentes,
+  // ignorando cualquier otro cliente que nombre el texto.
+  if (ctx && ctx.rol === 'client' && ctx.forzarScope === 'familia' && ctx.forzarTarget) {
+    const nfc = norm(texto);
+    if (/presupuest/.test(nfc)) return handlerPresupuestos(texto, from, 'familia', ctx.forzarTarget);
+    if (/pedido/.test(nfc))     return handlerPedidos(texto, from, 'familia', ctx.forzarTarget);
+    if (/factura|debe|deuda|deud|pendiente|cobr|impag|saldo/.test(nfc)) return handlerFacturas(texto, from, 'familia', ctx.forzarTarget);
+    // Por defecto: ficha de SU comunidad/familia (deuda + presupuestos + pedidos)
+    return handlerFicha(texto, from, ctx.forzarTarget);
+  }
+
   // A) ¿Estábamos aprendiendo un alias? La respuesta es el nombre real.
   const pend = pendiente.get(from);
 
@@ -1838,7 +1857,7 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
 
   // C0.iva) Cambiar el IVA de un presupuesto existente: "cambia el IVA del PRT00795 al 21%"
   if (!imagenes.length && /\biva\b/.test(_np) && /\bPRT\s*0*\d+\b/i.test(texto)) {
-    const r = await handlerCambioIva(texto, from);
+    const r = await handlerCambioIva(texto, from, ctx);
     if (r) return r;
   }
 
@@ -1847,13 +1866,13 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
     /\bpresupuesto (detallado|tecnico|t\u00e9cnico|profesional)\b/.test(_np) ||
     /\bpresupuesto (a|para|de)\b[\s\S]{0,80}:\s*\S/.test(_np);
   if (pidePresu || (imagenes && imagenes.length && /presupuest/.test(_np))) {
-    return handlerPresupuesto(texto, from, imagenes);
+    return handlerPresupuesto(texto, from, imagenes, ctx);
   }
 
   // C0.ped) Generar pedido desde incidencia: "haz el pedido de INC00575" / "pedido de la última incidencia"
   if (/\b(haz|genera(r)?|crea(r)?|saca)\b[\s\S]*\bpedido\b[\s\S]*\b(incidencia|inc\s*\d|ultima|última)/.test(norm(texto)) ||
       /\bpedido (de|para) (la )?(ultima|última) incidencia\b/.test(norm(texto))) {
-    return handlerGenerarPedido(texto, from);
+    return handlerGenerarPedido(texto, from, ctx);
   }
 
   // C0.inc) Crear incidencia: "incidencia para X ...", "crea un aviso de ...", "hay que hacer presupuesto para X ..."
@@ -1863,14 +1882,14 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
       /\bcliente\b/.test(_ni) &&
       /\b(crea(r)?|nuev[oa]|alta|registra(r)?|a[nñ]ade|agrega|apunta|da de alta|dar de alta|dale de alta)\b/.test(_ni) &&
       !/\b(presupuest|incidencia|aviso|pedido|factura|parte|albaran)/.test(_ni)) {
-    return handlerAltaCliente(texto, from);
+    return handlerAltaCliente(texto, from, ctx);
   }
   const intencionCrear =
     /\b(crea(r)?|nueva|nuevo|abre|apunta)\b[\s\S]*\b(incidencia|aviso|parte)\b|^incidencia\b|\bincidencia (para|de|en|por)\b|\baviso (para|de)\b/.test(_ni) ||
     /\b(hay que|tenemos que|tengo que|necesito|toca)\b[\s\S]*\b(hacer|preparar|sacar)\b[\s\S]*\bpresupuest/.test(_ni) ||
     /\bpresupuest[oa]r\b[\s\S]*\b(para|de|en)\b/.test(_ni);
   if (intencionCrear) {
-    return handlerNuevaIncidencia(texto, from);
+    return handlerNuevaIncidencia(texto, from, ctx);
   }
 
   // C0.quien) "¿quién trabaja hoy?" -> resumen de presencia del día (solo lee)
@@ -1913,7 +1932,7 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
     const esPagoKw = /\b(adelant\w*|prestad\w*|prest[eé]\w*|prestam\w*|pag\w*|le di|descuent\w*|devoluci\w*|devolv\w*|devengad\w*|cierr\w*|cerrar|semana trabajad\w*|cuanto le debo|cuanto (lleva|ha cobrado)|saldo|informe|resumen)\b/.test(_ni)
       || /\btrabaj\w*\s+\d/.test(_ni) || /\b\d+\s*d[ií]as\b/.test(_ni);
     if (esPagoKw) {
-      const res = await handlerPagoTrabajador(texto, from);
+      const res = await handlerPagoTrabajador(texto, from, ctx);
       if (res) return res;
     }
   }
@@ -1936,7 +1955,7 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
              return toks.some(t => new RegExp('\\b' + t + '\\b').test(_ni)) || (w.alias || []).some(a => a && a.length >= 3 && _ni.includes(a));
            });
       const cueAsign = /\b(a|en|al|presencia|hoy|manana|ma[nñ]ana|ayer|vacaciones|baja|libre|oficina|obra|obras|va|van|ha ido|han ido|fue|fueron|esta|estan|est[aá]n)\b/.test(_ni);
-      if (mencionaTrab && cueAsign) return handlerPresencia(texto, from);
+      if (mencionaTrab && cueAsign) return handlerPresencia(texto, from, ctx);
     }
   }
 
@@ -2064,10 +2083,10 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = []) {
   {
     const n = norm(texto);
     // Borrar nota: "borra de <comunidad> la nota 3"
-    if (/\b(borra|elimina|quita)\b[\s\S]*\bnota/.test(norm(texto))) return handlerNotaBorrar(texto, from);
+    if (/\b(borra|elimina|quita)\b[\s\S]*\bnota/.test(norm(texto))) return handlerNotaBorrar(texto, from, ctx);
     // Añadir nota: "apunta/anota/recuerda en <comunidad> [que/:] <texto>"
     const mAdd = texto.match(/(?:ap[uú]nta(?:me)?|an[oó]ta(?:me)?|recuerda|guarda)\b[\s\S]*?\ben\s+([\s\S]+)$/i);
-    if (mAdd) return handlerNotaAdd(mAdd[1].trim(), from);
+    if (mAdd) return handlerNotaAdd(mAdd[1].trim(), from, ctx);
 
     // Consultar ficha de comunidad (no confundir con gasto de proveedores)
     if (!/proveedor|gastamos|pagado|compramos|compra a/.test(n) &&
@@ -2118,13 +2137,63 @@ async function registrarFallo(from, texto, tipo = 'no_entendido', respuesta = nu
 // {documento} {nº}", que suele ser una mala interpretación (p. ej. un número
 // suelto leído como nº de documento). Lo registra como 'posible_desvio'.
 async function responderConsulta(texto, from = 'anon', imagenes = []) {
-  const reply = await responderConsultaInterna(texto, from, imagenes);
+  // 0) ¿El OWNER está respondiendo a un PIN / confirmación de una acción de dinero pendiente?
+  if (acceso.esOwner(from)) {
+    try {
+      const pend = await acceso.respuestaPendiente(from, texto);
+      if (pend && pend.tipo === 'mensaje') return pend.mensaje;
+      if (pend && pend.tipo === 'ejecutar') {
+        // Confirmado: ejecutar el comando guardado, ya autorizado.
+        return responderConsultaInterna(pend.comando, from, [], { rol: 'owner', dineroOk: true });
+      }
+    } catch (e) { /* si el estado falla, seguimos por el flujo normal */ }
+  }
+
+  // 1) Identidad SIEMPRE por el número (nunca por el texto)
+  let id;
+  try { id = await acceso.resolverIdentidad(from); }
+  catch (e) { id = acceso.esOwner(from) ? { rol: 'owner', numero: from } : { rol: 'desconocido', numero: from }; }
+
+  const accion = acceso.clasificarAccion(texto);
+
+  // 2) DESCONOCIDO → no da datos; te avisa a ti
+  if (id.rol === 'desconocido') {
+    try {
+      const { sendWhatsApp } = require('./notifications');
+      await sendWhatsApp(`❓ Mensaje de número no identificado ${id.numero}: "${String(texto).slice(0, 140)}"`);
+    } catch (e) {}
+    return 'Hola 👋 Para ayudarte necesito identificarte. Un compañero de Corp te contactará. Gracias.';
+  }
+
+  // 3) CLIENTE/FAMILIA → solo lectura y solo lo suyo
+  if (id.rol === 'client') {
+    if (accion !== 'lectura')
+      return 'Puedo darte información de tus asuntos, pero cualquier cambio lo gestiona la oficina de Corp. 🙏';
+    return responderConsultaInterna(texto, from, imagenes, {
+      rol: 'client', forzarScope: 'familia', forzarTarget: id.familia, clienteId: id.clienteId
+    });
+  }
+
+  // 4) OFICINA (interno) → lectura amplia + escrituras que NO sean dinero
+  if (id.rol === 'office') {
+    if (accion === 'dinero') return 'Esa acción solo la puede autorizar la dirección.';
+    return responderConsultaInterna(texto, from, imagenes, { rol: 'office' });
+  }
+
+  // 5) OWNER → todo. DINERO → PIN + confirmación (salvo que ya venga confirmado).
+  if (accion === 'dinero') {
+    const g = await acceso.iniciarDinero(from, texto);
+    return g.mensaje;
+  }
+  const reply = await responderConsultaInterna(texto, from, imagenes, { rol: 'owner' });
+
+  // Conserva la detección de "desvío silencioso" que ya tenías
   try {
     if (typeof reply === 'string' &&
-        /no encuentro (el |la |ning[u\u00fan]+ )?(presupuesto|pedido|factura|documento|incidencia)\b[\s\S]*\d/i.test(reply)) {
+        /no encuentro (el |la |ning[uún]+ )?(presupuesto|pedido|factura|documento|incidencia)\b[\s\S]*\d/i.test(reply)) {
       await registrarFallo(from, texto, 'posible_desvio', reply);
     }
-  } catch (e) { /* nunca romper la respuesta por el log */ }
+  } catch (e) {}
   return reply;
 }
 
@@ -2198,7 +2267,8 @@ async function handlerComunidad(texto, from) {
   return fichaComunidad(target, scope || 'cliente', from);
 }
 
-async function handlerNotaAdd(resto, from) {
+async function handlerNotaAdd(resto, from, ctx = {}) {
+  if (ctx.rol && ctx.rol !== 'owner') return '🔒 Esta acción la gestiona la oficina de Corp.';
   resto = String(resto || '').trim();
   if (!resto) return '¿Qué apunto y en qué comunidad? Ej: *"apunta en Illa Verda que la caldera es Roca"*.';
 
@@ -2227,7 +2297,8 @@ async function handlerNotaAdd(resto, from) {
   return `📝 Apuntado en *${target}* ${com.CAT_COM[res.cat] || com.CAT_COM.otros}: "${nota}"`;
 }
 
-async function handlerNotaBorrar(texto, from) {
+async function handlerNotaBorrar(texto, from, ctx = {}) {
+  if (ctx.rol && ctx.rol !== 'owner') return '🔒 Esta acción la gestiona la oficina de Corp.';
   const m = norm(texto).match(/\bnota\s+(\d{1,3})\b|\b(\d{1,3})\b/);
   const idx = m ? parseInt(m[1] || m[2], 10) : null;
   const { scope, target } = await resolver(texto, texto);
@@ -2431,7 +2502,8 @@ function avanzarCompetencia(from, pend, accId, target) {
 }
 
 // 4b) Cambiar el IVA de un presupuesto existente. Lee el actual, propone y espera confirmación.
-async function handlerCambioIva(texto, from) {
+async function handlerCambioIva(texto, from, ctx = {}) {
+  if (ctx.rol && ctx.rol !== 'owner') return '🔒 Esta acción la gestiona la oficina de Corp.';
   const n = norm(texto);
   if (!/\biva\b/.test(n)) return null;
   if (!/(cambi|pon|ponle|modific|actualiz|deja(lo)?\b)/.test(n)) return null;
@@ -2508,7 +2580,8 @@ function resumenAltaCliente(d, fam) {
   return s;
 }
 
-async function handlerAltaCliente(texto, from) {
+async function handlerAltaCliente(texto, from, ctx = {}) {
+  if (ctx.rol && ctx.rol !== 'owner') return '🔒 Esta acción la gestiona la oficina de Corp.';
   const d = await parsearAltaCliente(texto);
   if (!d || typeof d !== 'object') return '🤔 No te he pillado los datos. Dímelo tipo: *"crea el cliente C.P. Carrer Major 12, NIF H17xxxxxx, familia Cinc Comunitats"*.';
   if (!d.nombre) {
@@ -2760,7 +2833,8 @@ function avanzarApodo(from, pend, prefijo = '') {
   return prefijo + resumenPresencia(pend.entries, pend.date, []);
 }
 
-async function handlerPresencia(texto, from) {
+async function handlerPresencia(texto, from, ctx = {}) {
+  if (ctx.rol && ctx.rol !== 'owner') return '🔒 Esta acción la gestiona la oficina de Corp.';
   const workers = await attendance.getWorkers();
   const aliasMap = await cargarAliasTrabajadores();
   const parsed = await parsearPresencia(texto, workers);
