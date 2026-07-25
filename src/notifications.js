@@ -42,44 +42,15 @@ function fmtEur(amount) {
   return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
 }
 
-// ─── Enviar WhatsApp ─────────────────────────────────────────────
+// ─── Enviar WhatsApp al OWNER (WHATSAPP_TO) por el canal activo (twilio|bridge) ──
 async function sendWhatsApp(message) {
-  const client = getTwilioClient();
-  if (!client) {
-    console.log('[WhatsApp] Twilio no configurado, omitiendo. Mensaje:', message);
-    return false;
-  }
-  try {
-    await client.messages.create({
-      from: process.env.TWILIO_WHATSAPP_FROM,
-      to:   process.env.WHATSAPP_TO,
-      body: message
-    });
-    console.log('[WhatsApp] Enviado OK');
-    return true;
-  } catch (err) {
-    console.error('[WhatsApp] Error:', err.message);
-    return false;
-  }
+  return require('./canalWhatsapp').enviarUno(process.env.WHATSAPP_TO, message);
 }
 
-// ─── Enviar WhatsApp a UN destinatario concreto (no al owner fijo) ──
-// `destinatario` en formato +34XXXXXXXXX (se le antepone whatsapp: si falta).
+// ─── Enviar WhatsApp a UN destinatario concreto por el canal activo ──
+// `destinatario` en formato +34XXXXXXXXX (el transporte añade whatsapp: si hace falta).
 async function sendWhatsAppTo(destinatario, message) {
-  const client = getTwilioClient();
-  if (!client) {
-    console.log('[WhatsApp] Twilio no configurado. Para', destinatario, ':', message);
-    return false;
-  }
-  const to = /^whatsapp:/i.test(destinatario) ? destinatario : `whatsapp:${destinatario}`;
-  try {
-    await client.messages.create({ from: process.env.TWILIO_WHATSAPP_FROM, to, body: message });
-    console.log('[WhatsApp] Enviado OK a', to);
-    return true;
-  } catch (err) {
-    console.error('[WhatsApp] Error a', to, ':', err.message);
-    return false;
-  }
+  return require('./canalWhatsapp').enviarUno(destinatario, message);
 }
 
 // ─── Enviar Email por la API de Gmail (HTTPS, no lo bloquea el host) ──

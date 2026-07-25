@@ -106,6 +106,28 @@ app.post('/api/whatsapp', express.urlencoded({ extended: false }), (req, res) =>
     .catch(err => console.error('[WhatsApp] Error:', err.message));
 });
 
+// ─────────────────────────────────────────────────────────────
+// Puente WhatsApp (Fase 8) — entrada normalizada desde el servicio Baileys.
+// SEGURIDAD: autenticado SOLO por el secreto compartido BRIDGE_TOKEN (header
+// X-Bridge-Token; comparación en tiempo constante; NUNCA se loguea el token).
+// El campo `from` del payload decide la IDENTIDAD (owner/trabajador/cliente/…):
+// es de confianza ÚNICAMENTE porque la petición está autenticada por el token.
+// Quien tenga el token puede suplantar `from` → el TOKEN es la frontera de
+// seguridad. Sin BRIDGE_TOKEN configurado, el endpoint responde 401 siempre.
+// ─────────────────────────────────────────────────────────────
+app.post('/api/bridge/inbound', express.json({ limit: '256kb' }), (req, res) => {
+  if (!require('./canalWhatsapp').tokenBridgeValido(req.get('X-Bridge-Token'))) return res.sendStatus(401);
+  res.sendStatus(200); // acuse inmediato; se procesa en segundo plano
+  const p = req.body || {};
+  const from = String(p.from || '').trim();  // SENSIBLE: decide identidad (ver nota de seguridad arriba).
+  const body = String(p.body != null ? p.body : (p.text || '')).trim();
+  if (!from) return;
+  // Incremento 1: SOLO texto (media por el puente = incremento 2). canal:'bridge'
+  // hace que la RESPUESTA salga por el puente (mismo canal de entrada).
+  procesarWhatsApp(from, body, { numMedia: 0, canal: 'bridge', chatId: p.chatId, isGroup: !!p.isGroup })
+    .catch(err => console.error('[Bridge] inbound:', err.message));
+});
+
 // Descarga una imagen de Twilio y la devuelve como {media_type, data(base64)}
 async function descargarFoto(url, type) {
   try {
@@ -161,11 +183,15 @@ function bufferRecogerFotos(from) {
 }
 
 async function procesarWhatsApp(from, body, media = {}) {
+  // Canal por el que ENTRÓ el mensaje → se responde por el mismo (undefined = default env).
+  const canal = media.canal;
+  const responder = (msg) => enviarWhatsApp(from, msg, canal);
+
   // Webhook abierto SOLO al owner y a los 5 trabajadores autorizados (por número).
   // La capa de acceso decide luego el rol; aquí solo filtramos quién puede entrar.
   const acceso = require('./acceso');
   if (!(acceso.esOwner(from) || acceso.esTrabajador(from))) {
-    return enviarWhatsApp(from, '🔒 Este asistente es privado.');
+    return responder('🔒 Este asistente es privado.');
   }
 
   let texto = (body || '').trim();
@@ -176,12 +202,12 @@ async function procesarWhatsApp(from, body, media = {}) {
     try {
       const hint = await asistente.vocabularioVoz().catch(() => '');
       const t = await transcribirAudio(media.mediaUrl, media.mediaType, hint);
-      if (!t) return enviarWhatsApp(from, '🎙️ He recibido tu nota de voz, pero la transcripción aún no está configurada. Escríbeme el texto y te respondo igual.');
+      if (!t) return responder('🎙️ He recibido tu nota de voz, pero la transcripción aún no está configurada. Escríbeme el texto y te respondo igual.');
       texto = t;
       prefijo = `🎙️ _He entendido:_ “${t}”\n\n`;
     } catch (e) {
       console.error('[WhatsApp] STT error:', e.message);
-      return enviarWhatsApp(from, '🎙️ No he conseguido entender el audio esta vez. ¿Me lo escribes o lo repites?');
+      return responder('🎙️ No he conseguido entender el audio esta vez. ¿Me lo escribes o lo repites?');
     }
   }
 
@@ -190,17 +216,17 @@ async function procesarWhatsApp(from, body, media = {}) {
   // CASO PDF: llega un PDF -> importador de presupuesto (amidament del arquitecto)
   if (media.pdf && media.pdf.url) {
     const b64 = await descargarArchivo(media.pdf.url);
-    if (!b64) return enviarWhatsApp(from, '📄 He recibido el PDF pero no he podido descargarlo. Inténtalo de nuevo.');
-    await enviarWhatsApp(from, '📄 Leyendo el PDF, dame unos segundos…');
+    if (!b64) return responder('📄 He recibido el PDF pero no he podido descargarlo. Inténtalo de nuevo.');
+    await responder('📄 Leyendo el PDF, dame unos segundos…');
     const reply = await asistente.importarDocumento(from, b64, media.pdf.type || 'application/pdf', texto);
-    return enviarWhatsApp(from, prefijo + reply);
+    return responder(prefijo + reply);
   }
 
   // CASO A: llegan SOLO fotos (sin instrucción) -> al buffer, sin procesar.
   // Acuse solo en la primera para no gastar mensajes ni spamear.
   if (!texto && fotosMsg.length) {
     const primera = bufferGuardarFotos(from, fotosMsg);
-    if (primera) return enviarWhatsApp(from, '📸 Foto(s) recibida(s). Manda las que quieras y al final dime qué hago (p. ej.: *"hazme un presupuesto de esto para Illa Verda"*).');
+    if (primera) return responder('📸 Foto(s) recibida(s). Manda las que quieras y al final dime qué hago (p. ej.: *"hazme un presupuesto de esto para Illa Verda"*).');
     return; // siguientes fotos: silencio
   }
 
@@ -212,11 +238,11 @@ async function procesarWhatsApp(from, body, media = {}) {
     imagenes = descargas.filter(Boolean);
   }
 
-  if (!texto && !imagenes.length) return enviarWhatsApp(from, 'Dime qué cliente o familia quieres consultar 🙂 (p. ej.: "¿qué debe Illa Verda?")');
+  if (!texto && !imagenes.length) return responder('Dime qué cliente o familia quieres consultar 🙂 (p. ej.: "¿qué debe Illa Verda?")');
   if (!texto && imagenes.length) texto = '(foto adjunta)';
 
   const reply = await asistente.responderConsulta(texto, from, imagenes);
-  return enviarWhatsApp(from, prefijo + reply);
+  return responder(prefijo + reply);
 }
 
 // Transcribe una nota de voz de WhatsApp (descarga de Twilio + STT compatible OpenAI).
@@ -286,20 +312,14 @@ function trocearMensaje(texto, max = 1450) {
 
 // Envía por WhatsApp. Si el mensaje supera el límite de Twilio, lo trocea y
 // manda las partes en orden (en vez de cortarlo a 1500 como antes).
-async function enviarWhatsApp(to, body) {
-  if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
-    console.error('[WhatsApp] Faltan credenciales de Twilio'); return;
-  }
-  const twilio = require('twilio');
-  const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+// Trocea el mensaje largo y envía cada parte por el CANAL elegido (twilio|bridge).
+// `canal` opcional: si no se pasa, usa CANAL_WHATSAPP (default 'twilio' → igual que hoy).
+async function enviarWhatsApp(to, body, canal) {
+  const canalWa = require('./canalWhatsapp');
   const partes = trocearMensaje(body, 1450);
   for (let i = 0; i < partes.length; i++) {
     const prefijo = partes.length > 1 ? `(${i + 1}/${partes.length}) ` : '';
-    await client.messages.create({
-      from: process.env.TWILIO_WHATSAPP_FROM,
-      to,
-      body: prefijo + partes[i]
-    });
+    await canalWa.enviarUno(to, prefijo + partes[i], { canal });
   }
 }
 
