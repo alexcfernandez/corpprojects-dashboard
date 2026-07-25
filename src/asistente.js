@@ -2325,10 +2325,20 @@ async function handlerComunidad(texto, from) {
 // ── Pendientes / recordatorios del owner (Fase 4a). SOLO owner. No inventa fechas. ──
 async function handlerPendienteAdd(texto, from, ctx = {}) {
   if (ctx.rol && ctx.rol !== 'owner') return '🔒 Esta acción la gestiona la oficina de Corp.';
-  const t = String(texto || '').trim();
+  let t = String(texto || '').trim();
   if (!t) return '¿Qué te recuerdo? Dímelo, p. ej.: *"recuérdame hacer la factura de la EICA"*.';
-  const p = await pendientes.addPendiente(t, from);
+
+  // Fecha explícita opcional. Ambigua → preguntar (nunca inventar). Sin fecha → null.
+  const f = pendientes.parseFecha(t, pendientes.hoyMadridISO());
+  if (f && f.ambiguo)
+    return 'No me queda clara la fecha 🤔. Dímelo más concreto (p. ej. *"el 28 de julio"*, *"el próximo martes"* o *"en 3 días"*) y lo apunto.';
+  let para = null;
+  if (f && f.iso) { para = f.iso; if (f.quitar) t = t.replace(f.quitar, ' ').replace(/\s{2,}/g, ' ').trim(); }
+  if (!t) return `¿Qué te recuerdo para ${pendientes.fechaConfirm(para)}? Dímelo junto con la tarea.`;
+
+  const p = await pendientes.addPendiente(t, from, { para });
   if (!p) return 'No he podido guardar el pendiente, inténtalo de nuevo.';
+  if (para) return `📌 Anotado: *${p.texto}* — te aviso ${pendientes.fechaConfirm(para)}.`;
   return `📌 Anotado: *${p.texto}*.\nTe lo recordaré en el resumen de la mañana hasta que me digas que está hecho ("hecho el pendiente 1").`;
 }
 

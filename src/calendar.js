@@ -96,6 +96,17 @@ const _pad = n => String(n).padStart(2, '0');
 
 // Construye el cuerpo del evento de Google a partir de un doc de planning.
 function buildEventBody(plan) {
+  // Pendiente del owner (Fase 4b): evento de DÍA COMPLETO con el texto del pendiente.
+  if (plan.tipo === 'pendiente') {
+    const date = String(plan.date || '').slice(0, 10);
+    const next = new Date(new Date(date + 'T00:00:00Z').getTime() + 86400000).toISOString().slice(0, 10);
+    return {
+      summary: `📌 ${String(plan.client || 'Pendiente').trim()}`,
+      description: 'Pendiente — Corp Projects Dashboard',
+      start: { date }, end: { date: next },
+      extendedProperties: { private: { cpPendienteId: String(plan._id || ''), cpSource: 'dashboard' } },
+    };
+  }
   const emoji  = plan.tipo === 'visita' ? '👤' : '🔧';
   const titulo = String(plan.client || plan.address || 'Planificación').trim();
   const worker = String(plan.workerName || 'Sin asignar').trim();
@@ -311,4 +322,29 @@ async function pullChanges() {
   return summary;
 }
 
-module.exports = { getAuth, getCalendar, diagnose, buildEventBody, upsertEvent, deleteEvent, targetCalendarId, pullChanges };
+// Eventos de HOY en el calendario objetivo (Europe/Madrid). Read-only, best-effort
+// (devuelve [] si el calendario falla). hoyISO opcional (para tests / claridad).
+async function eventosDeHoy(hoyISO = null) {
+  try {
+    const cal = getCalendar();
+    const calendarId = targetCalendarId();
+    const dia = hoyISO || new Date().toLocaleDateString('en-CA', { timeZone: TZ });
+    const base = new Date(dia + 'T00:00:00Z').getTime();
+    const prev = new Date(base - 86400000).toISOString().slice(0, 10);
+    const next = new Date(base + 86400000).toISOString().slice(0, 10);
+    const resp = await cal.events.list({
+      calendarId, singleEvents: true, orderBy: 'startTime', maxResults: 50,
+      timeMin: prev + 'T00:00:00Z', timeMax: next + 'T23:59:59Z',
+    });
+    const enMadrid = (dt) => new Date(dt).toLocaleDateString('en-CA', { timeZone: TZ });
+    return (resp.data.items || [])
+      .filter(ev => { const s = ev.start || {}; return s.date ? s.date === dia : (s.dateTime ? enMadrid(s.dateTime) === dia : false); })
+      .map(ev => {
+        const s = ev.start || {};
+        const hora = s.dateTime ? new Date(s.dateTime).toLocaleTimeString('es-ES', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }) : null;
+        return { summary: ev.summary || '(sin título)', hora };
+      });
+  } catch (e) { console.error('[Calendar] eventosDeHoy:', e.message); return []; }
+}
+
+module.exports = { getAuth, getCalendar, diagnose, buildEventBody, upsertEvent, deleteEvent, targetCalendarId, pullChanges, eventosDeHoy };
