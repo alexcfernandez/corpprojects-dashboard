@@ -123,8 +123,12 @@ function clasificarAccion(texto) {
   // El IVA es un flujo de escritura EXISTENTE (handlerCambioIva): NUNCA es 'dinero'.
   const esIva = /\biva\b/.test(n);
 
-  // DINERO = modificar el importe de un presupuesto/factura EXISTENTE.
-  if (modificaImporte && (objetoDoc || importePct) && !esCreacion && !esIva) return 'dinero';
+  // Las FACTURAS emitidas NO se editan por API (Fase 2): no es 'dinero'. Se responde
+  // con la verdad (rectificativa a mano) en el router, no se arranca el flujo de PIN.
+  const esFacturaSolo = /\bfactura/.test(n) && !/\bpresup/.test(n);
+
+  // DINERO = modificar el importe de un PRESUPUESTO EXISTENTE (owner + PIN).
+  if (modificaImporte && (objetoDoc || importePct) && !esCreacion && !esIva && !esFacturaSolo) return 'dinero';
 
   // Cambio de IVA sobre un documento → escritura (owner, sin PIN).
   if (esIva && /\b(cambia\w*|modifica\w*|pon|ponle|sube\w*|subir|baja\w*|bajar|actualiza\w*|corrige)\b/.test(n))
@@ -185,25 +189,26 @@ async function limpiar(from) {
 // Arranca el flujo de dinero: guarda el comando y pide PIN (o directamente
 // confirmación si el PIN es reciente o si NO hay ningún PIN configurado —
 // en ese caso NO bloqueamos al owner, solo pedimos confirmación explícita).
-async function iniciarDinero(from, texto) {
+async function iniciarDinero(from, texto, resumen = null) {
   const f = normalizarNumero(from);
   const reciente = await pinValidadoReciente(from);
   const hayPin = await pinConfigurado();
   const stage = (!reciente && hayPin) ? 'await_pin' : 'await_confirm';
+  const confirmMsg = resumen || resumenConfirm(texto); // resumen precomputado (dry-run) o eco genérico
   try {
     const db = await getDB();
     await db.collection(COL).updateOne(
       { from: f },
-      { $set: { from: f, stage, comando: String(texto || ''), ts: new Date() } },
+      { $set: { from: f, stage, comando: String(texto || ''), resumen: resumen || null, ts: new Date() } },
       { upsert: true }
     );
   } catch (e) {
     // Si no podemos ni guardar el estado, seguimos pidiendo confirmación en línea
     // (mejor pedir confirmación que ejecutar dinero sin control).
-    return { mensaje: resumenConfirm(texto) };
+    return { mensaje: confirmMsg };
   }
   if (stage === 'await_pin') return { mensaje: '🔐 Esta acción toca *dinero*. Para continuar, envíame tu *PIN* (solo los dígitos), o escribe *no* para cancelar.' };
-  return { mensaje: resumenConfirm(texto) };
+  return { mensaje: confirmMsg };
 }
 
 // Procesa la respuesta del owner cuando hay un comando de dinero pendiente.
@@ -244,7 +249,7 @@ async function respuestaPendiente(from, texto) {
         { $set: { stage: 'await_confirm', pinOkUntil: new Date(Date.now() + VENTANA_PIN), ts: new Date() } }
       );
     } catch (e) { /* si no persiste, igualmente pedimos confirmación */ }
-    return { tipo: 'mensaje', mensaje: resumenConfirm(doc.comando) };
+    return { tipo: 'mensaje', mensaje: doc.resumen || resumenConfirm(doc.comando) };
   }
 
   if (doc.stage === 'await_confirm') {
@@ -258,7 +263,7 @@ async function respuestaPendiente(from, texto) {
       } catch (e) { /* seguimos y ejecutamos */ }
       return { tipo: 'ejecutar', comando };
     }
-    return { tipo: 'mensaje', mensaje: 'Responde *sí* para ejecutar o *no* para cancelar.\n\n' + resumenConfirm(doc.comando) };
+    return { tipo: 'mensaje', mensaje: 'Responde *sí* para ejecutar o *no* para cancelar.\n\n' + (doc.resumen || resumenConfirm(doc.comando)) };
   }
 
   return null;

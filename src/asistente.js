@@ -1627,6 +1627,14 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
     return handlerFicha(texto, from, ctx.forzarTarget);
   }
 
+  // A0.2) FASE 2 — modificación de importe de presupuesto.
+  // Dry-run (previsualización, NO escribe) y ejecución confirmada van SIEMPRE a su
+  // handler, sin pasar por el resto del router (determinista).
+  if (ctx && (ctx.dryRun || ctx.dineroOk)) return handlerModificarPresupuesto(texto, from, ctx);
+
+  // A0.3) FASE 2 — modificar una FACTURA no es posible por API: responder la verdad.
+  { const fm = mensajeFacturaNoEditable(texto); if (fm) return fm; }
+
   // A) ¿Estábamos aprendiendo un alias? La respuesta es el nombre real.
   const pend = pendiente.get(from);
 
@@ -2139,6 +2147,19 @@ async function registrarFallo(from, texto, tipo = 'no_entendido', respuesta = nu
 async function responderConsulta(texto, from = 'anon', imagenes = []) {
   // 0) ¿El OWNER está respondiendo a un PIN / confirmación de una acción de dinero pendiente?
   if (acceso.esOwner(from)) {
+    // 0.previo) FASE 2 — ¿responde al PRECIO que le faltaba a una partida a añadir?
+    // Reconstruimos el comando completo para que siga el flujo normal de dinero (PIN + confirmación).
+    const pp = pendiente.get(from);
+    if (pp && pp.accion === 'partidaFaltaPrecio' && (Date.now() - pp.ts) < 10 * 60 * 1000) {
+      const nn = norm(texto);
+      if (/^(no|cancela|dejalo|nada|olvida(lo)?)\b/.test(nn)) { pendiente.delete(from); return '👍 Vale, no añado la partida.'; }
+      const m = String(texto).match(/(\d+(?:[.,]\d+)?)/);
+      if (!m) return `Necesito el *precio unitario* de "${pp.partida.nombre}" en números (o escribe *no* para cancelar).`;
+      const precio = Number(m[1].replace(',', '.'));
+      if (!isFinite(precio) || precio <= 0) return 'Dime un precio válido (un número mayor que 0), o *no* para cancelar.';
+      pendiente.set(from, { accion: 'partidaLista', ref: pp.ref, partida: { ...pp.partida, precio }, ts: Date.now() });
+      texto = `añade una partida al ${pp.ref} por ${precio}€`; // continúa por el flujo de dinero
+    }
     try {
       const pend = await acceso.respuestaPendiente(from, texto);
       if (pend && pend.tipo === 'mensaje') return pend.mensaje;
@@ -2180,9 +2201,20 @@ async function responderConsulta(texto, from = 'anon', imagenes = []) {
     return responderConsultaInterna(texto, from, imagenes, { rol: 'office' });
   }
 
-  // 5) OWNER → todo. DINERO → PIN + confirmación (salvo que ya venga confirmado).
+  // 5) OWNER → todo. DINERO → previsualización (dry-run) + PIN + confirmación.
   if (accion === 'dinero') {
-    const g = await acceso.iniciarDinero(from, texto);
+    // Dry-run: el handler LEE y CALCULA sin escribir. Si es confirmable devuelve
+    // {dineroPreview, resumen}; si no (rechazo/pregunta), devuelve un string que
+    // mostramos tal cual SIN arrancar el PIN.
+    let preview;
+    try { preview = await responderConsultaInterna(texto, from, [], { rol: 'owner', dryRun: true }); }
+    catch (e) { preview = null; }
+    if (preview && typeof preview === 'object' && preview.dineroPreview) {
+      const g = await acceso.iniciarDinero(from, texto, preview.resumen);
+      return g.mensaje;
+    }
+    if (typeof preview === 'string' && preview) return preview;
+    const g = await acceso.iniciarDinero(from, texto); // fallback (eco genérico)
     return g.mensaje;
   }
   const reply = await responderConsultaInterna(texto, from, imagenes, { rol: 'owner' });
@@ -2534,6 +2566,129 @@ async function ejecutarCambioIva(from, pend) {
     return `⚠️ No he podido cambiar el IVA: ${e.message}`;
   }
 }
+
+// ─────────────────────────────────────────────────────────────────
+// FASE 2 — Modificar el IMPORTE de un presupuesto existente (owner + PIN).
+// El flujo de dinero (acceso.js) llama a este handler DOS veces:
+//   · {dryRun:true}   → previsualiza (lee y calcula) SIN escribir. Devuelve un
+//                        objeto {dineroPreview, resumen} si es confirmable, o un
+//                        string (rechazo / pregunta) que se muestra tal cual.
+//   · {dineroOk:true} → tras el PIN + "sí": ejecuta la escritura real.
+// INVARIANTE: solo se escribe cuando ctx.dineroOk === true.
+// ─────────────────────────────────────────────────────────────────
+function _r2(n) { return Math.round(((Number(n) || 0) + Number.EPSILON) * 100) / 100; }
+
+// Interpreta el comando: referencia PRT + tipo de cambio.
+function parseModPresupuesto(texto) {
+  const n = norm(texto);
+  // Referencia: "PRT00309" o "presupuesto 309" (quitando antes el % y el importe € para no confundir el número).
+  const limpio = String(texto).replace(/\d+(?:[.,]\d+)?\s*%/g, ' ').replace(/\d+(?:[.,]\d+)?\s*(€|eur|euros)\b/gi, ' ');
+  const mPrt = limpio.match(/\bPRT\s*0*\d+\b/i);
+  const mNum = limpio.match(/\bpresupuest\w*\s+(?:n[ºo.\s]*)?(\d{1,6})\b/i);
+  const ref = mPrt ? mPrt[0].toUpperCase().replace(/\s+/g, '') : (mNum ? mNum[1] : null);
+  if (/\b(anade|añade|agrega|mete|pon)\b[\s\S]*\bpartida\b/.test(n)) return { tipo: 'add_partida', ref };
+  const sube = /\b(sub[ei]|increment|aument|encarec)/.test(n);
+  const baja = /\b(baj|rebaj|abarat|descuent|reduc)/.test(n) || /\bmas barat/.test(n);
+  const mPct = n.match(/(\d+(?:[.,]\d+)?)\s*%/);
+  if (mPct) { const v = Math.abs(Number(mPct[1].replace(',', '.'))); return { tipo: 'pct', ref, valor: (baja && !sube) ? -v : v }; }
+  const mEur = n.match(/(\d+(?:[.,]\d+)?)\s*€/) || n.match(/(\d+(?:[.,]\d+)?)\s*(?:euros?|eur)\b/);
+  if (mEur) { const v = Math.abs(Number(mEur[1].replace(',', '.'))); return { tipo: 'delta', ref, valor: (baja && !sube) ? -v : v }; }
+  return { tipo: null, ref };
+}
+
+// Extrae UNA partida de la frase (IA). NUNCA inventa el precio (null si no se dice).
+async function extraerPartida(texto) {
+  const prompt = `Extrae UNA partida de presupuesto de la frase. Responde SOLO JSON válido, sin markdown:
+{ "nombre": null, "descripcion": null, "uds": null, "precio": null }
+Reglas: "nombre" = qué es (corto). "uds" = nº de unidades (número; si no se dice, null). "precio" = precio UNITARIO en euros (número; si NO se dice el precio, deja null — NUNCA lo inventes).
+Frase: """${texto}"""`;
+  const out = await iaJson(prompt, 300, { nombre: null, descripcion: null, uds: null, precio: null });
+  const num = (x) => { if (x == null) return null; const v = Number(String(x).replace(',', '.').replace(/[^\d.]/g, '')); return isFinite(v) ? v : null; };
+  if (out) { out.precio = num(out.precio); out.uds = num(out.uds); }
+  return out;
+}
+
+// Modificar una FACTURA no es posible por API → mensaje honesto (rectificativa a mano).
+function mensajeFacturaNoEditable(texto) {
+  const n = norm(texto);
+  const modifica = /\b(baja|bajar|rebaj\w*|sub[ei]\w*|descuent\w*|abarat\w*|encarec\w*|modifica\w*|cambia\w*)\b/.test(n) || /\bmas barat\w*/.test(n);
+  const factura = /\bfactura/.test(n) && !/\bpresup/.test(n);
+  const importe = /€|\beur\w*|\b\d+\s*%|\bmas barat/.test(n);
+  if (modifica && factura && importe)
+    return '🧾 Una *factura* emitida no se modifica. Para corregir un importe se emite una *factura rectificativa* — de momento eso se hace a mano en StelOrder. (Los *presupuestos* sí puedo ajustarlos: "sube el PRT00309 un 10%".)';
+  return null;
+}
+
+function _errModif(e, ref) {
+  if (e && e.message === 'ESTADO_NO_EDITABLE') return `🔒 *${ref}* está *${e.estado || 'no editable'}*; no lo modifico.`;
+  if (e && e.message === 'DELTA_MAYOR_QUE_BASE') return `No puedo: el importe a bajar es mayor que la base de *${ref}*.`;
+  return `⚠️ No he podido modificar *${ref}*: ${e.message}`;
+}
+
+async function handlerModificarPresupuesto(texto, from, ctx = {}) {
+  if (ctx.rol && ctx.rol !== 'owner') return '🔒 Esta acción la gestiona la oficina de Corp.';
+  const p = parseModPresupuesto(texto);
+  if (!p.ref) return '¿Sobre qué presupuesto? Dime la referencia, p. ej. *"sube el PRT00309 un 10%"*.';
+
+  // Leer el presupuesto (sirve para previsualizar Y para validar el estado editable).
+  let det;
+  try { det = await stel.getPresupuestoDetalle({ ref: p.ref }); }
+  catch (e) { return `No he podido leer *${p.ref}*: ${e.message}`; }
+  if (!det) return `No encuentro el presupuesto *${p.ref}* en StelOrder.`;
+  if (!det.estado.editable)
+    return `🔒 El presupuesto *${det.ref}* está *${det.estado.label}*; no lo modifico. Una vez aceptado/facturado/rechazado hay que hacerlo a mano en StelOrder.`;
+
+  // ── Añadir partida ──
+  if (p.tipo === 'add_partida') {
+    const stash = pendiente.get(from);
+    const partida = (stash && stash.accion === 'partidaLista' && stash.ref === p.ref) ? stash.partida : await extraerPartida(texto);
+    if (!partida || !partida.nombre)
+      return 'Dime la partida a añadir, p. ej.: *"añade al PRT00309: cambiar 3 fluorescentes, 3 uds a 45€"*.';
+    if (partida.precio == null) {
+      pendiente.set(from, { accion: 'partidaFaltaPrecio', ref: p.ref, partida, ts: Date.now() });
+      return `Para añadir *"${partida.nombre}"* (${partida.uds || 1} ud/s) necesito el *precio unitario*. ¿A cuánto la pongo? (nunca me lo invento)`;
+    }
+    const uds = Number(partida.uds != null ? partida.uds : 1) || 1;
+    const precio = Number(partida.precio) || 0;
+    const sub = _r2(uds * precio);
+    const iva = det.ivas[0] ?? 21;
+    const nuevoTotal = _r2(det.totalConIva + sub * (1 + iva / 100));
+    const resumen = `🧾 *${det.ref}*${det.title ? ` — ${det.title}` : ''}\nAñadir partida:\n• *${partida.nombre}* — ${uds} ud/s × ${fmtEur(precio)} = ${fmtEur(sub)} (IVA ${iva}%)\n• Total con IVA: ${fmtEur(det.totalConIva)} → *${fmtEur(nuevoTotal)}*\n\n¿Confirmo? Responde *sí* o *no*.`;
+    if (ctx.dineroOk) {
+      let r;
+      try { r = await stel.modificarImportePresupuesto({ id: det.id, modo: 'add_partida', partida: { ...partida, uds, precio, iva }, requestedBy: from }); }
+      catch (e) { return _errModif(e, det.ref); }
+      pendiente.delete(from);
+      return `✅ Hecho. Añadida *"${partida.nombre}"* a *${r.ref}*. Total: ${fmtEur(r.totalAntes)} → *${fmtEur(r.totalDespues)}*.`;
+    }
+    return { dineroPreview: true, resumen };
+  }
+
+  // ── Subir/bajar por % o por importe fijo (±€ sobre la base, reparto proporcional) ──
+  if (!p.tipo) return 'No te he pillado el cambio. Prueba: *"sube el PRT00309 un 10%"*, *"baja el PRT00309 en 200€"* o *"añade una partida al PRT00309: …"*.';
+
+  let nuevaBase, cambioTxt;
+  if (p.tipo === 'pct') {
+    nuevaBase = _r2(det.baseTotal * (1 + p.valor / 100));
+    cambioTxt = `${p.valor >= 0 ? 'subir' : 'bajar'} un ${Math.abs(p.valor)}%`;
+  } else { // delta €
+    nuevaBase = _r2(det.baseTotal + p.valor);
+    if (nuevaBase <= 0)
+      return `No puedo: bajar ${fmtEur(Math.abs(p.valor))} dejaría *${det.ref}* en negativo (base actual ${fmtEur(det.baseTotal)}).`;
+    cambioTxt = `${p.valor >= 0 ? 'subir' : 'bajar'} ${fmtEur(Math.abs(p.valor))} sobre la base`;
+  }
+  const factor = det.baseTotal > 0 ? nuevaBase / det.baseTotal : 1;
+  const nuevoTotalConIva = _r2(det.lineas.reduce((s, l) => s + (l.subtotal * factor) * (1 + l.iva / 100), 0));
+  const resumen = `🧾 *${det.ref}*${det.title ? ` — ${det.title}` : ''}\nVoy a ${cambioTxt}:\n• Base: ${fmtEur(det.baseTotal)} → *${fmtEur(nuevaBase)}*\n• Total con IVA: ${fmtEur(det.totalConIva)} → *${fmtEur(nuevoTotalConIva)}*\n(${det.nItems} línea/s)\n\n¿Confirmo? Responde *sí* o *no*.`;
+  if (ctx.dineroOk) {
+    let r;
+    try { r = await stel.modificarImportePresupuesto({ id: det.id, modo: p.tipo, valor: p.valor, requestedBy: from }); }
+    catch (e) { return _errModif(e, det.ref); }
+    return `✅ Hecho. *${r.ref}*: base ${fmtEur(r.baseAntes)} → *${fmtEur(r.baseDespues)}*, total ${fmtEur(r.totalAntes)} → *${fmtEur(r.totalDespues)}*.`;
+  }
+  return { dineroPreview: true, resumen };
+}
+
 
 // 2/3) Alta de cliente por WhatsApp: parser de datos + confirmación + creación.
 async function parsearAltaCliente(texto) {
@@ -2911,4 +3066,4 @@ Responde SOLO JSON: {"nombre":"..."}`,
   return (r && r.nombre) ? String(r.nombre).trim() : null;
 }
 
-module.exports = { responderConsulta, vocabularioVoz, estructurarAmidamentPdf, estructurarAmidamentTexto, estructurarPresupuestoPdf, reescribirPartidas, importarDocumento, sugerirNombreObra };
+module.exports = { responderConsulta, vocabularioVoz, estructurarAmidamentPdf, estructurarAmidamentTexto, estructurarPresupuestoPdf, reescribirPartidas, importarDocumento, sugerirNombreObra, parseModPresupuesto, mensajeFacturaNoEditable };

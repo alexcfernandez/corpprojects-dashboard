@@ -1692,6 +1692,158 @@ async function cambiarIvaPresupuesto({ id = null, iva = 21, requestedBy = null }
   }
 }
 
+// ─────────────────────────────────────────────────────────────────
+// FASE 2 — Modificar el IMPORTE de un presupuesto EXISTENTE (owner + PIN).
+// Mismo patrón probado de cambiarIvaPresupuesto: leer → modificar líneas ITEM
+// → PUT /workEstimates/{id} con {...obj, lines} (conserva referencia y estado)
+// → re-leer para confirmar → log en stelWriteLog. SOLO estados editables.
+// ─────────────────────────────────────────────────────────────────
+function _round2(n) { return Math.round(((Number(n) || 0) + Number.EPSILON) * 100) / 100; }
+
+// Estado editable: SOLO 'pending' (1120641). Aceptado/rechazado/cerrado o
+// cualquier id desconocido → NO editable (nunca editar lo que no reconocemos).
+function estadoEditablePresupuesto(obj) {
+  const id = Number(obj['document-state-id'] ?? 0);
+  const key = WORK_ESTIMATE_STATES[id]; // 'pending'|'accepted'|'rejected'|'closed'|undefined
+  const label = { pending: 'Pendiente', accepted: 'Aceptado', rejected: 'Rechazado', closed: 'Cerrado' }[key] || `desconocido (id ${id})`;
+  return { id, key: key || null, label, editable: key === 'pending' };
+}
+
+async function _leerWorkEstimate(estId) {
+  const r = await client.get(`/workEstimates/${estId}`);
+  return Array.isArray(r.data) ? r.data[0] : r.data;
+}
+
+// Resolver una referencia PRT… → id usando la lista cacheada de presupuestos.
+async function _resolverEstId({ ref = null, id = null }) {
+  let estId = id ? String(id).replace(/\D/g, '') : null;
+  if (!estId && ref) {
+    const list = await getWorkEstimates();
+    const n = s => String(s || '').toLowerCase().replace(/\s+/g, '');
+    const digs = s => String(s || '').replace(/\D/g, '').replace(/^0+/, ''); // dígitos sin ceros a la izquierda
+    const rn = n(ref), rd = digs(ref);
+    const hit = (list || []).find(e =>
+      n(e['full-reference']) === rn || n(e.reference) === rn || n(e['document-number']) === rn ||
+      (rd && (digs(e['full-reference']) === rd || digs(e.reference) === rd || digs(e['document-number']) === rd)));
+    if (hit) estId = String(hit.id);
+  }
+  return estId;
+}
+
+// Detalle numérico (base, IVA por línea, total con IVA, estado) para previsualizar.
+function _detalleDesdeObj(obj, estId) {
+  const items = (obj.lines || []).filter(l => l['line-type'] === 'ITEM' && !l.deleted);
+  const lineas = items.map(l => {
+    const units = Number(l.units ?? 1) || 0;
+    const base  = Number(l['item-base-price'] ?? 0) || 0;
+    const iva   = Number(l['primary-tax-percentage'] ?? 0) || 0;
+    const subtotal = units * base;
+    return { id: l.id, name: l['item-name'] || l['item-description'] || 'Partida', units, base, iva, subtotal };
+  });
+  const baseTotal   = lineas.reduce((s, l) => s + l.subtotal, 0);
+  const totalConIva = lineas.reduce((s, l) => s + l.subtotal * (1 + l.iva / 100), 0);
+  const ivas = [...new Set(lineas.map(l => l.iva))];
+  return {
+    id: String(estId), ref: obj['full-reference'] || obj.reference || ('#' + estId), title: obj.title || null,
+    estado: estadoEditablePresupuesto(obj), nItems: items.length, ivas,
+    baseTotal: _round2(baseTotal), totalConIva: _round2(totalConIva), lineas
+  };
+}
+
+async function getPresupuestoDetalle({ ref = null, id = null } = {}) {
+  const estId = await _resolverEstId({ ref, id });
+  if (!estId) return null;
+  const obj = await _leerWorkEstimate(estId);
+  if (!obj) return null;
+  return _detalleDesdeObj(obj, estId);
+}
+
+// modo: 'pct' (valor = % +/-), 'delta' (valor = € +/- sobre la BASE, reparto proporcional),
+//       'add_partida' (partida = {nombre, uds, precio, descripcion, iva?}).
+// NUNCA se llama en dry-run: escribe siempre. El control de "solo tras confirmación"
+// vive en el handler (ctx.dineroOk). Aquí sí verificamos el estado editable como última barrera.
+async function modificarImportePresupuesto({ id = null, modo, valor = null, partida = null, requestedBy = null } = {}) {
+  const estId = String(id || '').replace(/\D/g, '');
+  if (!estId) throw new Error('Falta el id del presupuesto');
+  const obj = await _leerWorkEstimate(estId);
+  if (!obj) throw new Error('No encuentro el presupuesto');
+
+  const est = estadoEditablePresupuesto(obj);
+  if (!est.editable) { const e = new Error('ESTADO_NO_EDITABLE'); e.estado = est.label; throw e; }
+
+  const ref = obj['full-reference'] || obj.reference || ('#' + estId);
+  const antes = _detalleDesdeObj(obj, estId);
+  const itemsVivos = (obj.lines || []).filter(l => l['line-type'] === 'ITEM' && !l.deleted);
+  if (!itemsVivos.length && modo !== 'add_partida') throw new Error('El presupuesto no tiene líneas de producto que modificar');
+
+  let nuevasLineas, descripcionCambio;
+
+  if (modo === 'pct') {
+    const factor = 1 + Number(valor) / 100;
+    if (!isFinite(factor) || factor <= 0) throw new Error('Porcentaje no válido');
+    nuevasLineas = (obj.lines || []).map(l => (l['line-type'] !== 'ITEM' || l.deleted)
+      ? l : { ...l, 'item-base-price': _round2((Number(l['item-base-price']) || 0) * factor) });
+    descripcionCambio = `${Number(valor) > 0 ? '+' : ''}${valor}%`;
+
+  } else if (modo === 'delta') {
+    const delta = Number(valor);
+    const base = antes.baseTotal;
+    if (!(base > 0)) throw new Error('El presupuesto no tiene base sobre la que aplicar el importe');
+    const nuevaBase = _round2(base + delta);
+    if (nuevaBase <= 0) { const e = new Error('DELTA_MAYOR_QUE_BASE'); e.base = base; throw e; }
+    const factor = nuevaBase / base; // reparto proporcional sobre la base
+    nuevasLineas = (obj.lines || []).map(l => (l['line-type'] !== 'ITEM' || l.deleted)
+      ? l : { ...l, 'item-base-price': _round2((Number(l['item-base-price']) || 0) * factor) });
+    descripcionCambio = `${delta > 0 ? '+' : ''}${delta}€ (base)`;
+
+  } else if (modo === 'add_partida') {
+    if (!partida || partida.precio == null || !isFinite(Number(partida.precio))) throw new Error('Falta el precio de la partida');
+    const itemId = await getProductoGenerico('presupuesto');
+    const ivaPct = IVA_TAX_IDS[Number(partida.iva)] != null ? Number(partida.iva) : (antes.ivas[0] ?? 21);
+    const taxId  = IVA_TAX_IDS[ivaPct] ?? IVA_TAX_IDS[21];
+    const nueva = {
+      'line-type': 'ITEM', 'item-id': Number(itemId),
+      'item-name': String(partida.nombre || 'Partida').slice(0, 200),
+      units: Number(partida.uds != null ? partida.uds : 1) || 1,
+      'item-base-price': _round2(Number(partida.precio) || 0),
+      'item-description': String(partida.descripcion || partida.nombre || 'Partida').slice(0, 1000),
+      'primary-tax-percentage': ivaPct, 'primary-tax-id': taxId
+    };
+    nuevasLineas = [...(obj.lines || []), nueva];
+    descripcionCambio = `+partida "${nueva['item-name']}" (${nueva.units}×${nueva['item-base-price']}€)`;
+
+  } else {
+    throw new Error(`modo no soportado: ${modo}`);
+  }
+
+  const body = { ...obj, lines: nuevasLineas };
+
+  const db = await require('./db').getDB();
+  const ins = await db.collection('stelWriteLog').insertOne({
+    tipo: 'modif-importe', modo, valor, workEstimateId: estId, ref,
+    estado: est.label, baseAntes: antes.baseTotal, totalAntes: antes.totalConIva,
+    requestedBy, at: new Date(), result: 'pending'
+  });
+  try {
+    const put = await client.put(`/workEstimates/${estId}`, body, { headers: { 'Content-Type': 'application/json; charset=utf-8' }, timeout: 25000 });
+    await new Promise(r => setTimeout(r, 1200));
+    const despues = _detalleDesdeObj(await _leerWorkEstimate(estId), estId);
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId },
+      { $set: { result: 'ok', status: put.status, baseDespues: despues.baseTotal, totalDespues: despues.totalConIva, cambio: descripcionCambio } });
+    try { invalidate('workEstimates'); } catch (e) {}
+    return {
+      ok: true, ref, id: estId, modo, cambio: descripcionCambio,
+      baseAntes: antes.baseTotal, baseDespues: despues.baseTotal,
+      totalAntes: antes.totalConIva, totalDespues: despues.totalConIva,
+      lineasTocadas: itemsVivos.length
+    };
+  } catch (err) {
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: 'error', error: err.message, data: err.response?.data || null } });
+    throw new Error(`StelOrder rechazó la modificación: ${err.response?.status || ''} ${JSON.stringify(err.response?.data || err.message).slice(0, 200)}`);
+  }
+}
+
+
 module.exports = {
   getInvoices, getAllReceipts, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary, diagProveedores,
@@ -1702,5 +1854,5 @@ module.exports = {
   getMonthlyBilling,
   getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap,
   getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA, diagLineaImpuesto, diagImpuestos,
-  crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, crearPresupuestoStel, crearPresupuestoMultiSeccionPrueba, diagClienteCampos, diagCrearCliente, crearClienteStel, getAccountCategories, ultimaIncidencia, incidenciaPorRef, diagPresupuestoConLineas, diagCambiarIvaPrueba, getPresupuestoIva, cambiarIvaPresupuesto
+  crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, crearPresupuestoStel, crearPresupuestoMultiSeccionPrueba, diagClienteCampos, diagCrearCliente, crearClienteStel, getAccountCategories, ultimaIncidencia, incidenciaPorRef, diagPresupuestoConLineas, diagCambiarIvaPrueba, getPresupuestoIva, cambiarIvaPresupuesto, getPresupuestoDetalle, modificarImportePresupuesto
 };
