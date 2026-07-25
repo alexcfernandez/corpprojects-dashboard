@@ -263,7 +263,7 @@ function startScheduler() {
   avisoPresencia.seedWhatsappTrabajadores()
     .then(r => console.log('[Presencia] whatsapp seed:', JSON.stringify(r)))
     .catch(e => console.warn('[Presencia] seed:', e.message));
-  cron.schedule('30 17 * * *', () => avisoPresencia.enviarAvisoPresencia()
+  cron.schedule('30 17 * * 1-5', () => avisoPresencia.enviarAvisoPresencia()
     .then(r => console.log(`[Presencia] aviso 17:30 → ${r.pendientes} pendientes`, JSON.stringify(r.resultado)))
     .catch(e => console.error('[Presencia] aviso:', e.message)), { timezone: 'Europe/Madrid' });
 
