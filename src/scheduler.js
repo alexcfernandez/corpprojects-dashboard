@@ -73,6 +73,33 @@ async function runDailySummary() {
   }
 }
 
+// ── Resumen diario del owner (Fase 4a): array de COLECTORES para poder crecer ──
+// Cada colector devuelve una sección de texto (o null si hoy no aporta nada).
+// Reutiliza avisos (pausa global + anti-duplicado) y sendWhatsApp (canal activo).
+const RESUMEN_COLECTORES = [
+  { nombre: 'pendientes', fn: () => require('./pendientes').seccionResumen() },
+  // Añadir aquí futuros colectores (facturas sin cobrar, presencia, etc.).
+];
+
+async function enviarResumenDiario() {
+  const isWarmup = (Date.now() - startTime) < WARMUP_MS;
+  if (isWarmup) { console.log('[Resumen] warmup, no se envía.'); return; }
+  try {
+    if (await avisos.isGlobalPaused()) { console.log('[Resumen] pausa global, no se envía.'); return; }
+    const dateKey = new Date().toISOString().slice(0, 10);
+    if (await avisos.wasAlertSentToday('resumen-diario', dateKey)) { console.log('[Resumen] ya enviado hoy.'); return; }
+    const secciones = [];
+    for (const c of RESUMEN_COLECTORES) {
+      try { const s = await c.fn(); if (s) secciones.push(s); }
+      catch (e) { console.error('[Resumen] colector', c.nombre, ':', e.message); }
+    }
+    if (!secciones.length) { console.log('[Resumen] nada que resumir hoy.'); return; }
+    await sendWhatsApp('☀️ *Buenos días.* Esto tienes hoy:\n\n' + secciones.join('\n\n'));
+    await avisos.markAlertSent('resumen-diario', dateKey);
+    console.log('[Resumen] enviado.');
+  } catch (err) { console.error('[Resumen] Error:', err.message); }
+}
+
 // ── Motor de envíos por familia (frecuencia + formato configurables) ──
 function groupByFamily(pending) {
   const byFam = {};
@@ -270,6 +297,9 @@ function startScheduler() {
   // Resumen diario INTERNO (al admin) 08:30 lun–vie
   cron.schedule('30 8 * * 1-5', runDailySummary, { timezone: 'Europe/Madrid' });
 
+  // Resumen diario del owner (pendientes + futuros colectores): 08:00 L-V.
+  cron.schedule('0 8 * * 1-5', enviarResumenDiario, { timezone: 'Europe/Madrid' });
+
   // Aviso diario de PEDIDOS DE TRABAJO (rojos + ámbar) a las 08:00. Respeta su pausa.
   cron.schedule('0 8 * * *', () => sendWorkOrdersAlert(), { timezone: 'Europe/Madrid' });
 
@@ -346,4 +376,4 @@ function startScheduler() {
   }, 150 * 1000);
 }
 
-module.exports = { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail, sendWorkOrdersAlert, enviarAvisoProactivo };
+module.exports = { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail, sendWorkOrdersAlert, enviarAvisoProactivo, enviarResumenDiario };

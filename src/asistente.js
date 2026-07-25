@@ -7,6 +7,7 @@
 
 const stel = require('./stelorder');
 const acceso = require('./acceso');   // control de acceso por número (owner/cliente/desconocido)
+const pendientes = require('./pendientes'); // pendientes/recordatorios del owner (Fase 4a)
 const com  = require('./comunidades');
 const attendance = require('./attendance');
 const trabajadores = require('./trabajadores');
@@ -2087,6 +2088,17 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
   const objFicha = detectarFicha(texto);
   if (objFicha) return handlerFicha(texto, from, objFicha);
 
+  // C3.pend) PENDIENTES / recordatorios del owner (Fase 4a). ANTES de las notas de
+  // comunidad para no chocar: detectarIntent usa verbos propios ("recuérdame…",
+  // "pendiente…", "apúntame que…" sin "en <comunidad>") y devuelve null para las
+  // notas de comunidad, que siguen su curso normal.
+  {
+    const ip = pendientes.detectarIntent(texto);
+    if (ip && ip.tipo === 'list') return handlerPendienteList(from, ctx);
+    if (ip && ip.tipo === 'done') return handlerPendienteDone(texto, from, ctx);
+    if (ip && ip.tipo === 'add')  return handlerPendienteAdd(ip.texto, from, ctx);
+  }
+
   // C4) Base de conocimiento de comunidades (ficha automática + notas manuales)
   {
     const n = norm(texto);
@@ -2308,6 +2320,34 @@ async function handlerComunidad(texto, from) {
   const { scope, target } = await resolver(texto, texto);
   if (!target) return '¿De qué comunidad quieres la ficha? Dime el nombre como aparece en StelOrder (p. ej. *"materiales de Illa Verda"*).';
   return fichaComunidad(target, scope || 'cliente', from);
+}
+
+// ── Pendientes / recordatorios del owner (Fase 4a). SOLO owner. No inventa fechas. ──
+async function handlerPendienteAdd(texto, from, ctx = {}) {
+  if (ctx.rol && ctx.rol !== 'owner') return '🔒 Esta acción la gestiona la oficina de Corp.';
+  const t = String(texto || '').trim();
+  if (!t) return '¿Qué te recuerdo? Dímelo, p. ej.: *"recuérdame hacer la factura de la EICA"*.';
+  const p = await pendientes.addPendiente(t, from);
+  if (!p) return 'No he podido guardar el pendiente, inténtalo de nuevo.';
+  return `📌 Anotado: *${p.texto}*.\nTe lo recordaré en el resumen de la mañana hasta que me digas que está hecho ("hecho el pendiente 1").`;
+}
+
+async function handlerPendienteList(from, ctx = {}) {
+  if (ctx.rol && ctx.rol !== 'owner') return '🔒 Esta acción la gestiona la oficina de Corp.';
+  const abiertos = await pendientes.listPendientes({ soloAbiertos: true });
+  if (!abiertos.length) return '✅ No tienes pendientes abiertos.';
+  return `📌 *Tus pendientes* (${abiertos.length}):\n` +
+    abiertos.map((p, i) => `${i + 1}. ${p.texto}`).join('\n') +
+    `\n\n_Para cerrar uno: "hecho el pendiente 1"._`;
+}
+
+async function handlerPendienteDone(texto, from, ctx = {}) {
+  if (ctx.rol && ctx.rol !== 'owner') return '🔒 Esta acción la gestiona la oficina de Corp.';
+  const m = norm(texto).match(/\b(\d{1,3})\b/);
+  if (!m) return 'Dime el número, p. ej.: *"hecho el pendiente 2"* (mira la lista con *"pendientes"*).';
+  const done = await pendientes.cerrarPendiente({ idx: parseInt(m[1], 10) });
+  if (!done) return 'No encuentro ese pendiente. Mira la lista con *"pendientes"*.';
+  return `✅ Hecho: *${done.texto}*.`;
 }
 
 async function handlerNotaAdd(resto, from, ctx = {}) {
