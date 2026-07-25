@@ -128,6 +128,17 @@ app.post('/api/bridge/inbound', express.json({ limit: '256kb' }), (req, res) => 
     .catch(err => console.error('[Bridge] inbound:', err.message));
 });
 
+// SALIDA del puente (pull): el servicio Baileys sondea aquí y recibe un lote de
+// mensajes pendientes, ya marcados 'sent' de forma atómica. Misma barrera: el
+// token (X-Bridge-Token) es la ÚNICA autenticación; sin BRIDGE_TOKEN → 401.
+app.get('/api/bridge/outbox', async (req, res) => {
+  const canalWa = require('./canalWhatsapp');
+  if (!canalWa.tokenBridgeValido(req.get('X-Bridge-Token'))) return res.sendStatus(401);
+  try {
+    res.json({ messages: await canalWa.reclamarLoteOutbox(Number(req.query.limit) || 10) });
+  } catch (e) { console.error('[Bridge] outbox:', e.message); res.status(500).json({ error: e.message }); }
+});
+
 // Descarga una imagen de Twilio y la devuelve como {media_type, data(base64)}
 async function descargarFoto(url, type) {
   try {

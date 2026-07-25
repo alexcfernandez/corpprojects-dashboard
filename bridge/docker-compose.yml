@@ -1,0 +1,18 @@
+# Puente WhatsApp (Baileys) — pull / solo-salida.
+# SIN sección `ports:` a propósito: el contenedor no publica nada al exterior,
+# solo hace llamadas salientes al dashboard. Superficie de ataque = 0 puertos.
+services:
+  bridge:
+    build: .
+    container_name: corp-whatsapp-bridge
+    restart: unless-stopped
+    environment:
+      DASHBOARD_URL: ${DASHBOARD_URL}     # p.ej. https://dashboard.corpprojects.es
+      BRIDGE_TOKEN: ${BRIDGE_TOKEN}       # el MISMO secreto que en el dashboard
+      POLL_MS: ${POLL_MS:-2000}
+      AUTH_DIR: /data/auth
+    volumes:
+      - bridge_auth:/data/auth            # sesión de WhatsApp persistente
+
+volumes:
+  bridge_auth:
