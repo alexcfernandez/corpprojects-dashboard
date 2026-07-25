@@ -2099,6 +2099,13 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
     if (ip && ip.tipo === 'add')  return handlerPendienteAdd(ip.texto, from, ctx);
   }
 
+  // C3.correo) CORREO a demanda (Fase 6b, solo owner): "¿algo de la gestoría?",
+  // "resumen del correo". Solo informa (no actúa). No colisiona con pendientes/notas.
+  {
+    const ic = require('./email-intelligence').intentCorreo(texto);
+    if (ic) return handlerCorreo(texto, from, ctx);
+  }
+
   // C4) Base de conocimiento de comunidades (ficha automática + notas manuales)
   {
     const n = norm(texto);
@@ -2349,6 +2356,14 @@ async function handlerPendienteList(from, ctx = {}) {
   return `📌 *Tus pendientes* (${abiertos.length}):\n` +
     abiertos.map((p, i) => `${i + 1}. ${p.texto}`).join('\n') +
     `\n\n_Para cerrar uno: "hecho el pendiente 1"._`;
+}
+
+// Correo a demanda (Fase 6b). SOLO owner. Solo informa; no actúa.
+async function handlerCorreo(texto, from, ctx = {}) {
+  if (ctx.rol && ctx.rol !== 'owner') return '🔒 Esta acción la gestiona la oficina de Corp.';
+  const em = require('./email-intelligence');
+  const it = em.intentCorreo(texto) || { soloGestoria: false };
+  return em.resumenCorreo({ soloGestoria: it.soloGestoria });
 }
 
 async function handlerPendienteDone(texto, from, ctx = {}) {

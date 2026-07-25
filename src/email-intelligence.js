@@ -379,6 +379,9 @@ async function procesarEmail(gmail, messageId) {
         }
       } catch (e) { console.warn('[Email] identificarComunidad:', e.message); }
     }
+    // Fase 6a: la GESTORÍA se decide por REMITENTE (autoritativo). El contenido/IA
+    // solo es de apoyo. Si el remitente casa con GESTORIA_EMAILS → categoría GESTORIA.
+    if (esGestoria(de, remitente.emailRemitente)) clasificacion.categoria = 'GESTORIA';
     const permisos      = verificarPermisos(remitente, clasificacion);
 
     await db.collection('emails').insertOne({
@@ -407,6 +410,17 @@ async function procesarEmail(gmail, messageId) {
     });
 
     console.log(`[Email] Guardado: ${clasificacion.categoria} — ${clasificacion.resumen}`);
+
+    // Fase 6a: aviso inmediato al owner por WhatsApp SOLO para gestoría. Una vez por
+    // correo (procesarEmail deduplica por gmailId, así que esto corre una sola vez).
+    if (clasificacion.categoria === 'GESTORIA') {
+      try {
+        const { sendWhatsApp } = require('./notifications');
+        await sendWhatsApp(`📩 *Gestoría* — nuevo correo:\n*${asunto}*\n${clasificacion.resumen || ''}\n_(${remitente.emailRemitente || de})_`);
+        await db.collection('emails').updateOne({ gmailId: messageId }, { $set: { avisadoOwner: true } });
+        console.log('[Email] Aviso de gestoría enviado al owner.');
+      } catch (e) { console.error('[Email] aviso gestoría:', e.message); }
+    }
 
     // Aprendizaje pasivo: si responde a un aviso (FAC/PDT en el asunto),
     // asociar remitente → comunidad. Nunca afecta al procesado del email.
@@ -546,4 +560,58 @@ async function reenviarAdjuntoOCR(gmailId, attachmentId, filename, mimeType, asu
   return { destino };
 }
 
-module.exports = { pollEmails, enviarRespuesta, getGmailClient, diagnosticoIA, reclasificarPendientes, usoIAHoy, listAttachments, getAttachment, reenviarAdjuntoOCR };
+// ── Fase 6: Gestoría (por remitente) + resumen de correo importante ──────────
+const CATS_IMPORTANTES = ['GESTORIA', 'INCIDENCIA', 'FACTURA_PROVEEDOR'];
+const LABEL_CAT = { GESTORIA: '📩 Gestoría', INCIDENCIA: '🔧 Incidencia', FACTURA_PROVEEDOR: '🧾 Factura' };
+
+// Extrae direcciones de un string ("Nombre <x@y>", "x@y, z@w"). En minúsculas.
+function extraerEmails(str) {
+  return (String(str || '').match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi) || []).map(e => e.toLowerCase());
+}
+
+// ¿El remitente es la gestoría? AUTORITATIVO por remitente (env GESTORIA_EMAILS,
+// coma-separado). "@dominio.com" → casa por dominio; email completo → exacto.
+function esGestoria(...fuentes) {
+  const cfg = String(process.env.GESTORIA_EMAILS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  if (!cfg.length) return false;
+  const cands = fuentes.flatMap(extraerEmails);
+  return cands.some(c => cfg.some(g => g.startsWith('@') ? c.endsWith(g) : c === g));
+}
+
+// Correos importantes recientes (gestoría / incidencias / facturas nuevas).
+async function emailsRecientes({ horas = 24, categorias = CATS_IMPORTANTES } = {}) {
+  const { db, client } = await getDB();
+  try {
+    const desde = new Date(Date.now() - horas * 3600 * 1000);
+    return await db.collection('emails')
+      .find({ procesadoEn: { $gte: desde }, categoria: { $in: categorias } })
+      .sort({ procesadoEn: -1 }).limit(15).toArray();
+  } finally { try { await client.close(); } catch (e) {} }
+}
+
+// Sección para el "☀️ Buenos días" (colector). null si no hay nada.
+async function seccionCorreo(horas = 24) {
+  const rows = await emailsRecientes({ horas }).catch(() => []);
+  if (!rows.length) return null;
+  const lineas = rows.slice(0, 8).map(e => `• ${LABEL_CAT[e.categoria] || e.categoria}: ${e.resumen || e.asunto}`).join('\n');
+  return `📬 *Correo (últimas ${horas} h):*\n${lineas}`;
+}
+
+// Texto para el handler a demanda. soloGestoria filtra a GESTORIA.
+async function resumenCorreo({ soloGestoria = false, horas = 48 } = {}) {
+  const rows = await emailsRecientes({ horas, categorias: soloGestoria ? ['GESTORIA'] : CATS_IMPORTANTES }).catch(() => []);
+  if (!rows.length) return soloGestoria ? '📩 No hay nada nuevo de la gestoría en las últimas 48 h. 🙂' : '📬 No hay correo importante reciente. 🙂';
+  const lineas = rows.map(e => `• ${LABEL_CAT[e.categoria] || e.categoria}: ${e.resumen || e.asunto}`).join('\n');
+  const cab = soloGestoria ? '📩 *Gestoría (últimas 48 h):*' : '📬 *Correo importante (últimas 48 h):*';
+  return `${cab}\n${lineas}\n\n_Solo te informo; para actuar, lo gestiona la oficina._`;
+}
+
+// Detección de la consulta a demanda del owner. { soloGestoria } o null.
+function intentCorreo(texto) {
+  const n = String(texto || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (/\b(algo|novedades?|hay algo|que hay|nada)\b[\s\S]*\bgestoria\b/.test(n) || /\bde la gestoria\b/.test(n)) return { soloGestoria: true };
+  if (/\b(resumen del correo|resumen de correo|que hay en el correo|correos? (nuevos|de hoy|importantes)|revisa(me)? el correo|algo (importante )?(en|del) correo|correo importante|correo de hoy)\b/.test(n)) return { soloGestoria: false };
+  return null;
+}
+
+module.exports = { pollEmails, enviarRespuesta, getGmailClient, diagnosticoIA, reclasificarPendientes, usoIAHoy, listAttachments, getAttachment, reenviarAdjuntoOCR, esGestoria, emailsRecientes, seccionCorreo, resumenCorreo, intentCorreo };

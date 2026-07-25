@@ -100,6 +100,7 @@ async function seccionProactivo(dow) {
 
 const RESUMEN_COLECTORES = [
   { nombre: 'pendientes', fn: ({ hoyISO }) => require('./pendientes').seccionResumen(hoyISO) },
+  { nombre: 'correo',     fn: () => require('./email-intelligence').seccionCorreo(24) },
   { nombre: 'calendario', fn: ({ hoyISO }) => seccionCalendario(hoyISO) },
   { nombre: 'proactivo',  fn: ({ dow })    => seccionProactivo(dow) },
   // Añadir aquí futuros colectores (presencia, etc.).
