@@ -2,6 +2,9 @@ FROM node:20-slim
 
 WORKDIR /app
 
+# Baileys resuelve alguna dependencia por git → hace falta git en la imagen slim.
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+
 # Instala dependencias primero (mejor caché)
 COPY package.json ./
 RUN npm install --omit=dev --no-audit --no-fund
