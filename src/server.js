@@ -85,9 +85,45 @@ function requireAuth(req, res, next) {
 // ─────────────────────────────────────────────────────────────
 const asistente = require('./asistente');
 
-app.post('/api/whatsapp', express.urlencoded({ extended: false }), (req, res) => {
+// Fase 0 — Validación de firma de Twilio. Modo por env TWILIO_VALIDATE:
+//   'off'     → no valida.
+//   'log'     → valida y AVISA en logs si no cuadra, pero procesa igual (default; rollout seguro).
+//   'enforce' → rechaza (403) las peticiones sin firma válida.
+// La URL debe ser la pública que Twilio llamó: TWILIO_WEBHOOK_URL o reconstruida.
+function validarFirmaTwilio(req) {
+  const mode = String(process.env.TWILIO_VALIDATE || 'log').toLowerCase();
+  if (mode === 'off' || !process.env.TWILIO_AUTH_TOKEN) return 'skip';
+  try {
+    const sig = req.get('X-Twilio-Signature') || '';
+    const url = process.env.TWILIO_WEBHOOK_URL || `https://${req.get('host')}${req.originalUrl}`;
+    const ok = require('twilio').validateRequest(process.env.TWILIO_AUTH_TOKEN, sig, url, req.body || {});
+    if (ok) return 'ok';
+    console.warn(`[WhatsApp] Firma Twilio NO válida (modo ${mode}). url=${url}`);
+    return mode === 'enforce' ? 'invalid-enforce' : 'invalid-log';
+  } catch (e) { console.error('[WhatsApp] validarFirma:', e.message); return 'skip'; }
+}
+
+// Fase 0 — Dedup de reintentos de Twilio por MessageSid (índice único en webhookSeen).
+async function webhookYaVisto(sid) {
+  if (!sid) return false;
+  try {
+    const db = await require('./db').getDB();
+    await db.collection('webhookSeen').insertOne({ sid, ts: new Date() });
+    return false;
+  } catch (e) {
+    if (e && e.code === 11000) return true;          // ya procesado → duplicado
+    console.error('[WhatsApp] dedup:', e.message); return false; // ante otro error, no bloquear
+  }
+}
+
+app.post('/api/whatsapp', express.urlencoded({ extended: false }), async (req, res) => {
+  // 0) Firma de Twilio. En 'enforce', rechaza lo no firmado; en 'log' solo avisa.
+  if (validarFirmaTwilio(req) === 'invalid-enforce') return res.sendStatus(403);
   // 1) Acuse inmediato a Twilio (sin respuesta síncrona)
   res.type('text/xml').send('<Response></Response>');
+  // 1.b) Dedup: si es un reintento del mismo mensaje, no lo procesamos dos veces.
+  const sid = req.body.MessageSid || req.body.SmsMessageSid || req.body.SmsSid || '';
+  if (await webhookYaVisto(sid)) { console.log('[WhatsApp] Reintento duplicado omitido:', sid); return; }
   // 2) Procesa en segundo plano y responde por la API de Twilio
   const from = req.body.From || '';
   const body = (req.body.Body || '').trim();

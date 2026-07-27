@@ -93,6 +93,18 @@ async function ensureIndexes(db) {
     // (garantiza un solo registro por trabajador y día). No lo recreamos.
     // Añadimos solo este para acelerar las consultas por fecha del calendario:
     ['attendance',             { date: 1 }],
+    // Fase 0 — colecciones-memoria + webhook + estado de conversación
+    ['comunidadNotas',         { clave: 1 }],
+    ['pendientes',             { estado: 1, createdAt: 1 }],
+    ['pendientes',             { paraISO: 1 }],
+    ['emails',                 { procesadoEn: -1 }],
+    ['emails',                 { categoria: 1, procesadoEn: -1 }],
+    ['emails',                 { gmailId: 1 },               { unique: true }],
+    ['activityLog',            { ts: -1 }],
+    ['webhookSeen',            { sid: 1 },                   { unique: true }],
+    ['webhookSeen',            { ts: 1 },                    { expireAfterSeconds: 172800 }], // 2 días
+    ['estadoConversacion',     { from: 1 },                  { unique: true }],
+    ['estadoConversacion',     { updatedAt: 1 },             { expireAfterSeconds: 3600 }],   // TTL 1 h
   ];
 
   for (const [coll, keys, opts] of indexes) {

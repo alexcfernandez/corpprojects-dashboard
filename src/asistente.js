@@ -14,8 +14,10 @@ const trabajadores = require('./trabajadores');
 const colaboradores = require('./colaboradores');
 const pagosT = require('./pagos-trab');
 
-const ultima    = new Map(); // from -> estado de paginación ("ver más")
-const pendiente = new Map(); // from -> { accion:'aprender', aliasRaw, intent, ts }
+const ultima    = new Map(); // from -> estado de paginación ("ver más") (efímero, en memoria)
+// Estado de confirmaciones persistido (Fase 0): drop-in del Map con .get/.set/.delete
+// + hydrate(). Sobrevive a reinicios de Railway. Ver src/estadoConversacion.js.
+const pendiente = require('./estadoConversacion');
 const contexto  = new Map(); // from -> { tipo:'gasto', prov, ts } para encadenar preguntas
 const PAGINA = 10;
 
@@ -2164,6 +2166,10 @@ async function registrarFallo(from, texto, tipo = 'no_entendido', respuesta = nu
 // {documento} {nº}", que suele ser una mala interpretación (p. ej. un número
 // suelto leído como nº de documento). Lo registra como 'posible_desvio'.
 async function responderConsulta(texto, from = 'anon', imagenes = []) {
+  // Fase 0: cargar de Mongo el estado de confirmaciones de este `from` (si este
+  // proceso aún no lo tiene en caché) para que sobreviva a reinicios de Railway.
+  try { await pendiente.hydrate(from); } catch (e) { /* best-effort */ }
+
   // 0) ¿El OWNER está respondiendo a un PIN / confirmación de una acción de dinero pendiente?
   if (acceso.esOwner(from)) {
     // 0.previo) FASE 2 — ¿responde al PRECIO que le faltaba a una partida a añadir?
