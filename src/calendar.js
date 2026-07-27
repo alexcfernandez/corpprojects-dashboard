@@ -223,6 +223,7 @@ async function applyEvent(db, ev, allowForeignCreate) {
   const { ObjectId } = require('mongodb');
   const eventId = ev.id;
   const priv = (ev.extendedProperties && ev.extendedProperties.private) || {};
+  if (priv.cpSource === 'agenda' || priv.cpAgenda) return 'skip'; // agenda personal, no planning
   let doc = await db.collection('planning').findOne({ gcalEventId: eventId });
   if (!doc && priv.cpPlanId) {
     try { doc = await db.collection('planning').findOne({ _id: new ObjectId(priv.cpPlanId) }); } catch (e) {}
@@ -322,6 +323,36 @@ async function pullChanges() {
   return summary;
 }
 
+// Agenda personal dictada por WhatsApp (Fase 1 del agente). NO es planificación de
+// operarios: se etiqueta cpSource:'agenda' para que applyEvent la ignore (arriba).
+// date: 'YYYY-MM-DD'. hora: 'HH:MM' (opcional; sin ella = día completo).
+async function crearEventoPersonal({ date, hora, titulo }) {
+  const cal = getCalendar();
+  const calendarId = targetCalendarId();
+  const summary = `🗓️ ${String(titulo || 'Recordatorio').trim()}`;
+  const body = {
+    summary,
+    description: 'Agenda personal — vía asistente de WhatsApp',
+    extendedProperties: { private: { cpSource: 'agenda', cpAgenda: '1' } },
+  };
+  if (/^\d{1,2}:\d{2}$/.test(String(hora || ''))) {
+    const [hh, mm] = String(hora).split(':').map(Number);
+    let fin = hh * 60 + mm + eventMinutes();
+    if (fin > 23 * 60 + 59) fin = 23 * 60 + 59;
+    const eh = _pad(Math.floor(fin / 60)), em = _pad(fin % 60);
+    const h0 = `${_pad(hh)}:${_pad(mm)}`;
+    body.start = { dateTime: `${date}T${h0}:00`,       timeZone: TZ };
+    body.end   = { dateTime: `${date}T${eh}:${em}:00`, timeZone: TZ };
+  } else {
+    const d    = new Date(date + 'T00:00:00Z');
+    const next = new Date(d.getTime() + 86400000).toISOString().slice(0, 10);
+    body.start = { date };
+    body.end   = { date: next };
+  }
+  const r = await cal.events.insert({ calendarId, requestBody: body });
+  return r.data.id;
+}
+
 // Eventos de HOY en el calendario objetivo (Europe/Madrid). Read-only, best-effort
 // (devuelve [] si el calendario falla). hoyISO opcional (para tests / claridad).
 async function eventosDeHoy(hoyISO = null) {
@@ -347,4 +378,4 @@ async function eventosDeHoy(hoyISO = null) {
   } catch (e) { console.error('[Calendar] eventosDeHoy:', e.message); return []; }
 }
 
-module.exports = { getAuth, getCalendar, diagnose, buildEventBody, upsertEvent, deleteEvent, targetCalendarId, pullChanges, eventosDeHoy };
+module.exports = { getAuth, getCalendar, diagnose, buildEventBody, upsertEvent, deleteEvent, targetCalendarId, pullChanges, eventosDeHoy, crearEventoPersonal };

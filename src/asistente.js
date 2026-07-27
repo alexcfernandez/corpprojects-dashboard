@@ -506,6 +506,43 @@ async function resolver(texto, rawTarget) {
   return { scope: familias.includes(t) ? 'familia' : 'cliente', target: t };
 }
 
+// Fase 1 (agente, Puerta B): resolver SIN IA y devolviendo la CONFIANZA. Solo dice
+// 'alta' cuando hay match seguro (exacto / alias / substring limpio y largo). Todo
+// lo demás → 'baja' (no adivinar aquí; que pregunte el agente). No toca `resolver()`,
+// que siguen usando los handlers de lectura, para no meter regresiones.
+async function resolverConConfianza(texto, rawTarget) {
+  const raw = norm(rawTarget || '');
+  if (raw) { const a = await buscarAlias(raw); if (a) return { scope: a.scope, target: a.target, confianza: 'alta' }; }
+  const { clientes, familias } = await listas();
+  const r = raw || norm(texto);
+  if (!r) return { scope: null, target: null, confianza: 'baja' };
+
+  let mf = familias.filter(c => norm(c) === r); if (mf.length === 1) return { scope: 'familia', target: mf[0], confianza: 'alta' };
+  let mc = clientes.filter(c => norm(c) === r); if (mc.length === 1) return { scope: 'cliente', target: mc[0], confianza: 'alta' };
+
+  // Substring, pero ignorando números sueltos (evita casar "…19" con "el calendario a las 19").
+  const contiene = (c) => { const nc = norm(c); return nc.length >= 5 && (nc.includes(r) || r.includes(nc)); };
+  mf = familias.filter(contiene);
+  mc = clientes.filter(contiene);
+  if (mf.length === 1 && mc.length === 0) return { scope: 'familia', target: mf[0], confianza: 'alta' };
+  if (mc.length === 1 && mf.length === 0) return { scope: 'cliente', target: mc[0], confianza: 'alta' };
+
+  return { scope: null, target: null, confianza: 'baja' }; // ambiguo / solo-fuzzy / nada → preguntar
+}
+
+// Ejecuta la nota de comunidad con la regla dura (para la tool del agente). Reusa
+// el clasificador de categoría real. Devuelve {ok,target,cat} | {ambiguo:true}.
+async function _ejecutarNotaComunidad(comunidad, nota) {
+  const rc = await resolverConConfianza(comunidad, comunidad);
+  if (!rc.target || rc.confianza !== 'alta') return { ambiguo: true };
+  const iaCls = async (t, cats) => {
+    const r = await iaJson(`Clasifica esta nota de mantenimiento de un edificio en UNA categoría.\nCategorías: ${cats.join(', ')}.\nNota: "${t}"\nResponde SOLO JSON: {"cat":"..."}`, 30, { cat: 'otros' });
+    return (r && cats.includes(r.cat)) ? r.cat : 'otros';
+  };
+  const res = await com.addNota(rc.target, rc.scope || 'cliente', String(nota || ''), iaCls);
+  return { ok: !!(res && res.ok), target: rc.target, cat: res && res.cat };
+}
+
 // Mensaje cuando no encuentra el cliente: si dijo un nombre, lo aprendemos
 function noEncontrado(from, rawTarget, intent) {
   if (rawTarget) {
@@ -1638,6 +1675,18 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
   // A0.3) FASE 2 — modificar una FACTURA no es posible por API: responder la verdad.
   { const fm = mensajeFacturaNoEditable(texto); if (fm) return fm; }
 
+  // A0.4) FASE 1 — ¿el jefe está RESPONDIENDO a una aclaración que pidió el agente?
+  // Devuelve la continuidad al agente (usa el contexto guardado en estadoConversacion).
+  {
+    const pa = pendiente.get(from);
+    if (pa && pa.accion === 'agente_aclara' && (Date.now() - (pa.ts || 0)) < 10 * 60 * 1000) {
+      try {
+        const res = await require('./agente').intentar({ texto, from, imagenes, puerta: 'aclara' });
+        if (res && res.handled) return res.reply;
+      } catch (e) { console.error('[Agente] aclara:', e.message); }
+    }
+  }
+
   // A) ¿Estábamos aprendiendo un alias? La respuesta es el nombre real.
   const pend = pendiente.get(from);
 
@@ -2115,7 +2164,7 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
     if (/\b(borra|elimina|quita)\b[\s\S]*\bnota/.test(norm(texto))) return handlerNotaBorrar(texto, from, ctx);
     // Añadir nota: "apunta/anota/recuerda en <comunidad> [que/:] <texto>"
     const mAdd = texto.match(/(?:ap[uú]nta(?:me)?|an[oó]ta(?:me)?|recuerda|guarda)\b[\s\S]*?\ben\s+([\s\S]+)$/i);
-    if (mAdd) return handlerNotaAdd(mAdd[1].trim(), from, ctx);
+    if (mAdd) return handlerNotaAdd(mAdd[1].trim(), from, ctx, texto);
 
     // Consultar ficha de comunidad (no confundir con gasto de proveedores)
     if (!/proveedor|gastamos|pagado|compramos|compra a/.test(n) &&
@@ -2130,7 +2179,13 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
   if (intent === 'presupuestos') return handlerPresupuestos(texto, from, scope, rawTarget);
   if (intent === 'pedidos')      return handlerPedidos(texto, from, scope, rawTarget);
 
-  // Ninguna regla ni el clasificador lo entendieron → lo registramos para ir mejorando.
+  // Puerta A (Fase 1): antes de rendirse, que lo intente el agente (fallback).
+  try {
+    const res = await require('./agente').intentar({ texto, from, imagenes, puerta: 'A' });
+    if (res && res.handled) return res.reply;
+  } catch (e) { console.error('[Agente] puertaA:', e.message); }
+
+  // Ninguna regla, ni el clasificador, ni el agente lo entendieron → lo registramos.
   await registrarFallo(from, texto);
   return `👋 Puedo ayudarte con:\n\n` +
     `📌 *Resumen* — escribe "resumen" para ver el negocio de un vistazo\n` +
@@ -2381,13 +2436,22 @@ async function handlerPendienteDone(texto, from, ctx = {}) {
   return `✅ Hecho: *${done.texto}*.`;
 }
 
-async function handlerNotaAdd(resto, from, ctx = {}) {
+async function handlerNotaAdd(resto, from, ctx = {}, textoOriginal = null) {
   if (ctx.rol && ctx.rol !== 'owner') return '🔒 Esta acción la gestiona la oficina de Corp.';
   resto = String(resto || '').trim();
   if (!resto) return '¿Qué apunto y en qué comunidad? Ej: *"apunta en Illa Verda que la caldera es Roca"*.';
 
-  const { scope, target } = await resolver(resto, resto);
-  if (!target) return `No reconozco la comunidad. Empieza por el nombre, ej: *"apunta en Illa Verda que ..."*.`;
+  // Puerta B (Fase 1): NO adivinar la comunidad. Si no resuelve con CONFIANZA, que
+  // lo decida el agente (¿es agenda personal? ¿qué comunidad?) — nunca archivar a ciegas.
+  const rc = await resolverConConfianza(resto, resto);
+  if (!rc.target || rc.confianza !== 'alta') {
+    try {
+      const res = await require('./agente').intentar({ texto: textoOriginal || resto, from, imagenes: [], puerta: 'B' });
+      if (res && res.handled) return res.reply;
+    } catch (e) { console.error('[Agente] puertaB:', e.message); }
+    return '¿En qué comunidad lo apunto? No lo tengo claro (dímela y la aprendo).';
+  }
+  const { scope, target } = rc;
 
   // Separar la nota: quitamos el nombre de la comunidad del principio (sin cortar el resto)
   const STOP = new Set(['cp', 'c', 'p', 'comunidad', 'comunitat', 'propietarios', 'propietaris', 'de', 'del', 'la', 'el', 'los', 'las']);
@@ -3148,4 +3212,4 @@ Responde SOLO JSON: {"nombre":"..."}`,
   return (r && r.nombre) ? String(r.nombre).trim() : null;
 }
 
-module.exports = { responderConsulta, vocabularioVoz, estructurarAmidamentPdf, estructurarAmidamentTexto, estructurarPresupuestoPdf, reescribirPartidas, importarDocumento, sugerirNombreObra, parseModPresupuesto, mensajeFacturaNoEditable };
+module.exports = { responderConsulta, vocabularioVoz, estructurarAmidamentPdf, estructurarAmidamentTexto, estructurarPresupuestoPdf, reescribirPartidas, importarDocumento, sugerirNombreObra, parseModPresupuesto, mensajeFacturaNoEditable, resolverConConfianza, _resolverConConfianza: resolverConConfianza, _ejecutarNotaComunidad };
