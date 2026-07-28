@@ -445,15 +445,17 @@ async function clasificar(texto) {
 Pregunta: "${texto}"
 
 Responde SOLO un JSON válido, sin markdown:
-{"intent":"facturas|presupuestos|pedidos|otro","scope":"cliente|familia|general","rawTarget":"nombre tal cual lo dice, o null"}
+{"intent":"facturas|presupuestos|pedidos|compras|otro","scope":"cliente|familia|general","rawTarget":"nombre tal cual lo dice, o null","material":"el material/artículo buscado, o null"}
 
-- intent "facturas": deudas, cobros, lo que deben, facturas pendientes, quién más debe.
+- intent "facturas": deudas, cobros, lo que deben, facturas pendientes, quién más debe (de CLIENTES).
 - intent "presupuestos": presupuestos / ofertas (aceptados, pendientes, etc.).
 - intent "pedidos": pedidos de trabajo, partes, trabajos abiertos o en curso.
+- intent "compras": COSTE/precio de COMPRA de un material, dónde/cuándo lo compramos, en qué factura de PROVEEDOR aparece un artículo ("cuánto nos costó el Metabo", "precio de compra de la broca"). Distinto de "facturas" (deudas de cliente).
 - intent "otro": saludos o cosas que no encajan.
 - scope "general": el total, todos, resumen, ranking. "cliente"/"familia": menciona uno concreto.
-- rawTarget: el nombre del cliente/familia/sitio tal cual lo escribió, o null.`;
-  return iaJson(prompt, 120, { intent: 'otro', scope: 'general', rawTarget: null });
+- rawTarget: para "compras", el PROVEEDOR si lo menciona (o null); para el resto, el cliente/familia/sitio tal cual, o null.
+- material: SOLO para "compras", el artículo buscado (marca/referencia) tal cual; null en el resto.`;
+  return iaJson(prompt, 150, { intent: 'otro', scope: 'general', rawTarget: null, material: null });
 }
 
 async function elegirTarget(texto, candidatos) {
@@ -1151,6 +1153,108 @@ function detectarPeriodo(textoNorm) {
   }
   if (yearMatch) { const yy = +yearMatch[1]; return rango(new Date(yy, 0, 1), new Date(yy + 1, 0, 1), `${yy}`); }
   return null;
+}
+
+// ── §3.6: buscar el COSTE de un material en las facturas de PROVEEDOR (compras) ──
+// A nivel de LÍNEA (qué compramos, cuánto costó, en qué factura). Distinto del gasto
+// AGREGADO (handlerGasto). Nunca inventa precios: salen de StelOrder.
+function _fmtFechaCorta(d) {
+  const s = String(d || '').slice(0, 10);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : s;
+}
+// Precios de una línea de compra COMO VIENEN EN EL GET (misma lógica que
+// fmtLineaConcepto): total de línea = total-amount; unitario = unit-price ?? price
+// (o total-amount / units). item-base-price es de ESCRITURA, no llega en el GET.
+function _preciosLineaCompra(l) {
+  const u = Number(l['units'] ?? l['quantity']);
+  const units = Number.isFinite(u) ? u : 0;
+  let total = Number(l['total-amount']);
+  let unit = Number(l['unit-price'] ?? l['price']);
+  if (!Number.isFinite(unit) && Number.isFinite(total) && units) unit = total / units;
+  if (!Number.isFinite(total) && Number.isFinite(unit)) total = unit * units;
+  return { units, unit: Number.isFinite(unit) ? unit : null, total: Number.isFinite(total) ? total : null };
+}
+function _resolverProveedor(nombre, suppliers) {
+  const r = norm(nombre);
+  if (!r) return { supplier: null };
+  const exact = suppliers.filter(s => norm(s.name) === r);
+  if (exact.length === 1) return { supplier: exact[0] };
+  const sub = suppliers.filter(s => { const n = norm(s.name); return n.length >= 4 && (n.includes(r) || r.includes(n)); });
+  if (sub.length === 1) return { supplier: sub[0] };
+  if (sub.length > 1) return { ambiguo: true };
+  const fz = suppliers.map(s => ({ s, sim: similitud(r, norm(s.name)) })).filter(x => x.sim >= 0.6).sort((a, b) => b.sim - a.sim);
+  if (fz.length === 1) return { supplier: fz[0].s };
+  if (fz.length > 1 && (fz[0].sim - fz[1].sim) > 0.15) return { supplier: fz[0].s };
+  if (fz.length > 1) return { ambiguo: true };
+  return { supplier: null };
+}
+function extraerMaterialProveedor(texto) {
+  const n = norm(texto);
+  let proveedor = null;
+  const mp = n.match(/\b(?:factura de|proveedor|compramos? (?:en|a)|adquirimos en)\s+([a-z0-9ñ.&' -]{3,30}?)(?:\s+(?:el|la|los|las|un|una)\b|$)/);
+  if (mp) proveedor = mp[1].trim();
+  let m = n
+    .replace(/\b(cuanto|cuanta|cuantos|cuantas|nos|me|te|le|se)\b/g, ' ')
+    .replace(/\b(costo|cuesta|vale|coste|precio|de compra|compra|compramos|compraste|comprado|adquirimos|pagamos|pago|ultimo|donde|en que factura|factura|proveedor|salio|sale|aparece|figura)\b/g, ' ')
+    .replace(/\b(el|la|los|las|un|una|unos|unas|del|de|al|a|por|en|con|para)\b/g, ' ');
+  if (proveedor) m = m.replace(new RegExp('\\b' + proveedor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'g'), ' ');
+  m = m.replace(/\s{2,}/g, ' ').trim();
+  return { material: m || null, proveedor };
+}
+
+async function handlerBuscarCompras(texto, from, { material = null, proveedor = null } = {}) {
+  const invs = await stel.getPurchaseInvoices().catch(() => null);
+  if (!invs) return 'Ahora mismo no puedo consultar las compras (StelOrder no responde). Inténtalo en un momento.';
+
+  let mat = String(material || '').trim();
+  if (!mat) { const ex = extraerMaterialProveedor(texto); mat = ex.material || ''; if (!proveedor) proveedor = ex.proveedor; }
+  mat = mat.trim();
+  if (mat.length < 2) return '¿Qué material busco? Dime la marca o la referencia, p. ej. *"cuánto nos costó el Metabo"*.';
+
+  let invsF = invs, provTxt = '';
+  if (proveedor) {
+    const { suppliers } = await stel.getSuppliers().catch(() => ({ suppliers: [] }));
+    const rp = _resolverProveedor(proveedor, suppliers);
+    if (rp.ambiguo) return `¿Qué proveedor exactamente? Tengo varios parecidos a *"${proveedor}"*. Dímelo más concreto.`;
+    if (rp.supplier) { invsF = invs.filter(i => String(i.supplierId) === String(rp.supplier.id)); provTxt = ` en ${rp.supplier.name}`; }
+  }
+
+  const nMat = norm(mat);
+  const hits = [];
+  for (const inv of invsF) {
+    for (const l of (inv.lines || [])) {
+      if (l.deleted) continue;
+      if (l['line-type'] && l['line-type'] !== 'ITEM') continue;
+      const nombre = String(l['item-name'] || l['item-description'] || '').trim();
+      if (!nombre) continue;
+      const nNom = norm(nombre);
+      if (!(nNom.includes(nMat) || nMat.includes(nNom) || similitud(nMat, nNom) >= 0.5)) continue;
+      const pr = _preciosLineaCompra(l);
+      hits.push({ fpr: inv.number, supplier: inv.supplier, date: inv.date, itemName: nombre, units: pr.units, unit: pr.unit, total: pr.total });
+    }
+  }
+  if (!hits.length) return `No encuentro compras de *«${mat}»*${provTxt}. Prueba con otra palabra (marca o referencia).`;
+
+  hits.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  const top = hits.slice(0, 5);
+  contexto.set(from, { tipo: 'compras', material: mat, ts: Date.now() });
+
+  const lineas = top.map(h => {
+    const precioTxt = (!h.unit && !h.total)
+      ? '(sin precio en la línea)'
+      : (h.unit != null && h.unit !== 0)
+        ? `${h.units || 1} ud × ${fmtEur(h.unit)}${h.total != null ? ` = ${fmtEur(h.total)}` : ''}`
+        : `${h.units || 1} ud = ${fmtEur(h.total)}`;
+    const f = _fmtFechaCorta(h.date);
+    return `• *${h.fpr}* · ${h.supplier}${f ? ` · ${f}` : ''}\n  ${h.itemName} → ${precioTxt}`;
+  }).join('\n');
+
+  const nRef = ((String(top[0].fpr).match(/\d+/) || [''])[0]).replace(/^0+/, '') || top[0].fpr;
+  let out = `🔎 *"${mat}"*${provTxt} — ${hits.length} compra${hits.length === 1 ? '' : 's'} (de más reciente a más antigua)\n\n${lineas}`;
+  if (hits.length > top.length) out += `\n\n…y ${hits.length - top.length} más.`;
+  out += `\n\n_Ver la factura entera: "conceptos del ${nRef}"_`;
+  return out;
 }
 
 async function handlerGasto(texto, from) {
@@ -2122,6 +2226,24 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
     }
   }
 
+  // C0.6) §3.6 — COSTE de un MATERIAL en compras (nivel de LÍNEA). ANTES del gasto
+  // AGREGADO (C0.7), porque "compramos" también dispara el gasto. Distingue material
+  // (línea) de gasto total: "cuánto gastamos"/"compras totales" van al gasto.
+  {
+    const nc = norm(texto);
+    const esCompraMaterial =
+      /\bnos cost/.test(nc) ||
+      /\bprecio de compra\b/.test(nc) ||
+      /\bultimo precio\b/.test(nc) ||
+      /\ben que factura\b[\s\S]*\b(compr|proveedor|aparece|salio|figura)/.test(nc) ||
+      /\bdonde\b[\s\S]*\b(compr|adquir)/.test(nc) ||
+      /\bcuant[oa]s?\b[\s\S]*\b(cost|cuesta|vale)/.test(nc) ||
+      /\b(compra(mos)?|compraste|adquirimos)\b[\s\S]*\b(el|la|los|las)\b/.test(nc);
+    const esAgregado = /\b(gastamos|gastado|gasto total|compras totales|total de (gasto|compra)|en total|este a[nñ]o|el a[nñ]o|del mes|este mes)\b/.test(nc)
+      && !/\bnos cost/.test(nc) && !/\bprecio de compra\b/.test(nc);
+    if (esCompraMaterial && !esAgregado) return handlerBuscarCompras(texto, from, {});
+  }
+
   // C0.7) ¿Análisis de GASTO / compras? ("qué proveedor gastamos más este año", "cuánto pagamos en X")
   {
     const n = norm(texto);
@@ -2197,6 +2319,7 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
     return 'Ahora mismo no consigo entenderte bien 🧠 (problema temporal con mi IA). Prueba otra vez en un momento, por favor.';
   }
   const { intent, scope, rawTarget } = cl;
+  if (intent === 'compras')      return handlerBuscarCompras(texto, from, { material: cl.material, proveedor: rawTarget });
   if (intent === 'facturas')     return handlerFacturas(texto, from, scope, rawTarget);
   if (intent === 'presupuestos') return handlerPresupuestos(texto, from, scope, rawTarget);
   if (intent === 'pedidos')      return handlerPedidos(texto, from, scope, rawTarget);
@@ -3234,4 +3357,4 @@ Responde SOLO JSON: {"nombre":"..."}`,
   return (r && r.nombre) ? String(r.nombre).trim() : null;
 }
 
-module.exports = { responderConsulta, vocabularioVoz, estructurarAmidamentPdf, estructurarAmidamentTexto, estructurarPresupuestoPdf, reescribirPartidas, importarDocumento, sugerirNombreObra, parseModPresupuesto, mensajeFacturaNoEditable, resolverConConfianza, _resolverConConfianza: resolverConConfianza, _ejecutarNotaComunidad, pingIA, clasificar };
+module.exports = { responderConsulta, vocabularioVoz, estructurarAmidamentPdf, estructurarAmidamentTexto, estructurarPresupuestoPdf, reescribirPartidas, importarDocumento, sugerirNombreObra, parseModPresupuesto, mensajeFacturaNoEditable, resolverConConfianza, _resolverConConfianza: resolverConConfianza, _ejecutarNotaComunidad, pingIA, clasificar, handlerBuscarCompras, extraerMaterialProveedor };
