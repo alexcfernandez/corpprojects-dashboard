@@ -132,4 +132,19 @@ test('GATE: "apunta en Illa Verda que la caldera es Roca" → nota de comunidad 
   assert.match(reply, /Illa Verda/);
 });
 
+// ── Parte 1: hora ambigua → preguntar (mecanismo de continuidad) ──
+test('hora ambigua "7.30" → pregunta mañana/tarde → "de la tarde" → evento 19:30', async () => {
+  calInsertBody = null; estado._cache.clear();
+  agente._impl.llamarModelo = async () => ({ tipo: 'texto', texto: '¿mañana o tarde? (07:30 o 19:30)' });
+  const r1 = await agente.intentar({ texto: 'apunta mañana a las 7.30 dentista', from: OWNER, puerta: 'A' });
+  await tick();
+  assert.match(r1.reply, /mañana o tarde/i);
+  assert.equal(estado.get(OWNER).accion, 'agente_aclara');
+
+  agente._impl.llamarModelo = async () => ({ tipo: 'tool', name: 'crear_evento_agenda', input: { fecha: '2026-08-02', hora: '19:30', titulo: 'dentista' } });
+  const r2 = await agente.intentar({ texto: 'de la tarde', from: OWNER });
+  assert.match(r2.reply, /agenda/i);
+  assert.equal(calInsertBody.start.dateTime, '2026-08-02T19:30:00');
+});
+
 test.after(() => { Module._load = origLoad; });
