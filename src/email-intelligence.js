@@ -208,7 +208,7 @@ async function clasificarEmail(de, asunto, cuerpo) {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: process.env.EMAIL_IA_MODEL || 'claude-haiku-4-5-20251001',
+        model: require('./config').ia.clasificador,
         max_tokens: 250,
         messages: [{
           role: 'user',
@@ -494,7 +494,7 @@ async function diagnosticoIA() {
     'Buenos días, querría pedir presupuesto para reformar el portal de nuestra comunidad. Gracias.'
   );
   if (r.iaError) return { hasKey, ok: false, error: r.iaError, uso };
-  return { hasKey, ok: true, resultado: r, uso, modelo: process.env.EMAIL_IA_MODEL || 'claude-haiku-4-5-20251001' };
+  return { hasKey, ok: true, resultado: r, uso, modelo: require('./config').ia.clasificador };
 }
 
 // ── Reclasificar los emails que cayeron en el fallback (confianza <= 0.1) ──

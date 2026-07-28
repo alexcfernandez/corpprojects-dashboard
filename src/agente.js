@@ -12,7 +12,7 @@
 
 const estado = require('./estadoConversacion');
 
-const MODELO  = () => process.env.AGENTE_IA_MODEL || 'claude-sonnet-4-6';
+const MODELO  = () => require('./config').ia.agente;
 const MAX_DIA = () => parseInt(process.env.AGENTE_IA_MAX_DIA || '150', 10);
 const TTL_ACLARA = 10 * 60 * 1000;
 

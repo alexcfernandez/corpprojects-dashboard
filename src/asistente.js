@@ -8,6 +8,7 @@
 const stel = require('./stelorder');
 const acceso = require('./acceso');   // control de acceso por número (owner/cliente/desconocido)
 const pendientes = require('./pendientes'); // pendientes/recordatorios del owner (Fase 4a)
+const CONFIG = require('./config');   // modelos IA centralizados, etc.
 const com  = require('./comunidades');
 const attendance = require('./attendance');
 const trabajadores = require('./trabajadores');
@@ -156,7 +157,7 @@ async function iaJson(prompt, maxTokens, fallback, model) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
-        model: model || process.env.EMAIL_IA_MODEL || 'claude-haiku-4-5-20251001',
+        model: model || CONFIG.ia.clasificador,
         max_tokens: maxTokens,
         messages: [{ role: 'user', content: prompt }]
       })
@@ -165,7 +166,19 @@ async function iaJson(prompt, maxTokens, fallback, model) {
     if (!r.ok) throw new Error(`API ${r.status}: ${JSON.stringify(data).slice(0, 150)}`);
     const txt = data.content?.[0]?.text || '{}';
     return parseJsonLoose(txt);
-  } catch (e) { console.error('[Asistente] IA error:', e.message); return fallback; }
+  } catch (e) {
+    // Distinguir "IA CAÍDA" (red/modelo) de una respuesta legítima: marcamos el
+    // fallback con __iaError SOLO si es objeto (no rompe a quien pasa fallback null).
+    console.error('[Asistente] IA error (modelo=' + (model || CONFIG.ia.clasificador) + '):', e.message);
+    return (fallback && typeof fallback === 'object') ? { ...fallback, __iaError: true } : fallback;
+  }
+}
+
+// Ping mínimo a un modelo para el health-check de arranque. true si responde.
+async function pingIA(model) {
+  if (!process.env.ANTHROPIC_API_KEY) return false;
+  const out = await iaJson('Responde SOLO: {"ok":true}', 10, { ok: false }, model);
+  return !!(out && out.__iaError !== true);
 }
 
 // Parser de JSON tolerante: arregla los fallos típicos de los modelos antes de
@@ -223,7 +236,7 @@ async function iaJsonVision(prompt, imagenes, maxTokens, fallback) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
-        model: process.env.PRESU_IA_MODEL || 'claude-sonnet-4-6',
+        model: CONFIG.ia.vision,
         max_tokens: maxTokens,
         messages: [{ role: 'user', content }]
       })
@@ -254,7 +267,7 @@ async function iaJsonDoc(prompt, base64, maxTokens, fallback, mediaType = 'appli
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
-        model: process.env.PRESU_IA_MODEL || 'claude-sonnet-4-6',
+        model: CONFIG.ia.vision,
         max_tokens: maxTokens,
         messages: [{ role: 'user', content }]
       })
@@ -422,7 +435,7 @@ ${JSON.stringify(lista)}
 
 Responde SOLO un JSON VÁLIDO, sin markdown:
 {"partidas":[{"nombre":"...","descripcion":"1) ...\\n2) ..."}]}`;
-  const out = await iaJson(prompt, 4000, null, process.env.PRESU_IA_MODEL || 'claude-sonnet-4-6');
+  const out = await iaJson(prompt, 4000, null, CONFIG.ia.vision);
   return out && Array.isArray(out.partidas) ? out.partidas : null;
 }
 
@@ -2174,7 +2187,16 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
   }
 
   // D) Enrutador
-  const { intent, scope, rawTarget } = await clasificar(texto);
+  const cl = await clasificar(texto);
+  // Blindaje (§1): si la LLAMADA al modelo falló (IA caída), NO tratarlo como
+  // "otro" (que caería al agente y disfrazaría el bot de "solo agenda"). Responder
+  // honesto y registrarlo de forma visible.
+  if (cl && cl.__iaError) {
+    console.error(`[Asistente] ⚠️ IA CAÍDA en el clasificador (modelo=${CONFIG.ia.clasificador}). Respondo honesto, NO agente.`);
+    await registrarFallo(from, texto, 'ia_caida');
+    return 'Ahora mismo no consigo entenderte bien 🧠 (problema temporal con mi IA). Prueba otra vez en un momento, por favor.';
+  }
+  const { intent, scope, rawTarget } = cl;
   if (intent === 'facturas')     return handlerFacturas(texto, from, scope, rawTarget);
   if (intent === 'presupuestos') return handlerPresupuestos(texto, from, scope, rawTarget);
   if (intent === 'pedidos')      return handlerPedidos(texto, from, scope, rawTarget);
@@ -2854,7 +2876,7 @@ Reglas:
 - "nif": NIF/CIF/DNI si lo dice; si no, null.
 - "familia": si menciona una de las familias disponibles (o muy parecida), devuelve ese nombre tal cual de la lista; si no, null.
 - Pon null en lo que no se diga. No inventes nada.`;
-  return iaJson(prompt, 800, null, process.env.PRESU_IA_MODEL || 'claude-sonnet-4-6');
+  return iaJson(prompt, 800, null, CONFIG.ia.vision);
 }
 
 async function resolverFamiliaCategoria(nombre) {
@@ -3014,7 +3036,7 @@ Reglas:
 - "horas": horas de jornada de esos trabajadores. "media jornada"/"medio día"/"mitja jornada" = 4; "jornada completa" o si no dice nada = 8; "N horas"/"Nh" = N. Si distintos trabajadores tienen DISTINTAS horas, sepáralos en asignaciones distintas.
 - Si el jefe ACLARA que una obra es la MISMA que otra ("la obra de Calonge, que es la de Pedrosa", "X o sea Y", "X que es Y"), es UNA SOLA obra: devuelve solo UNA (usa el nombre más formal del cliente/obra). NUNCA la dupliques.
 - Usa los nombres de trabajador tal como los diga (yo los caso luego). No inventes trabajadores que no menciona.`;
-  return iaJson(prompt, 1500, null, process.env.PRESU_IA_MODEL || 'claude-sonnet-4-6');
+  return iaJson(prompt, 1500, null, CONFIG.ia.vision);
 }
 
 // Casa el texto de una obra con un cliente de StelOrder (nombre exacto). Igual que
@@ -3212,4 +3234,4 @@ Responde SOLO JSON: {"nombre":"..."}`,
   return (r && r.nombre) ? String(r.nombre).trim() : null;
 }
 
-module.exports = { responderConsulta, vocabularioVoz, estructurarAmidamentPdf, estructurarAmidamentTexto, estructurarPresupuestoPdf, reescribirPartidas, importarDocumento, sugerirNombreObra, parseModPresupuesto, mensajeFacturaNoEditable, resolverConConfianza, _resolverConConfianza: resolverConConfianza, _ejecutarNotaComunidad };
+module.exports = { responderConsulta, vocabularioVoz, estructurarAmidamentPdf, estructurarAmidamentTexto, estructurarPresupuestoPdf, reescribirPartidas, importarDocumento, sugerirNombreObra, parseModPresupuesto, mensajeFacturaNoEditable, resolverConConfianza, _resolverConConfianza: resolverConConfianza, _ejecutarNotaComunidad, pingIA, clasificar };

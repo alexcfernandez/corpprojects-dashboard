@@ -2,6 +2,15 @@
 
 const CONFIG = {
 
+  // ── Modelos IA (fuente ÚNICA; override por env) ───────────────
+  // Un ID de modelo caducado no debe poder romper el bot desde varios sitios.
+  // Default a un modelo conocido-bueno; el health-check del arranque avisa si ❌.
+  ia: {
+    get clasificador() { return process.env.EMAIL_IA_MODEL  || 'claude-sonnet-4-6'; },
+    get agente()       { return process.env.AGENTE_IA_MODEL || 'claude-sonnet-4-6'; },
+    get vision()       { return process.env.PRESU_IA_MODEL  || 'claude-sonnet-4-6'; },
+  },
+
   // ── Rates por nombre (minúsculas) ─────────────────────────────
   rates: {
     'jose beliard':    26.72,

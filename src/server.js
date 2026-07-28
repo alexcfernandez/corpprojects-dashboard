@@ -90,15 +90,33 @@ const asistente = require('./asistente');
 //   'log'     → valida y AVISA en logs si no cuadra, pero procesa igual (default; rollout seguro).
 //   'enforce' → rechaza (403) las peticiones sin firma válida.
 // La URL debe ser la pública que Twilio llamó: TWILIO_WEBHOOK_URL o reconstruida.
+// URL PÚBLICA real que Twilio firmó (detrás del proxy SiteGround→Railway, http/https
+// y el host pueden diferir). Orden: PUBLIC_WEBHOOK_URL > TWILIO_WEBHOOK_URL >
+// reconstrucción con X-Forwarded-Proto/Host (fallback al host directo).
+function urlWebhookTwilio(req) {
+  if (process.env.PUBLIC_WEBHOOK_URL) return process.env.PUBLIC_WEBHOOK_URL;
+  if (process.env.TWILIO_WEBHOOK_URL) return process.env.TWILIO_WEBHOOK_URL;
+  const proto = String(req.get('x-forwarded-proto') || req.protocol || 'https').split(',')[0].trim();
+  const host  = String(req.get('x-forwarded-host') || req.get('host') || '').split(',')[0].trim();
+  return `${proto}://${host}${req.originalUrl}`;
+}
+
+let _firmaTwilioOkLogged = false; // para loguear el primer ✅ sin spamear
 function validarFirmaTwilio(req) {
   const mode = String(process.env.TWILIO_VALIDATE || 'log').toLowerCase();
   if (mode === 'off' || !process.env.TWILIO_AUTH_TOKEN) return 'skip';
   try {
     const sig = req.get('X-Twilio-Signature') || '';
-    const url = process.env.TWILIO_WEBHOOK_URL || `https://${req.get('host')}${req.originalUrl}`;
+    const url = urlWebhookTwilio(req);
     const ok = require('twilio').validateRequest(process.env.TWILIO_AUTH_TOKEN, sig, url, req.body || {});
-    if (ok) return 'ok';
-    console.warn(`[WhatsApp] Firma Twilio NO válida (modo ${mode}). url=${url}`);
+    if (ok) {
+      if (!_firmaTwilioOkLogged) {
+        console.log(`[WhatsApp] Firma Twilio ✅ válida (modo ${mode}). Ya se puede pasar a TWILIO_VALIDATE=enforce. url=${url}`);
+        _firmaTwilioOkLogged = true;
+      }
+      return 'ok';
+    }
+    console.warn(`[WhatsApp] Firma Twilio NO válida (modo ${mode}). url=${url} sig=${sig ? 'presente' : 'ausente'}`);
     return mode === 'enforce' ? 'invalid-enforce' : 'invalid-log';
   } catch (e) { console.error('[WhatsApp] validarFirma:', e.message); return 'skip'; }
 }
@@ -2235,6 +2253,19 @@ app.listen(PORT, () => {
   console.log(`📧 Email: ${process.env.EMAIL_USER ? '✅' : '⚠️'}`);
   console.log(`💬 WhatsApp: ${process.env.TWILIO_ACCOUNT_SID ? '✅' : '⚠️ Pendiente'}\n`);
   startScheduler();
+
+  // Health-check de los modelos IA (§1): un ping mínimo a cada modelo configurado.
+  // Un modelo caducado/no disponible se ve AQUÍ en el deploy, no cuando escribe un cliente.
+  (async () => {
+    const CONFIG = require('./config');
+    const { pingIA } = require('./asistente');
+    for (const [label, model] of [['clasificador', CONFIG.ia.clasificador], ['agente', CONFIG.ia.agente]]) {
+      let ok = false;
+      try { ok = await pingIA(model); } catch (e) { ok = false; }
+      console.log(`🤖 IA ${label}: ${ok ? '✅' : '❌ MODELO NO DISPONIBLE'} (modelo=${model})`);
+      if (!ok) console.error(`⚠️⚠️⚠️ IA ${label} NO RESPONDE (modelo=${model}). Revisa el ID del modelo / plan Anthropic: el bot no clasificará bien hasta arreglarlo.`);
+    }
+  })().catch(e => console.error('[IA health]', e.message));
 });
 
 module.exports = app;
