@@ -21,8 +21,10 @@ notif.sendEmail = async (opts) => { enviados.push(opts); return true; };
 process.env.INVOICE_INBOX_EMAIL = 'corpprojectsholding@gmail.com';
 
 // Descargas de Twilio simuladas (inyectadas)
-const descargarArchivo = async () => Buffer.from('PDFDATA').toString('base64');
-const descargarFoto = async () => ({ media_type: 'image/jpeg', data: Buffer.from('IMG').toString('base64') });
+const descargarArchivo = async () => Buffer.from('%PDF-1.4 fake').toString('base64');
+// PNG 1x1 válido (para que pdf-lib pueda embeberlo)
+const PNG_1x1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+const descargarFoto = async () => ({ media_type: 'image/png', data: PNG_1x1 });
 
 test('esReenvioFactura: detecta la palabra "factura"', () => {
   assert.equal(facturaWA.esReenvioFactura('sube esta factura'), true);
@@ -45,11 +47,15 @@ test('reenviarFactura con PDF → sendEmail al buzón con 1 adjunto', async () =
   assert.equal(logRows[0].nAdjuntos, 1);
 });
 
-test('reenviarFactura con varias fotos → un email con varios adjuntos', async () => {
+test('reenviarFactura con varias fotos → UN solo factura.pdf (multipágina) que empieza por %PDF-', async () => {
   enviados = [];
-  const r = await facturaWA.reenviarFactura({ from: 'x', pdf: null, fotos: [{ url: 'a', type: 'image/jpeg' }, { url: 'b', type: 'image/jpeg' }], descargarArchivo, descargarFoto });
+  const r = await facturaWA.reenviarFactura({ from: 'x', pdf: null, fotos: [{ url: 'a', type: 'image/png' }, { url: 'b', type: 'image/png' }], descargarArchivo, descargarFoto });
   assert.equal(r.ok, true);
-  assert.equal(enviados[0].attachments.length, 2);
+  assert.equal(enviados[0].attachments.length, 1, 'las fotos se combinan en un solo PDF');
+  const att = enviados[0].attachments[0];
+  assert.equal(att.contentType, 'application/pdf');
+  assert.equal(att.filename, 'factura.pdf');
+  assert.equal(att.content.slice(0, 5).toString(), '%PDF-', 'el adjunto es un PDF real');
 });
 
 test('reenviarFactura sin adjunto descargable → no envía, avisa', async () => {
