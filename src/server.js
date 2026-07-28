@@ -260,6 +260,20 @@ async function procesarWhatsApp(from, body, media = {}) {
 
   const fotosMsg = Array.isArray(media.fotos) ? media.fotos : [];
 
+  // FACTURA por WhatsApp (Parte 2): "factura" + hay adjunto REAL (PDF/foto de este
+  // mensaje o fotos mandadas antes) → reenviar al buzón que vigila n8n (→ StelOrder).
+  // Va ANTES de los flujos de imagen. Exige adjunto para no pisar "dame la factura 309".
+  {
+    const facturaWA = require('./facturaWhatsApp');
+    const bufEntry = bufferFotos.get(from);
+    const hayBuffer = !!(bufEntry && (Date.now() - bufEntry.ts) <= FOTO_BUFFER_TTL && bufEntry.fotos.length);
+    if (facturaWA.esReenvioFactura(texto) && (media.pdf || fotosMsg.length || hayBuffer)) {
+      const fotosFactura = [...bufferRecogerFotos(from), ...fotosMsg];
+      const r = await facturaWA.reenviarFactura({ from, pdf: media.pdf, fotos: fotosFactura, descargarArchivo, descargarFoto });
+      return responder(prefijo + r.reply);
+    }
+  }
+
   // CASO PDF: llega un PDF -> importador de presupuesto (amidament del arquitecto)
   if (media.pdf && media.pdf.url) {
     const b64 = await descargarArchivo(media.pdf.url);
@@ -273,7 +287,7 @@ async function procesarWhatsApp(from, body, media = {}) {
   // Acuse solo en la primera para no gastar mensajes ni spamear.
   if (!texto && fotosMsg.length) {
     const primera = bufferGuardarFotos(from, fotosMsg);
-    if (primera) return responder('📸 Foto(s) recibida(s). Manda las que quieras y al final dime qué hago (p. ej.: *"hazme un presupuesto de esto para Illa Verda"*).');
+    if (primera) return responder('📸 Foto(s) recibida(s). Dime qué hago: *"factura"* (la subo a StelOrder) o *"hazme un presupuesto de esto para Illa Verda"*.');
     return; // siguientes fotos: silencio
   }
 

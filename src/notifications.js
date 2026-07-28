@@ -55,9 +55,22 @@ async function sendWhatsAppTo(destinatario, message) {
 
 // ─── Enviar Email por la API de Gmail (HTTPS, no lo bloquea el host) ──
 // Reutiliza las mismas credenciales OAuth que ya funcionan para LEER correo.
-async function sendViaGmail({ from, to, bcc, subject, html, text }) {
+async function sendViaGmail({ from, to, bcc, subject, html, text, attachments }) {
   const { getGmailClient } = require('./email-intelligence');
   const gmail = getGmailClient();
+
+  // Con adjuntos, construimos el MIME con MailComposer (nodemailer) y lo enviamos
+  // por la API de Gmail. Evita montar multipart/mixed a mano.
+  if (attachments && attachments.length) {
+    const MailComposer = require('nodemailer/lib/mail-composer');
+    const compiled = await new Promise((resolve, reject) => {
+      new MailComposer({ from, to, bcc, subject, text, html, attachments }).compile().build((err, msg) => err ? reject(err) : resolve(msg));
+    });
+    const rawAtt = compiled.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    await gmail.users.messages.send({ userId: 'me', requestBody: { raw: rawAtt } });
+    return;
+  }
+
   const boundary = '=_cp_' + Date.now();
   const subjectEnc = `=?UTF-8?B?${Buffer.from(subject || '').toString('base64')}?=`;
   const headerLines = [
@@ -90,14 +103,14 @@ async function sendViaGmail({ from, to, bcc, subject, html, text }) {
 }
 
 // ─── Enviar Email ─────────────────────────────────────────────────
-async function sendEmail({ to, bcc, subject, html, text }) {
+async function sendEmail({ to, bcc, subject, html, text, attachments }) {
   if (!to) { console.warn('[Email] Sin destinatario, omitiendo'); return false; }
   const from = process.env.EMAIL_FROM || `Corp Projects <${process.env.EMAIL_USER || ''}>`;
 
   // 1) Preferimos la API de Gmail si hay OAuth configurado (mismo canal que leer).
   if (process.env.GMAIL_REFRESH_TOKEN && process.env.GMAIL_CLIENT_ID) {
     try {
-      await sendViaGmail({ from, to, bcc, subject, html, text });
+      await sendViaGmail({ from, to, bcc, subject, html, text, attachments });
       console.log(`[Email] Enviado (API Gmail) a ${to}${bcc ? ' (bcc '+bcc+')' : ''}: ${subject}`);
       return true;
     } catch (err) {
@@ -109,7 +122,7 @@ async function sendEmail({ to, bcc, subject, html, text }) {
   // 2) Plan B: SMTP (con timeouts; puede fallar si el host bloquea el puerto).
   try {
     const transporter = getTransporter();
-    await transporter.sendMail({ from, to, bcc, subject, html, text });
+    await transporter.sendMail({ from, to, bcc, subject, html, text, attachments });
     console.log(`[Email] Enviado (SMTP) a ${to}${bcc ? ' (bcc '+bcc+')' : ''}: ${subject}`);
     return true;
   } catch (err) {
