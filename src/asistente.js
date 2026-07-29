@@ -1189,16 +1189,20 @@ function _resolverProveedor(nombre, suppliers) {
   if (fz.length > 1) return { ambiguo: true };
   return { supplier: null };
 }
+// Extractor determinista (FALLBACK). En producción la extracción fiable la hace
+// el clasificador IA; esto solo cubre cuando la IA no da material. Quita SIGNOS
+// (¿ ? ¡ !) y separa el proveedor (nombre propio tras "de/en") del material.
 function extraerMaterialProveedor(texto) {
-  const n = norm(texto);
+  const orig = String(texto || '');
+  // Proveedor: nombre propio (mayúscula inicial) tras "de/en/proveedor".
   let proveedor = null;
-  const mp = n.match(/\b(?:factura de|proveedor|compramos? (?:en|a)|adquirimos en)\s+([a-z0-9ñ.&' -]{3,30}?)(?:\s+(?:el|la|los|las|un|una)\b|$)/);
-  if (mp) proveedor = mp[1].trim();
-  let m = n
+  const mo = orig.match(/\b(?:de|en|proveedor)\s+([A-ZÁÉÍÓÚÑ][\wÁÉÍÓÚÑñáéíóú.&'-]+)/);
+  if (mo) proveedor = mo[1];
+  let m = norm(orig).replace(/[^a-z0-9ñ ]+/g, ' ') // fuera signos/puntuación
     .replace(/\b(cuanto|cuanta|cuantos|cuantas|nos|me|te|le|se)\b/g, ' ')
-    .replace(/\b(costo|cuesta|vale|coste|precio|de compra|compra|compramos|compraste|comprado|adquirimos|pagamos|pago|ultimo|donde|en que factura|factura|proveedor|salio|sale|aparece|figura)\b/g, ' ')
-    .replace(/\b(el|la|los|las|un|una|unos|unas|del|de|al|a|por|en|con|para)\b/g, ' ');
-  if (proveedor) m = m.replace(new RegExp('\\b' + proveedor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'g'), ' ');
+    .replace(/\b(costo|cuesta|vale|coste|precio|compra|compramos|compraste|comprado|adquirimos|pagamos|pago|ultimo|donde|factura|proveedor|salio|sale|aparece|figura)\b/g, ' ')
+    .replace(/\b(el|la|los|las|un|una|unos|unas|del|de|al|a|por|en|con|para|que|y|o)\b/g, ' ');
+  if (proveedor) m = m.replace(new RegExp('\\b' + norm(proveedor).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'g'), ' ');
   m = m.replace(/\s{2,}/g, ' ').trim();
   return { material: m || null, proveedor };
 }
@@ -1209,7 +1213,8 @@ async function handlerBuscarCompras(texto, from, { material = null, proveedor = 
 
   let mat = String(material || '').trim();
   if (!mat) { const ex = extraerMaterialProveedor(texto); mat = ex.material || ''; if (!proveedor) proveedor = ex.proveedor; }
-  mat = mat.trim();
+  // Limpiar signos/puntuación del material (¿ ? etc.) para no buscar «¿ metabo?».
+  mat = norm(mat).replace(/[^a-z0-9ñ ]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
   if (mat.length < 2) return '¿Qué material busco? Dime la marca o la referencia, p. ej. *"cuánto nos costó el Metabo"*.';
 
   let invsF = invs, provTxt = '';
@@ -1220,7 +1225,8 @@ async function handlerBuscarCompras(texto, from, { material = null, proveedor = 
     if (rp.supplier) { invsF = invs.filter(i => String(i.supplierId) === String(rp.supplier.id)); provTxt = ` en ${rp.supplier.name}`; }
   }
 
-  const nMat = norm(mat);
+  const nMat = mat; // ya normalizado y sin signos
+  const palabras = nMat.split(' ').filter(w => w.length >= 3);
   const hits = [];
   for (const inv of invsF) {
     for (const l of (inv.lines || [])) {
@@ -1229,7 +1235,13 @@ async function handlerBuscarCompras(texto, from, { material = null, proveedor = 
       const nombre = String(l['item-name'] || l['item-description'] || '').trim();
       if (!nombre) continue;
       const nNom = norm(nombre);
-      if (!(nNom.includes(nMat) || nMat.includes(nNom) || similitud(nMat, nNom) >= 0.5)) continue;
+      // Estricto: la frase completa aparece, o TODAS las palabras (≥3) aparecen,
+      // o una sola palabra casa por parecido alto. Evita falsos positivos tipo
+      // "saltoki metabo" → "BOLSA SALTOKI" (que el bigrama laxo dejaba pasar).
+      const casa = (nMat && nNom.includes(nMat))
+        || (palabras.length > 0 && palabras.every(w => nNom.includes(w)))
+        || (palabras.length === 1 && palabras[0].length >= 4 && similitud(palabras[0], nNom) >= 0.72);
+      if (!casa) continue;
       const pr = _preciosLineaCompra(l);
       hits.push({ fpr: inv.number, supplier: inv.supplier, date: inv.date, itemName: nombre, units: pr.units, unit: pr.unit, total: pr.total });
     }
@@ -2241,7 +2253,12 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
       /\b(compra(mos)?|compraste|adquirimos)\b[\s\S]*\b(el|la|los|las)\b/.test(nc);
     const esAgregado = /\b(gastamos|gastado|gasto total|compras totales|total de (gasto|compra)|en total|este a[nñ]o|el a[nñ]o|del mes|este mes)\b/.test(nc)
       && !/\bnos cost/.test(nc) && !/\bprecio de compra\b/.test(nc);
-    if (esCompraMaterial && !esAgregado) return handlerBuscarCompras(texto, from, {});
+    if (esCompraMaterial && !esAgregado) {
+      // Extracción FIABLE de material/proveedor con el clasificador (IA); si la IA
+      // no da material (o no hay clave), el handler cae al extractor determinista.
+      const cl = await clasificar(texto).catch(() => ({}));
+      return handlerBuscarCompras(texto, from, { material: cl.material || null, proveedor: cl.rawTarget || null });
+    }
   }
 
   // C0.7) ¿Análisis de GASTO / compras? ("qué proveedor gastamos más este año", "cuánto pagamos en X")

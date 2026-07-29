@@ -22,6 +22,7 @@ const INVS = [
   { id: '190', number: 'FPR00190', supplierId: '10', supplier: 'Saltoki', date: '2026-03-03', lines: [{ 'item-name': 'METABO SB 18 LTX', units: 2, 'unit-price': 121.5, 'total-amount': 243 }] },
   { id: '151', number: 'FPR00151', supplierId: '11', supplier: 'Ferretería X', date: '2025-11-14', lines: [{ 'item-name': 'METABO SB 18', units: 1, 'total-amount': 129 }] }, // solo total → unitario = total/units
   { id: '099', number: 'FPR00099', supplierId: '10', supplier: 'Saltoki', date: '2026-01-01', lines: [{ 'item-description': 'Cemento gris', units: 10, 'total-amount': 0 }] }, // sin precio
+  { id: '700', number: 'FPR00700', supplierId: '10', supplier: 'Saltoki', date: '2026-05-01', lines: [{ 'item-description': 'BOLSA SALTOKI', units: 1, 'unit-price': 0.05, 'total-amount': 0.05 }] }, // NO debe casar con "metabo"
 ];
 stel.getPurchaseInvoices = async () => INVS;
 stel.getSuppliers = async () => ({ suppliers: [{ id: '10', name: 'Saltoki' }, { id: '11', name: 'Ferretería X' }, { id: '12', name: 'Salto Deportes' }], supplierMap: {} });
@@ -40,11 +41,25 @@ test('material "metabo" → coincidencias ordenadas por fecha desc, con FPR/prov
   assert.match(r, /conceptos del 214/);
 });
 
-test('filtro por proveedor "Saltoki" restringe a ese proveedor', async () => {
+test('filtro por proveedor "Saltoki" restringe y NO casa con "BOLSA SALTOKI"', async () => {
   const r = await asistente.handlerBuscarCompras('', OWNER, { material: 'metabo', proveedor: 'Saltoki' });
   assert.match(r, /2 compras/);
   assert.match(r, /en Saltoki/);
   assert.doesNotMatch(r, /Ferretería X/);
+  assert.doesNotMatch(r, /BOLSA/i); // el falso positivo del bigrama laxo, ya corregido
+});
+
+test('extractor: quita signos ¿? y separa el proveedor del material', () => {
+  assert.deepEqual(asistente.extraerMaterialProveedor('¿cuánto nos costó el Metabo?'), { material: 'metabo', proveedor: null });
+  const r = asistente.extraerMaterialProveedor('¿en qué factura de Saltoki compramos el Metabo?');
+  assert.equal(r.material, 'metabo');
+  assert.equal(r.proveedor, 'Saltoki');
+});
+
+test('sin separar proveedor, el match estricto tampoco trae basura ("saltoki metabo")', async () => {
+  // aunque el material llegue "sucio" con el proveedor, no debe casar BOLSA SALTOKI
+  const r = await asistente.handlerBuscarCompras('', OWNER, { material: 'saltoki metabo' });
+  assert.doesNotMatch(r, /BOLSA/i);
 });
 
 test('proveedor ambiguo ("Salto") → pregunta, no elige', async () => {
