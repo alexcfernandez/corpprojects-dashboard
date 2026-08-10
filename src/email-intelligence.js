@@ -320,8 +320,13 @@ function verificarPermisos(remitente, clasificacion) {
 // ── Procesar un email individual ──────────────────────────────────
 // ── Etiqueta interna para marcar emails ya procesados ────────────
 // Evita que un email ya tratado (pero aún "no leído" en Gmail) se cuente
-// como nuevo en cada poll. NO altera el estado leído/no leído salvo en el
-// procesado normal (que ya lo marcaba como leído de antes).
+// como nuevo en cada poll.
+// El sistema NO toca el estado leido/no leido del buzon: eso es de Alex.
+// El control de "ya procesado" lo lleva la etiqueta CorpProcessed + la coleccion
+// `emails` de Mongo. Si alguna vez hiciera falta volver al comportamiento antiguo,
+// basta con poner EMAIL_MARCAR_LEIDO=true en Railway (sin tocar codigo).
+const MARCAR_LEIDO = process.env.EMAIL_MARCAR_LEIDO === 'true';
+
 let _processedLabelId = null;
 async function ensureProcessedLabel(gmail) {
   if (_processedLabelId) return _processedLabelId;
@@ -427,7 +432,7 @@ async function procesarEmail(gmail, messageId) {
     try { await require('./gestores').aprenderDeEmail(de, asunto, cuerpo); }
     catch (e) { console.warn('[Gestores] aprender:', e.message); }
 
-    await etiquetarProcesado(gmail, messageId, true);
+    await etiquetarProcesado(gmail, messageId, MARCAR_LEIDO);
 
   } finally {
     await client.close();
@@ -441,7 +446,7 @@ async function pollEmails() {
     const gmail = getGmailClient();
     const res = await gmail.users.messages.list({
       userId: 'me',
-      q: 'is:unread newer_than:2d -from:me -label:CorpProcessed',
+      q: `${MARCAR_LEIDO ? 'is:unread ' : ''}newer_than:2d -from:me -label:CorpProcessed`,
       maxResults: 20
     });
     const mensajes = res.data.messages || [];
