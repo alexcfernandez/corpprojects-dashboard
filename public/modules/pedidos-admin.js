@@ -190,9 +190,29 @@
     }).join('');
   }
 
+  function ensureStyles() {
+    if (document.getElementById('pd-card-css')) return;
+    const s = document.createElement('style');
+    s.id = 'pd-card-css';
+    s.textContent = `
+    .pd-list{display:flex;flex-direction:column;gap:10px}
+    .pd-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:13px 14px}
+    .pd-card .pd-top{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+    .pd-num{font-weight:700;font-size:14px}
+    .pd-days{margin-left:auto;font-weight:800;font-size:15px;font-variant-numeric:tabular-nums;white-space:nowrap}
+    .pd-client{font-size:14px;color:var(--text);margin-top:7px;font-weight:500}
+    .pd-sit{font-size:12.5px;color:var(--text2);margin-top:5px;display:flex;align-items:center;flex-wrap:wrap;gap:4px}
+    .pd-extra{font-size:11.5px;margin-top:4px}
+    .pd-controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
+    .pd-controls select{flex:1 1 140px;min-width:120px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px 10px;color:var(--text);font-size:13px;font-family:inherit;-webkit-appearance:none}
+    .pd-doc{margin-left:auto;color:var(--accent,#4d9cf8);text-decoration:none;font-weight:600;font-size:13px;padding:8px 10px;border:1px solid var(--border2);border-radius:8px;white-space:nowrap}`;
+    document.head.appendChild(s);
+  }
+
   function paint() {
     const box = document.getElementById('pd-table');
     if (!box) return;
+    ensureStyles();
     let list = state.all.slice();
     if (state.filter === 'completados') {
       list = list.filter(p => p.workStatus === 'done');
@@ -210,39 +230,28 @@
         .join('');
       // Prioridad: la guardada, o por defecto según tipo (Actuación→urgente)
       const prio = p.assignedPriority || (/actuaci/i.test(p.type || '') ? 'urgent' : 'normal');
-      const sel = `<select id="pd-user-${p.id}" onchange="CP.PedidosAdmin.assignRow('${p.id}')" style="background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:5px 8px;color:var(--text);font-size:12px;max-width:140px">${opts}</select>`;
-      const selPrio = `<select id="pd-prio-${p.id}" onchange="CP.PedidosAdmin.assignRow('${p.id}')" style="background:var(--bg2);border:1px solid ${prio==='urgent'?'rgba(220,38,38,.5)':'var(--border2)'};border-radius:6px;padding:5px 8px;color:${prio==='urgent'?'#ef4444':'var(--text)'};font-size:12px">
+      const sel = `<select id="pd-user-${p.id}" onchange="CP.PedidosAdmin.assignRow('${p.id}')">${opts}</select>`;
+      const selPrio = `<select id="pd-prio-${p.id}" onchange="CP.PedidosAdmin.assignRow('${p.id}')" style="border-color:${prio==='urgent'?'rgba(220,38,38,.5)':'var(--border2)'};color:${prio==='urgent'?'#ef4444':'var(--text)'}">
           <option value="urgent" ${prio==='urgent'?'selected':''}>🔴 Urgente</option>
           <option value="normal" ${prio==='normal'?'selected':''}>🔵 Normal</option>
         </select>`;
+      const extra = p.workStatus==='done'
+        ? '<div class="pd-extra" style="color:var(--green)">✅ Completado — pte. facturar</div>'
+        : (p.lastWorkerStatus ? `<div class="pd-extra" style="color:var(--amber)">${p.lastWorkerStatus==='material'?'📦 Falta material':(p.lastWorkerStatus==='continua'?'🔴 Continúa otro día':'🟡 Parcialmente hecho')}</div>` : '');
+      const doc = p.pdfPath ? `<a class="pd-doc" href="${esc(p.pdfPath)}" target="_blank">Ver doc</a>` : '';
       return `
-      <tr>
-        <td style="padding:10px 8px;border-bottom:1px solid var(--border2);font-weight:600">${esc(p.number)}</td>
-        <td style="padding:10px 8px;border-bottom:1px solid var(--border2)">${esc(p.client)}</td>
-        <td style="padding:10px 8px;border-bottom:1px solid var(--border2)">${typePill(p.type)}</td>
-        <td style="padding:10px 8px;border-bottom:1px solid var(--border2)">${sel}</td>
-        <td style="padding:10px 8px;border-bottom:1px solid var(--border2)">${selPrio}</td>
-        <td style="padding:10px 8px;border-bottom:1px solid var(--border2);text-align:center;font-weight:700;color:${p.alertColor}">${p.days}d</td>
-        <td style="padding:10px 8px;border-bottom:1px solid var(--border2)">${dot(p.alertColor)}${esc(p.alertLabel)}${p.workStatus==='done' ? '<div style="font-size:11px;color:var(--green);margin-top:2px">✅ Completado — pte. facturar</div>' : (p.lastWorkerStatus ? `<div style="font-size:11px;color:var(--amber);margin-top:2px">${p.lastWorkerStatus==='material'?'📦 Falta material':(p.lastWorkerStatus==='continua'?'🔴 Continúa otro día':'🟡 Parcialmente hecho')}</div>` : '')}</td>
-        <td style="padding:10px 8px;border-bottom:1px solid var(--border2);text-align:center">${p.pdfPath ? `<a href="${esc(p.pdfPath)}" target="_blank" style="color:var(--accent,#4d9cf8);text-decoration:none;font-weight:600">Ver</a>` : '—'}</td>
-      </tr>`;
+      <div class="pd-card">
+        <div class="pd-top"><span class="pd-num">${esc(p.number)}</span>${typePill(p.type)}<span class="pd-days" style="color:${p.alertColor}">${p.days}d</span></div>
+        <div class="pd-client">${esc(p.client)}</div>
+        <div class="pd-sit">${dot(p.alertColor)}${esc(p.alertLabel)}</div>
+        ${extra}
+        <div class="pd-controls">${sel}${selPrio}${doc}</div>
+      </div>`;
     }).join('');
 
     box.innerHTML = `
-      <table style="width:100%;border-collapse:collapse;font-size:13px">
-        <thead><tr>
-          <th style="text-align:left;padding:8px;border-bottom:2px solid var(--border2);color:var(--text3);font-size:12px">Pedido</th>
-          <th style="text-align:left;padding:8px;border-bottom:2px solid var(--border2);color:var(--text3);font-size:12px">Cliente / Comunidad</th>
-          <th style="text-align:left;padding:8px;border-bottom:2px solid var(--border2);color:var(--text3);font-size:12px">Tipo</th>
-          <th style="text-align:left;padding:8px;border-bottom:2px solid var(--border2);color:var(--text3);font-size:12px">Asignado a</th>
-          <th style="text-align:left;padding:8px;border-bottom:2px solid var(--border2);color:var(--text3);font-size:12px">Prioridad</th>
-          <th style="text-align:center;padding:8px;border-bottom:2px solid var(--border2);color:var(--text3);font-size:12px">Días</th>
-          <th style="text-align:left;padding:8px;border-bottom:2px solid var(--border2);color:var(--text3);font-size:12px">Situación</th>
-          <th style="text-align:center;padding:8px;border-bottom:2px solid var(--border2);color:var(--text3);font-size:12px">Doc</th>
-        </tr></thead>
-        <tbody>${filas}</tbody>
-      </table>
-      <div style="margin-top:10px;color:var(--text3);font-size:12px">${list.length} pedido(s) en esta vista.</div>`;
+      <div class="pd-list">${filas}</div>
+      <div style="margin-top:12px;color:var(--text3);font-size:12px">${list.length} pedido(s) en esta vista.</div>`;
   }
 
   function paintMetrics(list) {

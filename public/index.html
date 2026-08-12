@@ -1409,9 +1409,13 @@ if(savedTheme==='light'){
 // ── INIT ──────────────────────────────────────────────────────────
 async function init() {
   if (tok) {
-    // Si ya hay token guardado, cargar workers antes de mostrar la app
-    await window.CP_CONFIG.loadWorkers();
-    showApp();
+    // Con token, mostrar la app YA (sin flash de login) y cargar en segundo plano.
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('theme-toggle-fixed').style.display = 'flex';
+    try { await window.CP_CONFIG.loadWorkers(); } catch (e) {}
+    loadAll();
+    renderInicio();
   } else {
     document.getElementById('loginScreen').style.display = 'flex';
   }
