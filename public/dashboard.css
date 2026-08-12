@@ -227,3 +227,13 @@ select:focus{border-color:var(--blue)}
   .card table{width:auto;min-width:100%}
   .card table th,.card table td{white-space:nowrap}
 }
+
+/* ── Accesos rápidos a herramientas en Inicio (para encontrarlas fácil en móvil) ── */
+.tools-quick{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:18px}
+.tq{display:flex;flex-direction:column;align-items:flex-start;gap:7px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px;cursor:pointer;font-family:'Inter',sans-serif;color:var(--text);text-align:left;transition:border-color .12s,transform .12s}
+.tq:hover{border-color:var(--blue)}
+.tq:active{transform:scale(.98)}
+.tq .em{font-size:22px;line-height:1}
+.tq .lb{font-size:13px;font-weight:600}
+body.light .tq{background:#fff;border-color:rgba(0,0,0,.08)}
+@media(max-width:640px){.tools-quick{grid-template-columns:repeat(2,1fr)}}
