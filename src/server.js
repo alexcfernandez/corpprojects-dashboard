@@ -1507,39 +1507,77 @@ app.post('/api/facturas/subir', requireAuthOficina, uploadFactura.any(), async (
   }
 });
 
-// ── Asignar facturas de proveedor a una obra a mano (las que entran sin obra) ──
-// Lista las facturas de proveedor con su estado de obra (manual > marcador n8n).
+// ── Clasificar facturas de proveedor: obra / gasto general / sin clasificar ──
+// Estado por factura (prioridad manual > regla-proveedor > marcador n8n).
 app.get('/api/facturas/proveedor', requireAuthOficina, async (req, res) => {
   try {
-    const soloSinObra = String(req.query.sinObra || '') === '1';
-    const [facturas, asignMap] = await Promise.all([
+    const filtro = String(req.query.filtro || '').toLowerCase(); // '', 'sin', 'obra', 'general'
+    const [facturas, asignMap, reglaMap] = await Promise.all([
       require('./stelorder').getPurchaseInvoices(),
       obras.getAsignacionesFacturaMap(),
+      obras.getReglasMap(),
     ]);
-    const out = (facturas || []).map(f => {
-      const asig = asignMap.get(String(f.id));
-      let obra = null;
-      if (asig) obra = { fuente: 'manual', obraId: asig.obraId, obraRef: asig.obraRef };
-      else {
-        const marca = obras.extraerObraMarcador(`${f.title || ''} ${f.extraReference || ''}`);
-        if (marca) obra = { fuente: 'n8n', obraId: null, obraRef: marca };
-      }
-      return { id: f.id, number: f.number, supplier: f.supplier, total: f.total, date: f.date, obra };
-    }).sort((a, b) => String(b.date).localeCompare(String(a.date)));
-    res.json(soloSinObra ? out.filter(f => !f.obra) : out);
+    const out = (facturas || []).map(f => ({
+      id: f.id, number: f.number, supplier: f.supplier, supplierId: f.supplierId,
+      total: f.total, date: f.date,
+      clasif: obras.resolverFacturaObra(f, asignMap, reglaMap),
+    })).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    const filtrada =
+      filtro === 'sin'     ? out.filter(f => !f.clasif) :
+      filtro === 'obra'    ? out.filter(f => f.clasif && f.clasif.tipo === 'obra') :
+      filtro === 'general' ? out.filter(f => f.clasif && f.clasif.tipo === 'general') :
+      out;
+    res.json({ categorias: obras.CATEGORIAS_GASTO, facturas: filtrada });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Asignar una factura a una obra.
 app.post('/api/facturas/proveedor/:id/obra', requireAuthOficina, async (req, res) => {
   try {
     const { obraId, obraRef } = req.body || {};
     const by = req.oficina?.workerName || (req.oficina?.admin ? 'admin' : 'oficina');
-    res.json(await obras.asignarFacturaObra(req.params.id, { obraId, obraRef, by }));
+    res.json(await obras.clasificarFactura(req.params.id, { tipo: 'obra', obraId, obraRef, by }));
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
-app.delete('/api/facturas/proveedor/:id/obra', requireAuthOficina, async (req, res) => {
-  try { res.json(await obras.desasignarFacturaObra(req.params.id)); }
+// Marcar una factura como gasto general (no es de obra), con categoría.
+app.post('/api/facturas/proveedor/:id/general', requireAuthOficina, async (req, res) => {
+  try {
+    const { categoria } = req.body || {};
+    const by = req.oficina?.workerName || (req.oficina?.admin ? 'admin' : 'oficina');
+    res.json(await obras.clasificarFactura(req.params.id, { tipo: 'general', categoria, by }));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Quitar la clasificación explícita de una factura (vuelve a regla/marcador/sin clasificar).
+app.delete('/api/facturas/proveedor/:id', requireAuthOficina, async (req, res) => {
+  try { res.json(await obras.desclasificarFactura(req.params.id)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Crear una obra al vuelo desde la oficina (referencia + cliente) para poder asignar.
+app.post('/api/facturas/obra-nueva', requireAuthOficina, async (req, res) => {
+  try {
+    const { reference, clientName } = req.body || {};
+    const obra = await obras.createObra({ reference, clientName });
+    res.json({ ok: true, id: String(obra.id), reference: obra.reference, clientName: obra.clientName });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Reglas por proveedor (autoclasifican todas las facturas de ese proveedor).
+app.get('/api/facturas/reglas', requireAuthOficina, async (req, res) => {
+  try { res.json(await obras.getReglas()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/facturas/reglas', requireAuthOficina, async (req, res) => {
+  try {
+    const { supplierId, supplier, tipo, obraId, obraRef, categoria } = req.body || {};
+    const by = req.oficina?.workerName || (req.oficina?.admin ? 'admin' : 'oficina');
+    res.json(await obras.setReglaProveedor(supplierId, { supplier, tipo, obraId, obraRef, categoria, by }));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.delete('/api/facturas/reglas/:supplierId', requireAuthOficina, async (req, res) => {
+  try { res.json(await obras.deleteReglaProveedor(req.params.supplierId)); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 

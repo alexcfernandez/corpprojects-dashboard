@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Asignar facturas a obra — Corp Projects</title>
+<title>Clasificar facturas — Corp Projects</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#4d9cf8">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -27,7 +27,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .header-logout{margin-left:auto;background:none;border:1px solid var(--border2);border-radius:8px;color:var(--text3);padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit}
 .page{display:none;min-height:100vh}
 .page.active{display:block}
-.container{padding:20px;max-width:640px;margin:0 auto}
+.container{padding:20px;max-width:680px;margin:0 auto}
 
 /* LOGIN */
 .login-card{background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:28px 24px;margin-top:24px}
@@ -42,25 +42,28 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .pin-input{width:100%;background:var(--bg3);border:2px solid var(--border2);border-radius:var(--rs);padding:14px;color:var(--text);font-size:24px;font-weight:700;text-align:center;letter-spacing:8px;outline:none;font-family:monospace}
 .pin-input:focus{border-color:var(--blue)}
 
-/* BOTONES / MSG */
+/* GENERAL */
 .btn{width:100%;background:var(--blue);border:none;border-radius:var(--r);padding:15px;color:#fff;font-size:16px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px}
 .btn:disabled{opacity:.55;cursor:not-allowed}
 .spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;display:inline-block;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-.msg{border-radius:var(--rs);padding:12px 14px;font-size:14px;margin-top:14px;display:none}
+.msg{border-radius:var(--rs);padding:12px 14px;font-size:14px;margin-top:14px;display:none;position:sticky;bottom:12px;box-shadow:0 6px 20px rgba(0,0,0,.4)}
 .msg.show{display:block}
-.msg.ok{background:rgba(34,196,135,.12);border:1px solid var(--green);color:var(--green)}
-.msg.warn{background:rgba(245,158,11,.12);border:1px solid var(--amber);color:var(--amber)}
-.msg.error{background:rgba(240,82,82,.12);border:1px solid var(--red);color:var(--red)}
+.msg.ok{background:rgba(34,196,135,.15);border:1px solid var(--green);color:var(--green)}
+.msg.warn{background:rgba(245,158,11,.15);border:1px solid var(--amber);color:var(--amber)}
+.msg.error{background:rgba(240,82,82,.15);border:1px solid var(--red);color:var(--red)}
+select,input[type=text]{background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:10px 12px;color:var(--text);font-size:14px;outline:none;font-family:inherit;-webkit-appearance:none}
+select:focus,input:focus{border-color:var(--blue)}
 
-/* LISTA */
-.toolbar{display:flex;align-items:center;gap:8px;margin-bottom:16px}
+/* TOOLBAR */
+.toolbar{display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap}
 .seg{display:flex;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);overflow:hidden}
-.seg button{background:none;border:none;color:var(--text3);padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+.seg button{background:none;border:none;color:var(--text3);padding:9px 12px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
 .seg button.on{background:rgba(77,156,248,.15);color:var(--blue)}
+.tool-btn{background:none;border:1px solid var(--border2);border-radius:var(--rs);color:var(--text3);padding:9px 12px;font-size:13px;cursor:pointer;font-family:inherit}
 .count{margin-left:auto;font-size:12px;color:var(--text3)}
-.reload{background:none;border:1px solid var(--border2);border-radius:var(--rs);color:var(--text3);padding:9px 12px;font-size:13px;cursor:pointer;font-family:inherit}
 
+/* FACTURA */
 .inv{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px}
 .inv-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .inv-sup{font-weight:600;font-size:15px}
@@ -68,14 +71,29 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .inv-meta{font-size:12px;color:var(--text3);margin-top:2px}
 .badge{display:inline-block;font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;margin-top:8px}
 .badge.manual{background:rgba(34,196,135,.14);color:var(--green)}
+.badge.regla{background:rgba(77,156,248,.14);color:var(--blue)}
 .badge.n8n{background:rgba(167,139,250,.14);color:var(--purple)}
-.badge.none{background:rgba(245,158,11,.14);color:var(--amber)}
-.assign{display:flex;gap:8px;margin-top:10px}
-.assign select{flex:1;background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:11px 12px;color:var(--text);font-size:14px;outline:none;font-family:inherit;-webkit-appearance:none}
-.assign select:focus{border-color:var(--blue)}
-.assign button{background:var(--blue);border:none;border-radius:var(--rs);color:#fff;font-weight:600;padding:11px 16px;font-size:14px;cursor:pointer;font-family:inherit;white-space:nowrap}
-.assign button.ghost{background:none;border:1px solid var(--red);color:var(--red)}
+.badge.general{background:rgba(245,158,11,.14);color:var(--amber)}
+.badge.none{background:rgba(90,98,120,.2);color:var(--text2)}
+.row{display:flex;gap:8px;margin-top:9px;align-items:center}
+.row .lbl{font-size:11px;color:var(--text3);width:46px;flex-shrink:0;text-transform:uppercase;letter-spacing:.04em}
+.row select{flex:1;min-width:0}
+.row button.go{background:var(--blue);border:none;border-radius:var(--rs);color:#fff;font-weight:600;padding:10px 14px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap}
+.row button.go.amber{background:var(--amber)}
+.nueva{display:none;gap:8px;margin-top:8px}
+.nueva.show{display:flex;flex-wrap:wrap}
+.nueva input{flex:1;min-width:120px}
+.foot{display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap}
+.foot label{font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer}
+.link{background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;font-family:inherit;text-decoration:underline}
+.link.red{color:var(--red)}
 .empty{text-align:center;color:var(--text3);font-size:14px;padding:40px 20px}
+.more{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);color:var(--text2);padding:12px;font-size:14px;cursor:pointer;font-family:inherit;margin-top:4px}
+
+/* REGLAS */
+.regla{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.regla .r-sup{font-weight:600;font-size:14px}
+.regla .r-cls{font-size:12px;color:var(--text3);margin-top:2px}
 </style>
 </head>
 <body>
@@ -83,7 +101,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 <div class="header">
   <div class="logo">CP</div>
   <div>
-    <div class="header-text">Asignar facturas a obra</div>
+    <div class="header-text">Clasificar facturas</div>
     <div class="header-sub" id="header-sub"></div>
   </div>
   <button class="header-logout" id="logout-btn" onclick="logout()" style="display:none">Salir</button>
@@ -109,10 +127,13 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   <div class="container">
     <div class="toolbar">
       <div class="seg">
-        <button id="seg-sin" class="on" onclick="setFiltro('sin')">Sin obra</button>
+        <button id="seg-sin" class="on" onclick="setFiltro('sin')">Sin clasificar</button>
+        <button id="seg-obra" onclick="setFiltro('obra')">Obras</button>
+        <button id="seg-general" onclick="setFiltro('general')">Gasto general</button>
         <button id="seg-todas" onclick="setFiltro('todas')">Todas</button>
       </div>
-      <button class="reload" onclick="cargar()">↻</button>
+      <button class="tool-btn" onclick="cargar()">↻</button>
+      <button class="tool-btn" onclick="verReglas()">⚙ Reglas</button>
       <span class="count" id="count"></span>
     </div>
     <div id="lista"></div>
@@ -120,19 +141,34 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   </div>
 </div>
 
+<!-- REGLAS -->
+<div class="page" id="page-reglas">
+  <div class="container">
+    <div class="toolbar">
+      <button class="tool-btn" onclick="showPage('list')">← Volver</button>
+      <span class="count">Reglas por proveedor</span>
+    </div>
+    <div id="reglas"></div>
+    <div class="msg" id="reglas-msg"></div>
+  </div>
+</div>
+
 <script>
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
 
 let workerToken=null, workerInfo=null, todosWorkers=[];
-let obrasCache=[], facturas=[], filtro='sin';
+let obrasCache=[], facturas=[], categorias=[], filtro='sin', limite=150;
+
+const CAT_LABEL={combustible:'Combustible',herramientas:'Herramientas',gestoria:'Gestoría/Asesoría',seguros:'Seguros',suministros:'Suministros',alquiler:'Alquiler',otros:'Otros'};
+function catLabel(c){return CAT_LABEL[c]||c||'';}
 
 function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('page-'+id).classList.add('active');}
-function showMsg(id,text,type){const m=document.getElementById(id);m.textContent=text;m.className='msg show '+(type||'ok');}
-function hideMsg(id){document.getElementById(id).className='msg';}
+function showMsg(id,text,type){const m=document.getElementById(id);m.textContent=text;m.className='msg show '+(type||'ok');clearTimeout(m._t);m._t=setTimeout(()=>{m.className='msg';},4000);}
 function eur(n){return (Number(n)||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function authH(extra){return Object.assign({'Authorization':`Bearer ${workerToken}`}, extra||{});}
 
-// ── LOGIN (mismo mecanismo y sesión que parte.html / subir-factura) ──────────
+// ── LOGIN (misma sesión que parte.html / subir-factura) ──────────────────────
 async function loadWorkers(){
   try{
     const r=await fetch('/api/partes/workers');todosWorkers=await r.json();
@@ -157,7 +193,7 @@ async function enterApp(token,info){
 async function tryRestoreSession(){
   const t=localStorage.getItem('cpWT');if(!t)return false;
   try{
-    const r=await fetch('/api/partes/worker-session',{headers:{'Authorization':`Bearer ${t}`}});
+    const r=await fetch('/api/partes/worker-session',{headers:authH()});
     if(!r.ok)throw new Error('caducada');
     const data=await r.json();
     await enterApp(t,{workerId:data.workerId,workerName:data.workerName});
@@ -174,7 +210,6 @@ async function doLogin(){
     const r=await fetch('/api/partes/worker-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workerId:sel.dataset.id,pin})});
     const data=await r.json();
     if(!r.ok)throw new Error(data.error||'PIN incorrecto');
-    hideMsg('login-msg');
     await enterApp(data.token,{workerId:data.workerId,workerName:data.workerName});
   }catch(err){showMsg('login-msg','❌ '+err.message,'error');document.getElementById('pin-input').value='';}
   finally{btn.disabled=false;btn.innerHTML='Entrar →';}
@@ -190,84 +225,167 @@ function logout(){
 
 // ── DATOS ────────────────────────────────────────────────────────────────────
 async function cargarObras(){
-  try{
-    const r=await fetch('/api/facturas/obras',{headers:{'Authorization':`Bearer ${workerToken}`}});
-    obrasCache = r.ok ? await r.json() : [];
-  }catch(e){obrasCache=[];}
+  try{const r=await fetch('/api/facturas/obras',{headers:authH()});obrasCache=r.ok?await r.json():[];}
+  catch(e){obrasCache=[];}
 }
-function opcionesObra(sel){
+function optsObra(sel){
   const opts=obrasCache.map(o=>{
     const label=[o.reference,o.clientName].filter(Boolean).join(' — ')||'(sin nombre)';
     return `<option value="${esc(o.id)}" data-ref="${esc(label)}" ${sel===o.id?'selected':''}>${esc(label)}</option>`;
   }).join('');
-  return `<option value="">— Elegir obra —</option>${opts}`;
+  return `<option value="">— Elegir obra —</option>${opts}<option value="__nueva__">➕ Nueva obra…</option>`;
+}
+function optsCat(sel){
+  return `<option value="">— Gasto general… —</option>`+categorias.map(c=>`<option value="${esc(c)}" ${sel===c?'selected':''}>${esc(catLabel(c))}</option>`).join('');
 }
 function setFiltro(f){
-  filtro=f;
-  document.getElementById('seg-sin').classList.toggle('on',f==='sin');
-  document.getElementById('seg-todas').classList.toggle('on',f==='todas');
+  filtro=f;limite=150;
+  ['sin','obra','general','todas'].forEach(k=>document.getElementById('seg-'+k).classList.toggle('on',k===f));
   render();
 }
 async function cargar(){
-  hideMsg('list-msg');
   document.getElementById('lista').innerHTML='<div class="empty"><span class="spinner"></span></div>';
   try{
-    const r=await fetch('/api/facturas/proveedor',{headers:{'Authorization':`Bearer ${workerToken}`}});
+    const r=await fetch('/api/facturas/proveedor',{headers:authH()});
     if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'No se pudieron cargar las facturas');
-    facturas=await r.json();
+    const data=await r.json();
+    facturas=data.facturas||[];categorias=data.categorias||[];
     render();
   }catch(err){document.getElementById('lista').innerHTML='';showMsg('list-msg','❌ '+err.message,'error');}
 }
+function filtrar(){
+  if(filtro==='sin')return facturas.filter(f=>!f.clasif);
+  if(filtro==='obra')return facturas.filter(f=>f.clasif&&f.clasif.tipo==='obra');
+  if(filtro==='general')return facturas.filter(f=>f.clasif&&f.clasif.tipo==='general');
+  return facturas;
+}
+function badgeDe(f){
+  const c=f.clasif;
+  if(!c)return '<span class="badge none">Sin clasificar</span>';
+  if(c.tipo==='general')return `<span class="badge general">Gasto: ${esc(catLabel(c.categoria))}${c.fuente==='regla'?' · regla':''}</span>`;
+  const via=c.fuente==='manual'?'manual':(c.fuente==='regla'?'regla':'n8n');
+  return `<span class="badge ${via}">Obra (${via}): ${esc(c.obraRef||'')}</span>`;
+}
 function render(){
-  const lista=filtro==='sin'?facturas.filter(f=>!f.obra):facturas;
-  document.getElementById('count').textContent=`${lista.length} factura(s)`;
-  if(!lista.length){document.getElementById('lista').innerHTML='<div class="empty">'+(filtro==='sin'?'🎉 No hay facturas sin obra.':'No hay facturas de proveedor.')+'</div>';return;}
-  document.getElementById('lista').innerHTML=lista.map(f=>{
-    let badge='';
-    if(!f.obra) badge='<span class="badge none">Sin obra</span>';
-    else if(f.obra.fuente==='manual') badge=`<span class="badge manual">Obra (manual): ${esc(f.obra.obraRef)}</span>`;
-    else badge=`<span class="badge n8n">Obra (n8n): ${esc(f.obra.obraRef)}</span>`;
-    const selActual = f.obra && f.obra.fuente==='manual' ? f.obra.obraId : '';
-    const quitar = f.obra && f.obra.fuente==='manual' ? `<button class="ghost" onclick="quitar('${esc(f.id)}')">Quitar</button>` : '';
+  const todo=filtrar();
+  const lista=todo.slice(0,limite);
+  document.getElementById('count').textContent=`${todo.length} factura(s)`;
+  if(!todo.length){document.getElementById('lista').innerHTML='<div class="empty">'+(filtro==='sin'?'🎉 No hay facturas sin clasificar.':'Nada por aquí.')+'</div>';return;}
+  let html=lista.map(f=>{
+    const c=f.clasif;
+    const selObra=c&&c.tipo==='obra'&&c.fuente==='manual'?c.obraId:'';
+    const selCat=c&&c.tipo==='general'&&c.fuente==='manual'?c.categoria:'';
+    const quitar=c&&c.fuente==='manual'?`<button class="link red" onclick="quitar('${esc(f.id)}')">Quitar</button>`:'';
     return `<div class="inv" id="inv-${esc(f.id)}">
       <div class="inv-top"><div class="inv-sup">${esc(f.supplier||'—')}</div><div class="inv-total">${eur(f.total)}</div></div>
-      <div class="inv-meta">${esc(f.number||'')}${f.date?' · '+esc(f.date):''}</div>
-      <div>${badge}</div>
-      <div class="assign">
-        <select id="sel-${esc(f.id)}">${opcionesObra(selActual)}</select>
-        <button onclick="asignar('${esc(f.id)}')">Guardar</button>
+      <div class="inv-meta">${esc(f.number||'')}${f.date?' · '+esc(String(f.date).slice(0,10)):''}</div>
+      <div>${badgeDe(f)}</div>
+      <div class="row"><span class="lbl">Obra</span>
+        <select id="obra-${esc(f.id)}" onchange="onObraSel('${esc(f.id)}')">${optsObra(selObra)}</select>
+        <button class="go" onclick="guardarObra('${esc(f.id)}')">Guardar</button>
+      </div>
+      <div class="nueva" id="nueva-${esc(f.id)}">
+        <input type="text" id="nref-${esc(f.id)}" placeholder="Referencia de obra">
+        <input type="text" id="ncli-${esc(f.id)}" placeholder="Cliente">
+        <button class="go" onclick="crearYAsignar('${esc(f.id)}')">Crear y asignar</button>
+      </div>
+      <div class="row"><span class="lbl">Gasto</span>
+        <select id="cat-${esc(f.id)}">${optsCat(selCat)}</select>
+        <button class="go amber" onclick="marcarGasto('${esc(f.id)}')">Marcar</button>
+      </div>
+      <div class="foot">
+        <label><input type="checkbox" id="regla-${esc(f.id)}"> Aplicar a todas las de ${esc(f.supplier||'este proveedor')}</label>
         ${quitar}
       </div>
     </div>`;
   }).join('');
+  if(todo.length>limite)html+=`<button class="more" onclick="limite+=200;render()">Ver más (${todo.length-limite} restantes)</button>`;
+  document.getElementById('lista').innerHTML=html;
+}
+function onObraSel(id){
+  const sel=document.getElementById('obra-'+id);
+  document.getElementById('nueva-'+id).classList.toggle('show',sel.value==='__nueva__');
+}
+function facturaDe(id){return facturas.find(x=>String(x.id)===String(id));}
+function quiereRegla(id){const c=document.getElementById('regla-'+id);return c&&c.checked;}
+
+async function post(url,body){
+  const r=await fetch(url,{method:'POST',headers:authH({'Content-Type':'application/json'}),body:JSON.stringify(body||{})});
+  if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Error');
+  return r.json().catch(()=>({}));
 }
 
-async function asignar(id){
-  const sel=document.getElementById('sel-'+id);
-  const opt=sel.options[sel.selectedIndex];
-  const obraId=sel.value, obraRef=opt?opt.getAttribute('data-ref'):'';
-  if(!obraId){showMsg('list-msg','⚠️ Elige una obra en el desplegable','warn');return;}
-  const btn=sel.parentElement.querySelector('button');btn.disabled=true;btn.textContent='…';
+async function guardarObra(id){
+  const sel=document.getElementById('obra-'+id);
+  if(sel.value==='__nueva__'){showMsg('list-msg','Rellena referencia y cliente y pulsa "Crear y asignar"','warn');return;}
+  if(!sel.value){showMsg('list-msg','⚠️ Elige una obra','warn');return;}
+  const obraRef=sel.options[sel.selectedIndex].getAttribute('data-ref')||'';
+  await aplicar(id,{tipo:'obra',obraId:sel.value,obraRef});
+}
+async function crearYAsignar(id){
+  const ref=document.getElementById('nref-'+id).value.trim();
+  const cli=document.getElementById('ncli-'+id).value.trim();
+  if(!ref||!cli){showMsg('list-msg','⚠️ Referencia y cliente son obligatorios','warn');return;}
   try{
-    const r=await fetch('/api/facturas/proveedor/'+encodeURIComponent(id)+'/obra',{
-      method:'POST',headers:{'Authorization':`Bearer ${workerToken}`,'Content-Type':'application/json'},
-      body:JSON.stringify({obraId,obraRef})
-    });
-    if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'No se pudo asignar');
-    const f=facturas.find(x=>String(x.id)===String(id));
-    if(f)f.obra={fuente:'manual',obraId,obraRef};
-    hideMsg('list-msg');render();
-    showMsg('list-msg','✅ Asignada a '+obraRef,'ok');
-  }catch(err){btn.disabled=false;btn.textContent='Guardar';showMsg('list-msg','❌ '+err.message,'error');}
+    const nueva=await post('/api/facturas/obra-nueva',{reference:ref,clientName:cli});
+    const label=[nueva.reference,nueva.clientName].filter(Boolean).join(' — ');
+    obrasCache.push({id:nueva.id,reference:nueva.reference,clientName:nueva.clientName});
+    await aplicar(id,{tipo:'obra',obraId:nueva.id,obraRef:label});
+  }catch(err){showMsg('list-msg','❌ '+err.message,'error');}
+}
+async function marcarGasto(id){
+  const sel=document.getElementById('cat-'+id);
+  if(!sel.value){showMsg('list-msg','⚠️ Elige la categoría del gasto','warn');return;}
+  await aplicar(id,{tipo:'general',categoria:sel.value});
+}
+// Aplica la clasificación a la factura y, si está marcado, crea la regla del proveedor.
+async function aplicar(id,clasif){
+  const f=facturaDe(id);const conRegla=quiereRegla(id);
+  try{
+    if(clasif.tipo==='obra') await post(`/api/facturas/proveedor/${encodeURIComponent(id)}/obra`,{obraId:clasif.obraId,obraRef:clasif.obraRef});
+    else await post(`/api/facturas/proveedor/${encodeURIComponent(id)}/general`,{categoria:clasif.categoria});
+    let extra='';
+    if(conRegla&&f){
+      await post('/api/facturas/reglas',{supplierId:f.supplierId,supplier:f.supplier,...clasif});
+      extra=` · regla para ${f.supplier}`;
+    }
+    if(conRegla){ await cargar(); }
+    else{ if(f)f.clasif={...clasif,fuente:'manual'}; render(); }
+    const desc=clasif.tipo==='obra'?('obra '+(clasif.obraRef||'')):('gasto '+catLabel(clasif.categoria));
+    showMsg('list-msg','✅ '+(f?f.supplier+' → ':'')+desc+extra,'ok');
+  }catch(err){showMsg('list-msg','❌ '+err.message,'error');}
 }
 async function quitar(id){
   try{
-    const r=await fetch('/api/facturas/proveedor/'+encodeURIComponent(id)+'/obra',{method:'DELETE',headers:{'Authorization':`Bearer ${workerToken}`}});
-    if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'No se pudo quitar');
-    const f=facturas.find(x=>String(x.id)===String(id));
-    if(f)f.obra=null;
-    hideMsg('list-msg');render();
+    const r=await fetch(`/api/facturas/proveedor/${encodeURIComponent(id)}`,{method:'DELETE',headers:authH()});
+    if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Error');
+    await cargar(); // por si había regla/marcador que ahora vuelve a aplicar
   }catch(err){showMsg('list-msg','❌ '+err.message,'error');}
+}
+
+// ── REGLAS ───────────────────────────────────────────────────────────────────
+async function verReglas(){
+  showPage('reglas');
+  document.getElementById('reglas').innerHTML='<div class="empty"><span class="spinner"></span></div>';
+  try{
+    const r=await fetch('/api/facturas/reglas',{headers:authH()});
+    const lista=r.ok?await r.json():[];
+    if(!lista.length){document.getElementById('reglas').innerHTML='<div class="empty">No hay reglas todavía.<br>Marca "Aplicar a todas las de {proveedor}" al clasificar una factura.</div>';return;}
+    document.getElementById('reglas').innerHTML=lista.map(rg=>{
+      const cls=rg.tipo==='obra'?('Obra: '+esc(rg.obraRef||'')):('Gasto: '+esc(catLabel(rg.categoria)));
+      return `<div class="regla">
+        <div><div class="r-sup">${esc(rg.supplier||rg.supplierId)}</div><div class="r-cls">${cls}</div></div>
+        <button class="link red" onclick="borrarRegla('${esc(rg.supplierId)}')">Quitar</button>
+      </div>`;
+    }).join('');
+  }catch(err){document.getElementById('reglas').innerHTML='';showMsg('reglas-msg','❌ '+err.message,'error');}
+}
+async function borrarRegla(supplierId){
+  try{
+    const r=await fetch(`/api/facturas/reglas/${encodeURIComponent(supplierId)}`,{method:'DELETE',headers:authH()});
+    if(!r.ok)throw new Error('Error');
+    await verReglas();
+  }catch(err){showMsg('reglas-msg','❌ '+err.message,'error');}
 }
 
 // ── ARRANQUE ─────────────────────────────────────────────────────────────────

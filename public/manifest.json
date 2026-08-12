@@ -25,8 +25,8 @@
       "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     },
     {
-      "name": "Asignar facturas a obra",
-      "short_name": "Asignar",
+      "name": "Clasificar facturas",
+      "short_name": "Clasificar",
       "url": "/asignar-facturas",
       "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     },

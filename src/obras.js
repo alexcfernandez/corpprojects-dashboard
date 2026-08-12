@@ -14,11 +14,19 @@ const ESTADOS_OBRA = {
   facturada:  { label: 'Facturada',   color: '#a78bfa', emoji: '💰' },
 };
 
-// ── FACTURAS DE PROVEEDOR ↔ OBRA ─────────────────────────────────
-// Dos vías para ligar una factura de proveedor a una obra:
-//   1) Marcador "[obra: {ref}]" que n8n escribe en el título en StelOrder.
-//   2) Asignación MANUAL desde el dashboard (colección facturaObraAsignada),
-//      para las que entran sin obra (proveedor por email). La manual MANDA.
+// ── CLASIFICACIÓN DE FACTURAS DE PROVEEDOR ───────────────────────
+// Cada factura de proveedor acaba en uno de tres estados:
+//   · 'obra'    → ligada a una obra concreta (cuenta en su rentabilidad).
+//   · 'general' → gasto que NO es de obra (combustible, herramientas…), con
+//                 categoría. No cuenta en ninguna obra.
+//   · (nada)    → sin clasificar (pendiente).
+// Prioridad al resolver una factura: (1) clasificación explícita por factura
+// (facturaObraAsignada) > (2) regla por proveedor (reglaProveedor) > (3) marcador
+// "[obra: {ref}]" que n8n escribe en StelOrder > (4) sin clasificar. Las reglas
+// se aplican en LECTURA: clasifican al vuelo todas las facturas de ese proveedor,
+// sin escribir cientos de registros, y cambiarlas actualiza pasado y futuro.
+const CATEGORIAS_GASTO = ['combustible', 'herramientas', 'gestoria', 'seguros', 'suministros', 'alquiler', 'otros'];
+
 function extraerObraMarcador(text) {
   const m = String(text || '').match(/obra:\s*([^\]\n|·]+)/i);
   return m ? m[1].trim() : '';
@@ -30,27 +38,80 @@ async function getAsignacionesFacturaMap(dbArg) {
   arr.forEach(a => map.set(String(a.stelInvoiceId), a));
   return map;
 }
-async function asignarFacturaObra(stelInvoiceId, { obraId, obraRef, by } = {}) {
+async function getReglasMap(dbArg) {
+  const database = dbArg || await getDB();
+  const arr = await database.collection('reglaProveedor').find({}).toArray();
+  const map = new Map();
+  arr.forEach(r => map.set(String(r.supplierId), r));
+  return map;
+}
+// Resuelve la clasificación efectiva de una factura (o null si sin clasificar).
+// Devuelve { tipo:'obra'|'general', fuente:'manual'|'regla'|'n8n', obraId, obraRef, categoria }.
+function resolverFacturaObra(f, asignMap, reglaMap) {
+  const a = asignMap && asignMap.get(String(f.id));
+  if (a) return { tipo: a.tipo || 'obra', fuente: 'manual', obraId: a.obraId || null, obraRef: a.obraRef || '', categoria: a.categoria || null };
+  const r = reglaMap && reglaMap.get(String(f.supplierId || ''));
+  if (r) return { tipo: r.tipo || 'general', fuente: 'regla', obraId: r.obraId || null, obraRef: r.obraRef || '', categoria: r.categoria || null };
+  const marca = extraerObraMarcador(`${f.title || ''} ${f.extraReference || ''}`);
+  if (marca) return { tipo: 'obra', fuente: 'n8n', obraId: null, obraRef: marca, categoria: null };
+  return null;
+}
+async function clasificarFactura(stelInvoiceId, { tipo, obraId, obraRef, categoria, by } = {}) {
   if (!stelInvoiceId) throw new Error('Falta la factura');
-  if (!obraRef && !obraId) throw new Error('Falta la obra');
+  if (tipo === 'obra' && !obraId && !obraRef) throw new Error('Falta la obra');
+  if (tipo === 'general' && !categoria) throw new Error('Falta la categoría');
+  if (tipo !== 'obra' && tipo !== 'general') throw new Error('Tipo no válido');
   const database = await getDB();
   await database.collection('facturaObraAsignada').updateOne(
     { stelInvoiceId: String(stelInvoiceId) },
     { $set: {
         stelInvoiceId: String(stelInvoiceId),
-        obraId:  obraId ? String(obraId) : null,
-        obraRef: obraRef || '',
-        by:      by || '',
-        ts:      new Date(),
+        tipo,
+        obraId:    tipo === 'obra' && obraId ? String(obraId) : null,
+        obraRef:   tipo === 'obra' ? (obraRef || '') : '',
+        categoria: tipo === 'general' ? categoria : null,
+        by:        by || '',
+        ts:        new Date(),
     } },
     { upsert: true }
   );
   return { ok: true };
 }
-async function desasignarFacturaObra(stelInvoiceId) {
+async function desclasificarFactura(stelInvoiceId) {
   const database = await getDB();
   await database.collection('facturaObraAsignada').deleteOne({ stelInvoiceId: String(stelInvoiceId) });
   return { ok: true };
+}
+async function setReglaProveedor(supplierId, { supplier, tipo, obraId, obraRef, categoria, by } = {}) {
+  if (!supplierId) throw new Error('Falta el proveedor');
+  if (tipo === 'obra' && !obraId && !obraRef) throw new Error('Falta la obra');
+  if (tipo === 'general' && !categoria) throw new Error('Falta la categoría');
+  if (tipo !== 'obra' && tipo !== 'general') throw new Error('Tipo no válido');
+  const database = await getDB();
+  await database.collection('reglaProveedor').updateOne(
+    { supplierId: String(supplierId) },
+    { $set: {
+        supplierId: String(supplierId),
+        supplier:   supplier || '',
+        tipo,
+        obraId:    tipo === 'obra' && obraId ? String(obraId) : null,
+        obraRef:   tipo === 'obra' ? (obraRef || '') : '',
+        categoria: tipo === 'general' ? categoria : null,
+        by:        by || '',
+        ts:        new Date(),
+    } },
+    { upsert: true }
+  );
+  return { ok: true };
+}
+async function deleteReglaProveedor(supplierId) {
+  const database = await getDB();
+  await database.collection('reglaProveedor').deleteOne({ supplierId: String(supplierId) });
+  return { ok: true };
+}
+async function getReglas() {
+  const database = await getDB();
+  return database.collection('reglaProveedor').find({}).sort({ supplier: 1 }).toArray();
 }
 
 // ── CRUD OBRAS ───────────────────────────────────────────────────
@@ -217,31 +278,33 @@ async function getRentabilidad(obraId) {
   // 2c. Material de la obra (metido a mano en la ficha) — cuenta como coste.
   (obra.materiales || []).forEach(m => { totalMateriales += parseFloat(m.importe || 0); });
 
-  // 2d. Facturas de PROVEEDOR de esta obra (Fase 2). La asignación MANUAL
-  //     (colección facturaObraAsignada) MANDA; si no la hay, se usa el marcador
-  //     "[obra: {ref}]" que n8n escribe en StelOrder. Cada factura se cuenta una
-  //     sola vez. Sin asignación ni marcador → no suma (comportamiento intacto).
+  // 2d. Facturas de PROVEEDOR de esta obra (Fase 2). Se resuelve cada factura por
+  //     prioridad clasificación-manual > regla-proveedor > marcador-n8n. Solo las
+  //     de tipo 'obra' ligadas a ESTA obra suman; los gastos generales y las sin
+  //     clasificar no cuentan. Cada factura, una sola vez. Sin datos → suma 0.
   let totalProveedores = 0;
   const proveedores = [];
   try {
-    const [facturasProv, asignMap] = await Promise.all([
+    const [facturasProv, asignMap, reglaMap] = await Promise.all([
       require('./stelorder').getPurchaseInvoices(),
       getAsignacionesFacturaMap(db),
+      getReglasMap(db),
     ]);
     const miId = String(obra._id);
     for (const f of (facturasProv || [])) {
-      const asig = asignMap.get(String(f.id));
-      let pertenece = false;
-      if (asig) {
-        pertenece = String(asig.obraId) === miId; // manual: prioritaria y excluyente
+      const cls = resolverFacturaObra(f, asignMap, reglaMap);
+      if (!cls || cls.tipo !== 'obra') continue;
+      let pertenece;
+      if (cls.obraId) {
+        pertenece = String(cls.obraId) === miId;      // obra concreta (manual/regla)
       } else {
-        const tag = norm(extraerObraMarcador(`${f.title || ''} ${f.extraReference || ''}`));
+        const tag = norm(cls.obraRef || '');           // marcador n8n: match por reference
         pertenece = !!(tag && nRef && (tag.includes(nRef) || nRef.includes(tag)));
       }
       if (pertenece) {
         const imp = Number(f.total) || 0;
         totalProveedores += imp;
-        proveedores.push({ id: f.id, number: f.number, supplier: f.supplier, total: imp, date: f.date, fuente: asig ? 'manual' : 'n8n' });
+        proveedores.push({ id: f.id, number: f.number, supplier: f.supplier, total: imp, date: f.date, fuente: cls.fuente });
       }
     }
   } catch (e) { /* si StelOrder falla, la rentabilidad sigue con personal + material */ }
@@ -324,4 +387,11 @@ async function getResumenGeneral() {
   return resumen;
 }
 
-module.exports = { ESTADOS_OBRA, createObra, getObras, getObra, updateObra, addMaterial, deleteMaterial, getRentabilidad, getResumenGeneral, extraerObraMarcador, getAsignacionesFacturaMap, asignarFacturaObra, desasignarFacturaObra };
+module.exports = {
+  ESTADOS_OBRA, CATEGORIAS_GASTO,
+  createObra, getObras, getObra, updateObra, addMaterial, deleteMaterial,
+  getRentabilidad, getResumenGeneral,
+  extraerObraMarcador, getAsignacionesFacturaMap, getReglasMap, resolverFacturaObra,
+  clasificarFactura, desclasificarFactura,
+  setReglaProveedor, deleteReglaProveedor, getReglas,
+};
