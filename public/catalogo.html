@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Catálogo de precios — Corp Projects</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/tool-theme.css">
+<meta name="theme-color" content="#4d9cf8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Corp Projects">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;--border:rgba(255,255,255,0.1);--border2:rgba(255,255,255,0.15);
+  --text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;--green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b;--purple:#a78bfa;--r:12px;--rs:10px;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:16px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:14px 20px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:10}
+.logo{width:34px;height:34px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#fff;flex-shrink:0}
+.header-text{font-weight:600;font-size:15px}
+.header-sub{font-size:12px;color:var(--text3);margin-top:1px}
+.header-logout{margin-left:auto;background:none;border:1px solid var(--border2);border-radius:8px;color:var(--text3);padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit}
+.page{display:none}.page.active{display:block}
+.container{padding:20px;max-width:680px;margin:0 auto}
+.login-card{background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:28px 24px;margin-top:24px}
+.login-title{font-size:18px;font-weight:600;margin-bottom:4px;text-align:center}
+.login-sub{font-size:13px;color:var(--text3);text-align:center;margin-bottom:24px}
+.worker-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
+.worker-btn{background:var(--bg3);border:2px solid var(--border);border-radius:var(--r);padding:14px 10px;text-align:center;cursor:pointer;font-family:inherit}
+.worker-btn.selected{border-color:var(--blue);background:rgba(77,156,248,.1)}
+.worker-name{font-size:13px;font-weight:600;color:var(--text)}
+.pin-input{width:100%;background:var(--bg3);border:2px solid var(--border2);border-radius:var(--rs);padding:14px;color:var(--text);font-size:24px;font-weight:700;text-align:center;letter-spacing:8px;outline:none;font-family:monospace}
+.btn{width:100%;background:var(--blue);border:none;border-radius:var(--r);padding:15px;color:#fff;font-size:16px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn:disabled{opacity:.55}.btn.sec{background:none;border:1px solid var(--border2);color:var(--text2)}.btn.danger{background:none;border:1px solid var(--red);color:var(--red)}
+.spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;display:inline-block;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+select,input[type=text],input[type=number],textarea{width:100%;background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:12px 13px;color:var(--text);font-size:15px;outline:none;font-family:inherit;-webkit-appearance:none}
+textarea{min-height:56px;resize:vertical}
+label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:0 0 6px}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);max-width:92%;min-width:240px;padding:13px 18px;border-radius:12px;font-size:15px;font-weight:500;z-index:300;opacity:0;pointer-events:none;transition:all .22s;box-shadow:0 10px 30px rgba(0,0,0,.5);text-align:center}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast.ok{background:#12301f;border:1px solid var(--green);color:#7ff0c0}#toast.warn{background:#33280d;border:1px solid var(--amber);color:#ffd98a}#toast.error{background:#3a1414;border:1px solid var(--red);color:#ff9d9d}
+.toolbar{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.addbtn{margin-left:auto;background:var(--blue);border:none;border-radius:var(--rs);color:#fff;font-weight:600;padding:9px 14px;font-size:13px;cursor:pointer;font-family:inherit}
+.cap{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin:16px 0 8px}
+.part{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:13px 15px;margin-bottom:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.part:hover{border-color:var(--border2)}
+.p-nom{font-weight:600;font-size:14.5px}
+.p-sub{font-size:12px;color:var(--text3);margin-top:2px}
+.p-precio{text-align:right;white-space:nowrap}
+.p-precio b{font-size:15px;font-variant-numeric:tabular-nums}
+.p-margen{font-size:11px;margin-top:2px}
+.empty{text-align:center;color:var(--text3);font-size:14px;padding:40px 20px}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;display:none;align-items:flex-end;justify-content:center}
+.overlay.show{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:18px 18px 0 0;width:100%;max-width:520px;max-height:92vh;overflow-y:auto;padding:20px}
+@media(min-width:600px){.overlay{align-items:center}.modal{border-radius:18px}}
+.field{margin-bottom:14px}
+.row2{display:flex;gap:8px}.row2>*{flex:1}
+.hint{font-size:12px;color:var(--text3);margin-top:5px}
+</style>
+</head>
+<body>
+<script>try{if(localStorage.getItem("cp_theme")==="light")document.body.classList.add("light");}catch(e){}</script>
+
+<div class="header">
+  <div class="logo">CP</div>
+  <div><div class="header-text">Catálogo de precios</div><div class="header-sub" id="header-sub"></div></div>
+  <button class="header-logout" id="logout-btn" onclick="logout()" style="display:none">Salir</button>
+</div>
+<div id="toast"></div>
+
+<!-- LOGIN -->
+<div class="page" id="page-login"><div class="container"><div class="login-card">
+  <div class="login-title">Acceso oficina</div><div class="login-sub">Elige tu nombre e introduce el PIN</div>
+  <div class="worker-grid" id="worker-selector"></div>
+  <input type="tel" inputmode="numeric" id="pin-input" class="pin-input" placeholder="••••" maxlength="6" onkeydown="if(event.key==='Enter')doLogin()">
+  <div style="height:16px"></div><button class="btn" id="login-btn" onclick="doLogin()">Entrar →</button>
+</div></div></div>
+
+<!-- LISTA -->
+<div class="page" id="page-list"><div class="container">
+  <div class="toolbar"><span style="font-size:13px;color:var(--text3)" id="count"></span><button class="addbtn" onclick="nueva()">+ Nueva partida</button></div>
+  <input type="text" id="buscar" placeholder="Buscar partida o capítulo…" oninput="render()" style="margin-bottom:6px">
+  <div id="lista"></div>
+</div></div>
+
+<!-- MODAL -->
+<div class="overlay" id="ov"><div class="modal">
+  <div style="font-weight:700;font-size:17px;margin-bottom:14px" id="m-title">Nueva partida</div>
+  <div class="field"><label class="fld">Nombre</label><input type="text" id="f-nombre" placeholder="Ej. Pintar pared (2 manos)"></div>
+  <div class="row2">
+    <div class="field"><label class="fld">Capítulo</label><input type="text" id="f-capitulo" list="caps" placeholder="Pintura, Suelos…"><datalist id="caps"></datalist></div>
+    <div class="field"><label class="fld">Unidad</label><select id="f-unidad"></select></div>
+  </div>
+  <div class="row2">
+    <div class="field"><label class="fld">Precio venta (€/ud)</label><input type="number" id="f-venta" inputmode="decimal" step="0.01" placeholder="0,00"></div>
+    <div class="field"><label class="fld">Coste (€/ud, opcional)</label><input type="number" id="f-coste" inputmode="decimal" step="0.01" placeholder="0,00"></div>
+  </div>
+  <div class="hint" id="m-margen" style="margin-top:-6px;margin-bottom:12px"></div>
+  <div class="field"><label class="fld">Notas (opcional)</label><textarea id="f-notas"></textarea></div>
+  <div class="row2">
+    <button class="btn sec" onclick="cerrar()">Cancelar</button>
+    <button class="btn danger" id="m-del" onclick="eliminar()" style="display:none">Eliminar</button>
+    <button class="btn" id="m-save" onclick="guardar()">Guardar</button>
+  </div>
+</div></div>
+
+<script>
+if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
+let workerToken=null, esAdmin=false, todosWorkers=[], partidas=[], unidades=[], editId=null;
+function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('page-'+id).classList.add('active');}
+let _tt=null;function toast(t,ty){const e=document.getElementById('toast');e.textContent=t;e.className='show '+(ty||'ok');clearTimeout(_tt);_tt=setTimeout(()=>e.className='',3200);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function authH(x){return Object.assign({'Authorization':`Bearer ${workerToken}`},x||{});}
+function eur(n){return (Number(n)||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';}
+async function api(m,u,b){const o={method:m,headers:authH(b?{'Content-Type':'application/json'}:{})};if(b)o.body=JSON.stringify(b);const r=await fetch(u,o);if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Error');return r.json().catch(()=>({}));}
+function abrir(id){document.getElementById(id).classList.add('show');}function cerrar(){document.getElementById('ov').classList.remove('show');}
+
+// ── LOGIN + SSO ──
+async function loadWorkers(){try{const r=await fetch('/api/partes/workers');todosWorkers=await r.json();document.getElementById('worker-selector').innerHTML=todosWorkers.map(w=>`<button class="worker-btn" data-id="${w.id}" onclick="selW(this)"><div class="worker-name">${esc(w.name)}</div></button>`).join('');}catch(e){}}
+function selW(b){document.querySelectorAll('.worker-btn').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');document.getElementById('pin-input').focus();}
+async function enterApp(token,info,persist){workerToken=token;esAdmin=!!info.admin;
+  if(persist){localStorage.setItem('cpWT',token);localStorage.setItem('cpWN',info.workerName||'');}
+  document.getElementById('header-sub').textContent=info.workerName||'';
+  const lb=document.getElementById('logout-btn');lb.textContent=esAdmin?'← Dashboard':'Salir';lb.style.display='block';
+  document.getElementById('f-unidad').innerHTML=unidades.map(u=>`<option value="${u}">${u}</option>`).join('');
+  showPage('list');await cargar();}
+async function tryRestore(){const admin=localStorage.getItem('cp_token'),worker=localStorage.getItem('cpWT');
+  for(const [t,isA] of [[admin,true],[worker,false]]){if(!t)continue;try{const r=await fetch('/api/oficina/whoami',{headers:{'Authorization':`Bearer ${t}`}});if(!r.ok)continue;const d=await r.json();await enterApp(t,{workerName:d.name,admin:d.admin},!isA);return true;}catch(e){}}
+  localStorage.removeItem('cpWT');return false;}
+async function doLogin(){const sel=document.querySelector('.worker-btn.selected');if(!sel){toast('Selecciona tu nombre','warn');return;}const pin=document.getElementById('pin-input').value;if(pin.length<4){toast('Introduce el PIN','warn');return;}
+  const b=document.getElementById('login-btn');b.disabled=true;b.innerHTML='<span class="spinner"></span>…';
+  try{const r=await fetch('/api/partes/worker-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workerId:sel.dataset.id,pin})});const d=await r.json();if(!r.ok)throw new Error(d.error||'PIN incorrecto');await enterApp(d.token,{workerId:d.workerId,workerName:d.workerName},true);}
+  catch(e){toast(e.message,'error');document.getElementById('pin-input').value='';}finally{b.disabled=false;b.innerHTML='Entrar →';}}
+function logout(){if(esAdmin){location.href='/';return;}workerToken=null;localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');document.getElementById('logout-btn').style.display='none';showPage('login');}
+
+// ── DATOS ──
+async function cargar(){document.getElementById('lista').innerHTML='<div class="empty"><span class="spinner"></span></div>';
+  try{const d=await api('GET','/api/partidas');partidas=d.partidas||[];unidades=d.unidades||[];document.getElementById('f-unidad').innerHTML=unidades.map(u=>`<option value="${u}">${u}</option>`).join('');document.getElementById('caps').innerHTML=[...new Set(partidas.map(p=>p.capitulo).filter(Boolean))].map(c=>`<option value="${esc(c)}">`).join('');render();}catch(e){toast(e.message,'error');}}
+function render(){
+  const q=(document.getElementById('buscar').value||'').toLowerCase();
+  let list=partidas.filter(p=>!q||[p.nombre,p.capitulo].some(x=>String(x||'').toLowerCase().includes(q)));
+  document.getElementById('count').textContent=`${list.length} partida(s)`;
+  if(!list.length){document.getElementById('lista').innerHTML='<div class="empty">Aún no hay partidas. Pulsa «+ Nueva partida» y ve creando tu lista de precios.</div>';return;}
+  const grupos={};list.forEach(p=>{(grupos[p.capitulo||'Sin capítulo']=grupos[p.capitulo||'Sin capítulo']||[]).push(p);});
+  document.getElementById('lista').innerHTML=Object.keys(grupos).sort().map(cap=>
+    `<div class="cap">${esc(cap)}</div>`+grupos[cap].map(p=>{
+      const mg=p.precioVenta>0&&p.coste>0?Math.round((p.precioVenta-p.coste)/p.precioVenta*100):null;
+      const mgTxt=mg!=null?`<div class="p-margen" style="color:${mg>=25?'var(--green)':mg>=10?'var(--amber)':'var(--red)'}">margen ${mg}%</div>`:'';
+      return `<div class="part" onclick="editar('${p._id}')">
+        <div style="min-width:0"><div class="p-nom">${esc(p.nombre)}</div><div class="p-sub">${esc(p.unidad)}${p.coste>0?' · coste '+eur(p.coste):''}</div></div>
+        <div class="p-precio"><b>${eur(p.precioVenta)}</b><div class="p-sub">/${esc(p.unidad)}</div>${mgTxt}</div>
+      </div>`;}).join('')
+  ).join('');
+}
+function calcMargen(){const v=parseFloat((document.getElementById('f-venta').value||'').replace(',','.'))||0;const c=parseFloat((document.getElementById('f-coste').value||'').replace(',','.'))||0;const el=document.getElementById('m-margen');if(v>0&&c>0){const mg=Math.round((v-c)/v*100);el.textContent=`Margen: ${mg}% · beneficio ${eur(v-c)}/ud`;el.style.color=mg>=25?'var(--green)':mg>=10?'var(--amber)':'var(--red)';}else el.textContent='';}
+document.getElementById('f-venta').addEventListener('input',calcMargen);
+document.getElementById('f-coste').addEventListener('input',calcMargen);
+
+function limpiarForm(){['f-nombre','f-capitulo','f-venta','f-coste','f-notas'].forEach(i=>document.getElementById(i).value='');document.getElementById('f-unidad').value=unidades[0]||'ud';document.getElementById('m-margen').textContent='';}
+function nueva(){editId=null;document.getElementById('m-title').textContent='Nueva partida';document.getElementById('m-del').style.display='none';limpiarForm();abrir('ov');}
+function editar(id){const p=partidas.find(x=>String(x._id)===String(id));if(!p)return;editId=id;
+  document.getElementById('m-title').textContent='Editar partida';document.getElementById('m-del').style.display='block';
+  document.getElementById('f-nombre').value=p.nombre||'';document.getElementById('f-capitulo').value=p.capitulo||'';document.getElementById('f-unidad').value=p.unidad||'ud';
+  document.getElementById('f-venta').value=p.precioVenta||'';document.getElementById('f-coste').value=p.coste||'';document.getElementById('f-notas').value=p.notas||'';
+  calcMargen();abrir('ov');}
+async function guardar(){
+  const body={nombre:document.getElementById('f-nombre').value.trim(),capitulo:document.getElementById('f-capitulo').value.trim(),unidad:document.getElementById('f-unidad').value,precioVenta:document.getElementById('f-venta').value,coste:document.getElementById('f-coste').value,notas:document.getElementById('f-notas').value.trim()};
+  if(!body.nombre){toast('Ponle un nombre','warn');return;}
+  const b=document.getElementById('m-save');b.disabled=true;b.innerHTML='<span class="spinner"></span>…';
+  try{if(editId)await api('PUT','/api/partidas/'+editId,body);else await api('POST','/api/partidas',body);cerrar();await cargar();toast('Guardado','ok');}
+  catch(e){toast(e.message,'error');}finally{b.disabled=false;b.innerHTML='Guardar';}}
+async function eliminar(){if(!editId)return;if(!confirm('¿Eliminar esta partida?'))return;try{await api('DELETE','/api/partidas/'+editId);cerrar();await cargar();toast('Eliminada','ok');}catch(e){toast(e.message,'error');}}
+
+document.getElementById('ov').addEventListener('click',e=>{if(e.target.id==='ov')cerrar();});
+(async function(){await loadWorkers();const ok=await tryRestore();if(!ok)showPage('login');})();
+</script>
+</body>
+</html>

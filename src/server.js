@@ -1393,6 +1393,7 @@ app.get('/api/roles', requireAuth, (req, res) => res.json(users.ROLES));
 const obras = require('./obras');
 const activos = require('./activos');
 const mediciones = require('./mediciones');
+const presupuestos = require('./presupuestos');
 
 app.get('/api/obras', requireAuth, async (req, res) => {
   try {
@@ -1660,6 +1661,26 @@ app.post('/api/activos/:id/perdida', requireAuthOficina, async (req, res) => {
 });
 app.delete('/api/activos/:id', requireAuthOficina, async (req, res) => {
   try { res.json(await activos.eliminarActivo(req.params.id)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// ── CATÁLOGO DE PARTIDAS (base de precios · motor de presupuestos) ──
+app.get('/api/partidas', requireAuthOficina, async (req, res) => {
+  try { res.json({ unidades: presupuestos.UNIDADES, partidas: await presupuestos.getPartidas({ search: req.query.search }) }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/partidas', requireAuthOficina, async (req, res) => {
+  try {
+    const by = req.oficina?.workerName || (req.oficina?.admin ? 'admin' : 'oficina');
+    res.json(await presupuestos.crearPartida(req.body || {}, by));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.put('/api/partidas/:id', requireAuthOficina, async (req, res) => {
+  try { res.json(await presupuestos.editarPartida(req.params.id, req.body || {})); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.delete('/api/partidas/:id', requireAuthOficina, async (req, res) => {
+  try { res.json(await presupuestos.eliminarPartida(req.params.id)); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 
@@ -2530,6 +2551,7 @@ app.get('/subir-factura', (req, res) => res.sendFile(path.join(__dirname, '../pu
 app.get('/asignar-facturas', (req, res) => res.sendFile(path.join(__dirname, '../public/asignar-facturas.html')));
 app.get('/activos', (req, res) => res.sendFile(path.join(__dirname, '../public/activos.html')));
 app.get('/medir', (req, res) => res.sendFile(path.join(__dirname, '../public/medir.html')));
+app.get('/catalogo', (req, res) => res.sendFile(path.join(__dirname, '../public/catalogo.html')));
 app.get('/amidaments', (req, res) => res.sendFile(path.join(__dirname, '../public/amidaments.html')));
 app.get('/competencia', (req, res) => res.sendFile(path.join(__dirname, '../public/competencia.html')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));

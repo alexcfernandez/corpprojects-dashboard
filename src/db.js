@@ -112,6 +112,7 @@ async function ensureIndexes(db) {
     ['activoMovimientos',      { activoId: 1, ts: -1 }],
     // Mediciones (motor de presupuestos) — multi-empresa desde el diseño
     ['mediciones',             { empresaId: 1, updatedAt: -1 }],
+    ['partidas',               { empresaId: 1, capitulo: 1, nombre: 1 }],
   ];
 
   for (const [coll, keys, opts] of indexes) {
