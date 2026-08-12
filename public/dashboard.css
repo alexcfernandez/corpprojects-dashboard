@@ -213,11 +213,12 @@ select:focus{border-color:var(--blue)}
 #theme-toggle-fixed{display:none!important} /* quitar el "sol" duplicado; se queda el de la cabecera */
 .main{overflow-x:clip} /* red de seguridad: nada empuja la página de lado (no rompe el sticky) */
 @media(max-width:640px){
-  .header{padding:0 12px;gap:8px}
-  .logo{gap:8px;min-width:0}
-  .logo-text{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42vw}
+  .header{padding:0 10px;gap:6px}
+  .logo{gap:7px;min-width:0}
+  .logo-icon{width:28px;height:28px}
+  .logo-text{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:32vw}
   .logo-sub{display:none}
-  .header-right{gap:6px}
+  .header-right{gap:5px}
   .header-right > span{display:none}        /* ocultar "● Actualizado HH:MM" en móvil */
   .sync-btn{padding:5px 9px;font-size:11px}
   .logout-btn{padding:4px 6px}

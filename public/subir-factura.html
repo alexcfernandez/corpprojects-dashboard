@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Subir factura — Corp Projects</title>
 <link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/tool-theme.css">
 <meta name="theme-color" content="#4d9cf8">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -85,6 +86,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 </style>
 </head>
 <body>
+<script>try{if(localStorage.getItem("cp_theme")==="light")document.body.classList.add("light");}catch(e){}</script>
 
 <div class="header">
   <div class="logo">CP</div>

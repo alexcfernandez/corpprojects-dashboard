@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Mediciones — Corp Projects</title>
 <link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/tool-theme.css">
 <meta name="theme-color" content="#4d9cf8">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -80,6 +81,7 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 </style>
 </head>
 <body>
+<script>try{if(localStorage.getItem("cp_theme")==="light")document.body.classList.add("light");}catch(e){}</script>
 
 <div class="header">
   <div class="logo">CP</div>
@@ -117,6 +119,8 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
   <div class="totals">
     <div><span class="lbl">Suelo</span><b id="t-suelo">0</b> m²</div>
     <div><span class="lbl">Paredes</span><b id="t-paredes">0</b> m²</div>
+    <div><span class="lbl">Techo</span><b id="t-techo">0</b> m²</div>
+    <div><span class="lbl">Pintura</span><b id="t-pintura">0</b> m²</div>
     <div><span class="lbl">Rodapié</span><b id="t-rodapie">0</b> m</div>
   </div>
   <button class="savebtn" onclick="guardar()">Guardar</button>
@@ -217,11 +221,16 @@ function recompute(){
   let ts=0,tp=0,tr=0;
   document.querySelectorAll('.estancia').forEach(card=>{
     const c=calcE(card.querySelector('.i-largo').value,card.querySelector('.i-ancho').value,card.querySelector('.i-alto').value,0);
-    card.querySelector('.calc').textContent=`Suelo ${fmt(c.suelo)} m²  ·  Paredes ${fmt(c.paredes)} m²  ·  Rodapié ${fmt(c.perim)} m`;
+    // Techo = misma superficie que el suelo. Pintura de la estancia = paredes + techo.
+    card.querySelector('.calc').textContent=`Suelo ${fmt(c.suelo)} m²  ·  Paredes ${fmt(c.paredes)} m²  ·  Techo ${fmt(c.suelo)} m²  ·  Pintura ${fmt(c.paredes+c.suelo)} m²  ·  Rodapié ${fmt(c.perim)} m`;
     ts+=c.suelo;tp+=c.paredes;tr+=c.perim;
   });
+  const tt=ts;                 // techo = suelo (misma superficie)
+  const tpint=tp+tt;           // pintura = paredes + techo
   document.getElementById('t-suelo').textContent=fmt(ts);
   document.getElementById('t-paredes').textContent=fmt(tp);
+  document.getElementById('t-techo').textContent=fmt(tt);
+  document.getElementById('t-pintura').textContent=fmt(tpint);
   document.getElementById('t-rodapie').textContent=fmt(tr);
 }
 document.getElementById('estancias').addEventListener('input',recompute);
