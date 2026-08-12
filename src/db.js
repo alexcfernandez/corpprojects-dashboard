@@ -105,6 +105,11 @@ async function ensureIndexes(db) {
     ['webhookSeen',            { ts: 1 },                    { expireAfterSeconds: 172800 }], // 2 días
     ['estadoConversacion',     { from: 1 },                  { unique: true }],
     ['estadoConversacion',     { updatedAt: 1 },             { expireAfterSeconds: 3600 }],   // TTL 1 h
+    // Custodia de activos (llaves / herramientas)
+    ['activos',                { tipo: 1, estado: 1 }],
+    ['activos',                { codigo: 1 },                { unique: true }],
+    ['activos',                { holderId: 1 }],
+    ['activoMovimientos',      { activoId: 1, ts: -1 }],
   ];
 
   for (const [coll, keys, opts] of indexes) {

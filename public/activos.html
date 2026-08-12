@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Llaves y herramientas — Corp Projects</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#4d9cf8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Corp Projects">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;--border:rgba(255,255,255,0.1);--border2:rgba(255,255,255,0.15);
+  --text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;--green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b;--purple:#a78bfa;--r:12px;--rs:10px;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:16px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:14px 20px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:10}
+.logo{width:34px;height:34px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#fff;flex-shrink:0}
+.header-text{font-weight:600;font-size:15px}
+.header-sub{font-size:12px;color:var(--text3);margin-top:1px}
+.header-logout{margin-left:auto;background:none;border:1px solid var(--border2);border-radius:8px;color:var(--text3);padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit}
+.page{display:none;min-height:100vh}.page.active{display:block}
+.container{padding:20px;max-width:680px;margin:0 auto}
+.login-card{background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:28px 24px;margin-top:24px}
+.login-title{font-size:18px;font-weight:600;margin-bottom:4px;text-align:center}
+.login-sub{font-size:13px;color:var(--text3);text-align:center;margin-bottom:24px}
+.worker-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
+.worker-btn{background:var(--bg3);border:2px solid var(--border);border-radius:var(--r);padding:14px 10px;text-align:center;cursor:pointer;font-family:inherit}
+.worker-btn.selected{border-color:var(--blue);background:rgba(77,156,248,.1)}
+.worker-name{font-size:13px;font-weight:600;color:var(--text)}
+.pin-input{width:100%;background:var(--bg3);border:2px solid var(--border2);border-radius:var(--rs);padding:14px;color:var(--text);font-size:24px;font-weight:700;text-align:center;letter-spacing:8px;outline:none;font-family:monospace}
+.btn{width:100%;background:var(--blue);border:none;border-radius:var(--r);padding:15px;color:#fff;font-size:16px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn:disabled{opacity:.55}
+.btn.sec{background:none;border:1px solid var(--border2);color:var(--text2)}
+.btn.green{background:var(--green)}.btn.amber{background:var(--amber)}.btn.danger{background:none;border:1px solid var(--red);color:var(--red)}
+.spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;display:inline-block;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+select,input[type=text],input[type=number],input[type=date],textarea{width:100%;background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:12px 13px;color:var(--text);font-size:15px;outline:none;font-family:inherit;-webkit-appearance:none}
+textarea{min-height:60px;resize:vertical}
+label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:0 0 6px}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);max-width:92%;min-width:260px;padding:14px 18px;border-radius:12px;font-size:15px;font-weight:500;z-index:300;opacity:0;pointer-events:none;transition:all .22s;box-shadow:0 10px 30px rgba(0,0,0,.5);text-align:center}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast.ok{background:#12301f;border:1px solid var(--green);color:#7ff0c0}
+#toast.warn{background:#33280d;border:1px solid var(--amber);color:#ffd98a}
+#toast.error{background:#3a1414;border:1px solid var(--red);color:#ff9d9d}
+.toolbar{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.seg{display:flex;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);overflow:hidden}
+.seg button{background:none;border:none;color:var(--text3);padding:9px 12px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+.seg button.on{background:rgba(77,156,248,.15);color:var(--blue)}
+.tool-btn{background:none;border:1px solid var(--border2);border-radius:var(--rs);color:var(--text3);padding:9px 12px;font-size:13px;cursor:pointer;font-family:inherit}
+.addbtn{margin-left:auto;background:var(--blue);border:none;border-radius:var(--rs);color:#fff;font-weight:600;padding:9px 14px;font-size:13px;cursor:pointer;font-family:inherit}
+#buscar{margin-bottom:12px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:13px 15px;margin-bottom:9px;cursor:pointer}
+.card:hover{border-color:var(--border2)}
+.card-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.card-cod{font-weight:700;font-size:15px}
+.card-name{font-size:13px;color:var(--text2);margin-top:2px}
+.badge{display:inline-block;font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;margin-top:8px}
+.b-oficina{background:rgba(90,98,120,.2);color:var(--text2)}
+.b-operario{background:rgba(77,156,248,.14);color:var(--blue)}
+.b-cliente{background:rgba(34,196,135,.14);color:var(--green)}
+.b-perdida{background:rgba(240,82,82,.16);color:var(--red)}
+.empty{text-align:center;color:var(--text3);font-size:14px;padding:40px 20px}
+.persona{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px}
+.persona h3{font-size:15px;margin-bottom:8px}
+.persona .it{display:flex;justify-content:space-between;gap:10px;font-size:13px;color:var(--text2);padding:6px 0;border-top:1px solid var(--border)}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;display:none;align-items:flex-end;justify-content:center}
+.overlay.show{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:18px 18px 0 0;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;padding:20px}
+@media(min-width:600px){.overlay{align-items:center}.modal{border-radius:18px}}
+.m-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.m-cod{font-weight:800;font-size:22px}
+.m-tipo{font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em}
+.kv{display:flex;gap:8px;font-size:14px;padding:5px 0;border-bottom:1px solid var(--border)}
+.kv .k{color:var(--text3);width:110px;flex-shrink:0}
+.kv .v{color:var(--text)}
+.sec{margin:14px 0}
+.foto{width:100%;max-height:220px;object-fit:contain;border-radius:var(--rs);background:var(--bg3);margin-top:8px}
+.hist{font-size:13px;color:var(--text2);padding:7px 0;border-top:1px solid var(--border)}
+.hist b{color:var(--text)}
+.row2{display:flex;gap:8px;margin-top:8px}
+.row2>*{flex:1}
+.acts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px}
+.acts .btn{width:auto;padding:12px}
+.field{margin-bottom:14px}
+.mini{font-size:12px;color:var(--text3);margin-top:5px}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">CP</div>
+  <div><div class="header-text">Llaves y herramientas</div><div class="header-sub" id="header-sub"></div></div>
+  <button class="header-logout" id="logout-btn" onclick="logout()" style="display:none">Salir</button>
+</div>
+<div id="toast"></div>
+
+<!-- LOGIN -->
+<div class="page" id="page-login"><div class="container"><div class="login-card">
+  <div class="login-title">Acceso oficina</div><div class="login-sub">Elige tu nombre e introduce el PIN</div>
+  <div class="worker-grid" id="worker-selector"></div>
+  <input type="tel" inputmode="numeric" id="pin-input" class="pin-input" placeholder="••••" maxlength="6" onkeydown="if(event.key==='Enter')doLogin()">
+  <div style="height:16px"></div><button class="btn" id="login-btn" onclick="doLogin()">Entrar →</button>
+</div></div></div>
+
+<!-- LISTA -->
+<div class="page" id="page-list"><div class="container">
+  <div class="toolbar">
+    <div class="seg">
+      <button id="seg-llave" class="on" onclick="setFiltro('llave')">🔑 Llaves</button>
+      <button id="seg-herramienta" onclick="setFiltro('herramienta')">🛠️ Herramientas</button>
+      <button id="seg-persona" onclick="setFiltro('persona')">👤 Por persona</button>
+    </div>
+    <button class="addbtn" onclick="nuevo()">+ Nuevo</button>
+  </div>
+  <input type="text" id="buscar" placeholder="Buscar por código, nombre, cliente…" oninput="render()">
+  <div id="lista"></div>
+</div></div>
+
+<!-- FICHA -->
+<div class="overlay" id="ov-ficha"><div class="modal" id="ficha-body"></div></div>
+
+<!-- FORM (nuevo/editar) -->
+<div class="overlay" id="ov-form"><div class="modal">
+  <div class="m-head"><div class="m-cod" id="form-title">Nuevo</div></div>
+  <div style="height:14px"></div>
+  <div class="field" id="f-tipo-wrap">
+    <label class="fld">Tipo</label>
+    <select id="f-tipo" onchange="onTipo()"><option value="llave">🔑 Llave</option><option value="herramienta">🛠️ Herramienta</option></select>
+  </div>
+  <div class="field"><label class="fld">Código (etiqueta)</label><input type="text" id="f-codigo" placeholder="auto"><div class="mini">Es lo único que va impreso en la llave.</div></div>
+  <!-- LLAVE -->
+  <div id="campos-llave">
+    <div class="field"><label class="fld">Cliente (StelOrder)</label><input type="text" id="f-cliente" autocomplete="off" placeholder="Busca el cliente"></div>
+    <div class="field"><label class="fld">Dirección (solo aquí, no en la llave)</label><input type="text" id="f-direccion" placeholder="Calle, número, piso…"></div>
+    <div class="row2">
+      <div class="field"><label class="fld">Nº de copias</label><input type="number" id="f-copias" value="1" min="1"></div>
+      <div class="field"><label class="fld">Fecha entrega</label><input type="date" id="f-fentrega"></div>
+    </div>
+  </div>
+  <!-- HERRAMIENTA -->
+  <div id="campos-herr" style="display:none">
+    <div class="field"><label class="fld">Nombre</label><input type="text" id="f-nombre" placeholder="Ej. Taladro Bosch GBH 2-28"></div>
+    <div class="row2">
+      <div class="field"><label class="fld">Marca</label><input type="text" id="f-marca"></div>
+      <div class="field"><label class="fld">Modelo</label><input type="text" id="f-modelo"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label class="fld">Nº serie</label><input type="text" id="f-serie"></div>
+      <div class="field"><label class="fld">Valor (€)</label><input type="number" id="f-valor" step="0.01"></div>
+    </div>
+  </div>
+  <div class="field"><label class="fld">Foto (opcional)</label>
+    <input type="file" id="f-foto-input" accept="image/*" capture="environment" onchange="onFoto(this.files)">
+    <img id="f-foto-prev" class="foto" style="display:none">
+  </div>
+  <div class="field"><label class="fld">Notas</label><textarea id="f-notas"></textarea></div>
+  <div class="row2">
+    <button class="btn sec" onclick="cerrar('ov-form')">Cancelar</button>
+    <button class="btn" id="form-save" onclick="guardarForm()">Guardar</button>
+  </div>
+</div></div>
+
+<!-- DAR -->
+<div class="overlay" id="ov-dar"><div class="modal">
+  <div class="m-head"><div class="m-cod">Entregar</div></div>
+  <div class="mini" id="dar-cod" style="margin-bottom:12px"></div>
+  <div class="field"><label class="fld">¿A quién?</label>
+    <select id="d-tipo" onchange="onDarTipo()"><option value="operario">Operario</option><option value="cliente">Cliente / otro</option></select>
+  </div>
+  <div class="field" id="d-operario-wrap"><label class="fld">Operario</label><select id="d-operario"></select></div>
+  <div class="field" id="d-nombre-wrap" style="display:none"><label class="fld">Nombre</label><input type="text" id="d-nombre" placeholder="A quién se lo entregas"></div>
+  <div class="field"><label class="fld">Nota (opcional)</label><input type="text" id="d-nota" placeholder="Ej. para la obra de Olot"></div>
+  <div class="row2">
+    <button class="btn sec" onclick="cerrar('ov-dar')">Cancelar</button>
+    <button class="btn" id="dar-save" onclick="confirmarDar()">Entregar</button>
+  </div>
+</div></div>
+
+<script src="/cliente-autocomplete.js"></script>
+<script>
+if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
+let workerToken=null, esAdmin=false, todosWorkers=[], activosCache=[], filtro='llave', fichaId=null, formId=null, darId=null, fotoData='';
+
+function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('page-'+id).classList.add('active');}
+let _tt=null;function toast(t,ty){const e=document.getElementById('toast');e.textContent=t;e.className='show '+(ty||'ok');clearTimeout(_tt);_tt=setTimeout(()=>e.className='',3500);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function authH(x){return Object.assign({'Authorization':`Bearer ${workerToken}`},x||{});}
+function eur(n){return (Number(n)||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';}
+function fecha(d){return d?String(d).slice(0,10):'';}
+function abrir(id){document.getElementById(id).classList.add('show');}
+function cerrar(id){document.getElementById(id).classList.remove('show');}
+async function api(method,url,body){const o={method,headers:authH(body?{'Content-Type':'application/json'}:{})};if(body)o.body=JSON.stringify(body);const r=await fetch(url,o);if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Error');return r.json().catch(()=>({}));}
+
+// ── LOGIN + SSO ──
+async function loadWorkers(){try{const r=await fetch('/api/partes/workers');todosWorkers=await r.json();
+  document.getElementById('worker-selector').innerHTML=todosWorkers.map(w=>`<button class="worker-btn" data-id="${w.id}" onclick="selW(this)"><div class="worker-name">${esc(w.name)}</div></button>`).join('');}catch(e){}}
+function selW(b){document.querySelectorAll('.worker-btn').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');document.getElementById('pin-input').focus();}
+async function enterApp(token,info,persist){workerToken=token;esAdmin=!!info.admin;
+  if(persist){localStorage.setItem('cpWT',token);localStorage.setItem('cpWN',info.workerName||'');}
+  document.getElementById('header-sub').textContent=info.workerName||'';
+  const lb=document.getElementById('logout-btn');lb.textContent=esAdmin?'← Dashboard':'Salir';lb.style.display='block';
+  showPage('list');
+  if(window.initClienteAutocomplete) initClienteAutocomplete(document.getElementById('f-cliente'),workerToken);
+  document.getElementById('d-operario').innerHTML=todosWorkers.map(w=>`<option value="${w.id}">${esc(w.name)}</option>`).join('');
+  await cargar();
+}
+async function tryRestore(){const admin=localStorage.getItem('cp_token'),worker=localStorage.getItem('cpWT');
+  for(const [t,isA] of [[admin,true],[worker,false]]){if(!t)continue;
+    try{const r=await fetch('/api/oficina/whoami',{headers:{'Authorization':`Bearer ${t}`}});if(!r.ok)continue;const d=await r.json();await enterApp(t,{workerName:d.name,admin:d.admin},!isA);return true;}catch(e){}}
+  localStorage.removeItem('cpWT');return false;}
+async function doLogin(){const sel=document.querySelector('.worker-btn.selected');if(!sel){toast('Selecciona tu nombre','warn');return;}
+  const pin=document.getElementById('pin-input').value;if(pin.length<4){toast('Introduce el PIN','warn');return;}
+  const b=document.getElementById('login-btn');b.disabled=true;b.innerHTML='<span class="spinner"></span>…';
+  try{const r=await fetch('/api/partes/worker-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workerId:sel.dataset.id,pin})});const d=await r.json();if(!r.ok)throw new Error(d.error||'PIN incorrecto');await enterApp(d.token,{workerId:d.workerId,workerName:d.workerName},true);}
+  catch(e){toast(e.message,'error');document.getElementById('pin-input').value='';}finally{b.disabled=false;b.innerHTML='Entrar →';}}
+function logout(){if(esAdmin){location.href='/';return;}workerToken=null;localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');document.getElementById('logout-btn').style.display='none';showPage('login');}
+
+// ── DATOS + LISTA ──
+async function cargar(){document.getElementById('lista').innerHTML='<div class="empty"><span class="spinner"></span></div>';
+  try{activosCache=await api('GET','/api/activos');render();}catch(e){toast(e.message,'error');}}
+function setFiltro(f){filtro=f;['llave','herramienta','persona'].forEach(k=>document.getElementById('seg-'+k).classList.toggle('on',k===f));document.getElementById('buscar').style.display=f==='persona'?'none':'block';render();}
+function badge(a){const map={oficina:['b-oficina','En oficina'],operario:['b-operario','Con '+esc(a.holderName||'operario')],cliente:['b-cliente','Con cliente '+esc(a.holderName||'')],perdida:['b-perdida','⚠️ Perdida']};const [c,t]=map[a.estado]||map.oficina;return `<span class="badge ${c}">${t}</span>`;}
+function render(){
+  const cont=document.getElementById('lista');
+  if(filtro==='persona'){
+    const conOp=activosCache.filter(a=>a.estado==='operario');
+    if(!conOp.length){cont.innerHTML='<div class="empty">Nadie tiene nada asignado ahora.</div>';return;}
+    const byP={};conOp.forEach(a=>{(byP[a.holderName]=byP[a.holderName]||[]).push(a);});
+    cont.innerHTML=Object.keys(byP).sort().map(name=>`<div class="persona"><h3>👤 ${esc(name)} · ${byP[name].length}</h3>${byP[name].map(a=>`<div class="it" onclick="ficha('${a._id}')" style="cursor:pointer"><span>${a.tipo==='llave'?'🔑':'🛠️'} <b>${esc(a.codigo)}</b> · ${esc(a.nombre||a.clientName||'')}</span><span>›</span></div>`).join('')}</div>`).join('');
+    return;
+  }
+  const q=(document.getElementById('buscar').value||'').toLowerCase();
+  let list=activosCache.filter(a=>a.tipo===filtro);
+  if(q)list=list.filter(a=>[a.codigo,a.nombre,a.clientName,a.direccion,a.holderName].some(x=>String(x||'').toLowerCase().includes(q)));
+  if(!list.length){cont.innerHTML='<div class="empty">Nada aquí. Pulsa «+ Nuevo».</div>';return;}
+  cont.innerHTML=list.map(a=>`<div class="card" onclick="ficha('${a._id}')">
+    <div class="card-top"><div class="card-cod">${a.tipo==='llave'?'🔑':'🛠️'} ${esc(a.codigo)}</div></div>
+    <div class="card-name">${esc(a.nombre||'')}${a.clientName?(a.nombre?' · ':'')+esc(a.clientName):''}</div>
+    <div>${badge(a)}</div></div>`).join('');
+}
+
+// ── FICHA ──
+async function ficha(id){fichaId=id;
+  try{const {activo:a,movimientos}=await api('GET','/api/activos/'+id);
+    const kv=(k,v)=>v?`<div class="kv"><div class="k">${k}</div><div class="v">${esc(v)}</div></div>`:'';
+    const detalle = a.tipo==='llave'
+      ? kv('Cliente',a.clientName)+kv('Dirección',a.direccion)+kv('Copias',a.copias)+kv('Entregada',fecha(a.fechaEntrega))
+      : kv('Nombre',a.nombre)+kv('Marca',a.marca)+kv('Modelo',a.modelo)+kv('Nº serie',a.numeroSerie)+(a.valor?kv('Valor',eur(a.valor)):'');
+    const hist=movimientos.map(m=>{const ac={alta:'Alta',dar:'Entregada a',devolver:'Devuelta',perdida:'Marcada perdida',edicion:'Editada'}[m.accion]||m.accion;
+      const quien=m.accion==='dar'?` <b>${esc(m.aName||'')}</b>`:(m.accion==='devolver'?' a oficina':'');
+      return `<div class="hist">${new Date(m.ts).toLocaleDateString('es-ES')} · ${ac}${quien}${m.by?` <span style="color:var(--text3)">(${esc(m.by)})</span>`:''}${m.nota?` — ${esc(m.nota)}`:''}</div>`;}).join('')||'<div class="hist">Sin movimientos.</div>';
+    document.getElementById('ficha-body').innerHTML=`
+      <div class="m-head"><div><div class="m-tipo">${a.tipo}</div><div class="m-cod">${esc(a.codigo)}</div></div>${badge(a)}</div>
+      ${a.foto?`<img class="foto" src="${a.foto}">`:''}
+      <div class="sec">${detalle||'<div class="mini">Sin datos.</div>'}${a.obraRef?kv('Obra',a.obraRef):''}${a.notas?kv('Notas',a.notas):''}</div>
+      <div class="acts">
+        ${a.estado==='oficina'?`<button class="btn" onclick="dar('${a._id}')">Entregar</button>`:`<button class="btn green" onclick="devolver('${a._id}')">Devolver a oficina</button>`}
+        <button class="btn amber" onclick="etiqueta('${esc(a.codigo)}','${esc(a.tipo)}','${esc((a.nombre||a.clientName||'').replace(/'/g,''))}')">🏷️ Etiqueta</button>
+        <button class="btn sec" onclick="editar('${a._id}')">Editar</button>
+        ${a.estado!=='perdida'?`<button class="btn danger" onclick="perdida('${a._id}')">Marcar perdida</button>`:''}
+      </div>
+      <div class="sec"><label class="fld">Historial</label>${hist}</div>
+      <div class="row2"><button class="btn sec" onclick="cerrar('ov-ficha')">Cerrar</button><button class="btn danger" onclick="eliminar('${a._id}')">Eliminar</button></div>`;
+    abrir('ov-ficha');
+  }catch(e){toast(e.message,'error');}
+}
+async function devolver(id){try{await api('POST','/api/activos/'+id+'/devolver',{});cerrar('ov-ficha');await cargar();toast('Devuelta a oficina','ok');}catch(e){toast(e.message,'error');}}
+async function perdida(id){if(!confirm('¿Marcar como PERDIDA?'))return;try{await api('POST','/api/activos/'+id+'/perdida',{});cerrar('ov-ficha');await cargar();toast('Marcada como perdida','warn');}catch(e){toast(e.message,'error');}}
+async function eliminar(id){if(!confirm('¿Eliminar este activo y su historial? No se puede deshacer.'))return;try{await api('DELETE','/api/activos/'+id);cerrar('ov-ficha');await cargar();toast('Eliminado','ok');}catch(e){toast(e.message,'error');}}
+
+// ── DAR ──
+function dar(id){darId=id;document.getElementById('d-tipo').value='operario';onDarTipo();document.getElementById('d-nombre').value='';document.getElementById('d-nota').value='';
+  const a=activosCache.find(x=>x._id===id);document.getElementById('dar-cod').textContent=a?`${a.codigo} · ${a.nombre||a.clientName||''}`:'';cerrar('ov-ficha');abrir('ov-dar');}
+function onDarTipo(){const op=document.getElementById('d-tipo').value==='operario';document.getElementById('d-operario-wrap').style.display=op?'block':'none';document.getElementById('d-nombre-wrap').style.display=op?'none':'block';}
+async function confirmarDar(){const tipo=document.getElementById('d-tipo').value;let holderId=null,holderName='';
+  if(tipo==='operario'){const s=document.getElementById('d-operario');holderId=s.value;holderName=s.options[s.selectedIndex]?.textContent||'';}
+  else{holderName=document.getElementById('d-nombre').value.trim();if(!holderName){toast('Escribe a quién','warn');return;}}
+  try{await api('POST','/api/activos/'+darId+'/dar',{holderType:tipo,holderId,holderName,nota:document.getElementById('d-nota').value.trim()});cerrar('ov-dar');await cargar();toast('Entregada a '+holderName,'ok');}catch(e){toast(e.message,'error');}}
+
+// ── FORM (nuevo / editar) ──
+function onTipo(){const t=document.getElementById('f-tipo').value;document.getElementById('campos-llave').style.display=t==='llave'?'block':'none';document.getElementById('campos-herr').style.display=t==='herramienta'?'block':'none';if(!formId)prefillCodigo(t);}
+async function prefillCodigo(t){try{const r=await api('GET','/api/activos/siguiente-codigo?tipo='+t);document.getElementById('f-codigo').value=r.codigo||'';document.getElementById('f-codigo').placeholder=r.codigo||'auto';}catch(e){}}
+function limpiarForm(){['f-codigo','f-cliente','f-direccion','f-nombre','f-marca','f-modelo','f-serie','f-valor','f-notas','f-fentrega'].forEach(i=>{const e=document.getElementById(i);if(e)e.value='';});document.getElementById('f-copias').value='1';fotoData='';document.getElementById('f-foto-prev').style.display='none';document.getElementById('f-foto-input').value='';}
+function nuevo(){formId=null;document.getElementById('form-title').textContent='Nuevo activo';document.getElementById('f-tipo-wrap').style.display='block';document.getElementById('f-tipo').value=filtro==='herramienta'?'herramienta':'llave';limpiarForm();onTipo();abrir('ov-form');}
+async function editar(id){const {activo:a}=await api('GET','/api/activos/'+id);formId=id;document.getElementById('form-title').textContent='Editar '+a.codigo;document.getElementById('f-tipo-wrap').style.display='none';
+  document.getElementById('f-tipo').value=a.tipo;onTipo();limpiarForm();
+  document.getElementById('f-codigo').value=a.codigo;document.getElementById('f-cliente').value=a.clientName||'';document.getElementById('f-direccion').value=a.direccion||'';document.getElementById('f-copias').value=a.copias||1;document.getElementById('f-fentrega').value=fecha(a.fechaEntrega);
+  document.getElementById('f-nombre').value=a.nombre||'';document.getElementById('f-marca').value=a.marca||'';document.getElementById('f-modelo').value=a.modelo||'';document.getElementById('f-serie').value=a.numeroSerie||'';document.getElementById('f-valor').value=a.valor||'';document.getElementById('f-notas').value=a.notas||'';
+  if(a.foto){fotoData=a.foto;const p=document.getElementById('f-foto-prev');p.src=a.foto;p.style.display='block';}
+  cerrar('ov-ficha');abrir('ov-form');}
+async function guardarForm(){const tipo=document.getElementById('f-tipo').value;
+  const body={tipo,codigo:document.getElementById('f-codigo').value.trim(),notas:document.getElementById('f-notas').value.trim(),foto:fotoData};
+  if(tipo==='llave'){body.clientName=document.getElementById('f-cliente').value.trim();body.direccion=document.getElementById('f-direccion').value.trim();body.copias=document.getElementById('f-copias').value;body.fechaEntrega=document.getElementById('f-fentrega').value||null;body.nombre=body.clientName?('Llave '+body.clientName):'';}
+  else{body.nombre=document.getElementById('f-nombre').value.trim();body.marca=document.getElementById('f-marca').value.trim();body.modelo=document.getElementById('f-modelo').value.trim();body.numeroSerie=document.getElementById('f-serie').value.trim();body.valor=document.getElementById('f-valor').value||0;}
+  const b=document.getElementById('form-save');b.disabled=true;b.innerHTML='<span class="spinner"></span>…';
+  try{if(formId)await api('PUT','/api/activos/'+formId,body);else await api('POST','/api/activos',body);cerrar('ov-form');await cargar();toast('Guardado','ok');}catch(e){toast(e.message,'error');}finally{b.disabled=false;b.innerHTML='Guardar';}}
+
+// Foto: comprime a ~1000px JPEG y guarda como dataURL.
+function onFoto(files){const f=files&&files[0];if(!f)return;const img=new Image();const url=URL.createObjectURL(f);
+  img.onload=()=>{URL.revokeObjectURL(url);const max=1000;let {width:w,height:h}=img;if(w>max||h>max){const r=Math.min(max/w,max/h);w=Math.round(w*r);h=Math.round(h*r);}
+    const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);fotoData=c.toDataURL('image/jpeg',0.7);
+    const p=document.getElementById('f-foto-prev');p.src=fotoData;p.style.display='block';};
+  img.onerror=()=>URL.revokeObjectURL(url);img.src=url;}
+
+// Etiqueta imprimible: SOLO el código (y nombre para herramientas). Sin dirección.
+function etiqueta(codigo,tipo,nombre){const w=window.open('','_blank','width=420,height=320');if(!w){toast('Permite las ventanas emergentes','warn');return;}
+  w.document.write(`<html><head><title>Etiqueta ${codigo}</title><style>body{font-family:-apple-system,sans-serif;text-align:center;padding:30px}.cod{font-size:72px;font-weight:800;letter-spacing:2px;margin:10px 0}.t{font-size:16px;color:#555}.n{font-size:20px;margin-top:8px}@media print{button{display:none}}</style></head><body><div class="t">${tipo==='llave'?'🔑 LLAVE':'🛠️ HERRAMIENTA'} · Corp Projects</div><div class="cod">${codigo}</div>${tipo==='herramienta'&&nombre?`<div class="n">${nombre}</div>`:''}<br><br><button onclick="window.print()" style="padding:10px 20px;font-size:15px">Imprimir</button></body></html>`);
+  w.document.close();}
+
+document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('show');}));
+(async function(){await loadWorkers();const ok=await tryRestore();if(!ok)showPage('login');})();
+</script>
+</body>
+</html>

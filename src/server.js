@@ -1391,6 +1391,7 @@ app.get('/api/roles', requireAuth, (req, res) => res.json(users.ROLES));
 
 // ── OBRAS ─────────────────────────────────────────────────────────
 const obras = require('./obras');
+const activos = require('./activos');
 
 app.get('/api/obras', requireAuth, async (req, res) => {
   try {
@@ -1579,6 +1580,58 @@ app.post('/api/facturas/reglas', requireAuthOficina, async (req, res) => {
 });
 app.delete('/api/facturas/reglas/:supplierId', requireAuthOficina, async (req, res) => {
   try { res.json(await obras.deleteReglaProveedor(req.params.supplierId)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// ── CUSTODIA DE ACTIVOS (llaves / herramientas) ───────────────────
+app.get('/api/activos', requireAuthOficina, async (req, res) => {
+  try {
+    const { tipo, estado, holderId, search } = req.query;
+    res.json(await activos.getActivos({ tipo, estado, holderId, search }));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/activos/siguiente-codigo', requireAuthOficina, async (req, res) => {
+  try {
+    const db = await require('./db').getDB();
+    res.json({ codigo: await activos.siguienteCodigo(db, req.query.tipo) });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/activos/:id', requireAuthOficina, async (req, res) => {
+  try { res.json(await activos.getActivo(req.params.id)); }
+  catch (err) { res.status(404).json({ error: err.message }); }
+});
+app.post('/api/activos', requireAuthOficina, async (req, res) => {
+  try {
+    const by = req.oficina?.workerName || (req.oficina?.admin ? 'admin' : 'oficina');
+    res.json(await activos.crearActivo(req.body || {}, by));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.put('/api/activos/:id', requireAuthOficina, async (req, res) => {
+  try {
+    const by = req.oficina?.workerName || (req.oficina?.admin ? 'admin' : 'oficina');
+    res.json(await activos.editarActivo(req.params.id, req.body || {}, by));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/activos/:id/dar', requireAuthOficina, async (req, res) => {
+  try {
+    const by = req.oficina?.workerName || (req.oficina?.admin ? 'admin' : 'oficina');
+    res.json(await activos.darActivo(req.params.id, req.body || {}, by));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/activos/:id/devolver', requireAuthOficina, async (req, res) => {
+  try {
+    const by = req.oficina?.workerName || (req.oficina?.admin ? 'admin' : 'oficina');
+    res.json(await activos.devolverActivo(req.params.id, req.body || {}, by));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/activos/:id/perdida', requireAuthOficina, async (req, res) => {
+  try {
+    const by = req.oficina?.workerName || (req.oficina?.admin ? 'admin' : 'oficina');
+    res.json(await activos.marcarPerdida(req.params.id, req.body || {}, by));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.delete('/api/activos/:id', requireAuthOficina, async (req, res) => {
+  try { res.json(await activos.eliminarActivo(req.params.id)); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 
@@ -2405,6 +2458,7 @@ app.get('/informe-presencia', (req, res) => res.sendFile(path.join(__dirname, '.
 app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
 app.get('/subir-factura', (req, res) => res.sendFile(path.join(__dirname, '../public/subir-factura.html')));
 app.get('/asignar-facturas', (req, res) => res.sendFile(path.join(__dirname, '../public/asignar-facturas.html')));
+app.get('/activos', (req, res) => res.sendFile(path.join(__dirname, '../public/activos.html')));
 app.get('/amidaments', (req, res) => res.sendFile(path.join(__dirname, '../public/amidaments.html')));
 app.get('/competencia', (req, res) => res.sendFile(path.join(__dirname, '../public/competencia.html')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
