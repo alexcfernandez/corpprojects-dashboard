@@ -14,6 +14,45 @@ const ESTADOS_OBRA = {
   facturada:  { label: 'Facturada',   color: '#a78bfa', emoji: '💰' },
 };
 
+// ── FACTURAS DE PROVEEDOR ↔ OBRA ─────────────────────────────────
+// Dos vías para ligar una factura de proveedor a una obra:
+//   1) Marcador "[obra: {ref}]" que n8n escribe en el título en StelOrder.
+//   2) Asignación MANUAL desde el dashboard (colección facturaObraAsignada),
+//      para las que entran sin obra (proveedor por email). La manual MANDA.
+function extraerObraMarcador(text) {
+  const m = String(text || '').match(/obra:\s*([^\]\n|·]+)/i);
+  return m ? m[1].trim() : '';
+}
+async function getAsignacionesFacturaMap(dbArg) {
+  const database = dbArg || await getDB();
+  const arr = await database.collection('facturaObraAsignada').find({}).toArray();
+  const map = new Map();
+  arr.forEach(a => map.set(String(a.stelInvoiceId), a));
+  return map;
+}
+async function asignarFacturaObra(stelInvoiceId, { obraId, obraRef, by } = {}) {
+  if (!stelInvoiceId) throw new Error('Falta la factura');
+  if (!obraRef && !obraId) throw new Error('Falta la obra');
+  const database = await getDB();
+  await database.collection('facturaObraAsignada').updateOne(
+    { stelInvoiceId: String(stelInvoiceId) },
+    { $set: {
+        stelInvoiceId: String(stelInvoiceId),
+        obraId:  obraId ? String(obraId) : null,
+        obraRef: obraRef || '',
+        by:      by || '',
+        ts:      new Date(),
+    } },
+    { upsert: true }
+  );
+  return { ok: true };
+}
+async function desasignarFacturaObra(stelInvoiceId) {
+  const database = await getDB();
+  await database.collection('facturaObraAsignada').deleteOne({ stelInvoiceId: String(stelInvoiceId) });
+  return { ok: true };
+}
+
 // ── CRUD OBRAS ───────────────────────────────────────────────────
 async function createObra(data) {
   const db = await getDB();
@@ -178,25 +217,31 @@ async function getRentabilidad(obraId) {
   // 2c. Material de la obra (metido a mano en la ficha) — cuenta como coste.
   (obra.materiales || []).forEach(m => { totalMateriales += parseFloat(m.importe || 0); });
 
-  // 2d. Facturas de PROVEEDOR etiquetadas con esta obra (Fase 2).
-  //     n8n marca la factura en StelOrder con "[obra: {referencia}]" en el título
-  //     (o en extra-reference). Aquí sumamos su importe REAL al coste de la obra.
-  //     Mientras n8n no etiquete, no hay coincidencias → suma 0 (no altera nada).
+  // 2d. Facturas de PROVEEDOR de esta obra (Fase 2). La asignación MANUAL
+  //     (colección facturaObraAsignada) MANDA; si no la hay, se usa el marcador
+  //     "[obra: {ref}]" que n8n escribe en StelOrder. Cada factura se cuenta una
+  //     sola vez. Sin asignación ni marcador → no suma (comportamiento intacto).
   let totalProveedores = 0;
   const proveedores = [];
   try {
-    const facturasProv = await require('./stelorder').getPurchaseInvoices();
-    const reMarker = /obra:\s*([^\]\n|·]+)/i; // captura el texto de la obra tras "obra:"
+    const [facturasProv, asignMap] = await Promise.all([
+      require('./stelorder').getPurchaseInvoices(),
+      getAsignacionesFacturaMap(db),
+    ]);
+    const miId = String(obra._id);
     for (const f of (facturasProv || [])) {
-      const campo = `${f.title || ''} ${f.extraReference || ''}`;
-      const m = campo.match(reMarker);
-      if (!m) continue;
-      const tag = norm(m[1]);
-      // La referencia de la obra es la parte estable y distintiva del marcador.
-      if (tag && nRef && (tag.includes(nRef) || nRef.includes(tag))) {
+      const asig = asignMap.get(String(f.id));
+      let pertenece = false;
+      if (asig) {
+        pertenece = String(asig.obraId) === miId; // manual: prioritaria y excluyente
+      } else {
+        const tag = norm(extraerObraMarcador(`${f.title || ''} ${f.extraReference || ''}`));
+        pertenece = !!(tag && nRef && (tag.includes(nRef) || nRef.includes(tag)));
+      }
+      if (pertenece) {
         const imp = Number(f.total) || 0;
         totalProveedores += imp;
-        proveedores.push({ id: f.id, number: f.number, supplier: f.supplier, total: imp, date: f.date });
+        proveedores.push({ id: f.id, number: f.number, supplier: f.supplier, total: imp, date: f.date, fuente: asig ? 'manual' : 'n8n' });
       }
     }
   } catch (e) { /* si StelOrder falla, la rentabilidad sigue con personal + material */ }
@@ -279,4 +324,4 @@ async function getResumenGeneral() {
   return resumen;
 }
 
-module.exports = { ESTADOS_OBRA, createObra, getObras, getObra, updateObra, addMaterial, deleteMaterial, getRentabilidad, getResumenGeneral };
+module.exports = { ESTADOS_OBRA, createObra, getObras, getObra, updateObra, addMaterial, deleteMaterial, getRentabilidad, getResumenGeneral, extraerObraMarcador, getAsignacionesFacturaMap, asignarFacturaObra, desasignarFacturaObra };

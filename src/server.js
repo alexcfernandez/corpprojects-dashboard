@@ -1507,6 +1507,42 @@ app.post('/api/facturas/subir', requireAuthOficina, uploadFactura.any(), async (
   }
 });
 
+// ── Asignar facturas de proveedor a una obra a mano (las que entran sin obra) ──
+// Lista las facturas de proveedor con su estado de obra (manual > marcador n8n).
+app.get('/api/facturas/proveedor', requireAuthOficina, async (req, res) => {
+  try {
+    const soloSinObra = String(req.query.sinObra || '') === '1';
+    const [facturas, asignMap] = await Promise.all([
+      require('./stelorder').getPurchaseInvoices(),
+      obras.getAsignacionesFacturaMap(),
+    ]);
+    const out = (facturas || []).map(f => {
+      const asig = asignMap.get(String(f.id));
+      let obra = null;
+      if (asig) obra = { fuente: 'manual', obraId: asig.obraId, obraRef: asig.obraRef };
+      else {
+        const marca = obras.extraerObraMarcador(`${f.title || ''} ${f.extraReference || ''}`);
+        if (marca) obra = { fuente: 'n8n', obraId: null, obraRef: marca };
+      }
+      return { id: f.id, number: f.number, supplier: f.supplier, total: f.total, date: f.date, obra };
+    }).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    res.json(soloSinObra ? out.filter(f => !f.obra) : out);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/facturas/proveedor/:id/obra', requireAuthOficina, async (req, res) => {
+  try {
+    const { obraId, obraRef } = req.body || {};
+    const by = req.oficina?.workerName || (req.oficina?.admin ? 'admin' : 'oficina');
+    res.json(await obras.asignarFacturaObra(req.params.id, { obraId, obraRef, by }));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+app.delete('/api/facturas/proveedor/:id/obra', requireAuthOficina, async (req, res) => {
+  try { res.json(await obras.desasignarFacturaObra(req.params.id)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 // ── PARTES DE TRABAJO ─────────────────────────────────────────────
 const partes = require('./partes');
 
@@ -2329,6 +2365,7 @@ app.delete('/api/pagos/:id', requireAuth, async (req, res) => {
 app.get('/informe-presencia', (req, res) => res.sendFile(path.join(__dirname, '../public/informe-presencia.html')));
 app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
 app.get('/subir-factura', (req, res) => res.sendFile(path.join(__dirname, '../public/subir-factura.html')));
+app.get('/asignar-facturas', (req, res) => res.sendFile(path.join(__dirname, '../public/asignar-facturas.html')));
 app.get('/amidaments', (req, res) => res.sendFile(path.join(__dirname, '../public/amidaments.html')));
 app.get('/competencia', (req, res) => res.sendFile(path.join(__dirname, '../public/competencia.html')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));

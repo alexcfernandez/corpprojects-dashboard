@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Asignar facturas a obra — Corp Projects</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#4d9cf8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Corp Projects">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;
+  --border:rgba(255,255,255,0.1);--border2:rgba(255,255,255,0.15);
+  --text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;
+  --green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b;--purple:#a78bfa;
+  --r:12px;--rs:10px;
+}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:16px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:14px 20px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:10}
+.logo{width:34px;height:34px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#fff;flex-shrink:0}
+.header-text{font-weight:600;font-size:15px}
+.header-sub{font-size:12px;color:var(--text3);margin-top:1px}
+.header-logout{margin-left:auto;background:none;border:1px solid var(--border2);border-radius:8px;color:var(--text3);padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit}
+.page{display:none;min-height:100vh}
+.page.active{display:block}
+.container{padding:20px;max-width:640px;margin:0 auto}
+
+/* LOGIN */
+.login-card{background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:28px 24px;margin-top:24px}
+.login-title{font-size:18px;font-weight:600;margin-bottom:4px;text-align:center}
+.login-sub{font-size:13px;color:var(--text3);text-align:center;margin-bottom:24px}
+.worker-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
+.worker-btn{background:var(--bg3);border:2px solid var(--border);border-radius:var(--r);padding:14px 10px;text-align:center;cursor:pointer;transition:all .15s;font-family:inherit}
+.worker-btn:hover{border-color:var(--blue)}
+.worker-btn.selected{border-color:var(--blue);background:rgba(77,156,248,.1)}
+.worker-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-bottom:6px}
+.worker-name{font-size:13px;font-weight:600;color:var(--text)}
+.pin-input{width:100%;background:var(--bg3);border:2px solid var(--border2);border-radius:var(--rs);padding:14px;color:var(--text);font-size:24px;font-weight:700;text-align:center;letter-spacing:8px;outline:none;font-family:monospace}
+.pin-input:focus{border-color:var(--blue)}
+
+/* BOTONES / MSG */
+.btn{width:100%;background:var(--blue);border:none;border-radius:var(--r);padding:15px;color:#fff;font-size:16px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;display:inline-block;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.msg{border-radius:var(--rs);padding:12px 14px;font-size:14px;margin-top:14px;display:none}
+.msg.show{display:block}
+.msg.ok{background:rgba(34,196,135,.12);border:1px solid var(--green);color:var(--green)}
+.msg.warn{background:rgba(245,158,11,.12);border:1px solid var(--amber);color:var(--amber)}
+.msg.error{background:rgba(240,82,82,.12);border:1px solid var(--red);color:var(--red)}
+
+/* LISTA */
+.toolbar{display:flex;align-items:center;gap:8px;margin-bottom:16px}
+.seg{display:flex;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);overflow:hidden}
+.seg button{background:none;border:none;color:var(--text3);padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+.seg button.on{background:rgba(77,156,248,.15);color:var(--blue)}
+.count{margin-left:auto;font-size:12px;color:var(--text3)}
+.reload{background:none;border:1px solid var(--border2);border-radius:var(--rs);color:var(--text3);padding:9px 12px;font-size:13px;cursor:pointer;font-family:inherit}
+
+.inv{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px}
+.inv-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.inv-sup{font-weight:600;font-size:15px}
+.inv-total{font-weight:700;font-size:15px;white-space:nowrap}
+.inv-meta{font-size:12px;color:var(--text3);margin-top:2px}
+.badge{display:inline-block;font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;margin-top:8px}
+.badge.manual{background:rgba(34,196,135,.14);color:var(--green)}
+.badge.n8n{background:rgba(167,139,250,.14);color:var(--purple)}
+.badge.none{background:rgba(245,158,11,.14);color:var(--amber)}
+.assign{display:flex;gap:8px;margin-top:10px}
+.assign select{flex:1;background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:11px 12px;color:var(--text);font-size:14px;outline:none;font-family:inherit;-webkit-appearance:none}
+.assign select:focus{border-color:var(--blue)}
+.assign button{background:var(--blue);border:none;border-radius:var(--rs);color:#fff;font-weight:600;padding:11px 16px;font-size:14px;cursor:pointer;font-family:inherit;white-space:nowrap}
+.assign button.ghost{background:none;border:1px solid var(--red);color:var(--red)}
+.empty{text-align:center;color:var(--text3);font-size:14px;padding:40px 20px}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">CP</div>
+  <div>
+    <div class="header-text">Asignar facturas a obra</div>
+    <div class="header-sub" id="header-sub"></div>
+  </div>
+  <button class="header-logout" id="logout-btn" onclick="logout()" style="display:none">Salir</button>
+</div>
+
+<!-- LOGIN -->
+<div class="page" id="page-login">
+  <div class="container">
+    <div class="login-card">
+      <div class="login-title">Acceso oficina</div>
+      <div class="login-sub">Elige tu nombre e introduce el PIN</div>
+      <div class="worker-grid" id="worker-selector"></div>
+      <input type="tel" inputmode="numeric" id="pin-input" class="pin-input" placeholder="••••" maxlength="6" onkeydown="if(event.key==='Enter')doLogin()">
+      <div style="height:16px"></div>
+      <button class="btn" id="login-btn" onclick="doLogin()">Entrar →</button>
+      <div class="msg" id="login-msg"></div>
+    </div>
+  </div>
+</div>
+
+<!-- LISTA -->
+<div class="page" id="page-list">
+  <div class="container">
+    <div class="toolbar">
+      <div class="seg">
+        <button id="seg-sin" class="on" onclick="setFiltro('sin')">Sin obra</button>
+        <button id="seg-todas" onclick="setFiltro('todas')">Todas</button>
+      </div>
+      <button class="reload" onclick="cargar()">↻</button>
+      <span class="count" id="count"></span>
+    </div>
+    <div id="lista"></div>
+    <div class="msg" id="list-msg"></div>
+  </div>
+</div>
+
+<script>
+if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
+
+let workerToken=null, workerInfo=null, todosWorkers=[];
+let obrasCache=[], facturas=[], filtro='sin';
+
+function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('page-'+id).classList.add('active');}
+function showMsg(id,text,type){const m=document.getElementById(id);m.textContent=text;m.className='msg show '+(type||'ok');}
+function hideMsg(id){document.getElementById(id).className='msg';}
+function eur(n){return (Number(n)||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+// ── LOGIN (mismo mecanismo y sesión que parte.html / subir-factura) ──────────
+async function loadWorkers(){
+  try{
+    const r=await fetch('/api/partes/workers');todosWorkers=await r.json();
+    document.getElementById('worker-selector').innerHTML=todosWorkers.map(w=>`
+      <button class="worker-btn" data-id="${w.id}" onclick="selectWorker(this)">
+        <div class="worker-dot" style="background:#888"></div>
+        <div class="worker-name">${esc(w.name.split(' ')[0])}</div>
+        <div style="font-size:11px;color:var(--text3)">${esc(w.name.split(' ').slice(1).join(' '))}</div>
+      </button>`).join('');
+  }catch(e){document.getElementById('worker-selector').innerHTML='<div style="color:var(--text3);font-size:13px">Error cargando usuarios</div>';}
+}
+function selectWorker(btn){document.querySelectorAll('.worker-btn').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');document.getElementById('pin-input').focus();}
+async function enterApp(token,info){
+  workerToken=token;workerInfo=info;
+  localStorage.setItem('cpWT',token);localStorage.setItem('cpWN',info.workerName||'');localStorage.setItem('cpWI',String(info.workerId||''));
+  document.getElementById('header-sub').textContent=info.workerName||'';
+  document.getElementById('logout-btn').style.display='block';
+  showPage('list');
+  await cargarObras();
+  await cargar();
+}
+async function tryRestoreSession(){
+  const t=localStorage.getItem('cpWT');if(!t)return false;
+  try{
+    const r=await fetch('/api/partes/worker-session',{headers:{'Authorization':`Bearer ${t}`}});
+    if(!r.ok)throw new Error('caducada');
+    const data=await r.json();
+    await enterApp(t,{workerId:data.workerId,workerName:data.workerName});
+    return true;
+  }catch(e){localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');localStorage.removeItem('cpWI');return false;}
+}
+async function doLogin(){
+  const sel=document.querySelector('.worker-btn.selected');
+  if(!sel){showMsg('login-msg','⚠️ Selecciona tu nombre','warn');return;}
+  const pin=document.getElementById('pin-input').value;
+  if(pin.length<4){showMsg('login-msg','⚠️ Introduce el PIN','warn');return;}
+  const btn=document.getElementById('login-btn');btn.disabled=true;btn.innerHTML='<span class="spinner"></span>Verificando…';
+  try{
+    const r=await fetch('/api/partes/worker-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workerId:sel.dataset.id,pin})});
+    const data=await r.json();
+    if(!r.ok)throw new Error(data.error||'PIN incorrecto');
+    hideMsg('login-msg');
+    await enterApp(data.token,{workerId:data.workerId,workerName:data.workerName});
+  }catch(err){showMsg('login-msg','❌ '+err.message,'error');document.getElementById('pin-input').value='';}
+  finally{btn.disabled=false;btn.innerHTML='Entrar →';}
+}
+function logout(){
+  workerToken=null;workerInfo=null;
+  localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');localStorage.removeItem('cpWI');
+  document.getElementById('pin-input').value='';
+  document.getElementById('logout-btn').style.display='none';
+  document.querySelectorAll('.worker-btn').forEach(b=>b.classList.remove('selected'));
+  showPage('login');
+}
+
+// ── DATOS ────────────────────────────────────────────────────────────────────
+async function cargarObras(){
+  try{
+    const r=await fetch('/api/facturas/obras',{headers:{'Authorization':`Bearer ${workerToken}`}});
+    obrasCache = r.ok ? await r.json() : [];
+  }catch(e){obrasCache=[];}
+}
+function opcionesObra(sel){
+  const opts=obrasCache.map(o=>{
+    const label=[o.reference,o.clientName].filter(Boolean).join(' — ')||'(sin nombre)';
+    return `<option value="${esc(o.id)}" data-ref="${esc(label)}" ${sel===o.id?'selected':''}>${esc(label)}</option>`;
+  }).join('');
+  return `<option value="">— Elegir obra —</option>${opts}`;
+}
+function setFiltro(f){
+  filtro=f;
+  document.getElementById('seg-sin').classList.toggle('on',f==='sin');
+  document.getElementById('seg-todas').classList.toggle('on',f==='todas');
+  render();
+}
+async function cargar(){
+  hideMsg('list-msg');
+  document.getElementById('lista').innerHTML='<div class="empty"><span class="spinner"></span></div>';
+  try{
+    const r=await fetch('/api/facturas/proveedor',{headers:{'Authorization':`Bearer ${workerToken}`}});
+    if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'No se pudieron cargar las facturas');
+    facturas=await r.json();
+    render();
+  }catch(err){document.getElementById('lista').innerHTML='';showMsg('list-msg','❌ '+err.message,'error');}
+}
+function render(){
+  const lista=filtro==='sin'?facturas.filter(f=>!f.obra):facturas;
+  document.getElementById('count').textContent=`${lista.length} factura(s)`;
+  if(!lista.length){document.getElementById('lista').innerHTML='<div class="empty">'+(filtro==='sin'?'🎉 No hay facturas sin obra.':'No hay facturas de proveedor.')+'</div>';return;}
+  document.getElementById('lista').innerHTML=lista.map(f=>{
+    let badge='';
+    if(!f.obra) badge='<span class="badge none">Sin obra</span>';
+    else if(f.obra.fuente==='manual') badge=`<span class="badge manual">Obra (manual): ${esc(f.obra.obraRef)}</span>`;
+    else badge=`<span class="badge n8n">Obra (n8n): ${esc(f.obra.obraRef)}</span>`;
+    const selActual = f.obra && f.obra.fuente==='manual' ? f.obra.obraId : '';
+    const quitar = f.obra && f.obra.fuente==='manual' ? `<button class="ghost" onclick="quitar('${esc(f.id)}')">Quitar</button>` : '';
+    return `<div class="inv" id="inv-${esc(f.id)}">
+      <div class="inv-top"><div class="inv-sup">${esc(f.supplier||'—')}</div><div class="inv-total">${eur(f.total)}</div></div>
+      <div class="inv-meta">${esc(f.number||'')}${f.date?' · '+esc(f.date):''}</div>
+      <div>${badge}</div>
+      <div class="assign">
+        <select id="sel-${esc(f.id)}">${opcionesObra(selActual)}</select>
+        <button onclick="asignar('${esc(f.id)}')">Guardar</button>
+        ${quitar}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function asignar(id){
+  const sel=document.getElementById('sel-'+id);
+  const opt=sel.options[sel.selectedIndex];
+  const obraId=sel.value, obraRef=opt?opt.getAttribute('data-ref'):'';
+  if(!obraId){showMsg('list-msg','⚠️ Elige una obra en el desplegable','warn');return;}
+  const btn=sel.parentElement.querySelector('button');btn.disabled=true;btn.textContent='…';
+  try{
+    const r=await fetch('/api/facturas/proveedor/'+encodeURIComponent(id)+'/obra',{
+      method:'POST',headers:{'Authorization':`Bearer ${workerToken}`,'Content-Type':'application/json'},
+      body:JSON.stringify({obraId,obraRef})
+    });
+    if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'No se pudo asignar');
+    const f=facturas.find(x=>String(x.id)===String(id));
+    if(f)f.obra={fuente:'manual',obraId,obraRef};
+    hideMsg('list-msg');render();
+    showMsg('list-msg','✅ Asignada a '+obraRef,'ok');
+  }catch(err){btn.disabled=false;btn.textContent='Guardar';showMsg('list-msg','❌ '+err.message,'error');}
+}
+async function quitar(id){
+  try{
+    const r=await fetch('/api/facturas/proveedor/'+encodeURIComponent(id)+'/obra',{method:'DELETE',headers:{'Authorization':`Bearer ${workerToken}`}});
+    if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'No se pudo quitar');
+    const f=facturas.find(x=>String(x.id)===String(id));
+    if(f)f.obra=null;
+    hideMsg('list-msg');render();
+  }catch(err){showMsg('list-msg','❌ '+err.message,'error');}
+}
+
+// ── ARRANQUE ─────────────────────────────────────────────────────────────────
+(async function init(){
+  await loadWorkers();
+  const ok=await tryRestoreSession();
+  if(!ok)showPage('login');
+})();
+</script>
+</body>
+</html>
