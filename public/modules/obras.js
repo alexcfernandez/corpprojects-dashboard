@@ -326,6 +326,11 @@
                 <input type="number" id="ob-edit-budget" value="${obra.budgetAmount||''}" min="0" class="field-input">
               </div>
             </div>
+            <div style="margin-bottom:10px">
+              <span class="field-label">Otros nombres que cuentan (partes / presencia)</span>
+              <input type="text" id="ob-edit-aliases" value="${(obra.aliases||[]).join(', ')}" class="field-input" placeholder="Ej: calle comerç, comerç 76">
+              <div style="font-size:11px;color:var(--text3);margin-top:4px">Separa por comas. Añade aquí cómo se llamó la obra en los partes o la presencia, para que sus horas cuenten en esta obra.</div>
+            </div>
             <div style="display:flex;gap:8px">
               <button class="btn bp" onclick="CP.Obras.saveObraChanges('${id}')">💾 Guardar</button>
               <button class="btn bgh" onclick="document.getElementById('ob-modal').remove()">Cerrar</button>
@@ -342,9 +347,11 @@
   async function saveObraChanges(id) {
     const status       = document.getElementById('ob-edit-status')?.value;
     const budgetAmount = parseFloat(document.getElementById('ob-edit-budget')?.value || 0);
+    const aliases      = (document.getElementById('ob-edit-aliases')?.value || '').split(',').map(s=>s.trim()).filter(Boolean);
     const msg = document.getElementById('ob-modal-msg');
     try {
-      await api(`/api/obras/${id}`, { method:'PUT', body: JSON.stringify({ status, budgetAmount }) });
+      await api(`/api/obras/${id}`, { method:'PUT', body: JSON.stringify({ status, budgetAmount, aliases }) });
+      openObra(id); // recargar la ficha para ver la rentabilidad recalculada
       if (msg) { msg.textContent='✅ Guardado'; msg.style.display='block'; msg.style.color='var(--green)'; setTimeout(()=>msg.style.display='none',2000); }
       loadResumen();
     } catch(err) {

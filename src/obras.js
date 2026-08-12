@@ -144,6 +144,7 @@ async function createObra(data) {
     materiales:   Array.isArray(data.materiales) ? data.materiales.map(m => ({ id: String(Date.now()) + Math.random().toString(36).slice(2, 6), concepto: String(m.concepto || '').trim(), importe: parseFloat(m.importe || 0) })) : [],
     notes:        data.notes || '',
     tags:         data.tags || [],  // Weber, Nutersa, etc.
+    aliases:      Array.isArray(data.aliases) ? data.aliases.map(s => String(s || '').trim()).filter(Boolean) : [],  // otros nombres que cuentan (partes/presencia)
     createdAt:    new Date(),
     updatedAt:    new Date(),
   };
@@ -176,9 +177,10 @@ async function getObra(id) {
 
 async function updateObra(id, data) {
   const db = await getDB();
-  const allowed = ['clientName','reference','description','address','status','startDate','endDate','budgetAmount','notes','tags','materiales'];
+  const allowed = ['clientName','reference','description','address','status','startDate','endDate','budgetAmount','notes','tags','materiales','aliases'];
   const set = { updatedAt: new Date() };
   allowed.forEach(k => { if (data[k] !== undefined) set[k] = data[k]; });
+  if (Array.isArray(set.aliases)) set.aliases = set.aliases.map(s => String(s || '').trim()).filter(Boolean);
   return db.collection('obras').updateOne({ _id: new ObjectId(id) }, { $set: set });
 }
 
@@ -204,15 +206,20 @@ async function getRentabilidad(obraId) {
   const obra = await db.collection('obras').findOne({ _id: new ObjectId(obraId) });
   if (!obra) throw new Error('Obra no encontrada');
 
-  // 1. Obtener todos los partes asociados a esta obra
-  // Los partes se asocian por clientName + referencia en el campo clientName del parte
-  // Buscar partes que mencionen el nombre de la obra o el cliente
-  const partes = await db.collection('partes').find({
-    $or: [
-      { clientName: { $regex: obra.reference, $options: 'i' } },
-      { clientName: { $regex: obra.clientName, $options: 'i' } },
-    ]
-  }).sort({ date: 1 }).toArray();
+  // Textos por los que se reconoce esta obra: referencia, cliente y ALIAS
+  // ("otros nombres que cuentan" — el usuario los añade en la ficha para que
+  // cuadren partes y presencia registrados con un nombre distinto). Escapados.
+  const esc = s => String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const matchTexts = [obra.reference, obra.clientName, ...(obra.aliases || [])]
+    .map(s => String(s || '').trim()).filter(Boolean);
+  const orClientName  = matchTexts.map(t => ({ clientName: { $regex: esc(t), $options: 'i' } }));
+  const orObrasClient = matchTexts.map(t => ({ 'obras.clientName': { $regex: esc(t), $options: 'i' } }));
+  const NADA = { _id: null }; // sin textos → no casa nada
+
+  // 1. Partes asociados a esta obra (por cualquiera de sus nombres/alias).
+  const partes = await db.collection('partes').find(
+    orClientName.length ? { $or: orClientName } : NADA
+  ).sort({ date: 1 }).toArray();
 
   // 2. Coste de personal — desde PARTES y, si no hay parte ese día, desde PRESENCIA.
   //    Tarifa real = coste/hora de la plantilla (con fallback razonable).
@@ -230,20 +237,15 @@ async function getRentabilidad(obraId) {
     return RATES[id] || 15;
   };
 
-  // Presencia asociada a la obra (por nombre de obra o de cliente)
-  const esc = s => String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Presencia asociada a la obra: por cualquiera de sus nombres/alias.
   const nRef = norm(obra.reference || ''), nCli = norm(obra.clientName || '');
-  const matchObra = name => { const a = norm(name); if (!a) return false; return (nRef && (a.includes(nRef) || nRef.includes(a))) || (nCli && (a.includes(nCli) || nCli.includes(a))); };
+  const nList = matchTexts.map(norm).filter(Boolean);
+  const matchObra = name => { const a = norm(name); if (!a) return false; return nList.some(t => a.includes(t) || t.includes(a)); };
   let presencias = [];
   try {
-    presencias = await db.collection('attendance').find({
-      $or: [
-        { clientName: { $regex: esc(obra.reference || '___nada___'), $options: 'i' } },
-        { clientName: { $regex: esc(obra.clientName || '___nada___'), $options: 'i' } },
-        { 'obras.clientName': { $regex: esc(obra.reference || '___nada___'), $options: 'i' } },
-        { 'obras.clientName': { $regex: esc(obra.clientName || '___nada___'), $options: 'i' } },
-      ]
-    }).toArray();
+    presencias = await db.collection('attendance').find(
+      (orClientName.length || orObrasClient.length) ? { $or: [...orClientName, ...orObrasClient] } : NADA
+    ).toArray();
   } catch (e) {}
 
   let totalHoras = 0;
