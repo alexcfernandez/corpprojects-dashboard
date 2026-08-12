@@ -15,8 +15,31 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Corp Projects">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
-<script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}</script>
-  <script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}</script>
+<script>
+// PWA: registra el SW y AVISA cuando hay una versión nueva (para la app guardada
+// en el móvil, que si no se queda con la versión cacheada y no se actualiza).
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('/sw.js').then(function(reg){
+    window.__cpReg = reg;
+    reg.update().catch(function(){});
+    // Al reabrir la app (PWA) se comprueba si hay versión nueva.
+    document.addEventListener('visibilitychange',function(){ if(!document.hidden && window.__cpReg) window.__cpReg.update().catch(function(){}); });
+    reg.addEventListener('updatefound',function(){
+      var nw = reg.installing; if(!nw) return;
+      nw.addEventListener('statechange',function(){
+        if(nw.state==='installed' && navigator.serviceWorker.controller){ cpUpdateBanner(); }
+      });
+    });
+  }).catch(function(){});
+}
+function cpUpdateBanner(){
+  if(document.getElementById('cp-update-bar')) return;
+  var d=document.createElement('div'); d.id='cp-update-bar';
+  d.style.cssText='position:fixed;left:12px;right:12px;bottom:16px;z-index:9999;background:#12161e;border:1px solid #4d9cf8;border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:12px;box-shadow:0 12px 34px rgba(0,0,0,.55);color:#f0f2f7;max-width:520px;margin:0 auto';
+  d.innerHTML='<div style="flex:1;font-size:14px;font-weight:500">🎉 Hay una versión nueva</div><button style="background:#4d9cf8;border:none;border-radius:9px;color:#fff;font-weight:700;padding:10px 18px;font-size:14px;cursor:pointer" onclick="location.reload()">Actualizar</button>';
+  document.body.appendChild(d);
+}
+</script>
 <!-- Config central — antes que todo el JS de la app -->
 <script src="/config.js"></script>
 </head>
@@ -608,6 +631,7 @@ async function loadAll(){
 // (La carga automática al entrar y el refresco de 15 min siguen usando loadAll a secas,
 //  que aprovecha la caché — por eso no se quema el límite diario.)
 async function hardRefresh(){
+  try { if (window.__cpReg) window.__cpReg.update(); } catch(e) {} // comprueba si hay versión nueva de la app
   await af('/api/stelorder/refresh',{method:'POST'});
   await loadAll();
 }

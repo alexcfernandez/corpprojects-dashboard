@@ -208,3 +208,22 @@ select:focus{border-color:var(--blue)}
 .exp-estado.EN_CURSO{background:var(--red-bg);color:var(--red)}
 .exp-estado.COMPLETADO{background:var(--green-bg);color:var(--green)}
 .exp-estado.PAUSADO{background:var(--amber-bg);color:var(--amber)}
+
+/* ── Móvil: cabecera, sol duplicado y tablas que no rompan la pantalla ── */
+#theme-toggle-fixed{display:none!important} /* quitar el "sol" duplicado; se queda el de la cabecera */
+.main{overflow-x:clip} /* red de seguridad: nada empuja la página de lado (no rompe el sticky) */
+@media(max-width:640px){
+  .header{padding:0 12px;gap:8px}
+  .logo{gap:8px;min-width:0}
+  .logo-text{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42vw}
+  .logo-sub{display:none}
+  .header-right{gap:6px}
+  .header-right > span{display:none}        /* ocultar "● Actualizado HH:MM" en móvil */
+  .sync-btn{padding:5px 9px;font-size:11px}
+  .logout-btn{padding:4px 6px}
+  .nav,#nav-grupos,#subnav{overflow-x:auto;-webkit-overflow-scrolling:touch;flex-wrap:nowrap}
+  /* Tablas: hacen scroll DENTRO de su tarjeta, no rompen el ancho de la pantalla */
+  .card:has(table){overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .card table{width:auto;min-width:100%}
+  .card table th,.card table td{white-space:nowrap}
+}
