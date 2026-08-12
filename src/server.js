@@ -1392,6 +1392,7 @@ app.get('/api/roles', requireAuth, (req, res) => res.json(users.ROLES));
 // ── OBRAS ─────────────────────────────────────────────────────────
 const obras = require('./obras');
 const activos = require('./activos');
+const mediciones = require('./mediciones');
 
 app.get('/api/obras', requireAuth, async (req, res) => {
   try {
@@ -1632,6 +1633,32 @@ app.post('/api/activos/:id/perdida', requireAuthOficina, async (req, res) => {
 });
 app.delete('/api/activos/:id', requireAuthOficina, async (req, res) => {
   try { res.json(await activos.eliminarActivo(req.params.id)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// ── MEDICIONES (medidor por estancias · motor de presupuestos F1) ──
+app.get('/api/mediciones', requireAuthOficina, async (req, res) => {
+  try { res.json(await mediciones.getMediciones()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/mediciones/:id', requireAuthOficina, async (req, res) => {
+  try { res.json(await mediciones.getMedicion(req.params.id)); }
+  catch (err) { res.status(404).json({ error: err.message }); }
+});
+app.post('/api/mediciones', requireAuthOficina, async (req, res) => {
+  try {
+    const by = req.oficina?.workerName || (req.oficina?.admin ? 'admin' : 'oficina');
+    res.json(await mediciones.crearMedicion(req.body || {}, by));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.put('/api/mediciones/:id', requireAuthOficina, async (req, res) => {
+  try {
+    const by = req.oficina?.workerName || (req.oficina?.admin ? 'admin' : 'oficina');
+    res.json(await mediciones.editarMedicion(req.params.id, req.body || {}, by));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.delete('/api/mediciones/:id', requireAuthOficina, async (req, res) => {
+  try { res.json(await mediciones.eliminarMedicion(req.params.id)); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 
@@ -2475,6 +2502,7 @@ app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/par
 app.get('/subir-factura', (req, res) => res.sendFile(path.join(__dirname, '../public/subir-factura.html')));
 app.get('/asignar-facturas', (req, res) => res.sendFile(path.join(__dirname, '../public/asignar-facturas.html')));
 app.get('/activos', (req, res) => res.sendFile(path.join(__dirname, '../public/activos.html')));
+app.get('/medir', (req, res) => res.sendFile(path.join(__dirname, '../public/medir.html')));
 app.get('/amidaments', (req, res) => res.sendFile(path.join(__dirname, '../public/amidaments.html')));
 app.get('/competencia', (req, res) => res.sendFile(path.join(__dirname, '../public/competencia.html')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Mediciones — Corp Projects</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#4d9cf8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Corp Projects">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;--border:rgba(255,255,255,0.1);--border2:rgba(255,255,255,0.15);
+  --text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;--green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b;--purple:#a78bfa;--r:12px;--rs:10px;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:16px;min-height:100vh;padding-bottom:96px}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:14px 20px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:10}
+.logo{width:34px;height:34px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#fff;flex-shrink:0}
+.header-text{font-weight:600;font-size:15px}
+.header-sub{font-size:12px;color:var(--text3);margin-top:1px}
+.header-logout{margin-left:auto;background:none;border:1px solid var(--border2);border-radius:8px;color:var(--text3);padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit}
+.page{display:none}.page.active{display:block}
+.container{padding:20px;max-width:680px;margin:0 auto}
+.login-card{background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:28px 24px;margin-top:24px}
+.login-title{font-size:18px;font-weight:600;margin-bottom:4px;text-align:center}
+.login-sub{font-size:13px;color:var(--text3);text-align:center;margin-bottom:24px}
+.worker-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
+.worker-btn{background:var(--bg3);border:2px solid var(--border);border-radius:var(--r);padding:14px 10px;text-align:center;cursor:pointer;font-family:inherit}
+.worker-btn.selected{border-color:var(--blue);background:rgba(77,156,248,.1)}
+.worker-name{font-size:13px;font-weight:600;color:var(--text)}
+.pin-input{width:100%;background:var(--bg3);border:2px solid var(--border2);border-radius:var(--rs);padding:14px;color:var(--text);font-size:24px;font-weight:700;text-align:center;letter-spacing:8px;outline:none;font-family:monospace}
+.btn{width:100%;background:var(--blue);border:none;border-radius:var(--r);padding:15px;color:#fff;font-size:16px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn:disabled{opacity:.55}.btn.sec{background:none;border:1px solid var(--border2);color:var(--text2)}.btn.danger{background:none;border:1px solid var(--red);color:var(--red)}
+.spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;display:inline-block;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+select,input[type=text],input[type=number]{width:100%;background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:12px 13px;color:var(--text);font-size:15px;outline:none;font-family:inherit;-webkit-appearance:none}
+input:focus,select:focus{border-color:var(--blue)}
+label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:0 0 6px}
+#toast{position:fixed;left:50%;bottom:104px;transform:translateX(-50%) translateY(20px);max-width:92%;min-width:240px;padding:13px 18px;border-radius:12px;font-size:15px;font-weight:500;z-index:300;opacity:0;pointer-events:none;transition:all .22s;box-shadow:0 10px 30px rgba(0,0,0,.5);text-align:center}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast.ok{background:#12301f;border:1px solid var(--green);color:#7ff0c0}#toast.warn{background:#33280d;border:1px solid var(--amber);color:#ffd98a}#toast.error{background:#3a1414;border:1px solid var(--red);color:#ff9d9d}
+.toolbar{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.tool-btn{background:none;border:1px solid var(--border2);border-radius:var(--rs);color:var(--text3);padding:9px 12px;font-size:13px;cursor:pointer;font-family:inherit}
+.addbtn{margin-left:auto;background:var(--blue);border:none;border-radius:var(--rs);color:#fff;font-weight:600;padding:9px 14px;font-size:13px;cursor:pointer;font-family:inherit}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px 15px;margin-bottom:9px;cursor:pointer}
+.card:hover{border-color:var(--border2)}
+.card-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.card-nm{font-weight:600;font-size:15px}
+.card-cli{font-size:13px;color:var(--text3);margin-top:2px}
+.card-tot{font-size:12px;color:var(--text2);margin-top:8px;font-variant-numeric:tabular-nums}
+.empty{text-align:center;color:var(--text3);font-size:14px;padding:40px 20px}
+
+/* DETALLE MEDIR */
+.det-head{display:flex;gap:10px;align-items:center;margin-bottom:6px}
+.det-head input{font-size:17px;font-weight:600}
+.quick{display:flex;flex-wrap:wrap;gap:7px;margin:14px 0}
+.quick button{background:var(--bg3);border:1px solid var(--border2);border-radius:100px;color:var(--text2);padding:8px 13px;font-size:13px;cursor:pointer;font-family:inherit}
+.quick button:hover{border-color:var(--blue);color:var(--text)}
+.estancia{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:13px;margin-bottom:9px}
+.e-top{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.e-top .i-nombre{font-weight:600}
+.del{background:rgba(240,82,82,.12);border:1px solid var(--red);color:var(--red);border-radius:8px;width:38px;height:40px;font-size:18px;cursor:pointer;flex-shrink:0}
+.e-in{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.e-in label{display:block;font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+.e-in .u{font-size:10px;color:var(--text3)}
+.calc{font-size:13px;color:var(--blue);margin-top:10px;font-variant-numeric:tabular-nums;font-weight:500}
+.totbar{position:fixed;left:0;right:0;bottom:0;background:var(--bg2);border-top:1px solid var(--border2);padding:12px 20px;z-index:15}
+.totbar-in{max-width:680px;margin:0 auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.totals{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;font-variant-numeric:tabular-nums}
+.totals b{color:var(--text);font-size:16px}
+.totals .lbl{color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.04em;display:block}
+.savebtn{margin-left:auto;background:var(--green);border:none;border-radius:var(--rs);color:#062015;font-weight:700;padding:11px 20px;font-size:14px;cursor:pointer;font-family:inherit}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;display:none;align-items:flex-end;justify-content:center}
+.overlay.show{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:18px 18px 0 0;width:100%;max-width:520px;padding:20px}
+@media(min-width:600px){.overlay{align-items:center}.modal{border-radius:18px}}
+.field{margin-bottom:14px}
+.row2{display:flex;gap:8px}.row2>*{flex:1}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">CP</div>
+  <div><div class="header-text">Mediciones</div><div class="header-sub" id="header-sub"></div></div>
+  <button class="header-logout" id="logout-btn" onclick="logout()" style="display:none">Salir</button>
+</div>
+<div id="toast"></div>
+
+<!-- LOGIN -->
+<div class="page" id="page-login"><div class="container"><div class="login-card">
+  <div class="login-title">Acceso oficina</div><div class="login-sub">Elige tu nombre e introduce el PIN</div>
+  <div class="worker-grid" id="worker-selector"></div>
+  <input type="tel" inputmode="numeric" id="pin-input" class="pin-input" placeholder="••••" maxlength="6" onkeydown="if(event.key==='Enter')doLogin()">
+  <div style="height:16px"></div><button class="btn" id="login-btn" onclick="doLogin()">Entrar →</button>
+</div></div></div>
+
+<!-- LISTA -->
+<div class="page" id="page-list"><div class="container">
+  <div class="toolbar"><span style="font-size:13px;color:var(--text3)" id="count"></span><button class="addbtn" onclick="nueva()">+ Nueva medición</button></div>
+  <div id="lista"></div>
+</div></div>
+
+<!-- DETALLE -->
+<div class="page" id="page-det"><div class="container">
+  <div class="toolbar"><button class="tool-btn" onclick="volverLista()">← Mediciones</button><button class="tool-btn danger" onclick="eliminarMed()" id="det-del" style="display:none">Eliminar</button></div>
+  <div class="det-head"><input type="text" id="d-nombre" placeholder="Dirección / nombre del piso"></div>
+  <input type="text" id="d-cliente" autocomplete="off" placeholder="Cliente (busca en StelOrder)" style="margin-bottom:4px">
+  <div class="quick" id="quick"></div>
+  <div id="estancias"></div>
+  <button class="btn sec" onclick="addEst('Otra')" style="margin-top:6px">+ Añadir estancia</button>
+</div></div>
+
+<!-- BARRA TOTALES -->
+<div class="totbar" id="totbar" style="display:none"><div class="totbar-in">
+  <div class="totals">
+    <div><span class="lbl">Suelo</span><b id="t-suelo">0</b> m²</div>
+    <div><span class="lbl">Paredes</span><b id="t-paredes">0</b> m²</div>
+    <div><span class="lbl">Rodapié</span><b id="t-rodapie">0</b> m</div>
+  </div>
+  <button class="savebtn" onclick="guardar()">Guardar</button>
+</div></div>
+
+<!-- NUEVA -->
+<div class="overlay" id="ov-nueva"><div class="modal">
+  <div style="font-weight:700;font-size:17px;margin-bottom:14px">Nueva medición</div>
+  <div class="field"><label class="fld">Dirección / nombre</label><input type="text" id="n-nombre" placeholder="Ej. C/ Comerç 76, 3º 2ª"></div>
+  <div class="field"><label class="fld">Cliente (opcional)</label><input type="text" id="n-cliente" autocomplete="off" placeholder="Busca en StelOrder"></div>
+  <div class="row2"><button class="btn sec" onclick="cerrar('ov-nueva')">Cancelar</button><button class="btn" onclick="crearNueva()">Crear y medir</button></div>
+</div></div>
+
+<script src="/cliente-autocomplete.js"></script>
+<script>
+if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
+let workerToken=null, esAdmin=false, todosWorkers=[], lista=[], medId=null;
+const TIPOS=['Sala','Cocina','Habitación','Baño','Pasillo','Recibidor','Terraza','Otra'];
+function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('page-'+id).classList.add('active');document.getElementById('totbar').style.display=id==='det'?'block':'none';}
+let _tt=null;function toast(t,ty){const e=document.getElementById('toast');e.textContent=t;e.className='show '+(ty||'ok');clearTimeout(_tt);_tt=setTimeout(()=>e.className='',3200);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function authH(x){return Object.assign({'Authorization':`Bearer ${workerToken}`},x||{});}
+function abrir(id){document.getElementById(id).classList.add('show');}function cerrar(id){document.getElementById(id).classList.remove('show');}
+async function api(m,u,b){const o={method:m,headers:authH(b?{'Content-Type':'application/json'}:{})};if(b)o.body=JSON.stringify(b);const r=await fetch(u,o);if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Error');return r.json().catch(()=>({}));}
+function r2(n){return Math.round((+n||0)*100)/100;}
+function fmt(n){return r2(n).toLocaleString('es-ES',{maximumFractionDigits:2});}
+function calcE(l,a,h,d){l=+l||0;a=+a||0;h=+h||0;d=+d||0;const suelo=l*a,perim=2*(l+a),paredes=Math.max(0,perim*h-d);return {suelo,perim,paredes};}
+
+// ── LOGIN + SSO ──
+async function loadWorkers(){try{const r=await fetch('/api/partes/workers');todosWorkers=await r.json();document.getElementById('worker-selector').innerHTML=todosWorkers.map(w=>`<button class="worker-btn" data-id="${w.id}" onclick="selW(this)"><div class="worker-name">${esc(w.name)}</div></button>`).join('');}catch(e){}}
+function selW(b){document.querySelectorAll('.worker-btn').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');document.getElementById('pin-input').focus();}
+async function enterApp(token,info,persist){workerToken=token;esAdmin=!!info.admin;
+  if(persist){localStorage.setItem('cpWT',token);localStorage.setItem('cpWN',info.workerName||'');}
+  document.getElementById('header-sub').textContent=info.workerName||'';
+  const lb=document.getElementById('logout-btn');lb.textContent=esAdmin?'← Dashboard':'Salir';lb.style.display='block';
+  document.getElementById('quick').innerHTML=TIPOS.map(t=>`<button onclick="addEst('${t}')">+ ${t}</button>`).join('');
+  if(window.initClienteAutocomplete){initClienteAutocomplete(document.getElementById('d-cliente'),workerToken);initClienteAutocomplete(document.getElementById('n-cliente'),workerToken);}
+  showPage('list');await cargar();}
+async function tryRestore(){const admin=localStorage.getItem('cp_token'),worker=localStorage.getItem('cpWT');
+  for(const [t,isA] of [[admin,true],[worker,false]]){if(!t)continue;try{const r=await fetch('/api/oficina/whoami',{headers:{'Authorization':`Bearer ${t}`}});if(!r.ok)continue;const d=await r.json();await enterApp(t,{workerName:d.name,admin:d.admin},!isA);return true;}catch(e){}}
+  localStorage.removeItem('cpWT');return false;}
+async function doLogin(){const sel=document.querySelector('.worker-btn.selected');if(!sel){toast('Selecciona tu nombre','warn');return;}const pin=document.getElementById('pin-input').value;if(pin.length<4){toast('Introduce el PIN','warn');return;}
+  const b=document.getElementById('login-btn');b.disabled=true;b.innerHTML='<span class="spinner"></span>…';
+  try{const r=await fetch('/api/partes/worker-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workerId:sel.dataset.id,pin})});const d=await r.json();if(!r.ok)throw new Error(d.error||'PIN incorrecto');await enterApp(d.token,{workerId:d.workerId,workerName:d.workerName},true);}
+  catch(e){toast(e.message,'error');document.getElementById('pin-input').value='';}finally{b.disabled=false;b.innerHTML='Entrar →';}}
+function logout(){if(esAdmin){location.href='/';return;}workerToken=null;localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');document.getElementById('logout-btn').style.display='none';showPage('login');}
+
+// ── LISTA ──
+async function cargar(){document.getElementById('lista').innerHTML='<div class="empty"><span class="spinner"></span></div>';
+  try{lista=await api('GET','/api/mediciones');renderLista();}catch(e){toast(e.message,'error');}}
+function renderLista(){
+  document.getElementById('count').textContent=`${lista.length} medición(es)`;
+  if(!lista.length){document.getElementById('lista').innerHTML='<div class="empty">Aún no hay mediciones. Pulsa «+ Nueva medición».</div>';return;}
+  document.getElementById('lista').innerHTML=lista.map(m=>`<div class="card" onclick="abrirMed('${m._id}')">
+    <div class="card-top"><div class="card-nm">${esc(m.nombre)}</div></div>
+    ${m.clientName?`<div class="card-cli">${esc(m.clientName)}</div>`:''}
+    <div class="card-tot">${m.nEstancias} estancia(s) · Suelo ${fmt(m.totales.suelo)} m² · Paredes ${fmt(m.totales.paredes)} m² · Rodapié ${fmt(m.totales.rodapie)} m</div>
+  </div>`).join('');
+}
+function volverLista(){medId=null;cargar();showPage('list');}
+
+// ── NUEVA ──
+function nueva(){document.getElementById('n-nombre').value='';document.getElementById('n-cliente').value='';abrir('ov-nueva');}
+async function crearNueva(){const nombre=document.getElementById('n-nombre').value.trim();if(!nombre){toast('Ponle un nombre (la dirección)','warn');return;}
+  try{const r=await api('POST','/api/mediciones',{nombre,clientName:document.getElementById('n-cliente').value.trim(),estancias:[]});cerrar('ov-nueva');await abrirMed(r.id);}catch(e){toast(e.message,'error');}}
+
+// ── DETALLE / MEDIR ──
+async function abrirMed(id){
+  try{const m=await api('GET','/api/mediciones/'+id);medId=id;
+    document.getElementById('d-nombre').value=m.nombre||'';document.getElementById('d-cliente').value=m.clientName||'';
+    document.getElementById('det-del').style.display='block';
+    renderEstancias(m.estancias||[]);showPage('det');
+  }catch(e){toast(e.message,'error');}}
+function renderEstancias(estancias){
+  document.getElementById('estancias').innerHTML=estancias.map(e=>estanciaHTML(e)).join('');
+  recompute();
+}
+function estanciaHTML(e){
+  const id=e.id||('e'+Math.round(performance.now())+Math.floor(Math.random()*1000));
+  return `<div class="estancia" data-id="${id}">
+    <div class="e-top"><input class="i-nombre" type="text" value="${esc(e.nombre||'Estancia')}"><button class="del" onclick="delEst(this)">×</button></div>
+    <div class="e-in">
+      <div><label>Largo (m)</label><input class="i-largo" type="number" inputmode="decimal" step="0.01" value="${e.largo||''}"></div>
+      <div><label>Ancho (m)</label><input class="i-ancho" type="number" inputmode="decimal" step="0.01" value="${e.ancho||''}"></div>
+      <div><label>Alto (m)</label><input class="i-alto" type="number" inputmode="decimal" step="0.01" value="${e.alto||2.5}"></div>
+    </div>
+    <div class="calc">—</div>
+  </div>`;
+}
+function addEst(nombre){
+  const cont=document.getElementById('estancias');
+  cont.insertAdjacentHTML('beforeend',estanciaHTML({nombre,alto:2.5}));
+  recompute();
+  const last=cont.lastElementChild;last.querySelector('.i-largo').focus();
+}
+function delEst(btn){btn.closest('.estancia').remove();recompute();}
+function recompute(){
+  let ts=0,tp=0,tr=0;
+  document.querySelectorAll('.estancia').forEach(card=>{
+    const c=calcE(card.querySelector('.i-largo').value,card.querySelector('.i-ancho').value,card.querySelector('.i-alto').value,0);
+    card.querySelector('.calc').textContent=`Suelo ${fmt(c.suelo)} m²  ·  Paredes ${fmt(c.paredes)} m²  ·  Rodapié ${fmt(c.perim)} m`;
+    ts+=c.suelo;tp+=c.paredes;tr+=c.perim;
+  });
+  document.getElementById('t-suelo').textContent=fmt(ts);
+  document.getElementById('t-paredes').textContent=fmt(tp);
+  document.getElementById('t-rodapie').textContent=fmt(tr);
+}
+document.getElementById('estancias').addEventListener('input',recompute);
+function recogerEstancias(){return [...document.querySelectorAll('.estancia')].map(card=>({
+  nombre:card.querySelector('.i-nombre').value.trim()||'Estancia',
+  largo:card.querySelector('.i-largo').value,ancho:card.querySelector('.i-ancho').value,alto:card.querySelector('.i-alto').value,
+}));}
+async function guardar(){if(!medId)return;
+  try{await api('PUT','/api/mediciones/'+medId,{nombre:document.getElementById('d-nombre').value.trim(),clientName:document.getElementById('d-cliente').value.trim(),estancias:recogerEstancias()});toast('Guardado','ok');}
+  catch(e){toast(e.message,'error');}}
+async function eliminarMed(){if(!medId)return;if(!confirm('¿Eliminar esta medición?'))return;try{await api('DELETE','/api/mediciones/'+medId);volverLista();toast('Eliminada','ok');}catch(e){toast(e.message,'error');}}
+
+document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('show');}));
+(async function(){await loadWorkers();const ok=await tryRestore();if(!ok)showPage('login');})();
+</script>
+</body>
+</html>
