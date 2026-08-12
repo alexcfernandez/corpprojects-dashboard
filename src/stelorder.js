@@ -772,6 +772,7 @@ async function getPurchaseInvoices() {
         supplierId: String(x['account-id'] || ''),
         supplier: sup.name || '—',
         title: (x.title && x.title !== 'null') ? x.title : '',
+        extraReference: (x['extra-reference'] && x['extra-reference'] !== 'null') ? x['extra-reference'] : '',
         total,
         paid: Number(x['paid-total-amount']) || 0,
         pending: Number.isFinite(pending) ? pending : total,

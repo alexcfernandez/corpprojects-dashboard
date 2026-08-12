@@ -178,7 +178,30 @@ async function getRentabilidad(obraId) {
   // 2c. Material de la obra (metido a mano en la ficha) — cuenta como coste.
   (obra.materiales || []).forEach(m => { totalMateriales += parseFloat(m.importe || 0); });
 
-  const totalCoste = totalCostePersonal + totalMateriales;
+  // 2d. Facturas de PROVEEDOR etiquetadas con esta obra (Fase 2).
+  //     n8n marca la factura en StelOrder con "[obra: {referencia}]" en el título
+  //     (o en extra-reference). Aquí sumamos su importe REAL al coste de la obra.
+  //     Mientras n8n no etiquete, no hay coincidencias → suma 0 (no altera nada).
+  let totalProveedores = 0;
+  const proveedores = [];
+  try {
+    const facturasProv = await require('./stelorder').getPurchaseInvoices();
+    const reMarker = /obra:\s*([^\]\n|·]+)/i; // captura el texto de la obra tras "obra:"
+    for (const f of (facturasProv || [])) {
+      const campo = `${f.title || ''} ${f.extraReference || ''}`;
+      const m = campo.match(reMarker);
+      if (!m) continue;
+      const tag = norm(m[1]);
+      // La referencia de la obra es la parte estable y distintiva del marcador.
+      if (tag && nRef && (tag.includes(nRef) || nRef.includes(tag))) {
+        const imp = Number(f.total) || 0;
+        totalProveedores += imp;
+        proveedores.push({ id: f.id, number: f.number, supplier: f.supplier, total: imp, date: f.date });
+      }
+    }
+  } catch (e) { /* si StelOrder falla, la rentabilidad sigue con personal + material */ }
+
+  const totalCoste = totalCostePersonal + totalMateriales + totalProveedores;
   const facturado  = obra.invoicedAmount || obra.budgetAmount || 0;
   const beneficio  = facturado - totalCoste;
   const margen     = facturado > 0 ? (beneficio / facturado * 100) : 0;
@@ -227,6 +250,8 @@ async function getRentabilidad(obraId) {
     totalHoras,
     totalCostePersonal,
     totalMateriales,
+    totalProveedores,
+    proveedores,
     totalCoste,
     facturado,
     beneficio,
