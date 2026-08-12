@@ -175,6 +175,7 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
   <div class="modal">
     <div class="m-head"><div class="m-sup" id="m-sup"></div><div class="m-total" id="m-total"></div></div>
     <div class="m-meta" id="m-meta"></div>
+    <div id="m-lineas" style="margin-bottom:16px"></div>
 
     <div class="m-sec">
       <label class="fld">Obra</label>
@@ -378,6 +379,20 @@ function abrirModal(id){
   document.getElementById('m-nueva').classList.remove('show');
   document.getElementById('m-quitar').style.display=esManual?'':'none';
   document.getElementById('overlay').classList.add('show');
+  cargarLineas(id);
+}
+// Muestra QUÉ hay en la factura (sus líneas de StelOrder) para poder identificarla.
+async function cargarLineas(id){
+  const box=document.getElementById('m-lineas');
+  box.innerHTML='<div style="font-size:12px;color:var(--text3)">Cargando qué hay en la factura…</div>';
+  try{
+    const r=await fetch('/api/facturas/proveedor/'+encodeURIComponent(id)+'/detalle',{headers:authH()});
+    if(!r.ok)throw new Error('detalle');
+    const d=await r.json();
+    if(!d.lineas||!d.lineas.length){box.innerHTML='<div style="font-size:12px;color:var(--text3)">Sin detalle de líneas en StelOrder.</div>';return;}
+    box.innerHTML='<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Qué hay en la factura</div>'+
+      d.lineas.map(l=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:6px 0;border-bottom:1px solid var(--border)"><span>${l.units?('<b>'+esc(l.units)+'×</b> '):''}${esc(l.concepto)}</span><span style="white-space:nowrap;color:var(--text2)">${l.importe!=null?esc(eur(l.importe)):''}</span></div>`).join('');
+  }catch(e){box.innerHTML='<div style="font-size:12px;color:var(--text3)">No se pudo cargar el detalle.</div>';}
 }
 function cerrarModal(){document.getElementById('overlay').classList.remove('show');modalId=null;}
 function onModalObra(){

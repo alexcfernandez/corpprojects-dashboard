@@ -786,6 +786,24 @@ async function getPurchaseInvoices() {
   });
 }
 
+// Detalle de UNA factura de proveedor: sus líneas (concepto + unidades + importe),
+// para saber qué es una factura sin abrir StelOrder. Usa la caché de compras.
+async function getPurchaseInvoiceDetalle(id) {
+  const list = await getPurchaseInvoices();
+  const inv = list.find(x => String(x.id) === String(id));
+  if (!inv) return null;
+  const val = v => (v == null || v === 'null') ? '' : v;
+  const lineas = (inv.lines || []).filter(l => !l.deleted).map(l => {
+    const concepto = [val(l['item-name']), val(l['item-description'])].filter(Boolean).join(' — ') || val(l.description) || '(sin concepto)';
+    const units = Number(l.units) || 0;
+    const totalLinea = Number(l['total-amount']);
+    const unit = Number(l['unit-price'] ?? l.price);
+    const importe = Number.isFinite(totalLinea) ? totalLinea : (units && Number.isFinite(unit) ? units * unit : null);
+    return { concepto, units, importe };
+  });
+  return { id: inv.id, number: inv.number, supplier: inv.supplier, total: inv.total, date: inv.date, lineas };
+}
+
 async function getExpenses() {
   return cached('expenses', TTL.expenses, async () => {
     const [raw, { supplierMap }] = await Promise.all([fetchAllPages('/expenses'), getSuppliers()]);
@@ -1848,7 +1866,7 @@ async function modificarImportePresupuesto({ id = null, modo, valor = null, part
 module.exports = {
   getInvoices, getAllReceipts, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary, diagProveedores,
-  getSuppliers, getPurchaseInvoices, getExpenses,
+  getSuppliers, getPurchaseInvoices, getPurchaseInvoiceDetalle, getExpenses,
   getAlertLevel, getFamiliesSummary, getAccountCategories, clearCache,
   sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw, getInvoicePdfPath, getEntityRawByRef,
   getWorkOrdersLive, getWorkOrderAlertLevel, setWorkOrderState, setWorkOrderStateLight,

@@ -1548,6 +1548,15 @@ app.get('/api/oficina/whoami', requireAuthOficina, (req, res) => {
   });
 });
 
+// Detalle de una factura de proveedor: sus líneas (para saber qué es).
+app.get('/api/facturas/proveedor/:id/detalle', requireAuthOficina, async (req, res) => {
+  try {
+    const d = await require('./stelorder').getPurchaseInvoiceDetalle(req.params.id);
+    if (!d) return res.status(404).json({ error: 'Factura no encontrada' });
+    res.json(d);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Clasificar una factura: obra (opcional) + categoría (opcional). Al menos una.
 app.post('/api/facturas/proveedor/:id/clasificar', requireAuthOficina, async (req, res) => {
   try {
