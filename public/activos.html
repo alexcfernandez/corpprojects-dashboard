@@ -172,6 +172,10 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
   </div>
   <div class="field" id="d-operario-wrap"><label class="fld">Operario</label><select id="d-operario"></select></div>
   <div class="field" id="d-nombre-wrap" style="display:none"><label class="fld">Nombre</label><input type="text" id="d-nombre" placeholder="A quién se lo entregas"></div>
+  <div class="field"><label class="fld">Foto al entregar (opcional)</label>
+    <input type="file" accept="image/*" capture="environment" onchange="onFotoDar(this.files)">
+    <img id="dar-foto-prev" class="foto" style="display:none">
+    <div class="mini">Deja constancia de cómo sale (completa, sin daños…).</div></div>
   <div class="field"><label class="fld">Nota (opcional)</label><input type="text" id="d-nota" placeholder="Ej. para la obra de Olot"></div>
   <div class="row2">
     <button class="btn sec" onclick="cerrar('ov-dar')">Cancelar</button>
@@ -179,10 +183,28 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
   </div>
 </div></div>
 
+<!-- DEVOLVER -->
+<div class="overlay" id="ov-dev"><div class="modal">
+  <div class="m-head"><div class="m-cod">Devolver a oficina</div></div>
+  <div class="mini" id="dev-cod" style="margin-bottom:12px"></div>
+  <div class="field"><label class="fld">Foto al devolver (opcional)</label>
+    <input type="file" accept="image/*" capture="environment" onchange="onFotoDev(this.files)">
+    <img id="dev-foto-prev" class="foto" style="display:none">
+    <div class="mini">Comprueba que vuelve completo (ej. no falta la batería).</div></div>
+  <div class="field"><label class="fld">Nota (opcional)</label><input type="text" id="dev-nota" placeholder="Ej. falta una batería"></div>
+  <div class="row2">
+    <button class="btn sec" onclick="cerrar('ov-dev')">Cancelar</button>
+    <button class="btn green" id="dev-save" onclick="confirmarDevolver()">Devolver</button>
+  </div>
+</div></div>
+
+<!-- VISOR FOTO -->
+<div class="overlay" id="ov-img" style="align-items:center"><img id="ov-img-el" style="max-width:94%;max-height:90vh;border-radius:10px"></div>
+
 <script src="/cliente-autocomplete.js"></script>
 <script>
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
-let workerToken=null, esAdmin=false, todosWorkers=[], activosCache=[], filtro='llave', fichaId=null, formId=null, darId=null, fotoData='';
+let workerToken=null, esAdmin=false, todosWorkers=[], activosCache=[], filtro='llave', fichaId=null, formId=null, darId=null, devId=null, fotoData='', fotoDar='', fotoDev='';
 let clientesFam={}; // nombre normalizado -> familia
 const normTxt=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
 function fillFamilia(){const cli=document.getElementById('f-cliente').value;const fam=clientesFam[normTxt(cli)];if(fam!==undefined&&fam)document.getElementById('f-familia').value=fam;}
@@ -258,7 +280,7 @@ async function ficha(id){fichaId=id;
       : kv('Nombre',a.nombre)+kv('Marca',a.marca)+kv('Modelo',a.modelo)+kv('Nº serie',a.numeroSerie)+(a.valor?kv('Valor',eur(a.valor)):'');
     const hist=movimientos.map(m=>{const ac={alta:'Alta',dar:'Entregada a',devolver:'Devuelta',perdida:'Marcada perdida',edicion:'Editada'}[m.accion]||m.accion;
       const quien=m.accion==='dar'?` <b>${esc(m.aName||'')}</b>`:(m.accion==='devolver'?' a oficina':'');
-      return `<div class="hist">${new Date(m.ts).toLocaleDateString('es-ES')} · ${ac}${quien}${m.by?` <span style="color:var(--text3)">(${esc(m.by)})</span>`:''}${m.nota?` — ${esc(m.nota)}`:''}</div>`;}).join('')||'<div class="hist">Sin movimientos.</div>';
+      return `<div class="hist">${new Date(m.ts).toLocaleDateString('es-ES')} · ${ac}${quien}${m.by?` <span style="color:var(--text3)">(${esc(m.by)})</span>`:''}${m.nota?` — ${esc(m.nota)}`:''}${m.foto?`<br><img src="${m.foto}" onclick="verFotoEl(this)" style="width:54px;height:54px;object-fit:cover;border-radius:6px;margin-top:6px;cursor:pointer" title="Ver foto">`:''}</div>`;}).join('')||'<div class="hist">Sin movimientos.</div>';
     document.getElementById('ficha-body').innerHTML=`
       <div class="m-head"><div><div class="m-tipo">${a.tipo}</div><div class="m-cod">${esc(a.codigo)}</div></div>${badge(a)}</div>
       ${a.foto?`<img class="foto" src="${a.foto}">`:''}
@@ -274,18 +296,21 @@ async function ficha(id){fichaId=id;
     abrir('ov-ficha');
   }catch(e){toast(e.message,'error');}
 }
-async function devolver(id){try{await api('POST','/api/activos/'+id+'/devolver',{});cerrar('ov-ficha');await cargar();toast('Devuelta a oficina','ok');}catch(e){toast(e.message,'error');}}
+function devolver(id){devId=id;fotoDev='';document.getElementById('dev-foto-prev').style.display='none';document.getElementById('dev-nota').value='';
+  const a=activosCache.find(x=>x._id===id);document.getElementById('dev-cod').textContent=a?`${a.codigo} · ${a.nombre||a.clientName||''}`:'';cerrar('ov-ficha');abrir('ov-dev');}
+async function confirmarDevolver(){try{await api('POST','/api/activos/'+devId+'/devolver',{nota:document.getElementById('dev-nota').value.trim(),foto:fotoDev});cerrar('ov-dev');await cargar();toast('Devuelta a oficina','ok');}catch(e){toast(e.message,'error');}}
 async function perdida(id){if(!confirm('¿Marcar como PERDIDA?'))return;try{await api('POST','/api/activos/'+id+'/perdida',{});cerrar('ov-ficha');await cargar();toast('Marcada como perdida','warn');}catch(e){toast(e.message,'error');}}
 async function eliminar(id){if(!confirm('¿Eliminar este activo y su historial? No se puede deshacer.'))return;try{await api('DELETE','/api/activos/'+id);cerrar('ov-ficha');await cargar();toast('Eliminado','ok');}catch(e){toast(e.message,'error');}}
 
 // ── DAR ──
 function dar(id){darId=id;document.getElementById('d-tipo').value='operario';onDarTipo();document.getElementById('d-nombre').value='';document.getElementById('d-nota').value='';
+  fotoDar='';document.getElementById('dar-foto-prev').style.display='none';
   const a=activosCache.find(x=>x._id===id);document.getElementById('dar-cod').textContent=a?`${a.codigo} · ${a.nombre||a.clientName||''}`:'';cerrar('ov-ficha');abrir('ov-dar');}
 function onDarTipo(){const op=document.getElementById('d-tipo').value==='operario';document.getElementById('d-operario-wrap').style.display=op?'block':'none';document.getElementById('d-nombre-wrap').style.display=op?'none':'block';}
 async function confirmarDar(){const tipo=document.getElementById('d-tipo').value;let holderId=null,holderName='';
   if(tipo==='operario'){const s=document.getElementById('d-operario');holderId=s.value;holderName=s.options[s.selectedIndex]?.textContent||'';}
   else{holderName=document.getElementById('d-nombre').value.trim();if(!holderName){toast('Escribe a quién','warn');return;}}
-  try{await api('POST','/api/activos/'+darId+'/dar',{holderType:tipo,holderId,holderName,nota:document.getElementById('d-nota').value.trim()});cerrar('ov-dar');await cargar();toast('Entregada a '+holderName,'ok');}catch(e){toast(e.message,'error');}}
+  try{await api('POST','/api/activos/'+darId+'/dar',{holderType:tipo,holderId,holderName,nota:document.getElementById('d-nota').value.trim(),foto:fotoDar});cerrar('ov-dar');await cargar();toast('Entregada a '+holderName,'ok');}catch(e){toast(e.message,'error');}}
 
 // ── FORM (nuevo / editar) ──
 function onTipo(){const t=document.getElementById('f-tipo').value;document.getElementById('campos-llave').style.display=t==='llave'?'block':'none';document.getElementById('campos-herr').style.display=t==='herramienta'?'block':'none';if(!formId)prefillCodigo(t);}
@@ -305,12 +330,15 @@ async function guardarForm(){const tipo=document.getElementById('f-tipo').value;
   const b=document.getElementById('form-save');b.disabled=true;b.innerHTML='<span class="spinner"></span>…';
   try{if(formId)await api('PUT','/api/activos/'+formId,body);else await api('POST','/api/activos',body);cerrar('ov-form');await cargar();toast('Guardado','ok');}catch(e){toast(e.message,'error');}finally{b.disabled=false;b.innerHTML='Guardar';}}
 
-// Foto: comprime a ~1000px JPEG y guarda como dataURL.
-function onFoto(files){const f=files&&files[0];if(!f)return;const img=new Image();const url=URL.createObjectURL(f);
+// Foto: comprime a ~1000px JPEG y devuelve dataURL.
+function comprimir(file,cb){const img=new Image();const url=URL.createObjectURL(file);
   img.onload=()=>{URL.revokeObjectURL(url);const max=1000;let {width:w,height:h}=img;if(w>max||h>max){const r=Math.min(max/w,max/h);w=Math.round(w*r);h=Math.round(h*r);}
-    const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);fotoData=c.toDataURL('image/jpeg',0.7);
-    const p=document.getElementById('f-foto-prev');p.src=fotoData;p.style.display='block';};
+    const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);cb(c.toDataURL('image/jpeg',0.7));};
   img.onerror=()=>URL.revokeObjectURL(url);img.src=url;}
+function onFoto(files){const f=files&&files[0];if(!f)return;comprimir(f,d=>{fotoData=d;const p=document.getElementById('f-foto-prev');p.src=d;p.style.display='block';});}
+function onFotoDar(files){const f=files&&files[0];if(!f)return;comprimir(f,d=>{fotoDar=d;const p=document.getElementById('dar-foto-prev');p.src=d;p.style.display='block';});}
+function onFotoDev(files){const f=files&&files[0];if(!f)return;comprimir(f,d=>{fotoDev=d;const p=document.getElementById('dev-foto-prev');p.src=d;p.style.display='block';});}
+function verFotoEl(el){document.getElementById('ov-img-el').src=el.src;abrir('ov-img');}
 
 // Etiqueta imprimible: SOLO el código (y nombre para herramientas). Sin dirección.
 function etiqueta(codigo,tipo,nombre){const w=window.open('','_blank','width=420,height=320');if(!w){toast('Permite las ventanas emergentes','warn');return;}

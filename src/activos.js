@@ -27,12 +27,12 @@ async function siguienteCodigo(db, tipo) {
   return `${pref}-${String(max + 1).padStart(3, '0')}`;
 }
 
-async function logMovimiento(db, activo, accion, { de, a, by, nota } = {}) {
+async function logMovimiento(db, activo, accion, { de, a, by, nota, foto } = {}) {
   await db.collection('activoMovimientos').insertOne({
     activoId: String(activo._id), codigo: activo.codigo, accion,
     deTipo: de?.tipo || null, deId: de?.id || null, deName: de?.name || null,
     aTipo:  a?.tipo  || null, aId:  a?.id  || null, aName:  a?.name  || null,
-    ts: new Date(), by: by || '', nota: nota || '',
+    ts: new Date(), by: by || '', nota: nota || '', foto: foto || '',
   });
 }
 
@@ -112,7 +112,7 @@ async function editarActivo(id, data, by) {
 }
 
 // Dar el activo a alguien: operario (holderId+name) o cliente/otro (solo name).
-async function darActivo(id, { holderType, holderId, holderName, nota }, by) {
+async function darActivo(id, { holderType, holderId, holderName, nota, foto }, by) {
   const db = await getDB();
   const activo = await db.collection('activos').findOne({ _id: new ObjectId(id) });
   if (!activo) throw new Error('Activo no encontrado');
@@ -123,12 +123,12 @@ async function darActivo(id, { holderType, holderId, holderName, nota }, by) {
   await db.collection('activos').updateOne({ _id: activo._id }, { $set: {
     estado: tipoDest, holderType: tipoDest, holderId: a.id, holderName: a.name, updatedAt: new Date(),
   } });
-  await logMovimiento(db, activo, 'dar', { de, a, by, nota });
+  await logMovimiento(db, activo, 'dar', { de, a, by, nota, foto });
   return { ok: true };
 }
 
 // Devolver a oficina.
-async function devolverActivo(id, { nota }, by) {
+async function devolverActivo(id, { nota, foto }, by) {
   const db = await getDB();
   const activo = await db.collection('activos').findOne({ _id: new ObjectId(id) });
   if (!activo) throw new Error('Activo no encontrado');
@@ -136,11 +136,11 @@ async function devolverActivo(id, { nota }, by) {
   await db.collection('activos').updateOne({ _id: activo._id }, { $set: {
     estado: 'oficina', holderType: 'oficina', holderId: null, holderName: 'Oficina', updatedAt: new Date(),
   } });
-  await logMovimiento(db, activo, 'devolver', { de, a: { tipo: 'oficina', name: 'Oficina' }, by, nota });
+  await logMovimiento(db, activo, 'devolver', { de, a: { tipo: 'oficina', name: 'Oficina' }, by, nota, foto });
   return { ok: true };
 }
 
-async function marcarPerdida(id, { nota }, by) {
+async function marcarPerdida(id, { nota, foto }, by) {
   const db = await getDB();
   const activo = await db.collection('activos').findOne({ _id: new ObjectId(id) });
   if (!activo) throw new Error('Activo no encontrado');
@@ -148,7 +148,7 @@ async function marcarPerdida(id, { nota }, by) {
   await db.collection('activos').updateOne({ _id: activo._id }, { $set: {
     estado: 'perdida', updatedAt: new Date(),
   } });
-  await logMovimiento(db, activo, 'perdida', { de, by, nota });
+  await logMovimiento(db, activo, 'perdida', { de, by, nota, foto });
   return { ok: true };
 }
 
