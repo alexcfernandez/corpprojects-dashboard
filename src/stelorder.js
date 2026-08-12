@@ -793,15 +793,26 @@ async function getPurchaseInvoiceDetalle(id) {
   const inv = list.find(x => String(x.id) === String(id));
   if (!inv) return null;
   const val = v => (v == null || v === 'null') ? '' : v;
+  const num = v => { const n = Number(v); return Number.isFinite(n) ? n : null; };
   const lineas = (inv.lines || []).filter(l => !l.deleted).map(l => {
     const concepto = [val(l['item-name']), val(l['item-description'])].filter(Boolean).join(' — ') || val(l.description) || '(sin concepto)';
-    const units = Number(l.units) || 0;
-    const totalLinea = Number(l['total-amount']);
-    const unit = Number(l['unit-price'] ?? l.price);
-    const importe = Number.isFinite(totalLinea) ? totalLinea : (units && Number.isFinite(unit) ? units * unit : null);
-    return { concepto, units, importe };
+    const units = num(l.units) || 0;
+    // Importe NETO de la línea: preferir el que calcula StelOrder (post-descuento).
+    // Si falta, calcularlo aplicando el descuento (así un ítem regalado con 100% dto
+    // no sale al precio de lista, que era la causa del "300 fantasma").
+    const totalLinea = num(l['total-amount']);
+    const unit = num(l['unit-price'] ?? l.price ?? l['item-base-price']);
+    const disc = num(l.discount ?? l['discount-percentage'] ?? l['discount-amount'] ?? l.dto);
+    let importe = null;
+    if (totalLinea != null) importe = totalLinea;
+    else if (units && unit != null) importe = (disc != null && disc >= 0 && disc <= 100) ? units * unit * (1 - disc / 100) : units * unit;
+    return { concepto, units, importe: importe != null ? Math.round(importe * 100) / 100 : null };
   });
-  return { id: inv.id, number: inv.number, supplier: inv.supplier, total: inv.total, date: inv.date, lineas };
+  const sumaLineas = Math.round(lineas.reduce((a, l) => a + (l.importe || 0), 0) * 100) / 100;
+  // La suma de líneas (base) no puede superar el total con IVA: si lo hace, hay un
+  // importe mal (p.ej. un regalo con precio) → marcar como sospechoso.
+  const sospechoso = sumaLineas > (inv.total || 0) + 0.5;
+  return { id: inv.id, number: inv.number, supplier: inv.supplier, total: inv.total, date: inv.date, lineas, sumaLineas, sospechoso };
 }
 
 async function getExpenses() {

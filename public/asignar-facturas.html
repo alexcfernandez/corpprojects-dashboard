@@ -392,8 +392,10 @@ async function cargarLineas(id){
     if(!r.ok)throw new Error('detalle');
     const d=await r.json();
     if(!d.lineas||!d.lineas.length){box.innerHTML='<div style="font-size:12px;color:var(--text3)">Sin detalle de líneas en StelOrder.</div>';return;}
+    const aviso=d.sospechoso?`<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(240,82,82,.12);border:1px solid var(--red);color:#ff9d9d;font-size:12px">⚠️ Los importes no cuadran: las líneas suman <b>${esc(eur(d.sumaLineas))}</b> pero el total de la factura es <b>${esc(eur(d.total))}</b>. Revisa antes de asignar (puede haber un precio mal o algo regalado con importe).</div>`:'';
+    const resumen=(d.sumaLineas!=null)?`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:8px;padding-top:6px;border-top:1px solid var(--border)"><span>Suma de líneas</span><span>${esc(eur(d.sumaLineas))}${d.total?' · total factura '+esc(eur(d.total)):''}</span></div>`:'';
     box.innerHTML='<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Qué hay en la factura</div>'+
-      d.lineas.map(l=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:6px 0;border-bottom:1px solid var(--border)"><span>${l.units?('<b>'+esc(l.units)+'×</b> '):''}${esc(l.concepto)}</span><span style="white-space:nowrap;color:var(--text2)">${l.importe!=null?esc(eur(l.importe)):''}</span></div>`).join('');
+      d.lineas.map(l=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:6px 0;border-bottom:1px solid var(--border)"><span>${l.units?('<b>'+esc(l.units)+'×</b> '):''}${esc(l.concepto)}</span><span style="white-space:nowrap;color:var(--text2)">${l.importe!=null?esc(eur(l.importe)):'—'}</span></div>`).join('')+resumen+aviso;
   }catch(e){box.innerHTML='<div style="font-size:12px;color:var(--text3)">No se pudo cargar el detalle.</div>';}
 }
 function cerrarModal(){document.getElementById('overlay').classList.remove('show');modalId=null;}
