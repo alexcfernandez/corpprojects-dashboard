@@ -1684,6 +1684,30 @@ app.delete('/api/partidas/:id', requireAuthOficina, async (req, res) => {
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 
+// ── PRESUPUESTOS (medición × partidas) ──
+app.get('/api/presupuestos', requireAuthOficina, async (req, res) => {
+  try { res.json(await presupuestos.getPresupuestos()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/presupuestos/:id', requireAuthOficina, async (req, res) => {
+  try { res.json(await presupuestos.getPresupuesto(req.params.id)); }
+  catch (err) { res.status(404).json({ error: err.message }); }
+});
+app.post('/api/presupuestos', requireAuthOficina, async (req, res) => {
+  try {
+    const by = req.oficina?.workerName || (req.oficina?.admin ? 'admin' : 'oficina');
+    res.json(await presupuestos.crearPresupuesto(req.body || {}, by));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.put('/api/presupuestos/:id', requireAuthOficina, async (req, res) => {
+  try { res.json(await presupuestos.guardarPresupuesto(req.params.id, req.body || {})); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.delete('/api/presupuestos/:id', requireAuthOficina, async (req, res) => {
+  try { res.json(await presupuestos.eliminarPresupuesto(req.params.id)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 // ── MEDICIONES (medidor por estancias · motor de presupuestos F1) ──
 app.get('/api/mediciones', requireAuthOficina, async (req, res) => {
   try { res.json(await mediciones.getMediciones()); }
@@ -2552,6 +2576,7 @@ app.get('/asignar-facturas', (req, res) => res.sendFile(path.join(__dirname, '..
 app.get('/activos', (req, res) => res.sendFile(path.join(__dirname, '../public/activos.html')));
 app.get('/medir', (req, res) => res.sendFile(path.join(__dirname, '../public/medir.html')));
 app.get('/catalogo', (req, res) => res.sendFile(path.join(__dirname, '../public/catalogo.html')));
+app.get('/presupuestos', (req, res) => res.sendFile(path.join(__dirname, '../public/presupuestos.html')));
 app.get('/amidaments', (req, res) => res.sendFile(path.join(__dirname, '../public/amidaments.html')));
 app.get('/competencia', (req, res) => res.sendFile(path.join(__dirname, '../public/competencia.html')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));

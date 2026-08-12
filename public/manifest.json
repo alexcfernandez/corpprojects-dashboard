@@ -98,6 +98,17 @@
           "sizes": "192x192"
         }
       ]
+    },
+    {
+      "name": "Presupuestos",
+      "short_name": "Presupuestos",
+      "url": "/presupuestos",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ]
 }

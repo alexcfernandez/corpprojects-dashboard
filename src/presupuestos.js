@@ -60,4 +60,78 @@ async function eliminarPartida(id) {
   return { ok: true };
 }
 
-module.exports = { UNIDADES, getPartidas, crearPartida, editarPartida, eliminarPartida };
+// ── PRESUPUESTOS ─────────────────────────────────────────────────
+// Un presupuesto = líneas de partidas con su cantidad. Las cantidades pueden
+// venir de una MEDICIÓN (m² de pared → pintura, m² de suelo → suelo, ml → rodapié).
+// Cada línea guarda una copia del precio/coste de la partida en ese momento
+// (así el presupuesto no cambia si luego retocas el catálogo).
+const n2 = n => Math.round((Number(n) || 0) * 100) / 100;
+
+function computeTotales(lineas) {
+  let venta = 0, coste = 0;
+  (lineas || []).forEach(l => { venta += (num(l.cantidad)) * (Number(l.precioVenta) || 0); coste += (num(l.cantidad)) * (Number(l.coste) || 0); });
+  venta = n2(venta); coste = n2(coste);
+  return { totalVenta: venta, totalCoste: coste, beneficio: n2(venta - coste), margen: venta > 0 ? Math.round((venta - coste) / venta * 100) : 0 };
+}
+function limpiarLineas(lineas) {
+  return (Array.isArray(lineas) ? lineas : []).map(l => ({
+    partidaId:   l.partidaId ? String(l.partidaId) : null,
+    nombre:      String(l.nombre || '').trim() || 'Partida',
+    unidad:      String(l.unidad || 'ud'),
+    cantidad:    num(l.cantidad),
+    precioVenta: n2(l.precioVenta),
+    coste:       n2(l.coste),
+  }));
+}
+
+async function getPresupuestos() {
+  const db = await getDB();
+  const arr = await db.collection('presupuestos').find({ empresaId: EMPRESA }).sort({ updatedAt: -1 }).toArray();
+  return arr.map(p => ({ _id: p._id, nombre: p.nombre, clientName: p.clientName || '', estado: p.estado || 'borrador', nLineas: (p.lineas || []).length, ...computeTotales(p.lineas), updatedAt: p.updatedAt }));
+}
+async function getPresupuesto(id) {
+  const db = await getDB();
+  const p = await db.collection('presupuestos').findOne({ _id: new ObjectId(id), empresaId: EMPRESA });
+  if (!p) throw new Error('Presupuesto no encontrado');
+  return { ...p, totales: computeTotales(p.lineas) };
+}
+async function crearPresupuesto(data, by) {
+  const db = await getDB();
+  const nombre = String(data.nombre || '').trim();
+  if (!nombre) throw new Error('Ponle un nombre al presupuesto');
+  const doc = {
+    empresaId: EMPRESA, nombre,
+    clientName: String(data.clientName || '').trim(),
+    medicionId: data.medicionId ? String(data.medicionId) : null,
+    medicionTotales: data.medicionTotales || null,
+    lineas: limpiarLineas(data.lineas),
+    notas: String(data.notas || '').trim(),
+    estado: 'borrador',
+    by: by || '', createdAt: new Date(), updatedAt: new Date(),
+  };
+  const r = await db.collection('presupuestos').insertOne(doc);
+  return { ok: true, id: String(r.insertedId) };
+}
+async function guardarPresupuesto(id, data) {
+  const db = await getDB();
+  const set = { updatedAt: new Date() };
+  if ('nombre' in data) set.nombre = String(data.nombre || '').trim();
+  if ('clientName' in data) set.clientName = String(data.clientName || '').trim();
+  if ('lineas' in data) set.lineas = limpiarLineas(data.lineas);
+  if ('notas' in data) set.notas = String(data.notas || '').trim();
+  if ('estado' in data) set.estado = String(data.estado || 'borrador');
+  if ('medicionId' in data) set.medicionId = data.medicionId ? String(data.medicionId) : null;
+  if ('medicionTotales' in data) set.medicionTotales = data.medicionTotales || null;
+  await db.collection('presupuestos').updateOne({ _id: new ObjectId(id), empresaId: EMPRESA }, { $set: set });
+  return { ok: true };
+}
+async function eliminarPresupuesto(id) {
+  const db = await getDB();
+  await db.collection('presupuestos').deleteOne({ _id: new ObjectId(id), empresaId: EMPRESA });
+  return { ok: true };
+}
+
+module.exports = {
+  UNIDADES, getPartidas, crearPartida, editarPartida, eliminarPartida,
+  getPresupuestos, getPresupuesto, crearPresupuesto, guardarPresupuesto, eliminarPresupuesto,
+};
