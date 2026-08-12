@@ -1802,6 +1802,22 @@ app.get('/api/clients/list', async (req, res) => {
   }
 });
 
+// Clientes con su FAMILIA de StelOrder (para las llaves: saber el gremio/quién).
+app.get('/api/oficina/clientes', requireAuthOficina, async (req, res) => {
+  try {
+    const { clientMap } = await getClients();
+    const seen = new Set(); const out = [];
+    Object.values(clientMap || {}).forEach(c => {
+      const name = c.name || '';
+      if (!name || seen.has(name)) return;
+      seen.add(name);
+      out.push({ name, family: c.family && c.family !== 'Sin familia' ? c.family : '' });
+    });
+    out.sort((a, b) => a.name.localeCompare(b.name));
+    res.json(out);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── ASIGNACIONES, EXTERNOS Y EXPEDIENTES ─────────────────────────
 const expedientes = require('./expedientes');
 

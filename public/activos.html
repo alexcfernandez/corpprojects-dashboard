@@ -133,6 +133,7 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
   <!-- LLAVE -->
   <div id="campos-llave">
     <div class="field"><label class="fld">Cliente (StelOrder)</label><input type="text" id="f-cliente" autocomplete="off" placeholder="Busca el cliente"></div>
+    <div class="field"><label class="fld">Familia / gremio</label><input type="text" id="f-familia" placeholder="Se rellena al elegir el cliente"><div class="mini">Para saber a quién devolverla (cinc, madera…).</div></div>
     <div class="field"><label class="fld">Dirección (solo aquí, no en la llave)</label><input type="text" id="f-direccion" placeholder="Calle, número, piso…"></div>
     <div class="row2">
       <div class="field"><label class="fld">Nº de copias</label><input type="number" id="f-copias" value="1" min="1"></div>
@@ -182,6 +183,9 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 <script>
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
 let workerToken=null, esAdmin=false, todosWorkers=[], activosCache=[], filtro='llave', fichaId=null, formId=null, darId=null, fotoData='';
+let clientesFam={}; // nombre normalizado -> familia
+const normTxt=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+function fillFamilia(){const cli=document.getElementById('f-cliente').value;const fam=clientesFam[normTxt(cli)];if(fam!==undefined&&fam)document.getElementById('f-familia').value=fam;}
 
 function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('page-'+id).classList.add('active');}
 let _tt=null;function toast(t,ty){const e=document.getElementById('toast');e.textContent=t;e.className='show '+(ty||'ok');clearTimeout(_tt);_tt=setTimeout(()=>e.className='',3500);}
@@ -203,7 +207,9 @@ async function enterApp(token,info,persist){workerToken=token;esAdmin=!!info.adm
   const lb=document.getElementById('logout-btn');lb.textContent=esAdmin?'← Dashboard':'Salir';lb.style.display='block';
   showPage('list');
   if(window.initClienteAutocomplete) initClienteAutocomplete(document.getElementById('f-cliente'),workerToken);
+  const ci=document.getElementById('f-cliente'); ci.addEventListener('blur',fillFamilia); ci.addEventListener('change',fillFamilia);
   document.getElementById('d-operario').innerHTML=todosWorkers.map(w=>`<option value="${w.id}">${esc(w.name)}</option>`).join('');
+  try{const cl=await api('GET','/api/oficina/clientes');(cl||[]).forEach(c=>{clientesFam[normTxt(c.name)]=c.family||'';});}catch(e){}
   await cargar();
 }
 async function tryRestore(){const admin=localStorage.getItem('cp_token'),worker=localStorage.getItem('cpWT');
@@ -235,10 +241,12 @@ function render(){
   let list=activosCache.filter(a=>a.tipo===filtro);
   if(q)list=list.filter(a=>[a.codigo,a.nombre,a.clientName,a.direccion,a.holderName].some(x=>String(x||'').toLowerCase().includes(q)));
   if(!list.length){cont.innerHTML='<div class="empty">Nada aquí. Pulsa «+ Nuevo».</div>';return;}
-  cont.innerHTML=list.map(a=>`<div class="card" onclick="ficha('${a._id}')">
+  cont.innerHTML=list.map(a=>{
+    const sub=a.tipo==='llave'?[a.clientName,a.family].filter(Boolean).join(' · '):(a.nombre||'');
+    return `<div class="card" onclick="ficha('${a._id}')">
     <div class="card-top"><div class="card-cod">${a.tipo==='llave'?'🔑':'🛠️'} ${esc(a.codigo)}</div></div>
-    <div class="card-name">${esc(a.nombre||'')}${a.clientName?(a.nombre?' · ':'')+esc(a.clientName):''}</div>
-    <div>${badge(a)}</div></div>`).join('');
+    <div class="card-name">${esc(sub)}</div>
+    <div>${badge(a)}</div></div>`;}).join('');
 }
 
 // ── FICHA ──
@@ -246,7 +254,7 @@ async function ficha(id){fichaId=id;
   try{const {activo:a,movimientos}=await api('GET','/api/activos/'+id);
     const kv=(k,v)=>v?`<div class="kv"><div class="k">${k}</div><div class="v">${esc(v)}</div></div>`:'';
     const detalle = a.tipo==='llave'
-      ? kv('Cliente',a.clientName)+kv('Dirección',a.direccion)+kv('Copias',a.copias)+kv('Entregada',fecha(a.fechaEntrega))
+      ? kv('Cliente',a.clientName)+kv('Familia',a.family)+kv('Dirección',a.direccion)+kv('Copias',a.copias)+kv('Entregada',fecha(a.fechaEntrega))
       : kv('Nombre',a.nombre)+kv('Marca',a.marca)+kv('Modelo',a.modelo)+kv('Nº serie',a.numeroSerie)+(a.valor?kv('Valor',eur(a.valor)):'');
     const hist=movimientos.map(m=>{const ac={alta:'Alta',dar:'Entregada a',devolver:'Devuelta',perdida:'Marcada perdida',edicion:'Editada'}[m.accion]||m.accion;
       const quien=m.accion==='dar'?` <b>${esc(m.aName||'')}</b>`:(m.accion==='devolver'?' a oficina':'');
@@ -282,17 +290,17 @@ async function confirmarDar(){const tipo=document.getElementById('d-tipo').value
 // ── FORM (nuevo / editar) ──
 function onTipo(){const t=document.getElementById('f-tipo').value;document.getElementById('campos-llave').style.display=t==='llave'?'block':'none';document.getElementById('campos-herr').style.display=t==='herramienta'?'block':'none';if(!formId)prefillCodigo(t);}
 async function prefillCodigo(t){try{const r=await api('GET','/api/activos/siguiente-codigo?tipo='+t);document.getElementById('f-codigo').value=r.codigo||'';document.getElementById('f-codigo').placeholder=r.codigo||'auto';}catch(e){}}
-function limpiarForm(){['f-codigo','f-cliente','f-direccion','f-nombre','f-marca','f-modelo','f-serie','f-valor','f-notas','f-fentrega'].forEach(i=>{const e=document.getElementById(i);if(e)e.value='';});document.getElementById('f-copias').value='1';fotoData='';document.getElementById('f-foto-prev').style.display='none';document.getElementById('f-foto-input').value='';}
+function limpiarForm(){['f-codigo','f-cliente','f-familia','f-direccion','f-nombre','f-marca','f-modelo','f-serie','f-valor','f-notas','f-fentrega'].forEach(i=>{const e=document.getElementById(i);if(e)e.value='';});document.getElementById('f-copias').value='1';fotoData='';document.getElementById('f-foto-prev').style.display='none';document.getElementById('f-foto-input').value='';}
 function nuevo(){formId=null;document.getElementById('form-title').textContent='Nuevo activo';document.getElementById('f-tipo-wrap').style.display='block';document.getElementById('f-tipo').value=filtro==='herramienta'?'herramienta':'llave';limpiarForm();onTipo();abrir('ov-form');}
 async function editar(id){const {activo:a}=await api('GET','/api/activos/'+id);formId=id;document.getElementById('form-title').textContent='Editar '+a.codigo;document.getElementById('f-tipo-wrap').style.display='none';
   document.getElementById('f-tipo').value=a.tipo;onTipo();limpiarForm();
-  document.getElementById('f-codigo').value=a.codigo;document.getElementById('f-cliente').value=a.clientName||'';document.getElementById('f-direccion').value=a.direccion||'';document.getElementById('f-copias').value=a.copias||1;document.getElementById('f-fentrega').value=fecha(a.fechaEntrega);
+  document.getElementById('f-codigo').value=a.codigo;document.getElementById('f-cliente').value=a.clientName||'';document.getElementById('f-familia').value=a.family||'';document.getElementById('f-direccion').value=a.direccion||'';document.getElementById('f-copias').value=a.copias||1;document.getElementById('f-fentrega').value=fecha(a.fechaEntrega);
   document.getElementById('f-nombre').value=a.nombre||'';document.getElementById('f-marca').value=a.marca||'';document.getElementById('f-modelo').value=a.modelo||'';document.getElementById('f-serie').value=a.numeroSerie||'';document.getElementById('f-valor').value=a.valor||'';document.getElementById('f-notas').value=a.notas||'';
   if(a.foto){fotoData=a.foto;const p=document.getElementById('f-foto-prev');p.src=a.foto;p.style.display='block';}
   cerrar('ov-ficha');abrir('ov-form');}
 async function guardarForm(){const tipo=document.getElementById('f-tipo').value;
   const body={tipo,codigo:document.getElementById('f-codigo').value.trim(),notas:document.getElementById('f-notas').value.trim(),foto:fotoData};
-  if(tipo==='llave'){body.clientName=document.getElementById('f-cliente').value.trim();body.direccion=document.getElementById('f-direccion').value.trim();body.copias=document.getElementById('f-copias').value;body.fechaEntrega=document.getElementById('f-fentrega').value||null;body.nombre=body.clientName?('Llave '+body.clientName):'';}
+  if(tipo==='llave'){body.clientName=document.getElementById('f-cliente').value.trim();body.family=document.getElementById('f-familia').value.trim();body.direccion=document.getElementById('f-direccion').value.trim();body.copias=document.getElementById('f-copias').value;body.fechaEntrega=document.getElementById('f-fentrega').value||null;body.nombre=body.clientName?('Llave '+body.clientName):'';}
   else{body.nombre=document.getElementById('f-nombre').value.trim();body.marca=document.getElementById('f-marca').value.trim();body.modelo=document.getElementById('f-modelo').value.trim();body.numeroSerie=document.getElementById('f-serie').value.trim();body.valor=document.getElementById('f-valor').value||0;}
   const b=document.getElementById('form-save');b.disabled=true;b.innerHTML='<span class="spinner"></span>…';
   try{if(formId)await api('PUT','/api/activos/'+formId,body);else await api('POST','/api/activos',body);cerrar('ov-form');await cargar();toast('Guardado','ok');}catch(e){toast(e.message,'error');}finally{b.disabled=false;b.innerHTML='Guardar';}}

@@ -14,7 +14,7 @@ const ESTADOS = ['oficina', 'operario', 'cliente', 'perdida'];
 
 // Campos que se pueden editar por tipo (más los comunes).
 const CAMPOS_COMUNES = ['nombre', 'obraId', 'obraRef', 'foto', 'notas'];
-const CAMPOS_LLAVE   = ['clientName', 'direccion', 'copias', 'fechaEntrega'];
+const CAMPOS_LLAVE   = ['clientName', 'family', 'direccion', 'copias', 'fechaEntrega'];
 const CAMPOS_HERR    = ['marca', 'modelo', 'numeroSerie', 'valor', 'fechaCompra'];
 
 // Siguiente código libre para un tipo: prefijo + número correlativo (L-001…).
@@ -77,6 +77,7 @@ async function crearActivo(data, by) {
     tipo, codigo,
     nombre:      String(data.nombre || '').trim() || (tipo === 'llave' ? `Llave ${data.clientName || ''}`.trim() : ''),
     clientName:  String(data.clientName || '').trim(),
+    family:      String(data.family || '').trim(),
     direccion:   String(data.direccion || '').trim(),
     copias:      Number(data.copias) || 1,
     fechaEntrega: data.fechaEntrega || null,
