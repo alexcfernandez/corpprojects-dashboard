@@ -162,7 +162,7 @@
         <div class="mc"><div class="ml">Beneficio total</div><div class="mv ${totalBeneficio>=0?'g':'r'}">${eur(totalBeneficio)}</div></div>
         <div class="mc"><div class="ml">Margen global</div><div class="mv ${margenGlobal>=20?'g':margenGlobal>=0?'a':'r'}">${margenGlobal.toFixed(1)}%</div></div>`;
 
-      el.innerHTML = `<div style="display:grid;gap:10px">
+      el.innerHTML = `<div style="display:grid;grid-template-columns:minmax(0,1fr);gap:10px">
         ${data.map(o => {
           const obra = o.obra || {};
           const est  = ESTADOS[obra.status] || ESTADOS.activa;
@@ -183,7 +183,7 @@
                   <div style="font-size:11px;color:var(--text3)">${obra.clientName||''} ${obra.address?'· '+obra.address:''}</div>
                 </div>
                 <div style="text-align:right;flex-shrink:0">
-                  <div style="font-size:18px;font-weight:700;color:${ok?'var(--green)':'var(--red)'};font-family:'Space Grotesk',sans-serif">${ok?'+':''}${eur(o.beneficio)}</div>
+                  <div style="font-size:18px;font-weight:700;color:${o.beneficio>=0?'var(--green)':'var(--red)'};font-family:'Space Grotesk',sans-serif">${o.beneficio>0?'+':''}${eur(o.beneficio)}</div>
                   <div style="font-size:11px;color:${o.margen>=20?'var(--green)':o.margen>=0?'var(--amber)':'var(--red)'}">${o.margen.toFixed(1)}% margen</div>
                 </div>
               </div>
@@ -191,7 +191,7 @@
               <div style="background:var(--bg3);border-radius:4px;height:6px;margin-bottom:8px;overflow:hidden">
                 <div style="height:100%;width:${pct}%;background:${pct>100?'var(--red)':pct>80?'var(--amber)':'var(--green)'};border-radius:4px"></div>
               </div>` : ''}
-              <div style="display:flex;gap:16px;font-size:11px;color:var(--text2)">
+              <div style="display:flex;flex-wrap:wrap;gap:6px 16px;font-size:11px;color:var(--text2)">
                 <span>💰 Facturado: <strong style="color:var(--text)">${eur(o.facturado)}</strong></span>
                 <span>⚡ Coste: <strong style="color:var(--red)">${eur(o.totalCoste)}</strong></span>
                 <span>⏱️ <strong>${o.totalHoras?.toFixed(0)||0} h</strong></span>
