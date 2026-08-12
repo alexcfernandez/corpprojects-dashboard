@@ -321,7 +321,7 @@ async function getRentabilidad(obraId) {
       if (pertenece) {
         const imp = Number(f.total) || 0;
         totalProveedores += imp;
-        proveedores.push({ id: f.id, number: f.number, supplier: f.supplier, total: imp, date: f.date, fuente: cls.fuente });
+        proveedores.push({ id: f.id, number: f.number, supplier: f.supplier, total: imp, date: f.date, fuente: cls.fuente, categoria: cls.categoria || null });
       }
     }
   } catch (e) { /* si StelOrder falla, la rentabilidad sigue con personal + material */ }

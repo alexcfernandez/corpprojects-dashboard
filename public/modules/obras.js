@@ -283,6 +283,7 @@
             <div class="mc"><div class="ml">Facturado</div><div class="mv b">${eur(rent.facturado)}</div></div>
             <div class="mc"><div class="ml">Coste personal</div><div class="mv r">${eur(rent.totalCostePersonal)}</div></div>
             <div class="mc"><div class="ml">Materiales</div><div class="mv r">${eur(rent.totalMateriales)}</div></div>
+            <div class="mc"><div class="ml">Proveedores</div><div class="mv r">${eur(rent.totalProveedores||0)}</div></div>
             <div class="mc"><div class="ml">Beneficio</div><div class="mv ${ok?'g':'r'}">${eur(rent.beneficio)}</div></div>
             <div class="mc"><div class="ml">Horas totales</div><div class="mv b">${(rent.totalHoras||0).toFixed(0)} h</div></div>
             <div class="mc"><div class="ml">Partes</div><div class="mv b">${rent.partes}</div></div>
@@ -301,6 +302,15 @@
               </tr>`).join('')}</tbody>
             </table>
           </div>` : ''}
+
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-title">🧾 Facturas de proveedor</div>
+            ${(rent.proveedores&&rent.proveedores.length)?`<table><thead><tr><th>Proveedor</th><th style="text-align:right">Importe</th><th></th></tr></thead><tbody>${rent.proveedores.map(p=>`<tr>
+              <td><strong>${String(p.supplier||'—').replace(/</g,'&lt;')}</strong><div style="font-size:11px;color:var(--text3)">${String(p.number||'')}${p.categoria?' · '+p.categoria:''}${p.fuente&&p.fuente!=='manual'?' · '+p.fuente:''}</div></td>
+              <td style="text-align:right;color:var(--red)">${eur(p.total)}</td>
+              <td style="text-align:right">${p.fuente==='manual'?`<button class="btn bgh" style="padding:2px 8px" title="Quitar de esta obra" onclick="CP.Obras.quitarFactura('${p.id}','${id}')">✕</button>`:''}</td>
+            </tr>`).join('')}</tbody></table>`:'<div style="font-size:12px;color:var(--text3)">Ninguna factura de proveedor asignada. Se asignan desde Herramientas → Clasificar facturas.</div>'}
+          </div>
 
           <div class="card" style="margin-bottom:12px">
             <div class="card-title">🧱 Material de la obra</div>
@@ -423,6 +433,14 @@
     catch (err) { alert('Error: ' + err.message); }
   }
 
+  async function quitarFactura(facturaId, obraId) {
+    if (!confirm('¿Quitar esta factura de la obra?\n\nVolverá a "sin clasificar" en Herramientas → Clasificar facturas.')) return;
+    try {
+      await api('/api/facturas/proveedor/' + facturaId, { method: 'DELETE' });
+      openObra(obraId); // recargar la ficha con la rentabilidad recalculada
+    } catch (err) { alert('No se pudo quitar: ' + err.message); }
+  }
+
   async function eliminarObra(id, ref) {
     if (!confirm('¿Eliminar la obra "' + (ref || '') + '"?\n\nNo borra partes, presencia ni facturas — solo quita la obra (útil para eliminar duplicadas).')) return;
     try {
@@ -432,6 +450,6 @@
     } catch (err) { alert('No se pudo borrar: ' + err.message); }
   }
 
-  CP.Obras = { render, showTab, loadResumen, loadLista, openObra, saveObraChanges, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, eliminarObra };
+  CP.Obras = { render, showTab, loadResumen, loadLista, openObra, saveObraChanges, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, eliminarObra, quitarFactura };
 
 })(window.CP = window.CP || {});
