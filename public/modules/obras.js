@@ -440,7 +440,7 @@
     document.getElementById('fac-picker')?.remove();
     _fpObra = { id: obraId, ref: obraRef };
     const modal = document.createElement('div');
-    modal.id = 'fac-picker'; modal.className = 'modal-overlay'; modal.style.zIndex = '300';
+    modal.id = 'fac-picker'; modal.className = 'modal-overlay'; modal.style.zIndex = '10001'; // por encima de la ficha de obra (9999)
     modal.innerHTML = `<div class="modal-box" style="max-width:560px">
       <div class="modal-header"><div style="font-size:15px;font-weight:700">Añadir factura a la obra</div>
         <button class="btn bgh" onclick="document.getElementById('fac-picker').remove()">✕</button></div>
