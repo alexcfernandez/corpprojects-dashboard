@@ -309,7 +309,8 @@
               <td><strong>${String(p.supplier||'—').replace(/</g,'&lt;')}</strong><div style="font-size:11px;color:var(--text3)">${String(p.number||'')}${p.categoria?' · '+p.categoria:''}${p.fuente&&p.fuente!=='manual'?' · '+p.fuente:''}</div></td>
               <td style="text-align:right;color:var(--red)">${eur(p.total)}</td>
               <td style="text-align:right">${p.fuente==='manual'?`<button class="btn bgh" style="padding:2px 8px" title="Quitar de esta obra" onclick="CP.Obras.quitarFactura('${p.id}','${id}')">✕</button>`:''}</td>
-            </tr>`).join('')}</tbody></table>`:'<div style="font-size:12px;color:var(--text3)">Ninguna factura de proveedor asignada. Se asignan desde Herramientas → Clasificar facturas.</div>'}
+            </tr>`).join('')}</tbody></table>`:'<div style="font-size:12px;color:var(--text3)">Ninguna factura de proveedor asignada todavía.</div>'}
+            <div style="margin-top:10px"><button class="btn bp" style="padding:6px 12px;font-size:12px" onclick="CP.Obras.abrirPickerFacturas('${id}','${String((obra.reference||'')+' — '+(obra.clientName||'')).replace(/'/g,'').replace(/"/g,'')}')">+ Añadir factura</button></div>
           </div>
 
           <div class="card" style="margin-bottom:12px">
@@ -433,6 +434,49 @@
     catch (err) { alert('Error: ' + err.message); }
   }
 
+  // Picker: asignar a la obra una factura de proveedor ya subida (sin clasificar).
+  let _fpData = [], _fpObra = {};
+  async function abrirPickerFacturas(obraId, obraRef) {
+    document.getElementById('fac-picker')?.remove();
+    _fpObra = { id: obraId, ref: obraRef };
+    const modal = document.createElement('div');
+    modal.id = 'fac-picker'; modal.className = 'modal-overlay'; modal.style.zIndex = '300';
+    modal.innerHTML = `<div class="modal-box" style="max-width:560px">
+      <div class="modal-header"><div style="font-size:15px;font-weight:700">Añadir factura a la obra</div>
+        <button class="btn bgh" onclick="document.getElementById('fac-picker').remove()">✕</button></div>
+      <input type="text" id="fp-search" class="field-input" placeholder="Buscar proveedor…" oninput="CP.Obras._fpFilter()" style="margin-bottom:10px">
+      <div id="fp-list" style="max-height:60vh;overflow-y:auto"><div style="color:var(--text3);font-size:12px;padding:12px">Cargando facturas sin clasificar…</div></div>
+    </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    try {
+      const data = await api('/api/facturas/proveedor?filtro=sin');
+      _fpData = data.facturas || [];
+      _fpRender(_fpData);
+    } catch (err) {
+      const b = document.getElementById('fp-list'); if (b) b.innerHTML = '<div style="color:var(--red);font-size:12px;padding:12px">Error: ' + err.message + '</div>';
+    }
+  }
+  function _fpRender(list) {
+    const box = document.getElementById('fp-list'); if (!box) return;
+    if (!list.length) { box.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:12px">No hay facturas sin clasificar.</div>'; return; }
+    box.innerHTML = list.slice(0, 150).map(f => `<div onclick="CP.Obras._fpPick('${f.id}')" style="display:flex;justify-content:space-between;gap:10px;padding:11px 8px;border-bottom:1px solid var(--border);cursor:pointer">
+        <div style="min-width:0"><strong style="font-size:13px">${String(f.supplier || '—').replace(/</g, '&lt;')}</strong><div style="font-size:11px;color:var(--text3)">${String(f.number || '')}${f.date ? ' · ' + String(f.date).slice(0, 10) : ''}</div></div>
+        <div style="font-weight:700;white-space:nowrap">${eur(f.total)}</div></div>`).join('') +
+      (list.length > 150 ? `<div style="font-size:11px;color:var(--text3);padding:8px">Mostrando 150 de ${list.length}. Afina con el buscador.</div>` : '');
+  }
+  function _fpFilter() {
+    const q = (document.getElementById('fp-search').value || '').toLowerCase();
+    _fpRender(_fpData.filter(f => [f.supplier, f.number].some(x => String(x || '').toLowerCase().includes(q))));
+  }
+  async function _fpPick(fId) {
+    try {
+      await api('/api/facturas/proveedor/' + fId + '/clasificar', { method: 'POST', body: JSON.stringify({ obraId: _fpObra.id, obraRef: _fpObra.ref }) });
+      document.getElementById('fac-picker')?.remove();
+      openObra(_fpObra.id);
+    } catch (err) { alert('No se pudo asignar: ' + err.message); }
+  }
+
   async function quitarFactura(facturaId, obraId) {
     if (!confirm('¿Quitar esta factura de la obra?\n\nVolverá a "sin clasificar" en Herramientas → Clasificar facturas.')) return;
     try {
@@ -450,6 +494,6 @@
     } catch (err) { alert('No se pudo borrar: ' + err.message); }
   }
 
-  CP.Obras = { render, showTab, loadResumen, loadLista, openObra, saveObraChanges, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, eliminarObra, quitarFactura };
+  CP.Obras = { render, showTab, loadResumen, loadLista, openObra, saveObraChanges, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, eliminarObra, quitarFactura, abrirPickerFacturas, _fpFilter, _fpPick };
 
 })(window.CP = window.CP || {});
