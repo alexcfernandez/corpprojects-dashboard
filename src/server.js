@@ -1430,6 +1430,11 @@ app.put('/api/obras/:id', requireAuth, async (req, res) => {
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
+app.delete('/api/obras/:id', requireAuth, async (req, res) => {
+  try { res.json(await obras.deleteObra(req.params.id)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 app.post('/api/obras/:id/material', requireAuth, async (req, res) => {
   try { res.json(await obras.addMaterial(req.params.id, req.body)); }
   catch (err) { res.status(400).json({ error: err.message }); }

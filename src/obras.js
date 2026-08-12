@@ -184,6 +184,14 @@ async function updateObra(id, data) {
   return db.collection('obras').updateOne({ _id: new ObjectId(id) }, { $set: set });
 }
 
+// Borrar una obra (p. ej. una duplicada). No toca partes/presencia/facturas;
+// solo elimina el registro de obra y su cálculo de rentabilidad.
+async function deleteObra(id) {
+  const db = await getDB();
+  await db.collection('obras').deleteOne({ _id: new ObjectId(id) });
+  return { ok: true };
+}
+
 // Material de obra (a mano): {concepto, importe}. Suma al coste en la rentabilidad.
 async function addMaterial(obraId, { concepto, importe }) {
   const db = await getDB();
@@ -398,7 +406,7 @@ async function getResumenGeneral() {
 
 module.exports = {
   ESTADOS_OBRA, CATEGORIAS_GASTO,
-  createObra, getObras, getObra, updateObra, addMaterial, deleteMaterial,
+  createObra, getObras, getObra, updateObra, deleteObra, addMaterial, deleteMaterial,
   getRentabilidad, getResumenGeneral,
   extraerObraMarcador, getAsignacionesFacturaMap, getReglasMap, resolverFacturaObra,
   clasificarFactura, desclasificarFactura,

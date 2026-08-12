@@ -331,9 +331,10 @@
               <input type="text" id="ob-edit-aliases" value="${(obra.aliases||[]).join(', ')}" class="field-input" placeholder="Ej: calle comerç, comerç 76">
               <div style="font-size:11px;color:var(--text3);margin-top:4px">Separa por comas. Añade aquí cómo se llamó la obra en los partes o la presencia, para que sus horas cuenten en esta obra.</div>
             </div>
-            <div style="display:flex;gap:8px">
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
               <button class="btn bp" onclick="CP.Obras.saveObraChanges('${id}')">💾 Guardar</button>
               <button class="btn bgh" onclick="document.getElementById('ob-modal').remove()">Cerrar</button>
+              <button class="btn bgh" style="color:var(--red);border-color:var(--red)" onclick="CP.Obras.eliminarObra('${id}','${String(obra.reference||'').replace(/'/g,'')}')">🗑️ Eliminar obra</button>
             </div>
             <div id="ob-modal-msg" style="margin-top:8px;font-size:11px;display:none"></div>
           </div>
@@ -422,6 +423,15 @@
     catch (err) { alert('Error: ' + err.message); }
   }
 
-  CP.Obras = { render, showTab, loadResumen, loadLista, openObra, saveObraChanges, submitObra, resetForm, sugerirRef, addMaterial, delMaterial };
+  async function eliminarObra(id, ref) {
+    if (!confirm('¿Eliminar la obra "' + (ref || '') + '"?\n\nNo borra partes, presencia ni facturas — solo quita la obra (útil para eliminar duplicadas).')) return;
+    try {
+      await api('/api/obras/' + id, { method: 'DELETE' });
+      document.getElementById('ob-modal')?.remove();
+      loadResumen();
+    } catch (err) { alert('No se pudo borrar: ' + err.message); }
+  }
+
+  CP.Obras = { render, showTab, loadResumen, loadLista, openObra, saveObraChanges, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, eliminarObra };
 
 })(window.CP = window.CP || {});
