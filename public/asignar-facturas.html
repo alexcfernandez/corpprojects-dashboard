@@ -79,6 +79,7 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 .badge.regla{background:rgba(77,156,248,.14);color:var(--blue)}
 .badge.n8n{background:rgba(167,139,250,.14);color:var(--purple)}
 .badge.general{background:rgba(245,158,11,.14);color:var(--amber)}
+.badge.reparto{background:rgba(167,139,250,.14);color:var(--purple)}
 .badge.none{background:rgba(90,98,120,.2);color:var(--text2)}
 .chev{color:var(--text3);font-size:18px}
 .empty{text-align:center;color:var(--text3);font-size:14px;padding:40px 20px}
@@ -328,6 +329,7 @@ function filtrar(){
 function badgeDe(c){
   if(!c)return '<span class="badge none">Sin clasificar</span>';
   const via=c.fuente||'manual';
+  if(c.reparto||via==='reparto')return `<span class="badge reparto">🔀 ${esc(c.obraRef||'Repartida entre obras')}</span>`;
   if(c.tipo==='general')return `<span class="badge general">Gasto: ${esc(catLabel(c.categoria))}${via==='regla'?' · regla':''}</span>`;
   const cat=c.categoria?(' · '+esc(catLabel(c.categoria))):'';
   return `<span class="badge ${via}">Obra: ${esc(c.obraRef||'')}${cat} · ${via}</span>`;

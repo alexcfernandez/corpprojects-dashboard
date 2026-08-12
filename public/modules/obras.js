@@ -308,7 +308,7 @@
             ${(rent.proveedores&&rent.proveedores.length)?`<table><thead><tr><th>Proveedor</th><th style="text-align:right">Importe</th><th></th></tr></thead><tbody>${rent.proveedores.map(p=>`<tr>
               <td><strong>${String(p.supplier||'—').replace(/</g,'&lt;')}</strong><div style="font-size:11px;color:var(--text3)">${String(p.number||'')}${p.categoria?' · '+p.categoria:''}${p.fuente&&p.fuente!=='manual'?' · '+p.fuente:''}</div></td>
               <td style="text-align:right;color:var(--red)">${eur(p.total)}</td>
-              <td style="text-align:right">${p.fuente==='manual'?`<button class="btn bgh" style="padding:2px 8px" title="Quitar de esta obra" onclick="CP.Obras.quitarFactura('${p.id}','${id}')">✕</button>`:''}</td>
+              <td style="text-align:right">${p.fuente==='reparto'?`<button class="btn bgh" style="padding:2px 8px" title="Quitar de esta obra" onclick="CP.Obras.quitarReparto('${p.id}','${id}')">✕</button>`:(p.fuente==='manual'?`<button class="btn bgh" style="padding:2px 8px" title="Quitar de esta obra" onclick="CP.Obras.quitarFactura('${p.id}','${id}')">✕</button>`:'')}</td>
             </tr>`).join('')}</tbody></table>`:'<div style="font-size:12px;color:var(--text3)">Ninguna factura de proveedor asignada todavía.</div>'}
             <div style="margin-top:10px"><button class="btn bp" style="padding:6px 12px;font-size:12px" onclick="CP.Obras.abrirPickerFacturas('${id}','${String((obra.reference||'')+' — '+(obra.clientName||'')).replace(/'/g,'').replace(/"/g,'')}')">+ Añadir factura</button></div>
           </div>
@@ -470,11 +470,24 @@
     _fpRender(_fpData.filter(f => [f.supplier, f.number].some(x => String(x || '').toLowerCase().includes(q))));
   }
   async function _fpPick(fId) {
+    const f = _fpData.find(x => String(x.id) === String(fId));
+    const total = f ? Number(f.total) || 0 : 0;
+    const val = prompt('¿Cuánto de esta factura (' + (f ? eur(total) : '') + ') va a ESTA obra?\n\nDeja el total si es entera. Si la factura es de varias obras, pon solo la parte que corresponde (podrás repartir el resto a otras obras).', total);
+    if (val === null) return;
+    const importe = parseFloat(String(val).replace(',', '.').replace(/[^0-9.]/g, ''));
+    if (!(importe > 0)) { alert('Importe no válido'); return; }
     try {
-      await api('/api/facturas/proveedor/' + fId + '/clasificar', { method: 'POST', body: JSON.stringify({ obraId: _fpObra.id, obraRef: _fpObra.ref }) });
+      await api('/api/facturas/proveedor/' + fId + '/repartir', { method: 'POST', body: JSON.stringify({ obraId: _fpObra.id, obraRef: _fpObra.ref, importe }) });
       document.getElementById('fac-picker')?.remove();
       openObra(_fpObra.id);
     } catch (err) { alert('No se pudo asignar: ' + err.message); }
+  }
+  async function quitarReparto(facturaId, obraId) {
+    if (!confirm('¿Quitar esta factura de la obra? (el resto del reparto no se toca)')) return;
+    try {
+      await api('/api/facturas/proveedor/' + facturaId + '/quitar-reparto', { method: 'POST', body: JSON.stringify({ obraId }) });
+      openObra(obraId);
+    } catch (err) { alert('No se pudo quitar: ' + err.message); }
   }
 
   async function quitarFactura(facturaId, obraId) {
@@ -494,6 +507,6 @@
     } catch (err) { alert('No se pudo borrar: ' + err.message); }
   }
 
-  CP.Obras = { render, showTab, loadResumen, loadLista, openObra, saveObraChanges, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, eliminarObra, quitarFactura, abrirPickerFacturas, _fpFilter, _fpPick };
+  CP.Obras = { render, showTab, loadResumen, loadLista, openObra, saveObraChanges, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick };
 
 })(window.CP = window.CP || {});

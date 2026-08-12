@@ -1566,6 +1566,19 @@ app.post('/api/facturas/proveedor/:id/clasificar', requireAuthOficina, async (re
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
+// Repartir una factura entre obras por importe (facturas de varias obras / excluir regalos).
+app.post('/api/facturas/proveedor/:id/repartir', requireAuthOficina, async (req, res) => {
+  try {
+    const { obraId, obraRef, importe } = req.body || {};
+    const by = req.oficina?.workerName || (req.oficina?.admin ? 'admin' : 'oficina');
+    res.json(await obras.repartirFactura(req.params.id, { obraId, obraRef, importe, by }));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/facturas/proveedor/:id/quitar-reparto', requireAuthOficina, async (req, res) => {
+  try { res.json(await obras.quitarReparto(req.params.id, (req.body || {}).obraId)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 // Quitar la clasificación explícita de una factura (vuelve a regla/marcador/sin clasificar).
 app.delete('/api/facturas/proveedor/:id', requireAuthOficina, async (req, res) => {
   try { res.json(await obras.desclasificarFactura(req.params.id)); }

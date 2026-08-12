@@ -58,7 +58,12 @@ function _normClasif(rec, fuente) {
 }
 // Resuelve la clasificación efectiva de una factura (o null si sin clasificar).
 function resolverFacturaObra(f, asignMap, reglaMap) {
-  const a = _normClasif(asignMap && asignMap.get(String(f.id)), 'manual');
+  const rec = asignMap && asignMap.get(String(f.id));
+  if (rec && Array.isArray(rec.repartos) && rec.repartos.length) {
+    const n = rec.repartos.length;
+    return { tipo: 'obra', fuente: 'reparto', obraId: null, obraRef: `repartida (${n} obra${n > 1 ? 's' : ''})`, categoria: null, reparto: true };
+  }
+  const a = _normClasif(rec, 'manual');
   if (a) return a;
   const r = _normClasif(reglaMap && reglaMap.get(String(f.supplierId || '')), 'regla');
   if (r) return r;
@@ -80,11 +85,41 @@ async function clasificarFactura(stelInvoiceId, { obraId, obraRef, categoria, by
         obraId:    obraId ? String(obraId) : null,
         obraRef:   obraRef || '',
         categoria: categoria || null,
+        repartos:  [],   // una asignación simple anula el reparto
         by:        by || '',
         ts:        new Date(),
     } },
     { upsert: true }
   );
+  return { ok: true };
+}
+
+// Reparto: asigna a la obra SOLO una parte del importe de la factura (para
+// facturas de varias obras, o para excluir ítems regalados). Una misma factura
+// puede repartirse entre varias obras. El reparto anula la asignación simple.
+async function repartirFactura(stelInvoiceId, { obraId, obraRef, importe, by } = {}) {
+  if (!stelInvoiceId) throw new Error('Falta la factura');
+  if (!obraId) throw new Error('Falta la obra');
+  const imp = Number(importe);
+  if (!Number.isFinite(imp) || imp <= 0) throw new Error('Importe no válido');
+  const database = await getDB();
+  const rec = await database.collection('facturaObraAsignada').findOne({ stelInvoiceId: String(stelInvoiceId) });
+  const repartos = ((rec && Array.isArray(rec.repartos)) ? rec.repartos : []).filter(p => String(p.obraId) !== String(obraId));
+  repartos.push({ obraId: String(obraId), obraRef: obraRef || '', importe: Math.round(imp * 100) / 100 });
+  await database.collection('facturaObraAsignada').updateOne(
+    { stelInvoiceId: String(stelInvoiceId) },
+    { $set: { stelInvoiceId: String(stelInvoiceId), repartos, obraId: null, obraRef: '', categoria: null, by: by || '', ts: new Date() } },
+    { upsert: true }
+  );
+  return { ok: true };
+}
+async function quitarReparto(stelInvoiceId, obraId) {
+  const database = await getDB();
+  const rec = await database.collection('facturaObraAsignada').findOne({ stelInvoiceId: String(stelInvoiceId) });
+  if (!rec) return { ok: true };
+  const repartos = (rec.repartos || []).filter(p => String(p.obraId) !== String(obraId));
+  if (repartos.length) await database.collection('facturaObraAsignada').updateOne({ stelInvoiceId: String(stelInvoiceId) }, { $set: { repartos, ts: new Date() } });
+  else await database.collection('facturaObraAsignada').deleteOne({ stelInvoiceId: String(stelInvoiceId) });
   return { ok: true };
 }
 async function desclasificarFactura(stelInvoiceId) {
@@ -309,6 +344,17 @@ async function getRentabilidad(obraId) {
     ]);
     const miId = String(obra._id);
     for (const f of (facturasProv || [])) {
+      // Reparto: la factura va troceada por importe entre varias obras.
+      const rec = asignMap.get(String(f.id));
+      if (rec && Array.isArray(rec.repartos) && rec.repartos.length) {
+        const parte = rec.repartos.find(p => String(p.obraId) === miId);
+        if (parte) {
+          const imp = Number(parte.importe) || 0;
+          totalProveedores += imp;
+          proveedores.push({ id: f.id, number: f.number, supplier: f.supplier, total: imp, date: f.date, fuente: 'reparto', categoria: null });
+        }
+        continue; // el reparto manda; no se cuenta el total entero
+      }
       const cls = resolverFacturaObra(f, asignMap, reglaMap);
       if (!cls || cls.tipo !== 'obra') continue;
       let pertenece;
@@ -409,6 +455,6 @@ module.exports = {
   createObra, getObras, getObra, updateObra, deleteObra, addMaterial, deleteMaterial,
   getRentabilidad, getResumenGeneral,
   extraerObraMarcador, getAsignacionesFacturaMap, getReglasMap, resolverFacturaObra,
-  clasificarFactura, desclasificarFactura,
+  clasificarFactura, desclasificarFactura, repartirFactura, quitarReparto,
   setReglaProveedor, deleteReglaProveedor, getReglas,
 };
