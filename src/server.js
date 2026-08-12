@@ -1531,6 +1531,16 @@ app.get('/api/facturas/proveedor', requireAuthOficina, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Identidad de oficina (para SSO de las herramientas): acepta JWT de admin del
+// dashboard (localStorage cp_token) o token de trabajador. Devuelve quién eres.
+app.get('/api/oficina/whoami', requireAuthOficina, (req, res) => {
+  res.json({
+    admin: !!req.oficina?.admin,
+    name:  req.oficina?.admin ? 'Administración' : (req.oficina?.workerName || 'Oficina'),
+    workerName: req.oficina?.workerName || null,
+  });
+});
+
 // Clasificar una factura: obra (opcional) + categoría (opcional). Al menos una.
 app.post('/api/facturas/proveedor/:id/clasificar', requireAuthOficina, async (req, res) => {
   try {

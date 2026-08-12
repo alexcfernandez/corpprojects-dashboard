@@ -206,7 +206,7 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 <script>
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
 
-let workerToken=null, workerInfo=null, todosWorkers=[];
+let workerToken=null, workerInfo=null, todosWorkers=[], esAdmin=false;
 let obrasCache=[], facturas=[], categorias=[], filtro='sin', limite=200, modalId=null, clientesStel=[];
 const normTxt=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
 // Devuelve el nombre EXACTO del cliente en StelOrder si coincide; si no, null.
@@ -236,10 +236,11 @@ async function loadWorkers(){
   }catch(e){document.getElementById('worker-selector').innerHTML='<div style="color:var(--text3);font-size:13px">Error cargando usuarios</div>';}
 }
 function selectWorker(btn){document.querySelectorAll('.worker-btn').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');document.getElementById('pin-input').focus();}
-async function enterApp(token,info){
-  workerToken=token;workerInfo=info;
-  localStorage.setItem('cpWT',token);localStorage.setItem('cpWN',info.workerName||'');localStorage.setItem('cpWI',String(info.workerId||''));
+async function enterApp(token,info,persist){
+  workerToken=token;workerInfo=info;esAdmin=!!info.admin;
+  if(persist){localStorage.setItem('cpWT',token);localStorage.setItem('cpWN',info.workerName||'');localStorage.setItem('cpWI',String(info.workerId||''));}
   document.getElementById('header-sub').textContent=info.workerName||'';
+  document.getElementById('logout-btn').textContent=esAdmin?'← Dashboard':'Salir';
   document.getElementById('logout-btn').style.display='block';
   showPage('list');
   if(window.initClienteAutocomplete) initClienteAutocomplete(document.getElementById('m-cliente'), workerToken);
@@ -251,16 +252,24 @@ async function cargarClientes(){
   try{const r=await fetch('/api/clients/list',{headers:authH()});clientesStel=r.ok?await r.json():[];}
   catch(e){clientesStel=[];}
 }
+// SSO: si ya hay sesión de admin del dashboard (cp_token) o de trabajador (cpWT),
+// entra sin pedir PIN. Se valida contra /api/oficina/whoami (acepta ambos).
 async function tryRestoreSession(){
-  const t=localStorage.getItem('cpWT');if(!t)return false;
-  try{
-    const r=await fetch('/api/partes/worker-session',{headers:authH()});
-    if(!r.ok)throw new Error('caducada');
-    const data=await r.json();
-    workerToken=t;
-    await enterApp(t,{workerId:data.workerId,workerName:data.workerName});
-    return true;
-  }catch(e){localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');localStorage.removeItem('cpWI');return false;}
+  const admin=localStorage.getItem('cp_token');
+  const worker=localStorage.getItem('cpWT');
+  for(const [t,isAdmin] of [[admin,true],[worker,false]]){
+    if(!t)continue;
+    try{
+      const r=await fetch('/api/oficina/whoami',{headers:{'Authorization':`Bearer ${t}`}});
+      if(!r.ok)continue;
+      const d=await r.json();
+      workerToken=t;
+      await enterApp(t,{workerName:d.name,admin:d.admin},!isAdmin);
+      return true;
+    }catch(e){}
+  }
+  localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');localStorage.removeItem('cpWI');
+  return false;
 }
 async function doLogin(){
   const sel=document.querySelector('.worker-btn.selected');
@@ -272,11 +281,13 @@ async function doLogin(){
     const r=await fetch('/api/partes/worker-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workerId:sel.dataset.id,pin})});
     const data=await r.json();
     if(!r.ok)throw new Error(data.error||'PIN incorrecto');
-    await enterApp(data.token,{workerId:data.workerId,workerName:data.workerName});
+    await enterApp(data.token,{workerId:data.workerId,workerName:data.workerName},true);
   }catch(err){toast(err.message,'error');document.getElementById('pin-input').value='';}
   finally{btn.disabled=false;btn.innerHTML='Entrar →';}
 }
 function logout(){
+  // Si entramos por SSO de admin, "Salir" vuelve al dashboard (no cerramos su sesión).
+  if(esAdmin){ location.href='/'; return; }
   workerToken=null;workerInfo=null;
   localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');localStorage.removeItem('cpWI');
   document.getElementById('pin-input').value='';

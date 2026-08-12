@@ -162,7 +162,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 <script>
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
 
-let workerToken = null, workerInfo = null;
+let workerToken = null, workerInfo = null, esAdmin = false;
 let todosWorkers = [];
 let archivos = []; // {file, isPdf, url}
 let clientesStel = [];
@@ -202,30 +202,35 @@ function selectWorker(btn){
   btn.classList.add('selected');
   document.getElementById('pin-input').focus();
 }
-async function enterApp(token, info){
-  workerToken=token; workerInfo=info;
-  localStorage.setItem('cpWT',token);
-  localStorage.setItem('cpWN',info.workerName||'');
-  localStorage.setItem('cpWI',String(info.workerId||''));
+async function enterApp(token, info, persist){
+  workerToken=token; workerInfo=info; esAdmin=!!info.admin;
+  if(persist){
+    localStorage.setItem('cpWT',token);
+    localStorage.setItem('cpWN',info.workerName||'');
+    localStorage.setItem('cpWI',String(info.workerId||''));
+  }
   document.getElementById('header-sub').textContent=info.workerName||'';
-  document.getElementById('logout-btn').style.display='block';
+  const lb=document.getElementById('logout-btn'); lb.textContent=esAdmin?'← Dashboard':'Salir'; lb.style.display='block';
   showPage('form');
   await cargarObras();
   try{ const r=await fetch('/api/clients/list',{headers:{'Authorization':`Bearer ${workerToken}`}}); clientesStel = r.ok ? await r.json() : []; }catch(e){ clientesStel=[]; }
 }
+// SSO: entra sin PIN si hay sesión de admin del dashboard (cp_token) o de trabajador (cpWT).
 async function tryRestoreSession(){
-  const t=localStorage.getItem('cpWT');
-  if(!t) return false;
-  try{
-    const r=await fetch('/api/partes/worker-session',{headers:{'Authorization':`Bearer ${t}`}});
-    if(!r.ok) throw new Error('caducada');
-    const data=await r.json();
-    await enterApp(t,{workerId:data.workerId, workerName:data.workerName});
-    return true;
-  }catch(e){
-    localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');localStorage.removeItem('cpWI');
-    return false;
+  const admin=localStorage.getItem('cp_token');
+  const worker=localStorage.getItem('cpWT');
+  for(const [t,isAdmin] of [[admin,true],[worker,false]]){
+    if(!t) continue;
+    try{
+      const r=await fetch('/api/oficina/whoami',{headers:{'Authorization':`Bearer ${t}`}});
+      if(!r.ok) continue;
+      const d=await r.json();
+      await enterApp(t,{workerName:d.name, admin:d.admin}, !isAdmin);
+      return true;
+    }catch(e){}
   }
+  localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');localStorage.removeItem('cpWI');
+  return false;
 }
 async function doLogin(){
   const sel=document.querySelector('.worker-btn.selected');
@@ -243,7 +248,7 @@ async function doLogin(){
     const data=await r.json();
     if(!r.ok) throw new Error(data.error||'PIN incorrecto');
     hideMsg('login-msg');
-    await enterApp(data.token,{workerId:data.workerId, workerName:data.workerName});
+    await enterApp(data.token,{workerId:data.workerId, workerName:data.workerName}, true);
   }catch(err){
     showMsg('login-msg','❌ '+err.message,'error');
     document.getElementById('pin-input').value='';
@@ -252,6 +257,7 @@ async function doLogin(){
   }
 }
 function logout(){
+  if(esAdmin){ location.href='/'; return; } // SSO admin: volver al dashboard
   workerToken=null; workerInfo=null;
   localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');localStorage.removeItem('cpWI');
   document.getElementById('pin-input').value='';
