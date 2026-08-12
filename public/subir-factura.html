@@ -129,8 +129,11 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <select id="obra-select" onchange="onObraChange()">
         <option value="">— Elige la obra —</option>
       </select>
-      <input type="text" id="obra-otra" placeholder="Escribe la obra (cliente, dirección…)" style="display:none;margin-top:8px">
-      <div class="hint">La factura se etiqueta por obra para la rentabilidad real.</div>
+      <div id="obra-nueva" style="display:none;margin-top:8px">
+        <input type="text" id="obra-ref" placeholder="Referencia (ej. Calle Comerç 76 - Fachada)" style="margin-bottom:8px">
+        <input type="text" id="obra-cliente" placeholder="Cliente (busca en StelOrder)" autocomplete="off">
+      </div>
+      <div class="hint">La factura se etiqueta por obra para la rentabilidad real. Para una obra nueva, elige el cliente del buscador de StelOrder.</div>
     </div>
 
     <div class="field">
@@ -155,12 +158,16 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   </div>
 </div>
 
+<script src="/cliente-autocomplete.js"></script>
 <script>
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
 
 let workerToken = null, workerInfo = null;
 let todosWorkers = [];
 let archivos = []; // {file, isPdf, url}
+let clientesStel = [];
+const normTxt = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+function clienteStelValido(txt){ const n=normTxt(txt); return clientesStel.find(c=>normTxt(c)===n)||null; }
 
 const WORKER_COLORS = {};
 
@@ -204,6 +211,7 @@ async function enterApp(token, info){
   document.getElementById('logout-btn').style.display='block';
   showPage('form');
   await cargarObras();
+  try{ const r=await fetch('/api/clients/list',{headers:{'Authorization':`Bearer ${workerToken}`}}); clientesStel = r.ok ? await r.json() : []; }catch(e){ clientesStel=[]; }
 }
 async function tryRestoreSession(){
   const t=localStorage.getItem('cpWT');
@@ -263,23 +271,28 @@ async function cargarObras(){
       const label=[o.reference,o.clientName].filter(Boolean).join(' — ')||'(sin nombre)';
       return `<option value="${o.id}" data-ref="${label.replace(/"/g,'&quot;')}">${label}</option>`;
     }).join('');
-    sel.innerHTML='<option value="">— Elige la obra —</option>'+opts+'<option value="__otra__">➕ Otra (escribir)</option>';
+    sel.innerHTML='<option value="">— Elige la obra —</option>'+opts+'<option value="__nueva__">➕ Nueva obra…</option>';
   }catch(e){
-    // Si falla, dejamos solo texto libre para no bloquear la subida.
     const sel=document.getElementById('obra-select');
-    sel.innerHTML='<option value="">— Elige la obra —</option><option value="__otra__">➕ Escribir la obra</option>';
+    sel.innerHTML='<option value="">— Elige la obra —</option><option value="__nueva__">➕ Nueva obra…</option>';
   }
+  // Autocompletado de cliente de StelOrder para la obra nueva.
+  if(window.initClienteAutocomplete) initClienteAutocomplete(document.getElementById('obra-cliente'), workerToken);
 }
 function onObraChange(){
   const sel=document.getElementById('obra-select');
-  const otra=document.getElementById('obra-otra');
-  otra.style.display = sel.value==='__otra__' ? 'block' : 'none';
-  if(sel.value==='__otra__') otra.focus();
+  const nueva=document.getElementById('obra-nueva');
+  const es = sel.value==='__nueva__';
+  nueva.style.display = es ? 'block' : 'none';
+  if(es) document.getElementById('obra-ref').focus();
 }
 function obraActual(){
   const sel=document.getElementById('obra-select');
-  if(sel.value==='__otra__'){
-    return { obraId:'', obraRef:document.getElementById('obra-otra').value.trim() };
+  if(sel.value==='__nueva__'){
+    const ref=document.getElementById('obra-ref').value.trim();
+    const cli=document.getElementById('obra-cliente').value.trim();
+    const obraRef=[ref,cli].filter(Boolean).join(' — ');
+    return { obraId:'', obraRef, nueva:{ref,cli} };
   }
   if(sel.value){
     const opt=sel.options[sel.selectedIndex];
@@ -349,12 +362,28 @@ async function enviar(){
   hideMsg('form-msg');
   if(!archivos.length){ showMsg('form-msg','⚠️ Añade al menos una foto o PDF','warn'); return; }
   const obra=obraActual();
-  if(!obra.obraRef){ showMsg('form-msg','⚠️ Elige la obra (o escríbela en "Otra")','warn'); return; }
+  const esNueva=document.getElementById('obra-select').value==='__nueva__';
+  let cliOk=null;
+  if(esNueva){
+    if(!obra.nueva || !obra.nueva.ref || !obra.nueva.cli){ showMsg('form-msg','⚠️ Para la obra nueva: referencia y cliente (de StelOrder)','warn'); return; }
+    cliOk=clienteStelValido(obra.nueva.cli);
+    if(!cliOk){ showMsg('form-msg','⚠️ Elige el cliente de la lista de StelOrder (no coincide con ninguno)','warn'); return; }
+    obra.nueva.cli=cliOk; obra.obraRef=[obra.nueva.ref,cliOk].filter(Boolean).join(' — ');
+  }
+  if(!obra.obraRef){ showMsg('form-msg','⚠️ Elige la obra','warn'); return; }
 
   const btn=document.getElementById('send-btn');
   btn.disabled=true; btn.innerHTML='<span class="spinner"></span>Subiendo…';
 
   try{
+    // Si es obra nueva, la creamos (queda como obra real para la rentabilidad).
+    if(esNueva){
+      try{
+        const rn=await fetch('/api/facturas/obra-nueva',{method:'POST',headers:{'Authorization':`Bearer ${workerToken}`,'Content-Type':'application/json'},body:JSON.stringify({reference:obra.nueva.ref,clientName:obra.nueva.cli})});
+        const dn=await rn.json().catch(()=>({}));
+        if(rn.ok && dn.id){ obra.obraId=dn.id; obra.obraRef=[dn.reference,dn.clientName].filter(Boolean).join(' — '); }
+      }catch(e){ /* si falla la creación, seguimos con el texto de la obra */ }
+    }
     const fd=new FormData();
     archivos.forEach((a,i)=>{
       const fname=a.file.name||(a.isPdf?`factura-${i+1}.pdf`:`factura-${i+1}.jpg`);
@@ -386,8 +415,9 @@ function nuevaFactura(){
   archivos=[];
   renderPreview();
   document.getElementById('obra-select').value='';
-  document.getElementById('obra-otra').value='';
-  document.getElementById('obra-otra').style.display='none';
+  document.getElementById('obra-ref').value='';
+  document.getElementById('obra-cliente').value='';
+  document.getElementById('obra-nueva').style.display='none';
   document.getElementById('nota').value='';
   hideMsg('form-msg');
   showPage('form');

@@ -47,13 +47,16 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .btn:disabled{opacity:.55;cursor:not-allowed}
 .spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;display:inline-block;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-.msg{border-radius:var(--rs);padding:12px 14px;font-size:14px;margin-top:14px;display:none;position:sticky;bottom:12px;box-shadow:0 6px 20px rgba(0,0,0,.4)}
-.msg.show{display:block}
-.msg.ok{background:rgba(34,196,135,.15);border:1px solid var(--green);color:var(--green)}
-.msg.warn{background:rgba(245,158,11,.15);border:1px solid var(--amber);color:var(--amber)}
-.msg.error{background:rgba(240,82,82,.15);border:1px solid var(--red);color:var(--red)}
-select,input[type=text]{background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:10px 12px;color:var(--text);font-size:14px;outline:none;font-family:inherit;-webkit-appearance:none}
+select,input[type=text]{width:100%;background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--rs);padding:12px 13px;color:var(--text);font-size:15px;outline:none;font-family:inherit;-webkit-appearance:none}
 select:focus,input:focus{border-color:var(--blue)}
+label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:0 0 6px}
+
+/* TOAST (mensajes) */
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);max-width:92%;min-width:260px;padding:14px 18px;border-radius:12px;font-size:15px;font-weight:500;z-index:200;opacity:0;pointer-events:none;transition:all .22s;box-shadow:0 10px 30px rgba(0,0,0,.5);text-align:center}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast.ok{background:#12301f;border:1px solid var(--green);color:#7ff0c0}
+#toast.warn{background:#33280d;border:1px solid var(--amber);color:#ffd98a}
+#toast.error{background:#3a1414;border:1px solid var(--red);color:#ff9d9d}
 
 /* TOOLBAR */
 .toolbar{display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap}
@@ -63,37 +66,50 @@ select:focus,input:focus{border-color:var(--blue)}
 .tool-btn{background:none;border:1px solid var(--border2);border-radius:var(--rs);color:var(--text3);padding:9px 12px;font-size:13px;cursor:pointer;font-family:inherit}
 .count{margin-left:auto;font-size:12px;color:var(--text3)}
 
-/* FACTURA */
-.inv{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px}
+/* FACTURA (fila compacta, clicable) */
+.inv{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:13px 15px;margin-bottom:9px;cursor:pointer;transition:border-color .12s}
+.inv:hover{border-color:var(--border2)}
 .inv-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .inv-sup{font-weight:600;font-size:15px}
 .inv-total{font-weight:700;font-size:15px;white-space:nowrap}
-.inv-meta{font-size:12px;color:var(--text3);margin-top:2px}
-.badge{display:inline-block;font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;margin-top:8px}
+.inv-meta{font-size:12px;color:var(--text3);margin-top:2px;display:flex;justify-content:space-between;gap:10px;align-items:center}
+.badge{display:inline-block;font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px}
 .badge.manual{background:rgba(34,196,135,.14);color:var(--green)}
 .badge.regla{background:rgba(77,156,248,.14);color:var(--blue)}
 .badge.n8n{background:rgba(167,139,250,.14);color:var(--purple)}
 .badge.general{background:rgba(245,158,11,.14);color:var(--amber)}
 .badge.none{background:rgba(90,98,120,.2);color:var(--text2)}
-.row{display:flex;gap:8px;margin-top:9px;align-items:center}
-.row .lbl{font-size:11px;color:var(--text3);width:46px;flex-shrink:0;text-transform:uppercase;letter-spacing:.04em}
-.row select{flex:1;min-width:0}
-.row button.go{background:var(--blue);border:none;border-radius:var(--rs);color:#fff;font-weight:600;padding:10px 14px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap}
-.row button.go.amber{background:var(--amber)}
-.nueva{display:none;gap:8px;margin-top:8px}
-.nueva.show{display:flex;flex-wrap:wrap}
-.nueva input{flex:1;min-width:120px}
-.foot{display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap}
-.foot label{font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer}
-.link{background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;font-family:inherit;text-decoration:underline}
-.link.red{color:var(--red)}
+.chev{color:var(--text3);font-size:18px}
 .empty{text-align:center;color:var(--text3);font-size:14px;padding:40px 20px}
 .more{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);color:var(--text2);padding:12px;font-size:14px;cursor:pointer;font-family:inherit;margin-top:4px}
+
+/* MODAL */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100;display:none;align-items:flex-end;justify-content:center}
+.overlay.show{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:18px 18px 0 0;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;padding:20px}
+@media(min-width:600px){.overlay{align-items:center}.modal{border-radius:18px}}
+.m-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:4px}
+.m-sup{font-weight:700;font-size:17px}
+.m-total{font-weight:700;font-size:17px;white-space:nowrap}
+.m-meta{font-size:12px;color:var(--text3);margin-bottom:18px}
+.m-sec{margin-bottom:16px}
+.m-nueva{display:none;margin-top:8px}
+.m-nueva.show{display:block}
+.m-nueva .ac-wrap{margin-top:8px}
+.hint{font-size:12px;color:var(--text3);margin-top:6px}
+.foot{display:flex;align-items:center;gap:10px;margin-top:8px}
+.foot label{font-size:13px;color:var(--text2);display:flex;align-items:center;gap:7px;cursor:pointer}
+.m-actions{display:flex;gap:8px;margin-top:20px}
+.m-actions .btn{flex:1;width:auto}
+.btn.ghost{background:none;border:1px solid var(--border2);color:var(--text2);flex:0 0 auto;padding-left:18px;padding-right:18px}
+.btn.danger{background:none;border:1px solid var(--red);color:var(--red);flex:0 0 auto;padding-left:16px;padding-right:16px}
 
 /* REGLAS */
 .regla{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px}
 .regla .r-sup{font-weight:600;font-size:14px}
 .regla .r-cls{font-size:12px;color:var(--text3);margin-top:2px}
+.link{background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer;font-family:inherit;text-decoration:underline}
+.link.red{color:var(--red)}
 </style>
 </head>
 <body>
@@ -107,6 +123,8 @@ select:focus,input:focus{border-color:var(--blue)}
   <button class="header-logout" id="logout-btn" onclick="logout()" style="display:none">Salir</button>
 </div>
 
+<div id="toast"></div>
+
 <!-- LOGIN -->
 <div class="page" id="page-login">
   <div class="container">
@@ -117,7 +135,6 @@ select:focus,input:focus{border-color:var(--blue)}
       <input type="tel" inputmode="numeric" id="pin-input" class="pin-input" placeholder="••••" maxlength="6" onkeydown="if(event.key==='Enter')doLogin()">
       <div style="height:16px"></div>
       <button class="btn" id="login-btn" onclick="doLogin()">Entrar →</button>
-      <div class="msg" id="login-msg"></div>
     </div>
   </div>
 </div>
@@ -137,7 +154,6 @@ select:focus,input:focus{border-color:var(--blue)}
       <span class="count" id="count"></span>
     </div>
     <div id="lista"></div>
-    <div class="msg" id="list-msg"></div>
   </div>
 </div>
 
@@ -149,24 +165,63 @@ select:focus,input:focus{border-color:var(--blue)}
       <span class="count">Reglas por proveedor</span>
     </div>
     <div id="reglas"></div>
-    <div class="msg" id="reglas-msg"></div>
   </div>
 </div>
 
+<!-- MODAL CLASIFICAR -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="m-head"><div class="m-sup" id="m-sup"></div><div class="m-total" id="m-total"></div></div>
+    <div class="m-meta" id="m-meta"></div>
+
+    <div class="m-sec">
+      <label class="fld">Obra</label>
+      <select id="m-obra" onchange="onModalObra()"></select>
+      <div class="m-nueva" id="m-nueva">
+        <input type="text" id="m-ref" placeholder="Referencia (ej. Calle Comerç 76 - Fachada)">
+        <input type="text" id="m-cliente" placeholder="Cliente (busca en StelOrder)" autocomplete="off">
+        <div class="hint">Elige el cliente del buscador de StelOrder para no duplicar.</div>
+      </div>
+    </div>
+
+    <div class="m-sec">
+      <label class="fld">Categoría del gasto <span style="text-transform:none;font-weight:400">(opcional)</span></label>
+      <select id="m-cat"></select>
+      <div class="hint">Con obra: cuenta en la obra (p.ej. combustible de esa obra). Sin obra: gasto general.</div>
+    </div>
+
+    <div class="foot">
+      <label><input type="checkbox" id="m-regla"> Aplicar a todas las de <span id="m-supname"></span></label>
+    </div>
+
+    <div class="m-actions">
+      <button class="btn ghost" onclick="cerrarModal()">Cancelar</button>
+      <button class="btn danger" id="m-quitar" onclick="quitarModal()" style="display:none">Quitar</button>
+      <button class="btn" id="m-guardar" onclick="guardarModal()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<script src="/cliente-autocomplete.js"></script>
 <script>
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
 
 let workerToken=null, workerInfo=null, todosWorkers=[];
-let obrasCache=[], facturas=[], categorias=[], filtro='sin', limite=150;
+let obrasCache=[], facturas=[], categorias=[], filtro='sin', limite=200, modalId=null, clientesStel=[];
+const normTxt=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+// Devuelve el nombre EXACTO del cliente en StelOrder si coincide; si no, null.
+function clienteStelValido(txt){const n=normTxt(txt);return clientesStel.find(c=>normTxt(c)===n)||null;}
 
-const CAT_LABEL={combustible:'Combustible',herramientas:'Herramientas',gestoria:'Gestoría/Asesoría',seguros:'Seguros',suministros:'Suministros',alquiler:'Alquiler',otros:'Otros'};
+const CAT_LABEL={material:'Material',combustible:'Combustible',herramientas:'Herramientas',subcontrata:'Subcontrata',gestoria:'Gestoría/Asesoría',seguros:'Seguros',suministros:'Suministros',alquiler:'Alquiler',otros:'Otros'};
 function catLabel(c){return CAT_LABEL[c]||c||'';}
 
 function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('page-'+id).classList.add('active');}
-function showMsg(id,text,type){const m=document.getElementById(id);m.textContent=text;m.className='msg show '+(type||'ok');clearTimeout(m._t);m._t=setTimeout(()=>{m.className='msg';},4000);}
+let _toastT=null;
+function toast(text,type){const t=document.getElementById('toast');t.textContent=text;t.className='show '+(type||'ok');clearTimeout(_toastT);_toastT=setTimeout(()=>{t.className='';},3500);}
 function eur(n){return (Number(n)||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function authH(extra){return Object.assign({'Authorization':`Bearer ${workerToken}`}, extra||{});}
+async function post(url,body){const r=await fetch(url,{method:'POST',headers:authH({'Content-Type':'application/json'}),body:JSON.stringify(body||{})});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Error');return r.json().catch(()=>({}));}
 
 // ── LOGIN (misma sesión que parte.html / subir-factura) ──────────────────────
 async function loadWorkers(){
@@ -187,8 +242,14 @@ async function enterApp(token,info){
   document.getElementById('header-sub').textContent=info.workerName||'';
   document.getElementById('logout-btn').style.display='block';
   showPage('list');
+  if(window.initClienteAutocomplete) initClienteAutocomplete(document.getElementById('m-cliente'), workerToken);
   await cargarObras();
+  await cargarClientes();
   await cargar();
+}
+async function cargarClientes(){
+  try{const r=await fetch('/api/clients/list',{headers:authH()});clientesStel=r.ok?await r.json():[];}
+  catch(e){clientesStel=[];}
 }
 async function tryRestoreSession(){
   const t=localStorage.getItem('cpWT');if(!t)return false;
@@ -196,22 +257,23 @@ async function tryRestoreSession(){
     const r=await fetch('/api/partes/worker-session',{headers:authH()});
     if(!r.ok)throw new Error('caducada');
     const data=await r.json();
+    workerToken=t;
     await enterApp(t,{workerId:data.workerId,workerName:data.workerName});
     return true;
   }catch(e){localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');localStorage.removeItem('cpWI');return false;}
 }
 async function doLogin(){
   const sel=document.querySelector('.worker-btn.selected');
-  if(!sel){showMsg('login-msg','⚠️ Selecciona tu nombre','warn');return;}
+  if(!sel){toast('Selecciona tu nombre','warn');return;}
   const pin=document.getElementById('pin-input').value;
-  if(pin.length<4){showMsg('login-msg','⚠️ Introduce el PIN','warn');return;}
+  if(pin.length<4){toast('Introduce el PIN','warn');return;}
   const btn=document.getElementById('login-btn');btn.disabled=true;btn.innerHTML='<span class="spinner"></span>Verificando…';
   try{
     const r=await fetch('/api/partes/worker-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workerId:sel.dataset.id,pin})});
     const data=await r.json();
     if(!r.ok)throw new Error(data.error||'PIN incorrecto');
     await enterApp(data.token,{workerId:data.workerId,workerName:data.workerName});
-  }catch(err){showMsg('login-msg','❌ '+err.message,'error');document.getElementById('pin-input').value='';}
+  }catch(err){toast(err.message,'error');document.getElementById('pin-input').value='';}
   finally{btn.disabled=false;btn.innerHTML='Entrar →';}
 }
 function logout(){
@@ -228,18 +290,8 @@ async function cargarObras(){
   try{const r=await fetch('/api/facturas/obras',{headers:authH()});obrasCache=r.ok?await r.json():[];}
   catch(e){obrasCache=[];}
 }
-function optsObra(sel){
-  const opts=obrasCache.map(o=>{
-    const label=[o.reference,o.clientName].filter(Boolean).join(' — ')||'(sin nombre)';
-    return `<option value="${esc(o.id)}" data-ref="${esc(label)}" ${sel===o.id?'selected':''}>${esc(label)}</option>`;
-  }).join('');
-  return `<option value="">— Elegir obra —</option>${opts}<option value="__nueva__">➕ Nueva obra…</option>`;
-}
-function optsCat(sel){
-  return `<option value="">— Gasto general… —</option>`+categorias.map(c=>`<option value="${esc(c)}" ${sel===c?'selected':''}>${esc(catLabel(c))}</option>`).join('');
-}
 function setFiltro(f){
-  filtro=f;limite=150;
+  filtro=f;limite=200;
   ['sin','obra','general','todas'].forEach(k=>document.getElementById('seg-'+k).classList.toggle('on',k===f));
   render();
 }
@@ -251,7 +303,7 @@ async function cargar(){
     const data=await r.json();
     facturas=data.facturas||[];categorias=data.categorias||[];
     render();
-  }catch(err){document.getElementById('lista').innerHTML='';showMsg('list-msg','❌ '+err.message,'error');}
+  }catch(err){document.getElementById('lista').innerHTML='';toast(err.message,'error');}
 }
 function filtrar(){
   if(filtro==='sin')return facturas.filter(f=>!f.clasif);
@@ -259,108 +311,109 @@ function filtrar(){
   if(filtro==='general')return facturas.filter(f=>f.clasif&&f.clasif.tipo==='general');
   return facturas;
 }
-function badgeDe(f){
-  const c=f.clasif;
+function badgeDe(c){
   if(!c)return '<span class="badge none">Sin clasificar</span>';
-  if(c.tipo==='general')return `<span class="badge general">Gasto: ${esc(catLabel(c.categoria))}${c.fuente==='regla'?' · regla':''}</span>`;
-  const via=c.fuente==='manual'?'manual':(c.fuente==='regla'?'regla':'n8n');
-  return `<span class="badge ${via}">Obra (${via}): ${esc(c.obraRef||'')}</span>`;
+  const via=c.fuente||'manual';
+  if(c.tipo==='general')return `<span class="badge general">Gasto: ${esc(catLabel(c.categoria))}${via==='regla'?' · regla':''}</span>`;
+  const cat=c.categoria?(' · '+esc(catLabel(c.categoria))):'';
+  return `<span class="badge ${via}">Obra: ${esc(c.obraRef||'')}${cat} · ${via}</span>`;
 }
 function render(){
   const todo=filtrar();
   const lista=todo.slice(0,limite);
   document.getElementById('count').textContent=`${todo.length} factura(s)`;
   if(!todo.length){document.getElementById('lista').innerHTML='<div class="empty">'+(filtro==='sin'?'🎉 No hay facturas sin clasificar.':'Nada por aquí.')+'</div>';return;}
-  let html=lista.map(f=>{
-    const c=f.clasif;
-    const selObra=c&&c.tipo==='obra'&&c.fuente==='manual'?c.obraId:'';
-    const selCat=c&&c.tipo==='general'&&c.fuente==='manual'?c.categoria:'';
-    const quitar=c&&c.fuente==='manual'?`<button class="link red" onclick="quitar('${esc(f.id)}')">Quitar</button>`:'';
-    return `<div class="inv" id="inv-${esc(f.id)}">
+  let html=lista.map(f=>`
+    <div class="inv" onclick="abrirModal('${esc(f.id)}')">
       <div class="inv-top"><div class="inv-sup">${esc(f.supplier||'—')}</div><div class="inv-total">${eur(f.total)}</div></div>
-      <div class="inv-meta">${esc(f.number||'')}${f.date?' · '+esc(String(f.date).slice(0,10)):''}</div>
-      <div>${badgeDe(f)}</div>
-      <div class="row"><span class="lbl">Obra</span>
-        <select id="obra-${esc(f.id)}" onchange="onObraSel('${esc(f.id)}')">${optsObra(selObra)}</select>
-        <button class="go" onclick="guardarObra('${esc(f.id)}')">Guardar</button>
+      <div class="inv-meta">
+        <span>${esc(f.number||'')}${f.date?' · '+esc(String(f.date).slice(0,10)):''}</span>
+        <span class="chev">›</span>
       </div>
-      <div class="nueva" id="nueva-${esc(f.id)}">
-        <input type="text" id="nref-${esc(f.id)}" placeholder="Referencia de obra">
-        <input type="text" id="ncli-${esc(f.id)}" placeholder="Cliente">
-        <button class="go" onclick="crearYAsignar('${esc(f.id)}')">Crear y asignar</button>
-      </div>
-      <div class="row"><span class="lbl">Gasto</span>
-        <select id="cat-${esc(f.id)}">${optsCat(selCat)}</select>
-        <button class="go amber" onclick="marcarGasto('${esc(f.id)}')">Marcar</button>
-      </div>
-      <div class="foot">
-        <label><input type="checkbox" id="regla-${esc(f.id)}"> Aplicar a todas las de ${esc(f.supplier||'este proveedor')}</label>
-        ${quitar}
-      </div>
-    </div>`;
-  }).join('');
-  if(todo.length>limite)html+=`<button class="more" onclick="limite+=200;render()">Ver más (${todo.length-limite} restantes)</button>`;
+      <div style="margin-top:8px">${badgeDe(f.clasif)}</div>
+    </div>`).join('');
+  if(todo.length>limite)html+=`<button class="more" onclick="limite+=300;render()">Ver más (${todo.length-limite} restantes)</button>`;
   document.getElementById('lista').innerHTML=html;
 }
-function onObraSel(id){
-  const sel=document.getElementById('obra-'+id);
-  document.getElementById('nueva-'+id).classList.toggle('show',sel.value==='__nueva__');
-}
 function facturaDe(id){return facturas.find(x=>String(x.id)===String(id));}
-function quiereRegla(id){const c=document.getElementById('regla-'+id);return c&&c.checked;}
 
-async function post(url,body){
-  const r=await fetch(url,{method:'POST',headers:authH({'Content-Type':'application/json'}),body:JSON.stringify(body||{})});
-  if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Error');
-  return r.json().catch(()=>({}));
+// ── MODAL ────────────────────────────────────────────────────────────────────
+function optsObra(sel){
+  const opts=obrasCache.map(o=>{
+    const label=[o.reference,o.clientName].filter(Boolean).join(' — ')||'(sin nombre)';
+    return `<option value="${esc(o.id)}" data-ref="${esc(label)}" ${sel===o.id?'selected':''}>${esc(label)}</option>`;
+  }).join('');
+  return `<option value="">— Sin obra —</option>${opts}<option value="__nueva__">➕ Nueva obra…</option>`;
 }
-
-async function guardarObra(id){
-  const sel=document.getElementById('obra-'+id);
-  if(sel.value==='__nueva__'){showMsg('list-msg','Rellena referencia y cliente y pulsa "Crear y asignar"','warn');return;}
-  if(!sel.value){showMsg('list-msg','⚠️ Elige una obra','warn');return;}
-  const obraRef=sel.options[sel.selectedIndex].getAttribute('data-ref')||'';
-  await aplicar(id,{tipo:'obra',obraId:sel.value,obraRef});
+function optsCat(sel){
+  return `<option value="">— Sin categoría —</option>`+categorias.map(c=>`<option value="${esc(c)}" ${sel===c?'selected':''}>${esc(catLabel(c))}</option>`).join('');
 }
-async function crearYAsignar(id){
-  const ref=document.getElementById('nref-'+id).value.trim();
-  const cli=document.getElementById('ncli-'+id).value.trim();
-  if(!ref||!cli){showMsg('list-msg','⚠️ Referencia y cliente son obligatorios','warn');return;}
+function abrirModal(id){
+  const f=facturaDe(id);if(!f)return;
+  modalId=id;
+  const c=f.clasif;
+  const esManual=c&&c.fuente==='manual';
+  document.getElementById('m-sup').textContent=f.supplier||'—';
+  document.getElementById('m-total').textContent=eur(f.total);
+  document.getElementById('m-meta').textContent=`${f.number||''}${f.date?' · '+String(f.date).slice(0,10):''}`;
+  document.getElementById('m-supname').textContent=f.supplier||'este proveedor';
+  document.getElementById('m-obra').innerHTML=optsObra(esManual&&c.obraId?c.obraId:'');
+  document.getElementById('m-cat').innerHTML=optsCat(esManual&&c.categoria?c.categoria:'');
+  document.getElementById('m-ref').value='';
+  document.getElementById('m-cliente').value='';
+  document.getElementById('m-regla').checked=false;
+  document.getElementById('m-nueva').classList.remove('show');
+  document.getElementById('m-quitar').style.display=esManual?'':'none';
+  document.getElementById('overlay').classList.add('show');
+}
+function cerrarModal(){document.getElementById('overlay').classList.remove('show');modalId=null;}
+function onModalObra(){
+  const sel=document.getElementById('m-obra');
+  const nueva=sel.value==='__nueva__';
+  document.getElementById('m-nueva').classList.toggle('show',nueva);
+  if(nueva)document.getElementById('m-ref').focus();
+}
+async function guardarModal(){
+  const id=modalId;const f=facturaDe(id);if(!f)return;
+  const selObra=document.getElementById('m-obra');
+  const cat=document.getElementById('m-cat').value||'';
+  const conRegla=document.getElementById('m-regla').checked;
+  let obraId='',obraRef='';
+  const btn=document.getElementById('m-guardar');btn.disabled=true;btn.innerHTML='<span class="spinner"></span>Guardando…';
   try{
-    const nueva=await post('/api/facturas/obra-nueva',{reference:ref,clientName:cli});
-    const label=[nueva.reference,nueva.clientName].filter(Boolean).join(' — ');
-    obrasCache.push({id:nueva.id,reference:nueva.reference,clientName:nueva.clientName});
-    await aplicar(id,{tipo:'obra',obraId:nueva.id,obraRef:label});
-  }catch(err){showMsg('list-msg','❌ '+err.message,'error');}
-}
-async function marcarGasto(id){
-  const sel=document.getElementById('cat-'+id);
-  if(!sel.value){showMsg('list-msg','⚠️ Elige la categoría del gasto','warn');return;}
-  await aplicar(id,{tipo:'general',categoria:sel.value});
-}
-// Aplica la clasificación a la factura y, si está marcado, crea la regla del proveedor.
-async function aplicar(id,clasif){
-  const f=facturaDe(id);const conRegla=quiereRegla(id);
-  try{
-    if(clasif.tipo==='obra') await post(`/api/facturas/proveedor/${encodeURIComponent(id)}/obra`,{obraId:clasif.obraId,obraRef:clasif.obraRef});
-    else await post(`/api/facturas/proveedor/${encodeURIComponent(id)}/general`,{categoria:clasif.categoria});
-    let extra='';
-    if(conRegla&&f){
-      await post('/api/facturas/reglas',{supplierId:f.supplierId,supplier:f.supplier,...clasif});
-      extra=` · regla para ${f.supplier}`;
+    if(selObra.value==='__nueva__'){
+      const ref=document.getElementById('m-ref').value.trim();
+      const cli=document.getElementById('m-cliente').value.trim();
+      if(!ref||!cli)throw new Error('Para la obra nueva: referencia y cliente (de StelOrder)');
+      const cliOk=clienteStelValido(cli);
+      if(!cliOk)throw new Error('Elige el cliente de la lista de StelOrder (no coincide con ninguno)');
+      const nueva=await post('/api/facturas/obra-nueva',{reference:ref,clientName:cliOk});
+      obraId=nueva.id;obraRef=[nueva.reference,nueva.clientName].filter(Boolean).join(' — ');
+      obrasCache.push({id:nueva.id,reference:nueva.reference,clientName:nueva.clientName});
+    }else if(selObra.value){
+      obraId=selObra.value;obraRef=selObra.options[selObra.selectedIndex].getAttribute('data-ref')||'';
     }
-    if(conRegla){ await cargar(); }
-    else{ if(f)f.clasif={...clasif,fuente:'manual'}; render(); }
-    const desc=clasif.tipo==='obra'?('obra '+(clasif.obraRef||'')):('gasto '+catLabel(clasif.categoria));
-    showMsg('list-msg','✅ '+(f?f.supplier+' → ':'')+desc+extra,'ok');
-  }catch(err){showMsg('list-msg','❌ '+err.message,'error');}
+    if(!obraId && !cat)throw new Error('Elige una obra o una categoría de gasto');
+    await post(`/api/facturas/proveedor/${encodeURIComponent(id)}/clasificar`,{obraId,obraRef,categoria:cat});
+    let extra='';
+    if(conRegla){await post('/api/facturas/reglas',{supplierId:f.supplierId,supplier:f.supplier,obraId,obraRef,categoria:cat});extra=` · regla para ${f.supplier}`;}
+    cerrarModal();
+    if(conRegla){await cargar();}
+    else{f.clasif={tipo:obraId?'obra':'general',fuente:'manual',obraId:obraId||null,obraRef,categoria:cat||null};render();}
+    const desc=obraId?('obra '+obraRef+(cat?' · '+catLabel(cat):'')):('gasto '+catLabel(cat));
+    toast('✅ '+f.supplier+' → '+desc+extra,'ok');
+  }catch(err){toast(err.message,'error');}
+  finally{btn.disabled=false;btn.innerHTML='Guardar';}
 }
-async function quitar(id){
+async function quitarModal(){
+  const id=modalId;const f=facturaDe(id);
   try{
     const r=await fetch(`/api/facturas/proveedor/${encodeURIComponent(id)}`,{method:'DELETE',headers:authH()});
-    if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Error');
-    await cargar(); // por si había regla/marcador que ahora vuelve a aplicar
-  }catch(err){showMsg('list-msg','❌ '+err.message,'error');}
+    if(!r.ok)throw new Error('Error');
+    cerrarModal();
+    await cargar(); // por si vuelve a aplicar una regla/marcador
+    toast('Clasificación quitada','ok');
+  }catch(err){toast(err.message,'error');}
 }
 
 // ── REGLAS ───────────────────────────────────────────────────────────────────
@@ -370,25 +423,26 @@ async function verReglas(){
   try{
     const r=await fetch('/api/facturas/reglas',{headers:authH()});
     const lista=r.ok?await r.json():[];
-    if(!lista.length){document.getElementById('reglas').innerHTML='<div class="empty">No hay reglas todavía.<br>Marca "Aplicar a todas las de {proveedor}" al clasificar una factura.</div>';return;}
+    if(!lista.length){document.getElementById('reglas').innerHTML='<div class="empty">No hay reglas todavía.<br>Al clasificar una factura, marca "Aplicar a todas las de {proveedor}".</div>';return;}
     document.getElementById('reglas').innerHTML=lista.map(rg=>{
-      const cls=rg.tipo==='obra'?('Obra: '+esc(rg.obraRef||'')):('Gasto: '+esc(catLabel(rg.categoria)));
+      const cls=(rg.obraId||rg.obraRef)?('Obra: '+esc(rg.obraRef||'')+(rg.categoria?' · '+esc(catLabel(rg.categoria)):'')):('Gasto: '+esc(catLabel(rg.categoria)));
       return `<div class="regla">
         <div><div class="r-sup">${esc(rg.supplier||rg.supplierId)}</div><div class="r-cls">${cls}</div></div>
         <button class="link red" onclick="borrarRegla('${esc(rg.supplierId)}')">Quitar</button>
       </div>`;
     }).join('');
-  }catch(err){document.getElementById('reglas').innerHTML='';showMsg('reglas-msg','❌ '+err.message,'error');}
+  }catch(err){document.getElementById('reglas').innerHTML='';toast(err.message,'error');}
 }
 async function borrarRegla(supplierId){
   try{
     const r=await fetch(`/api/facturas/reglas/${encodeURIComponent(supplierId)}`,{method:'DELETE',headers:authH()});
     if(!r.ok)throw new Error('Error');
     await verReglas();
-  }catch(err){showMsg('reglas-msg','❌ '+err.message,'error');}
+  }catch(err){toast(err.message,'error');}
 }
 
 // ── ARRANQUE ─────────────────────────────────────────────────────────────────
+document.getElementById('overlay').addEventListener('click',e=>{if(e.target.id==='overlay')cerrarModal();});
 (async function init(){
   await loadWorkers();
   const ok=await tryRestoreSession();

@@ -1531,21 +1531,12 @@ app.get('/api/facturas/proveedor', requireAuthOficina, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Asignar una factura a una obra.
-app.post('/api/facturas/proveedor/:id/obra', requireAuthOficina, async (req, res) => {
+// Clasificar una factura: obra (opcional) + categoría (opcional). Al menos una.
+app.post('/api/facturas/proveedor/:id/clasificar', requireAuthOficina, async (req, res) => {
   try {
-    const { obraId, obraRef } = req.body || {};
+    const { obraId, obraRef, categoria } = req.body || {};
     const by = req.oficina?.workerName || (req.oficina?.admin ? 'admin' : 'oficina');
-    res.json(await obras.clasificarFactura(req.params.id, { tipo: 'obra', obraId, obraRef, by }));
-  } catch (err) { res.status(400).json({ error: err.message }); }
-});
-
-// Marcar una factura como gasto general (no es de obra), con categoría.
-app.post('/api/facturas/proveedor/:id/general', requireAuthOficina, async (req, res) => {
-  try {
-    const { categoria } = req.body || {};
-    const by = req.oficina?.workerName || (req.oficina?.admin ? 'admin' : 'oficina');
-    res.json(await obras.clasificarFactura(req.params.id, { tipo: 'general', categoria, by }));
+    res.json(await obras.clasificarFactura(req.params.id, { obraId, obraRef, categoria, by }));
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
@@ -1571,9 +1562,9 @@ app.get('/api/facturas/reglas', requireAuthOficina, async (req, res) => {
 });
 app.post('/api/facturas/reglas', requireAuthOficina, async (req, res) => {
   try {
-    const { supplierId, supplier, tipo, obraId, obraRef, categoria } = req.body || {};
+    const { supplierId, supplier, obraId, obraRef, categoria } = req.body || {};
     const by = req.oficina?.workerName || (req.oficina?.admin ? 'admin' : 'oficina');
-    res.json(await obras.setReglaProveedor(supplierId, { supplier, tipo, obraId, obraRef, categoria, by }));
+    res.json(await obras.setReglaProveedor(supplierId, { supplier, obraId, obraRef, categoria, by }));
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.delete('/api/facturas/reglas/:supplierId', requireAuthOficina, async (req, res) => {

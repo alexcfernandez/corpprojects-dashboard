@@ -54,6 +54,7 @@
   <button class="nav-grp" onclick="showGrupo('dinero',this)">💰 Dinero ▾</button>
   <button class="nav-grp" onclick="showGrupo('operacion',this)">🔧 Operación ▾</button>
   <button class="nav-grp" onclick="showGrupo('gestion',this)">⚙️ Gestión ▾</button>
+  <button class="nav-grp" onclick="showGrupo('herramientas',this)">🧰 Herramientas ▾</button>
 </nav>
 <nav class="nav" id="subnav" style="display:none;background:var(--bg3)">
   <!-- DINERO -->
@@ -81,6 +82,15 @@
     <button class="nav-btn" onclick="showTab('usuarios',this)">⚙️ Usuarios</button>
     <button class="nav-btn" onclick="showTab('alertas',this)">🔔 Alertas</button>
     <button class="nav-btn" onclick="showTab('actividad',this)">📜 Actividad</button>
+  </span>
+  <!-- HERRAMIENTAS (páginas standalone; se abren en su propia pantalla) -->
+  <span class="subgrp" data-grp="herramientas" style="display:none">
+    <button class="nav-btn" onclick="location.href='/subir-factura'">📤 Subir factura</button>
+    <button class="nav-btn" onclick="location.href='/asignar-facturas'">🧾 Clasificar facturas</button>
+    <button class="nav-btn" onclick="location.href='/parte'">📋 Parte de trabajo</button>
+    <button class="nav-btn" onclick="location.href='/informe-presencia'">📅 Informe presencia</button>
+    <button class="nav-btn" onclick="location.href='/amidaments'">📐 Amidaments</button>
+    <button class="nav-btn" onclick="location.href='/competencia'">🔍 Competencia</button>
   </span>
 </nav>
 <main class="main">
@@ -1291,9 +1301,12 @@ function showGrupo(grp, btn){
   const target=document.querySelector(`.subgrp[data-grp="${grp}"]`);
   if(target){
     target.style.display='contents';
-    // Abrir la primera pestaña del grupo automáticamente
-    const firstBtn=target.querySelector('.nav-btn');
-    if(firstBtn) firstBtn.click();
+    // Abrir la primera pestaña del grupo automáticamente. Excepción: Herramientas
+    // son enlaces a páginas standalone; auto-abrir redirigiría al entrar al menú.
+    if(grp!=='herramientas'){
+      const firstBtn=target.querySelector('.nav-btn');
+      if(firstBtn) firstBtn.click();
+    }
   }
 }
 

@@ -15,17 +15,18 @@ const ESTADOS_OBRA = {
 };
 
 // ── CLASIFICACIÓN DE FACTURAS DE PROVEEDOR ───────────────────────
-// Cada factura de proveedor acaba en uno de tres estados:
-//   · 'obra'    → ligada a una obra concreta (cuenta en su rentabilidad).
-//   · 'general' → gasto que NO es de obra (combustible, herramientas…), con
-//                 categoría. No cuenta en ninguna obra.
-//   · (nada)    → sin clasificar (pendiente).
-// Prioridad al resolver una factura: (1) clasificación explícita por factura
-// (facturaObraAsignada) > (2) regla por proveedor (reglaProveedor) > (3) marcador
-// "[obra: {ref}]" que n8n escribe en StelOrder > (4) sin clasificar. Las reglas
+// Cada factura se clasifica con DOS ejes independientes:
+//   · obra     → si está ligada a una obra concreta, cuenta en SU rentabilidad.
+//   · categoria→ etiqueta del gasto (material, combustible, herramientas…).
+// Combinaciones:
+//   · obra (+ categoría opcional)  → cuenta en la obra (p.ej. combustible de la obra X).
+//   · solo categoría (sin obra)    → gasto general (no cuenta en obras).
+//   · nada                         → sin clasificar (pendiente).
+// Prioridad al resolver: (1) clasificación explícita por factura > (2) regla por
+// proveedor > (3) marcador "[obra: {ref}]" de n8n > (4) sin clasificar. Las reglas
 // se aplican en LECTURA: clasifican al vuelo todas las facturas de ese proveedor,
 // sin escribir cientos de registros, y cambiarlas actualiza pasado y futuro.
-const CATEGORIAS_GASTO = ['combustible', 'herramientas', 'gestoria', 'seguros', 'suministros', 'alquiler', 'otros'];
+const CATEGORIAS_GASTO = ['material', 'combustible', 'herramientas', 'subcontrata', 'gestoria', 'seguros', 'suministros', 'alquiler', 'otros'];
 
 function extraerObraMarcador(text) {
   const m = String(text || '').match(/obra:\s*([^\]\n|·]+)/i);
@@ -45,31 +46,40 @@ async function getReglasMap(dbArg) {
   arr.forEach(r => map.set(String(r.supplierId), r));
   return map;
 }
+// Normaliza un registro de clasificación (o null si no clasifica nada).
+// tipo se DERIVA: 'obra' si hay obra, 'general' si solo hay categoría.
+function _normClasif(rec, fuente) {
+  if (!rec) return null;
+  const obraId = rec.obraId || null;
+  const obraRef = rec.obraRef || '';
+  const categoria = rec.categoria || null;
+  if (!obraId && !obraRef && !categoria) return null;
+  return { tipo: (obraId || obraRef) ? 'obra' : 'general', fuente, obraId, obraRef, categoria };
+}
 // Resuelve la clasificación efectiva de una factura (o null si sin clasificar).
-// Devuelve { tipo:'obra'|'general', fuente:'manual'|'regla'|'n8n', obraId, obraRef, categoria }.
 function resolverFacturaObra(f, asignMap, reglaMap) {
-  const a = asignMap && asignMap.get(String(f.id));
-  if (a) return { tipo: a.tipo || 'obra', fuente: 'manual', obraId: a.obraId || null, obraRef: a.obraRef || '', categoria: a.categoria || null };
-  const r = reglaMap && reglaMap.get(String(f.supplierId || ''));
-  if (r) return { tipo: r.tipo || 'general', fuente: 'regla', obraId: r.obraId || null, obraRef: r.obraRef || '', categoria: r.categoria || null };
+  const a = _normClasif(asignMap && asignMap.get(String(f.id)), 'manual');
+  if (a) return a;
+  const r = _normClasif(reglaMap && reglaMap.get(String(f.supplierId || '')), 'regla');
+  if (r) return r;
   const marca = extraerObraMarcador(`${f.title || ''} ${f.extraReference || ''}`);
   if (marca) return { tipo: 'obra', fuente: 'n8n', obraId: null, obraRef: marca, categoria: null };
   return null;
 }
-async function clasificarFactura(stelInvoiceId, { tipo, obraId, obraRef, categoria, by } = {}) {
+function _validarClasif({ obraId, obraRef, categoria }) {
+  if (!obraId && !obraRef && !categoria) throw new Error('Indica una obra o una categoría');
+}
+async function clasificarFactura(stelInvoiceId, { obraId, obraRef, categoria, by } = {}) {
   if (!stelInvoiceId) throw new Error('Falta la factura');
-  if (tipo === 'obra' && !obraId && !obraRef) throw new Error('Falta la obra');
-  if (tipo === 'general' && !categoria) throw new Error('Falta la categoría');
-  if (tipo !== 'obra' && tipo !== 'general') throw new Error('Tipo no válido');
+  _validarClasif({ obraId, obraRef, categoria });
   const database = await getDB();
   await database.collection('facturaObraAsignada').updateOne(
     { stelInvoiceId: String(stelInvoiceId) },
     { $set: {
         stelInvoiceId: String(stelInvoiceId),
-        tipo,
-        obraId:    tipo === 'obra' && obraId ? String(obraId) : null,
-        obraRef:   tipo === 'obra' ? (obraRef || '') : '',
-        categoria: tipo === 'general' ? categoria : null,
+        obraId:    obraId ? String(obraId) : null,
+        obraRef:   obraRef || '',
+        categoria: categoria || null,
         by:        by || '',
         ts:        new Date(),
     } },
@@ -82,21 +92,18 @@ async function desclasificarFactura(stelInvoiceId) {
   await database.collection('facturaObraAsignada').deleteOne({ stelInvoiceId: String(stelInvoiceId) });
   return { ok: true };
 }
-async function setReglaProveedor(supplierId, { supplier, tipo, obraId, obraRef, categoria, by } = {}) {
+async function setReglaProveedor(supplierId, { supplier, obraId, obraRef, categoria, by } = {}) {
   if (!supplierId) throw new Error('Falta el proveedor');
-  if (tipo === 'obra' && !obraId && !obraRef) throw new Error('Falta la obra');
-  if (tipo === 'general' && !categoria) throw new Error('Falta la categoría');
-  if (tipo !== 'obra' && tipo !== 'general') throw new Error('Tipo no válido');
+  _validarClasif({ obraId, obraRef, categoria });
   const database = await getDB();
   await database.collection('reglaProveedor').updateOne(
     { supplierId: String(supplierId) },
     { $set: {
         supplierId: String(supplierId),
         supplier:   supplier || '',
-        tipo,
-        obraId:    tipo === 'obra' && obraId ? String(obraId) : null,
-        obraRef:   tipo === 'obra' ? (obraRef || '') : '',
-        categoria: tipo === 'general' ? categoria : null,
+        obraId:    obraId ? String(obraId) : null,
+        obraRef:   obraRef || '',
+        categoria: categoria || null,
         by:        by || '',
         ts:        new Date(),
     } },
