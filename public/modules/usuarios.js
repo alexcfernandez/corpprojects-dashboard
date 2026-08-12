@@ -191,17 +191,17 @@
 
       el.innerHTML = `<div style="display:grid;gap:10px">
         ${filtered.map(u => `
-          <div style="background:var(--bg3);border:1px solid ${u.active===false?'rgba(255,255,255,.05)':'var(--border)'};border-radius:var(--rs);padding:14px 16px;display:flex;align-items:center;gap:12px;opacity:${u.active===false?'0.5':'1'}">
+          <div style="background:var(--bg3);border:1px solid ${u.active===false?'rgba(255,255,255,.05)':'var(--border)'};border-radius:var(--rs);padding:14px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;opacity:${u.active===false?'0.5':'1'}">
             <div style="width:40px;height:40px;border-radius:50%;background:${u.color||'#4d9cf8'}22;border:2px solid ${u.color||'#4d9cf8'};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">
               ${u.role==='admin'?'👔':u.role==='office'?'🖥️':u.role==='tech'?'🔧':'👥'}
             </div>
-            <div style="flex:1;min-width:0">
+            <div style="flex:1 1 150px;min-width:0">
               <div style="font-weight:600;font-size:13px">${u.name} ${u.active===false?'<span style="font-size:10px;color:var(--text3)">(inactivo)</span>':''}</div>
               <div style="font-size:11px;color:${ROLE_COLORS[u.role]}">${ROLE_LABELS[u.role]||u.role}</div>
               ${u.notes?`<div style="font-size:11px;color:var(--text3);margin-top:2px">${u.notes}</div>`:''}
               ${u.lastLogin?`<div style="font-size:10px;color:var(--text3)">Último acceso: ${new Date(u.lastLogin).toLocaleDateString('es-ES')}</div>`:''}
             </div>
-            <div style="display:flex;gap:6px;flex-shrink:0">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;flex-shrink:0">
               ${(u.role==='tech'||u.role==='office')?`<button class="btn bgh" style="padding:5px 10px;font-size:11px" onclick="copyWorkerLink('${u._id}','${u.name}')">🔗 Enlace</button>`:''}
               <button class="btn bgh" style="padding:5px 10px;font-size:11px" onclick="CP.Usuarios.editUser('${u._id}')">✏️ Editar</button>
               ${u.active!==false
