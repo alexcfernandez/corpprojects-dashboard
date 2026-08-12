@@ -1,9 +1,12 @@
-// src/facturaWhatsApp.js — Foto/PDF de factura por WhatsApp → reenvío al buzón que
-// vigila n8n (que ya la sube a StelOrder). NO reimplementa la lógica de facturas.
+// src/facturaWhatsApp.js — Foto/PDF de factura → reenvío al buzón que vigila n8n
+// (que ya la sube a StelOrder). NO reimplementa la lógica de facturas.
 //
-// Disparador: la palabra "factura" en el pie del mensaje + hay adjunto (foto/PDF).
-// Sin la palabra, NO se asume (lo gestiona el flujo normal de imagen). El dashboard
-// baja el media de Twilio y lo reenvía por email con el/los adjunto(s).
+// Dos orígenes, un solo camino:
+//   · WhatsApp: la palabra "factura" en el pie del mensaje + hay adjunto (foto/PDF).
+//   · App de oficina (public/subir-factura.html): foto(s)/PDF + obra elegida.
+// El dashboard baja/recibe el media, monta el/los adjunto(s) y los reenvía por
+// email a INVOICE_INBOX_EMAIL. Si viene una obra, va en el asunto para que n8n
+// la pueda leer y etiquetar la factura por obra (rentabilidad real por obra).
 
 // ¿El texto pide reenviar una factura? (la palabra "factura" enruta a este camino)
 function esReenvioFactura(texto) {
@@ -29,10 +32,64 @@ async function fotosAPdf(imagenes) {
   return Buffer.from(await pdf.save());
 }
 
-// Baja los adjuntos (con las funciones de descarga de Twilio inyectadas), reenvía
-// al INVOICE_INBOX_EMAIL y registra en `facturasWhatsApp`. Devuelve {ok, reply}.
-async function reenviarFactura({ from, pdf, fotos, descargarArchivo, descargarFoto }) {
+// ── Núcleo reutilizable: monta el email y lo reenvía al buzón de n8n ────────────
+// Acepta adjuntos YA preparados ([{filename, content:Buffer, contentType}]) y,
+// opcionalmente, una obra. Registra en Mongo (colección `facturasObra`) para dar
+// atribución por obra en el dashboard aunque StelOrder aún no tenga el proyecto.
+//   obraRef: texto de la obra (p.ej. "Calle Mayor 12 - Fachada") o null.
+//   origen : 'whatsapp' | 'app-oficina'.
+// Devuelve {ok, reply}.
+async function reenviarFacturaMail({ attachments, obraRef = null, obraId = null, origen = 'whatsapp', from = null, nota = null }) {
   const to = process.env.INVOICE_INBOX_EMAIL || 'corpprojectsholding@gmail.com';
+  if (!attachments || !attachments.length) {
+    return { ok: false, reply: 'No he podido leer el adjunto de la factura. Inténtalo de nuevo.' };
+  }
+
+  const obra = (obraRef && String(obraRef).trim()) ? String(obraRef).trim() : null;
+  const subject = obra
+    ? `Factura — obra: ${obra}`
+    : (origen === 'whatsapp' ? 'Factura (WhatsApp)' : 'Factura (oficina)');
+
+  const partesTexto = [
+    `Factura reenviada (${origen}).`,
+    obra ? `Obra: ${obra}.` : null,
+    (nota && String(nota).trim()) ? `Nota: ${String(nota).trim()}.` : null,
+    `${attachments.length} adjunto(s).`,
+    from ? `Origen: ${from}.` : null,
+  ].filter(Boolean);
+
+  let ok = false;
+  try {
+    ok = await require('./notifications').sendEmail({ to, subject, text: partesTexto.join(' '), attachments });
+  } catch (e) { console.error('[Factura] sendEmail:', e.message); }
+
+  // Trazabilidad + atribución por obra (best-effort; no rompe el flujo si falla).
+  try {
+    const db = await require('./db').getDB();
+    await db.collection('facturasObra').insertOne({
+      obraId:    obraId || null,
+      obraRef:   obra,
+      origen,
+      from:      from || null,
+      nFiles:    attachments.length,
+      filenames: attachments.map(a => a.filename),
+      nota:      (nota && String(nota).trim()) ? String(nota).trim() : null,
+      ts:        new Date(),
+      emailOk:   !!ok,
+    });
+  } catch (e) { /* trazabilidad best-effort */ }
+
+  const reply = ok
+    ? (obra
+        ? `📎 Recibida — obra: ${obra}. La subo a StelOrder.`
+        : '📎 Recibida — la mando a StelOrder. En un momento estará subida.')
+    : 'No he podido reenviarla ahora, inténtalo de nuevo.';
+  return { ok: !!ok, reply };
+}
+
+// ── WhatsApp: baja los adjuntos de Twilio, los monta y delega en reenviarFacturaMail ──
+// Wrapper del camino de WhatsApp. Comportamiento intacto: sin obra (obraRef=null).
+async function reenviarFactura({ from, pdf, fotos, descargarArchivo, descargarFoto }) {
   const attachments = [];
   try {
     // Un PDF ya viene en formato correcto → se reenvía tal cual.
@@ -62,24 +119,7 @@ async function reenviarFactura({ from, pdf, fotos, descargarArchivo, descargarFo
     }
   } catch (e) { console.error('[FacturaWA] preparar adjuntos:', e.message); }
 
-  if (!attachments.length) return { ok: false, reply: 'No he podido leer el adjunto de la factura. Inténtalo de nuevo.' };
-
-  let ok = false;
-  try {
-    ok = await require('./notifications').sendEmail({
-      to,
-      subject: 'Factura (WhatsApp)',
-      text: `Factura reenviada desde WhatsApp (${from}). ${attachments.length} adjunto(s).`,
-      attachments,
-    });
-  } catch (e) { console.error('[FacturaWA] sendEmail:', e.message); }
-
-  try {
-    const db = await require('./db').getDB();
-    await db.collection('facturasWhatsApp').insertOne({ from, ts: new Date(), nAdjuntos: attachments.length, to, ok: !!ok });
-  } catch (e) { /* trazabilidad best-effort */ }
-
-  return { ok: !!ok, reply: ok ? '📎 Recibida — la mando a StelOrder. En un momento estará subida.' : 'No he podido reenviarla ahora, inténtalo de nuevo.' };
+  return reenviarFacturaMail({ attachments, obraRef: null, origen: 'whatsapp', from });
 }
 
-module.exports = { esReenvioFactura, reenviarFactura };
+module.exports = { esReenvioFactura, reenviarFactura, reenviarFacturaMail, fotosAPdf };

@@ -65,6 +65,13 @@ const uploadPdf = multer({
   limits: { fileSize: 25 * 1024 * 1024, files: 1 }
 });
 
+// Facturas subidas desde la app de oficina: fotos y/o PDFs (Obramat vienen grandes).
+// En memoria (como partes/amidaments); varios archivos por envío.
+const uploadFactura = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024, files: 15 }
+});
+
 app.use(express.static(path.join(__dirname, '../public')));
 
 const limiter = rateLimit({ windowMs: 15*60*1000, max: 300, message: { error: 'Rate limit.' } });
@@ -75,6 +82,24 @@ function requireAuth(req, res, next) {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) return res.status(401).json({ error: 'No autorizado' });
   try { req.user = jwt.verify(token, JWT_SECRET); next(); }
+  catch { return res.status(401).json({ error: 'Token inválido' }); }
+}
+
+// Acceso ligero para la oficina (subir-factura.html): acepta el token de
+// trabajador (w_..., mismo login por PIN que parte.html) O el JWT de admin.
+// Así la persona de oficina entra con su PIN sin darle un panel de admin.
+async function requireAuthOficina(req, res, next) {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'No autorizado' });
+  if (token.startsWith('w_')) {
+    try {
+      const w = await require('./partes').verifyWorkerToken(token);
+      if (!w) return res.status(401).json({ error: 'Token expirado' });
+      req.oficina = { workerId: w.workerId, workerName: w.workerName };
+      return next();
+    } catch { return res.status(401).json({ error: 'Token inválido' }); }
+  }
+  try { req.user = jwt.verify(token, JWT_SECRET); req.oficina = { admin: true }; return next(); }
   catch { return res.status(401).json({ error: 'Token inválido' }); }
 }
 
@@ -1418,6 +1443,70 @@ app.post('/api/obras/sugerir-ref', requireAuth, async (req, res) => {
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 
+// ── Subida de facturas por obra (app de oficina, subir-factura.html) ──────────
+// Lista de obras para el desplegable. Auth de oficina (token trabajador o admin).
+app.get('/api/facturas/obras', requireAuthOficina, async (req, res) => {
+  try {
+    const lista = await obras.getObras({});
+    res.json(lista
+      .filter(o => o.status !== 'archivada')
+      .map(o => ({ id: String(o._id), reference: o.reference || '', clientName: o.clientName || '', status: o.status || 'activa' })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Subida de foto(s)/PDF de factura, etiquetada por obra. Reenvía al buzón de n8n
+// por el mismo camino que WhatsApp (→ StelOrder) y registra en `facturasObra`.
+app.post('/api/facturas/subir', requireAuthOficina, uploadFactura.any(), async (req, res) => {
+  try {
+    const files = req.files || [];
+    if (!files.length) return res.status(400).json({ ok: false, error: 'No has adjuntado ningún archivo.' });
+
+    const facturaWA = require('./facturaWhatsApp');
+    const attachments = [];
+
+    // PDFs: se reenvían tal cual. Imágenes: se embeben en UN solo PDF (una por página).
+    const pdfs  = files.filter(f => /pdf/i.test(f.mimetype || '') || /\.pdf$/i.test(f.originalname || ''));
+    const imgs  = files.filter(f => /^image\//i.test(f.mimetype || ''));
+    const otros = files.filter(f => !pdfs.includes(f) && !imgs.includes(f));
+
+    for (const f of pdfs) {
+      attachments.push({ filename: f.originalname || 'factura.pdf', content: f.buffer, contentType: 'application/pdf' });
+    }
+    if (imgs.length) {
+      const pdfBuf = await facturaWA.fotosAPdf(imgs.map(f => ({ data: f.buffer.toString('base64'), media_type: f.mimetype })));
+      if (pdfBuf && pdfBuf.length) {
+        const nombre = attachments.some(a => a.filename === 'factura.pdf') ? 'factura-fotos.pdf' : 'factura.pdf';
+        attachments.push({ filename: nombre, content: pdfBuf, contentType: 'application/pdf' });
+      } else {
+        // Fallback: adjuntar las imágenes crudas si no se pudo generar el PDF.
+        let i = 0;
+        for (const f of imgs) {
+          const ext = (String(f.mimetype || 'image/jpeg').split('/')[1] || 'jpg');
+          attachments.push({ filename: f.originalname || `factura-${++i}.${ext}`, content: f.buffer, contentType: f.mimetype });
+        }
+      }
+    }
+    // Cualquier otro tipo con nombre de archivo → adjuntar tal cual (no perder la factura).
+    for (const f of otros) {
+      attachments.push({ filename: f.originalname || 'factura', content: f.buffer, contentType: f.mimetype || 'application/octet-stream' });
+    }
+
+    const obraRef = String(req.body.obraRef || '').trim() || null;
+    const obraId  = String(req.body.obraId || '').trim() || null;
+    const nota    = String(req.body.nota || '').trim() || null;
+    const quien   = req.oficina?.workerName || (req.oficina?.admin ? 'admin' : 'oficina');
+
+    const r = await facturaWA.reenviarFacturaMail({
+      attachments, obraRef, obraId, origen: 'app-oficina', from: quien, nota,
+    });
+    if (!r.ok) return res.status(502).json(r);
+    res.json(r);
+  } catch (err) {
+    console.error('[Factura subir]', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ── PARTES DE TRABAJO ─────────────────────────────────────────────
 const partes = require('./partes');
 
@@ -2239,6 +2328,7 @@ app.delete('/api/pagos/:id', requireAuth, async (req, res) => {
 // ── Rutas HTML ────────────────────────────────────────────────────
 app.get('/informe-presencia', (req, res) => res.sendFile(path.join(__dirname, '../public/informe-presencia.html')));
 app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
+app.get('/subir-factura', (req, res) => res.sendFile(path.join(__dirname, '../public/subir-factura.html')));
 app.get('/amidaments', (req, res) => res.sendFile(path.join(__dirname, '../public/amidaments.html')));
 app.get('/competencia', (req, res) => res.sendFile(path.join(__dirname, '../public/competencia.html')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
