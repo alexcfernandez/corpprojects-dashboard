@@ -26,7 +26,20 @@
     return fetch(url, {
       ...opts,
       headers: {'Authorization':`Bearer ${tok}`,'Content-Type':'application/json',...(opts.headers||{})}
-    }).then(r => r.json());
+    }).then(async r => {
+      let data = null;
+      try { data = await r.json(); } catch(e) {}
+      if (!r.ok) {
+        const e = new Error(
+          (r.status===401 || r.status===403)
+            ? 'Sesión caducada — pulsa «Salir» y vuelve a entrar'
+            : ((data && data.error) ? data.error : `Error ${r.status}`)
+        );
+        e.status = r.status;
+        throw e;
+      }
+      return data;
+    });
   }
 
   function render(containerId) {
@@ -174,6 +187,7 @@
     if (!el) return;
     try {
       const list = await api('/api/users');
+      if (!Array.isArray(list)) throw new Error('Respuesta inesperada del servidor al cargar usuarios');
       const showInactive = document.getElementById('u-show-inactive')?.checked;
       const filtered = showInactive ? list : list.filter(u => u.active !== false);
 
