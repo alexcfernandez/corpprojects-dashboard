@@ -128,7 +128,7 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 
 <!-- DETALLE -->
 <div class="page" id="page-det"><div class="container">
-  <div class="toolbar"><button class="tool-btn" onclick="volver()">← Presupuestos</button><button class="tool-btn" onclick="verCompra()" id="det-compra" style="display:none">🛒 Compra</button><button class="tool-btn danger" onclick="eliminarPres()" id="det-del" style="display:none">Eliminar</button></div>
+  <div class="toolbar"><button class="tool-btn" onclick="volver()">← Presupuestos</button><button class="tool-btn" onclick="abrirPdf()" id="det-pdf" style="display:none">📄 PDF</button><button class="tool-btn" onclick="verCompra()" id="det-compra" style="display:none">🛒 Compra</button><button class="tool-btn danger" onclick="eliminarPres()" id="det-del" style="display:none">Eliminar</button></div>
   <input type="text" id="d-nombre" class="det-head" placeholder="Nombre del presupuesto" style="width:100%">
   <input type="text" id="d-cliente" autocomplete="off" placeholder="Cliente" style="margin-bottom:10px">
   <div class="iva-head">
@@ -182,10 +182,25 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
   <button class="btn sec" style="margin-top:12px" onclick="cerrar('ov-compra')">Cerrar</button>
 </div></div>
 
+<!-- DATOS DEL PDF -->
+<div class="overlay" id="ov-pdf"><div class="modal">
+  <div style="font-weight:700;font-size:17px;margin-bottom:4px">📄 Datos para el PDF</div>
+  <div class="hint" style="margin-bottom:12px">Se guardan con el presupuesto. El nombre del cliente se coge de arriba.</div>
+  <div class="field"><label class="fld">Dirección (obra / cliente)</label><input type="text" id="pdf-dir" placeholder="C/ … , población"></div>
+  <div class="row2"><div class="field"><label class="fld">NIF / DNI</label><input type="text" id="pdf-nif"></div><div class="field"><label class="fld">Teléfono</label><input type="text" id="pdf-tel"></div></div>
+  <div class="field"><label class="fld">Email del cliente</label><input type="text" id="pdf-email"></div>
+  <div class="field"><label class="fld">Validez (días)</label><input type="number" id="pdf-validez" inputmode="numeric" placeholder="30"></div>
+  <div class="field"><label class="fld">Condiciones (forma de pago, exclusiones, "no incluye"…)</label><textarea id="pdf-cond" style="min-height:70px"></textarea></div>
+  <div class="row2">
+    <button class="btn sec" onclick="cerrar('ov-pdf')">Cerrar</button>
+    <button class="btn" onclick="generarPDF()">🖨️ Generar PDF</button>
+  </div>
+</div></div>
+
 <script src="/cliente-autocomplete.js"></script>
 <script>
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
-let workerToken=null, esAdmin=false, todosWorkers=[], lista=[], pres=null, catalogo=[], mediciones=[];
+let workerToken=null, esAdmin=false, todosWorkers=[], lista=[], pres=null, catalogo=[], mediciones=[], empresa=null;
 function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('page-'+id).classList.add('active');document.getElementById('totbar').style.display=id==='det'?'block':'none';}
 let _tt=null;function toast(t,ty){const e=document.getElementById('toast');e.textContent=t;e.className='show '+(ty||'ok');clearTimeout(_tt);_tt=setTimeout(()=>e.className='',3200);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -251,6 +266,7 @@ async function abrirPres(id){
     document.getElementById('d-iva').value=String(Number.isFinite(pres.iva)?pres.iva:10);
     document.getElementById('det-del').style.display='block';
     document.getElementById('det-compra').style.display='block';
+    document.getElementById('det-pdf').style.display='block';
     const mt=pres.medicionTotales;const mr=document.getElementById('d-medref');
     if(mt){mr.style.display='block';mr.innerHTML=`📐 Medición: <b>Suelo ${fmt(mt.suelo)}</b> · <b>Paredes ${fmt(mt.paredes)}</b> · <b>Techo ${fmt(mt.techo)}</b> · <b>Pintura ${fmt((mt.paredes||0)+(mt.techo||0))}</b> m² · <b>Rodapié ${fmt(mt.rodapie)}</b> m`;}
     else mr.style.display='none';
@@ -345,7 +361,7 @@ function recompute(){
   document.getElementById('t-total').textContent=eur(venta+iva);
 }
 async function guardar(silent){if(!pres)return;
-  try{await api('PUT','/api/presupuestos/'+pres._id,{nombre:document.getElementById('d-nombre').value.trim(),clientName:document.getElementById('d-cliente').value.trim(),iva:ivaGlobal(),lineas:pres.lineas});if(!silent)toast('Guardado','ok');}
+  try{await api('PUT','/api/presupuestos/'+pres._id,{nombre:document.getElementById('d-nombre').value.trim(),clientName:document.getElementById('d-cliente').value.trim(),iva:ivaGlobal(),lineas:pres.lineas,clientData:pres.clientData||{},condiciones:pres.condiciones||'',validezDias:pres.validezDias||30});if(!silent)toast('Guardado','ok');}
   catch(e){toast(e.message,'error');if(silent)throw e;}}
 async function eliminarPres(){if(!pres)return;if(!confirm('¿Eliminar este presupuesto?'))return;try{await api('DELETE','/api/presupuestos/'+pres._id);volver();toast('Eliminado','ok');}catch(e){toast(e.message,'error');}}
 
@@ -369,6 +385,84 @@ function renderCompra(d){
   }
   if(sinReceta.length){html+=`<div class="hint" style="margin-top:12px">⚠️ Sin receta (no cuentan aún): ${sinReceta.map(esc).join(', ')}</div>`;}
   document.getElementById('compra-body').innerHTML=html;
+}
+
+// ── PDF ──
+function gv(id){return document.getElementById(id).value.trim();}
+async function abrirPdf(){if(!pres)return;
+  if(!empresa){try{empresa=await api('GET','/api/empresa');}catch(e){empresa={};}}
+  const c=pres.clientData||{};
+  document.getElementById('pdf-dir').value=c.direccion||'';
+  document.getElementById('pdf-nif').value=c.nif||'';
+  document.getElementById('pdf-tel').value=c.telefono||'';
+  document.getElementById('pdf-email').value=c.email||'';
+  document.getElementById('pdf-validez').value=pres.validezDias||30;
+  document.getElementById('pdf-cond').value=pres.condiciones||'';
+  abrir('ov-pdf');}
+async function generarPDF(){if(!pres)return;
+  pres.clientData={direccion:gv('pdf-dir'),nif:gv('pdf-nif'),telefono:gv('pdf-tel'),email:gv('pdf-email')};
+  pres.condiciones=document.getElementById('pdf-cond').value.trim();
+  pres.validezDias=parseInt(document.getElementById('pdf-validez').value,10)||30;
+  try{await guardar(true);}catch(e){return;}
+  const html=buildPdfHtml();
+  const w=window.open('','_blank');
+  if(!w){toast('Permite las ventanas emergentes para ver el PDF','warn');return;}
+  w.document.open();w.document.write(html);w.document.close();
+  cerrar('ov-pdf');
+  setTimeout(()=>{try{w.focus();w.print();}catch(e){}},500);}
+function buildPdfHtml(){
+  const e=empresa||{}, c=pres.clientData||{}, g=ivaGlobal();
+  const fecha=pres.createdAt?new Date(pres.createdAt):new Date();
+  const fTxt=fecha.toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'});
+  const vto=new Date(fecha.getTime()+(pres.validezDias||30)*86400000).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'});
+  let base=0; const ivaPorTipo={}; let filas='';
+  pres.lineas.forEach((l,i)=>{
+    if(tipoDe(l)==='seccion'){filas+=`<tr class="sec"><td colspan="4">${esc(l.nombre||'Sección')}</td><td class="num">${eur(subtotalDesde(i))}</td></tr>`;return;}
+    const imp=(l.cantidad||0)*(l.precioVenta||0);base+=imp;
+    const rate=(l.iva==null?g:Number(l.iva));ivaPorTipo[rate]=(ivaPorTipo[rate]||0)+imp*rate/100;
+    filas+=`<tr><td>${esc(l.nombre)}</td><td class="num">${fmt(l.cantidad||0)}</td><td>${esc(l.unidad||'')}</td><td class="num">${eur(l.precioVenta)}</td><td class="num">${eur(imp)}</td></tr>`;
+  });
+  base=Math.round(base*100)/100;
+  let ivaTotal=0,ivaRows='';
+  Object.keys(ivaPorTipo).sort((a,b)=>a-b).forEach(r=>{const v=Math.round(ivaPorTipo[r]*100)/100;ivaTotal+=v;ivaRows+=`<tr><td>IVA ${r}%</td><td class="num">${eur(v)}</td></tr>`;});
+  const total=Math.round((base+ivaTotal)*100)/100;
+  const empLine=[e.cif?('CIF '+e.cif):'',e.direccion,e.telefono?('Tel '+e.telefono):'',e.email,e.web].filter(Boolean).join(' · ');
+  const cliLines=[pres.clientName,c.direccion,c.nif?('NIF '+c.nif):'',[c.telefono,c.email].filter(Boolean).join(' · ')].filter(Boolean).map(x=>`<div>${esc(x)}</div>`).join('');
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(pres.numero||'Presupuesto')}</title><style>
+*{box-sizing:border-box}html,body{background:#fff}body{font-family:-apple-system,Arial,sans-serif;color:#1a1a1a;margin:0;padding:32px;font-size:13px;line-height:1.5}
+.top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1a1a1a;padding-bottom:14px;margin-bottom:20px}
+.emp b{font-size:18px}.emp .sub{color:#555;font-size:11px;margin-top:3px;max-width:340px}
+.doc{text-align:right}.doc .n{font-size:16px;font-weight:700}.doc .m{color:#555;font-size:11px}
+.box .h{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#888;margin-bottom:4px}
+.tit{font-size:15px;font-weight:700;margin:4px 0 14px}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#888;border-bottom:1px solid #ccc;padding:6px 8px}
+td{padding:6px 8px;border-bottom:1px solid #eee;vertical-align:top}
+td.num,th.num{text-align:right;white-space:nowrap}
+tr.sec td{background:#f3f4f6;font-weight:700;border-top:1px solid #ccc}
+.tot{margin-left:auto;width:260px;margin-top:14px}.tot td{border:none;padding:3px 8px}
+.tot .tt td{border-top:2px solid #1a1a1a;font-size:15px;font-weight:700;padding-top:8px}
+.cond{margin-top:22px;padding-top:12px;border-top:1px solid #eee;white-space:pre-wrap;color:#333}
+.cond .h{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#888;margin-bottom:5px}
+@media print{body{padding:0}.noprint{display:none}}
+.bar{background:#4d9cf8;color:#fff;padding:8px 12px;border-radius:6px;border:none;font-size:13px;cursor:pointer;font-family:inherit}
+</style></head><body>
+<div class="noprint" style="text-align:right;margin-bottom:12px"><button class="bar" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button></div>
+<div class="top">
+  <div class="emp"><b>${esc(e.nombre||'')}</b>${empLine?`<div class="sub">${esc(empLine)}</div>`:''}</div>
+  <div class="doc"><div class="n">Presupuesto ${esc(pres.numero||'')}</div><div class="m">Fecha: ${fTxt}</div><div class="m">Válido hasta: ${vto}</div></div>
+</div>
+<div class="box"><div class="h">Cliente</div>${cliLines||'<div>—</div>'}</div>
+<div class="tit">${esc(pres.nombre||'')}</div>
+<table><thead><tr><th>Concepto</th><th class="num">Cant.</th><th>Ud.</th><th class="num">Precio</th><th class="num">Importe</th></tr></thead>
+<tbody>${filas||'<tr><td colspan="5">Sin líneas</td></tr>'}</tbody></table>
+<div class="tot"><table>
+  <tr><td>Base imponible</td><td class="num">${eur(base)}</td></tr>
+  ${ivaRows}
+  <tr class="tt"><td>Total</td><td class="num">${eur(total)}</td></tr>
+</table></div>
+${pres.condiciones?`<div class="cond"><div class="h">Condiciones</div>${esc(pres.condiciones)}</div>`:''}
+</body></html>`;
 }
 
 // ── PICKER PARTIDA ──

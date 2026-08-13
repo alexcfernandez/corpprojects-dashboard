@@ -6,6 +6,35 @@
 const { ObjectId } = require('mongodb');
 const EMPRESA = process.env.EMPRESA_ID || 'corp';
 
+// Datos de la empresa que emite el presupuesto (cabecera del PDF).
+// Multi-empresa-ready: se sobreescriben por variables de entorno.
+const DATOS_EMPRESA = {
+  nombre:    process.env.EMPRESA_NOMBRE    || 'Corp Projects Holding SL',
+  cif:       process.env.EMPRESA_CIF       || '',
+  direccion: process.env.EMPRESA_DIRECCION || '',
+  telefono:  process.env.EMPRESA_TELEFONO  || '',
+  email:     process.env.EMPRESA_EMAIL     || '',
+  web:       process.env.EMPRESA_WEB       || '',
+};
+function getEmpresa() { return { ...DATOS_EMPRESA }; }
+
+function limpiarCliente(c) {
+  c = c || {};
+  return {
+    direccion: String(c.direccion || '').trim(),
+    nif:       String(c.nif || '').trim(),
+    telefono:  String(c.telefono || '').trim(),
+    email:     String(c.email || '').trim(),
+  };
+}
+// Numeración correlativa por empresa y año: PRES-2026-0001
+async function siguienteNumero(db) {
+  const year = new Date().getFullYear();
+  const prefix = `PRES-${year}-`;
+  const n = await db.collection('presupuestos').countDocuments({ empresaId: EMPRESA, numero: { $regex: '^' + prefix } });
+  return prefix + String(n + 1).padStart(4, '0');
+}
+
 async function getDB() { return require('./db').getDB(); }
 const num = v => { const n = parseFloat(String(v).replace(',', '.')); return Number.isFinite(n) ? n : 0; };
 
@@ -204,12 +233,16 @@ async function crearPresupuesto(data, by) {
   if (!nombre) throw new Error('Ponle un nombre al presupuesto');
   const doc = {
     empresaId: EMPRESA, nombre,
+    numero: await siguienteNumero(db),
     clientName: String(data.clientName || '').trim(),
+    clientData: limpiarCliente(data.clientData),
     medicionId: data.medicionId ? String(data.medicionId) : null,
     medicionTotales: data.medicionTotales || null,
     iva: Number.isFinite(Number(data.iva)) ? Number(data.iva) : 10,
+    validezDias: Number.isFinite(Number(data.validezDias)) ? Number(data.validezDias) : 30,
     lineas: limpiarLineas(data.lineas),
     notas: String(data.notas || '').trim(),
+    condiciones: String(data.condiciones || '').trim(),
     estado: 'borrador',
     by: by || '', createdAt: new Date(), updatedAt: new Date(),
   };
@@ -221,8 +254,11 @@ async function guardarPresupuesto(id, data) {
   const set = { updatedAt: new Date() };
   if ('nombre' in data) set.nombre = String(data.nombre || '').trim();
   if ('clientName' in data) set.clientName = String(data.clientName || '').trim();
+  if ('clientData' in data) set.clientData = limpiarCliente(data.clientData);
   if ('lineas' in data) set.lineas = limpiarLineas(data.lineas);
   if ('notas' in data) set.notas = String(data.notas || '').trim();
+  if ('condiciones' in data) set.condiciones = String(data.condiciones || '').trim();
+  if ('validezDias' in data && Number.isFinite(Number(data.validezDias))) set.validezDias = Number(data.validezDias);
   if ('estado' in data) set.estado = String(data.estado || 'borrador');
   if ('iva' in data && Number.isFinite(Number(data.iva))) set.iva = Number(data.iva);
   if ('medicionId' in data) set.medicionId = data.medicionId ? String(data.medicionId) : null;
@@ -293,7 +329,7 @@ async function listaMateriales(id) {
 }
 
 module.exports = {
-  UNIDADES, MAT_UNIDADES, listaMateriales,
+  UNIDADES, MAT_UNIDADES, listaMateriales, getEmpresa,
   getPartidas, crearPartida, editarPartida, eliminarPartida,
   getMateriales, crearMaterial, editarMaterial, eliminarMaterial,
   getPresupuestos, getPresupuesto, crearPresupuesto, guardarPresupuesto, eliminarPresupuesto,
