@@ -113,6 +113,7 @@ async function ensureIndexes(db) {
     // Mediciones (motor de presupuestos) — multi-empresa desde el diseño
     ['mediciones',             { empresaId: 1, updatedAt: -1 }],
     ['partidas',               { empresaId: 1, capitulo: 1, nombre: 1 }],
+    ['materiales',             { empresaId: 1, nombre: 1 }],
     ['presupuestos',           { empresaId: 1, updatedAt: -1 }],
   ];
 

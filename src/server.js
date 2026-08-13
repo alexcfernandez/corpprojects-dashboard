@@ -109,7 +109,7 @@ async function requireAuthOficina(req, res, next) {
 // activos, pero aquí quedan bloqueados. Admin (JWT) y oficina pasan; el
 // auth final (requireAuthOficina) lo hace cada endpoint. Se registra
 // ANTES que esas rutas para interceptarlas por prefijo de URL.
-app.use(['/api/presupuestos', '/api/partidas', '/api/facturas'], async (req, res, next) => {
+app.use(['/api/presupuestos', '/api/partidas', '/api/materiales', '/api/facturas'], async (req, res, next) => {
   const token = (req.headers.authorization || '').replace('Bearer ', '');
   if (!token.startsWith('w_')) return next(); // admin JWT o sin token → lo resuelve el endpoint
   try {
@@ -1700,6 +1700,26 @@ app.put('/api/partidas/:id', requireAuthOficina, async (req, res) => {
 });
 app.delete('/api/partidas/:id', requireAuthOficina, async (req, res) => {
   try { res.json(await presupuestos.eliminarPartida(req.params.id)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// ── MATERIALES (base de precios de compra · descompuesto) ──
+app.get('/api/materiales', requireAuthOficina, async (req, res) => {
+  try { res.json({ unidades: presupuestos.MAT_UNIDADES, materiales: await presupuestos.getMateriales({ search: req.query.search }) }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/materiales', requireAuthOficina, async (req, res) => {
+  try {
+    const by = req.oficina?.workerName || (req.oficina?.admin ? 'admin' : 'oficina');
+    res.json(await presupuestos.crearMaterial(req.body || {}, by));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.put('/api/materiales/:id', requireAuthOficina, async (req, res) => {
+  try { res.json(await presupuestos.editarMaterial(req.params.id, req.body || {})); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.delete('/api/materiales/:id', requireAuthOficina, async (req, res) => {
+  try { res.json(await presupuestos.eliminarMaterial(req.params.id)); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 

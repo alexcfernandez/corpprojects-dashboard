@@ -11,14 +11,43 @@ const num = v => { const n = parseFloat(String(v).replace(',', '.')); return Num
 
 const UNIDADES = ['m²', 'ml', 'ud', 'h', 'kg', 'm³', 'global'];
 
+// Unidades de MATERIAL (cómo se mide su consumo). Distinto de las unidades de
+// partida: aquí entran saco/rollo/bote además de m²/ml/ud…
+const MAT_UNIDADES = ['m²', 'ml', 'ud', 'kg', 'l', 'saco', 'rollo', 'm³'];
+
+// La RECETA (descompuesto) de una partida: lista de materiales con su consumo
+// por unidad de partida. Cada línea guarda una COPIA del precio del material
+// (snapshot), como las líneas de presupuesto, para que la partida no cambie
+// sola si luego retocas el material; se puede refrescar reeditando.
+function limpiarReceta(receta) {
+  return (Array.isArray(receta) ? receta : []).map(r => ({
+    materialId: r.materialId ? String(r.materialId) : null,
+    nombre:     String(r.nombre || '').trim() || 'Material',
+    unidad:     String(r.unidad || 'ud'),
+    precio:     Math.round(num(r.precio) * 100) / 100,   // € por unidad (snapshot)
+    consumo:    num(r.consumo),                           // unidades de material por unidad de partida
+    merma:      Math.max(0, num(r.merma)),                // % desperdicio
+  }));
+}
+// Coste de la partida a partir de su receta: Σ consumo × precio × (1 + merma%).
+function costeReceta(receta) {
+  return Math.round((receta || []).reduce(
+    (s, r) => s + num(r.consumo) * (Number(r.precio) || 0) * (1 + (num(r.merma) || 0) / 100), 0
+  ) * 100) / 100;
+}
+
 function limpiar(data) {
   const unidad = UNIDADES.includes(data.unidad) ? data.unidad : 'ud';
+  const receta = limpiarReceta(data.receta);
+  const costeManual = Math.round(num(data.coste) * 100) / 100;
   return {
     nombre:      String(data.nombre || '').trim(),
     capitulo:    String(data.capitulo || '').trim(),   // agrupador: Pintura, Suelos, Fontanería…
     unidad,
     precioVenta: Math.round(num(data.precioVenta) * 100) / 100,
-    coste:       Math.round(num(data.coste) * 100) / 100,
+    receta,
+    // si hay receta, el coste lo MANDA la receta (calculado); si no, coste manual.
+    coste:       receta.length ? costeReceta(receta) : costeManual,
     notas:       String(data.notas || '').trim(),
   };
 }
@@ -57,6 +86,52 @@ async function editarPartida(id, data) {
 async function eliminarPartida(id) {
   const db = await getDB();
   await db.collection('partidas').deleteOne({ _id: new ObjectId(id), empresaId: EMPRESA });
+  return { ok: true };
+}
+
+// ── MATERIALES (base de precios de compra) ───────────────────────
+// Cada material es un producto que compras (placa, canal, montante, pintura…)
+// con su unidad y precio. Sobre ellos se montan las recetas de las partidas.
+function limpiarMaterial(data) {
+  return {
+    nombre:  String(data.nombre || '').trim(),
+    unidad:  MAT_UNIDADES.includes(data.unidad) ? data.unidad : 'ud',
+    precio:  Math.round(num(data.precio) * 100) / 100,     // € por unidad
+    merma:   Math.max(0, num(data.merma)),                 // % desperdicio por defecto
+    formato: String(data.formato || '').trim(),            // opcional: "Placa 1,2×2,5 m", "Perfil 3 m"
+  };
+}
+
+async function getMateriales({ search } = {}) {
+  const db = await getDB();
+  const q = { empresaId: EMPRESA };
+  if (search) q.nombre = { $regex: search, $options: 'i' };
+  return db.collection('materiales').find(q).sort({ nombre: 1 }).toArray();
+}
+
+async function crearMaterial(data, by) {
+  const db = await getDB();
+  const m = limpiarMaterial(data);
+  if (!m.nombre) throw new Error('Ponle un nombre al material');
+  const doc = { empresaId: EMPRESA, ...m, by: by || '', createdAt: new Date(), updatedAt: new Date() };
+  const r = await db.collection('materiales').insertOne(doc);
+  return { ok: true, id: String(r.insertedId) };
+}
+
+async function editarMaterial(id, data) {
+  const db = await getDB();
+  const m = limpiarMaterial(data);
+  if (!m.nombre) throw new Error('Ponle un nombre al material');
+  await db.collection('materiales').updateOne(
+    { _id: new ObjectId(id), empresaId: EMPRESA },
+    { $set: { ...m, updatedAt: new Date() } }
+  );
+  return { ok: true };
+}
+
+async function eliminarMaterial(id) {
+  const db = await getDB();
+  await db.collection('materiales').deleteOne({ _id: new ObjectId(id), empresaId: EMPRESA });
   return { ok: true };
 }
 
@@ -157,6 +232,8 @@ async function eliminarPresupuesto(id) {
 }
 
 module.exports = {
-  UNIDADES, getPartidas, crearPartida, editarPartida, eliminarPartida,
+  UNIDADES, MAT_UNIDADES,
+  getPartidas, crearPartida, editarPartida, eliminarPartida,
+  getMateriales, crearMaterial, editarMaterial, eliminarMaterial,
   getPresupuestos, getPresupuesto, crearPresupuesto, guardarPresupuesto, eliminarPresupuesto,
 };
