@@ -74,6 +74,19 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 .l-x{color:var(--text3);font-size:13px}
 .addrow{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
 .addrow .btn{flex:1;min-width:100px;padding:12px 8px;font-size:14px}
+/* IVA */
+.iva-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--rs);padding:8px 12px}
+.iva-head span{font-size:13px;color:var(--text2);flex-shrink:0}
+.iva-head select{flex:1;padding:9px 11px}
+.l-iva{margin-top:8px;display:flex;align-items:center;gap:6px}
+.l-iva label{font-size:12px;color:var(--text3)}
+.l-iva select{width:auto;flex:1;max-width:220px;padding:7px 9px;font-size:13px}
+.l-iva.override select{border-color:var(--amber);color:var(--amber)}
+.totals-mini{font-size:12px;color:var(--text3);font-variant-numeric:tabular-nums;margin-bottom:2px}
+.totals-mini b{color:var(--text2);font-weight:600}
+.totals-main{font-size:13px;color:var(--text2);font-variant-numeric:tabular-nums}
+.totals-main b{color:var(--text);font-weight:600}
+.totals-main b.big{font-size:19px;color:var(--green)}
 .totbar{position:fixed;left:0;right:0;bottom:0;background:var(--bg2);border-top:1px solid var(--border2);padding:12px 20px;z-index:15}
 .totbar-in{max-width:680px;margin:0 auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .totals{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;font-variant-numeric:tabular-nums}
@@ -118,6 +131,15 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
   <div class="toolbar"><button class="tool-btn" onclick="volver()">← Presupuestos</button><button class="tool-btn danger" onclick="eliminarPres()" id="det-del" style="display:none">Eliminar</button></div>
   <input type="text" id="d-nombre" class="det-head" placeholder="Nombre del presupuesto" style="width:100%">
   <input type="text" id="d-cliente" autocomplete="off" placeholder="Cliente" style="margin-bottom:10px">
+  <div class="iva-head">
+    <span>IVA del presupuesto</span>
+    <select id="d-iva" onchange="onIvaGlobal()">
+      <option value="10">10 % (reforma vivienda)</option>
+      <option value="21">21 % (general)</option>
+      <option value="4">4 % (superreducido)</option>
+      <option value="0">0 % (exento)</option>
+    </select>
+  </div>
   <div class="med-ref" id="d-medref" style="display:none"></div>
   <div id="lineas"></div>
   <div class="addrow">
@@ -129,10 +151,9 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 
 <!-- BARRA TOTALES -->
 <div class="totbar" id="totbar" style="display:none"><div class="totbar-in">
-  <div class="totals">
-    <div><span class="lbl">Venta</span><b id="t-venta" style="color:var(--green)">0 €</b></div>
-    <div><span class="lbl">Coste</span><b id="t-coste" style="color:var(--red)">0 €</b></div>
-    <div><span class="lbl">Margen</span><b id="t-margen">0%</b></div>
+  <div style="flex:1;min-width:0">
+    <div class="totals-mini">Base <b id="t-venta">0 €</b> · Coste <b id="t-coste">0 €</b> · Margen <b id="t-margen">0%</b></div>
+    <div class="totals-main">+ IVA <span id="t-ivapct">10%</span> <b id="t-iva">0 €</b> &nbsp;·&nbsp; Total <b id="t-total" class="big">0 €</b></div>
   </div>
   <button class="savebtn" onclick="guardar()">Guardar</button>
 </div></div>
@@ -216,6 +237,7 @@ async function crearNuevo(){
 async function abrirPres(id){
   try{pres=await api('GET','/api/presupuestos/'+id);
     document.getElementById('d-nombre').value=pres.nombre||'';document.getElementById('d-cliente').value=pres.clientName||'';
+    document.getElementById('d-iva').value=String(Number.isFinite(pres.iva)?pres.iva:10);
     document.getElementById('det-del').style.display='block';
     const mt=pres.medicionTotales;const mr=document.getElementById('d-medref');
     if(mt){mr.style.display='block';mr.innerHTML=`📐 Medición: <b>Suelo ${fmt(mt.suelo)}</b> · <b>Paredes ${fmt(mt.paredes)}</b> · <b>Techo ${fmt(mt.techo)}</b> · <b>Pintura ${fmt((mt.paredes||0)+(mt.techo||0))}</b> m² · <b>Rodapié ${fmt(mt.rodapie)}</b> m`;}
@@ -233,6 +255,14 @@ function medQuick(unidad){
 function tipoDe(l){return (l&&l.tipo)||'partida';}
 function subtotalDesde(i){ // suma de las líneas (no-sección) hasta la próxima sección
   let s=0;for(let j=i+1;j<pres.lineas.length;j++){const l=pres.lineas[j];if(tipoDe(l)==='seccion')break;s+=(l.cantidad||0)*(l.precioVenta||0);}return s;
+}
+function ivaGlobal(){const el=document.getElementById('d-iva');return el?(Number(el.value)||0):10;}
+function ivaSel(i,l){
+  const g=ivaGlobal();
+  const over=(l.iva!=null && Number(l.iva)!==g);
+  const opts=[['','General ('+g+' %)'],['21','21 %'],['10','10 %'],['4','4 %'],['0','0 %']]
+    .map(([v,t])=>{const sel=(l.iva==null&&v==='')||(l.iva!=null&&String(l.iva)===v);return `<option value="${v}" ${sel?'selected':''}>${t}</option>`;}).join('');
+  return `<div class="l-iva ${over?'override':''}"><label>IVA</label><select onchange="onLineIva(${i},this.value)">${opts}</select></div>`;
 }
 function renderLineas(){
   const cont=document.getElementById('lineas');
@@ -255,6 +285,7 @@ function renderLineas(){
         <span class="l-calc">= <b id="lt-${i}">${eur((l.cantidad||0)*l.precioVenta)}</b></span>
       </div>
       ${quick?`<div class="l-quick">${quick}</div>`:''}
+      ${ivaSel(i,l)}
     </div>`;
     return `<div class="linea">
       <div class="l-top"><span class="l-nom">${esc(l.nombre)}</span><button class="l-del" onclick="delLinea(${i})">×</button></div>
@@ -264,6 +295,7 @@ function renderLineas(){
         <span class="l-calc">= <b id="lt-${i}">${eur((l.cantidad||0)*l.precioVenta)}</b></span>
       </div>
       ${quick?`<div class="l-quick">${quick}</div>`:''}
+      ${ivaSel(i,l)}
     </div>`;}).join('');
   recompute();
 }
@@ -273,20 +305,35 @@ function onLibre(i,campo,v){const l=pres.lineas[i];
   else l[campo]=v;
 }
 function onSecNom(i,v){pres.lineas[i].nombre=v;}
+function onIvaGlobal(){renderLineas();} // re-render para actualizar el "General (x%)" de cada línea + totales
+function onLineIva(i,v){
+  const l=pres.lineas[i];
+  if(v===''){l.iva=null;renderLineas();return;}
+  const r=Number(v), g=ivaGlobal();
+  if(r!==g && !confirm(`Esta línea llevará IVA ${r} % cuando el resto va al ${g} %. ¿Es correcto?`)){renderLineas();return;} // avisar + aceptar
+  l.iva=r;renderLineas();
+}
 function quickFill(i,v){pres.lineas[i].cantidad=Math.round(v*100)/100;renderLineas();}
 function delLinea(i){pres.lineas.splice(i,1);renderLineas();}
 function addSeccion(){pres.lineas.push({tipo:'seccion',nombre:''});renderLineas();const ns=document.querySelectorAll('.s-nom');if(ns.length)ns[ns.length-1].focus();}
 function addLibre(){pres.lineas.push({tipo:'libre',partidaId:null,nombre:'',unidad:'ud',cantidad:0,precioVenta:0,coste:0});renderLineas();const ns=document.querySelectorAll('.l-nomin');if(ns.length)ns[ns.length-1].focus();}
 function recompute(){
-  let venta=0,coste=0;pres.lineas.forEach(l=>{if(tipoDe(l)==='seccion')return;venta+=(l.cantidad||0)*(l.precioVenta||0);coste+=(l.cantidad||0)*(l.coste||0);});
+  const g=ivaGlobal(); let venta=0,coste=0,iva=0; const tipos=new Set();
+  pres.lineas.forEach(l=>{if(tipoDe(l)==='seccion')return;
+    const v=(l.cantidad||0)*(l.precioVenta||0);venta+=v;coste+=(l.cantidad||0)*(l.coste||0);
+    const r=(l.iva==null?g:Number(l.iva));iva+=v*r/100;if(v>0)tipos.add(r);
+  });
   pres.lineas.forEach((l,i)=>{if(tipoDe(l)==='seccion'){const el=document.getElementById('ss-'+i);if(el)el.textContent=eur(subtotalDesde(i));}});
   document.getElementById('t-venta').textContent=eur(venta);
   document.getElementById('t-coste').textContent=eur(coste);
   const mg=venta>0?Math.round((venta-coste)/venta*100):0;
-  const el=document.getElementById('t-margen');el.textContent=mg+'%';el.style.color=mg>=25?'var(--green)':mg>=10?'var(--amber)':'var(--red)';
+  const em=document.getElementById('t-margen');em.textContent=mg+'%';em.style.color=mg>=25?'var(--green)':mg>=10?'var(--amber)':'var(--red)';
+  document.getElementById('t-iva').textContent=eur(iva);
+  document.getElementById('t-ivapct').textContent=tipos.size>1?'(varios)':(g+'%');
+  document.getElementById('t-total').textContent=eur(venta+iva);
 }
 async function guardar(){if(!pres)return;
-  try{await api('PUT','/api/presupuestos/'+pres._id,{nombre:document.getElementById('d-nombre').value.trim(),clientName:document.getElementById('d-cliente').value.trim(),lineas:pres.lineas});toast('Guardado','ok');}
+  try{await api('PUT','/api/presupuestos/'+pres._id,{nombre:document.getElementById('d-nombre').value.trim(),clientName:document.getElementById('d-cliente').value.trim(),iva:ivaGlobal(),lineas:pres.lineas});toast('Guardado','ok');}
   catch(e){toast(e.message,'error');}}
 async function eliminarPres(){if(!pres)return;if(!confirm('¿Eliminar este presupuesto?'))return;try{await api('DELETE','/api/presupuestos/'+pres._id);volver();toast('Eliminado','ok');}catch(e){toast(e.message,'error');}}
 

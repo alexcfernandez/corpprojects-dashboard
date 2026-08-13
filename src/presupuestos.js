@@ -72,20 +72,28 @@ const n2 = n => Math.round((Number(n) || 0) * 100) / 100;
 // Las líneas viejas sin tipo se tratan como 'partida' (retrocompatible).
 function esSeccion(l) { return (l && l.tipo) === 'seccion'; }
 
-function computeTotales(lineas) {
-  let venta = 0, coste = 0;
+// IVA: cada presupuesto tiene un tipo por defecto (ivaDefault, normalmente 10%
+// en reforma de vivienda). Una línea puede llevar su propio `iva` (override);
+// si es null/undefined hereda el del presupuesto. Total = base + IVA.
+function computeTotales(lineas, ivaDefault) {
+  const g = Number.isFinite(ivaDefault) ? ivaDefault : 10;
+  let venta = 0, coste = 0, iva = 0;
   (lineas || []).forEach(l => {
     if (esSeccion(l)) return;
-    venta += (num(l.cantidad)) * (Number(l.precioVenta) || 0);
+    const v = (num(l.cantidad)) * (Number(l.precioVenta) || 0);
+    venta += v;
     coste += (num(l.cantidad)) * (Number(l.coste) || 0);
+    const r = (l.iva === null || l.iva === undefined) ? g : Number(l.iva);
+    iva += v * (Number.isFinite(r) ? r : g) / 100;
   });
-  venta = n2(venta); coste = n2(coste);
-  return { totalVenta: venta, totalCoste: coste, beneficio: n2(venta - coste), margen: venta > 0 ? Math.round((venta - coste) / venta * 100) : 0 };
+  venta = n2(venta); coste = n2(coste); iva = n2(iva);
+  return { totalVenta: venta, totalCoste: coste, totalIva: iva, totalConIva: n2(venta + iva), beneficio: n2(venta - coste), margen: venta > 0 ? Math.round((venta - coste) / venta * 100) : 0 };
 }
 function limpiarLineas(lineas) {
   return (Array.isArray(lineas) ? lineas : []).map(l => {
     const tipo = ['seccion', 'partida', 'libre'].includes(l.tipo) ? l.tipo : 'partida';
     if (tipo === 'seccion') return { tipo, nombre: String(l.nombre || '').trim() || 'Sección' };
+    const ivaOverride = (l.iva === null || l.iva === undefined || l.iva === '') ? null : Number(l.iva);
     return {
       tipo,
       partidaId:   l.partidaId ? String(l.partidaId) : null,
@@ -94,6 +102,7 @@ function limpiarLineas(lineas) {
       cantidad:    num(l.cantidad),
       precioVenta: n2(l.precioVenta),
       coste:       n2(l.coste),
+      iva:         Number.isFinite(ivaOverride) ? ivaOverride : null,
     };
   });
 }
@@ -101,13 +110,13 @@ function limpiarLineas(lineas) {
 async function getPresupuestos() {
   const db = await getDB();
   const arr = await db.collection('presupuestos').find({ empresaId: EMPRESA }).sort({ updatedAt: -1 }).toArray();
-  return arr.map(p => ({ _id: p._id, nombre: p.nombre, clientName: p.clientName || '', estado: p.estado || 'borrador', nLineas: (p.lineas || []).filter(l => !esSeccion(l)).length, ...computeTotales(p.lineas), updatedAt: p.updatedAt }));
+  return arr.map(p => ({ _id: p._id, nombre: p.nombre, clientName: p.clientName || '', estado: p.estado || 'borrador', nLineas: (p.lineas || []).filter(l => !esSeccion(l)).length, ...computeTotales(p.lineas, p.iva), updatedAt: p.updatedAt }));
 }
 async function getPresupuesto(id) {
   const db = await getDB();
   const p = await db.collection('presupuestos').findOne({ _id: new ObjectId(id), empresaId: EMPRESA });
   if (!p) throw new Error('Presupuesto no encontrado');
-  return { ...p, totales: computeTotales(p.lineas) };
+  return { ...p, iva: Number.isFinite(p.iva) ? p.iva : 10, totales: computeTotales(p.lineas, p.iva) };
 }
 async function crearPresupuesto(data, by) {
   const db = await getDB();
@@ -118,6 +127,7 @@ async function crearPresupuesto(data, by) {
     clientName: String(data.clientName || '').trim(),
     medicionId: data.medicionId ? String(data.medicionId) : null,
     medicionTotales: data.medicionTotales || null,
+    iva: Number.isFinite(Number(data.iva)) ? Number(data.iva) : 10,
     lineas: limpiarLineas(data.lineas),
     notas: String(data.notas || '').trim(),
     estado: 'borrador',
@@ -134,6 +144,7 @@ async function guardarPresupuesto(id, data) {
   if ('lineas' in data) set.lineas = limpiarLineas(data.lineas);
   if ('notas' in data) set.notas = String(data.notas || '').trim();
   if ('estado' in data) set.estado = String(data.estado || 'borrador');
+  if ('iva' in data && Number.isFinite(Number(data.iva))) set.iva = Number(data.iva);
   if ('medicionId' in data) set.medicionId = data.medicionId ? String(data.medicionId) : null;
   if ('medicionTotales' in data) set.medicionTotales = data.medicionTotales || null;
   await db.collection('presupuestos').updateOne({ _id: new ObjectId(id), empresaId: EMPRESA }, { $set: set });
