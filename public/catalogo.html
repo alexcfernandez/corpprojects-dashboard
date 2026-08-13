@@ -268,7 +268,9 @@ function matEdit(id){const m=materiales.find(x=>String(x._id)===String(id));if(!
   document.getElementById('mf-nombre').value=m.nombre||'';document.getElementById('mf-unidad').value=m.unidad||'ud';document.getElementById('mf-precio').value=m.precio||'';document.getElementById('mf-merma').value=m.merma||'';document.getElementById('mf-formato').value=m.formato||'';document.getElementById('mf-contenido').value=m.contenido||'';
   const h=(m.historial||[]).filter(x=>x&&x.precio!=null);const he=document.getElementById('mf-hist');
   if(h.length>=2){const prev=h[h.length-2];he.innerHTML=`📈 Cambia el precio y se guarda un punto nuevo. Anterior: <b>${eur(prev.precio)}</b> (${new Date(prev.fecha).toLocaleDateString('es-ES')}) · ${h.length} puntos`;}
-  else he.textContent='Al cambiar el precio se irá guardando el histórico.';}
+  else he.textContent='Al cambiar el precio se irá guardando el histórico.';
+  // subir al formulario (está arriba del todo) para que se vea que estás editando
+  const md=document.querySelector('#ov-mat .modal');if(md)md.scrollTop=0;}
 function renderMatList(){const box=document.getElementById('mat-list');
   if(!materiales.length){box.innerHTML='<div class="empty" style="padding:20px">Aún no hay materiales.</div>';return;}
   box.innerHTML=materiales.map(m=>{const sp=spark(m.historial),tb=trendBadge(m.historial);
