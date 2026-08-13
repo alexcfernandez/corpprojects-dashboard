@@ -42,7 +42,9 @@ const UNIDADES = ['m²', 'ml', 'ud', 'h', 'kg', 'm³', 'global'];
 
 // Unidades de MATERIAL (cómo se mide su consumo). Distinto de las unidades de
 // partida: aquí entran saco/rollo/bote además de m²/ml/ud…
-const MAT_UNIDADES = ['m²', 'ml', 'ud', 'kg', 'l', 'saco', 'rollo', 'm³'];
+// 'h' = mano de obra (hora). Es un "material" más (entra en el coste de la
+// receta), pero se EXCLUYE de la lista de la compra (las horas no se compran).
+const MAT_UNIDADES = ['m²', 'ml', 'ud', 'kg', 'l', 'saco', 'rollo', 'm³', 'h'];
 
 // La RECETA (descompuesto) de una partida: lista de materiales con su consumo
 // por unidad de partida. Cada línea guarda una COPIA del precio del material
@@ -297,6 +299,7 @@ async function listaMateriales(id) {
     const part = pById.get(String(l.partidaId));
     if (!part || !(part.receta || []).length) { sinReceta.push(l.nombre || (part && part.nombre) || 'Partida'); continue; }
     for (const r of part.receta) {
+      if ((r.unidad || '') === 'h') continue; // la mano de obra no se compra
       const units = cant * num(r.consumo) * (1 + (num(r.merma) || 0) / 100);
       const key = r.materialId ? ('id:' + r.materialId) : ('n:' + r.nombre);
       const cur = acc.get(key) || { materialId: r.materialId || null, nombre: r.nombre, unidad: r.unidad, precio: Number(r.precio) || 0, unidades: 0 };
