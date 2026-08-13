@@ -62,6 +62,18 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 .l-quick{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .l-quick button{background:var(--bg3);border:1px solid var(--border2);border-radius:100px;color:var(--text2);padding:5px 10px;font-size:12px;cursor:pointer;font-family:inherit}
 .l-quick button:hover{border-color:var(--blue);color:var(--text)}
+/* secciones (títulos con subtotal) */
+.seccion{display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border2);border-left:3px solid var(--blue);border-radius:8px;padding:8px 10px;margin:16px 0 8px}
+.s-nom{flex:1;min-width:0;background:transparent;border:none;font-weight:700;font-size:15px;color:var(--text);padding:4px 2px;outline:none;font-family:inherit}
+.s-sub{font-variant-numeric:tabular-nums;font-weight:600;color:var(--text2);font-size:13px;white-space:nowrap}
+/* líneas libres (concepto a mano) */
+.linea.libre .l-nomin{width:100%;background:var(--bg3);border:1.5px solid var(--border2);border-radius:8px;padding:9px 11px;color:var(--text);font-size:14px;font-weight:600;outline:none;font-family:inherit}
+.linea.libre .l-cant{width:80px !important;text-align:right}
+.linea.libre .l-unid{width:52px !important;text-align:center;padding:12px 4px !important}
+.linea.libre .l-precio{width:92px !important;text-align:right}
+.l-x{color:var(--text3);font-size:13px}
+.addrow{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.addrow .btn{flex:1;min-width:100px;padding:12px 8px;font-size:14px}
 .totbar{position:fixed;left:0;right:0;bottom:0;background:var(--bg2);border-top:1px solid var(--border2);padding:12px 20px;z-index:15}
 .totbar-in{max-width:680px;margin:0 auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .totals{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;font-variant-numeric:tabular-nums}
@@ -108,7 +120,11 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
   <input type="text" id="d-cliente" autocomplete="off" placeholder="Cliente" style="margin-bottom:10px">
   <div class="med-ref" id="d-medref" style="display:none"></div>
   <div id="lineas"></div>
-  <button class="btn sec" onclick="abrirPicker()" style="margin-top:6px">+ Añadir partida</button>
+  <div class="addrow">
+    <button class="btn sec" onclick="abrirPicker()"><i></i>+ Partida</button>
+    <button class="btn sec" onclick="addLibre()">+ Línea libre</button>
+    <button class="btn sec" onclick="addSeccion()">+ Sección</button>
+  </div>
 </div></div>
 
 <!-- BARRA TOTALES -->
@@ -214,11 +230,32 @@ function medQuick(unidad){
   if(unidad==='ml')return [['Rodapié',mt.rodapie]];
   return [];
 }
+function tipoDe(l){return (l&&l.tipo)||'partida';}
+function subtotalDesde(i){ // suma de las líneas (no-sección) hasta la próxima sección
+  let s=0;for(let j=i+1;j<pres.lineas.length;j++){const l=pres.lineas[j];if(tipoDe(l)==='seccion')break;s+=(l.cantidad||0)*(l.precioVenta||0);}return s;
+}
 function renderLineas(){
   const cont=document.getElementById('lineas');
-  if(!pres.lineas||!pres.lineas.length){cont.innerHTML='<div class="empty" style="padding:24px">Sin partidas. Pulsa «+ Añadir partida».</div>';recompute();return;}
+  if(!pres.lineas||!pres.lineas.length){cont.innerHTML='<div class="empty" style="padding:24px">Vacío. Añade una partida, una línea libre o una sección.</div>';recompute();return;}
   cont.innerHTML=pres.lineas.map((l,i)=>{
+    const tipo=tipoDe(l);
+    if(tipo==='seccion') return `<div class="seccion">
+      <input class="s-nom" value="${esc(l.nombre)}" oninput="onSecNom(${i},this.value)" placeholder="Título de sección (Cocina, Baño…)">
+      <span class="s-sub" id="ss-${i}">${eur(subtotalDesde(i))}</span>
+      <button class="l-del" onclick="delLinea(${i})">×</button>
+    </div>`;
     const quick=medQuick(l.unidad).filter(q=>q[1]>0).map(q=>`<button onclick="quickFill(${i},${q[1]})">${q[0]} ${fmt(q[1])}</button>`).join('');
+    if(tipo==='libre') return `<div class="linea libre">
+      <div class="l-top"><input class="l-nomin" value="${esc(l.nombre)}" oninput="onLibre(${i},'nombre',this.value)" placeholder="Concepto (Puerta, Lámpara, Mano de obra…)"><button class="l-del" onclick="delLinea(${i})">×</button></div>
+      <div class="l-in">
+        <input class="l-cant" type="number" inputmode="decimal" step="0.01" value="${l.cantidad||''}" oninput="onCant(${i},this.value)" placeholder="cant.">
+        <input class="l-unid" type="text" value="${esc(l.unidad)}" oninput="onLibre(${i},'unidad',this.value)" placeholder="ud">
+        <span class="l-x">×</span>
+        <input class="l-precio" type="number" inputmode="decimal" step="0.01" value="${l.precioVenta||''}" oninput="onLibre(${i},'precioVenta',this.value)" placeholder="precio">
+        <span class="l-calc">= <b id="lt-${i}">${eur((l.cantidad||0)*l.precioVenta)}</b></span>
+      </div>
+      ${quick?`<div class="l-quick">${quick}</div>`:''}
+    </div>`;
     return `<div class="linea">
       <div class="l-top"><span class="l-nom">${esc(l.nombre)}</span><button class="l-del" onclick="delLinea(${i})">×</button></div>
       <div class="l-in">
@@ -231,10 +268,18 @@ function renderLineas(){
   recompute();
 }
 function onCant(i,v){pres.lineas[i].cantidad=parseFloat(String(v).replace(',','.'))||0;document.getElementById('lt-'+i).textContent=eur(pres.lineas[i].cantidad*pres.lineas[i].precioVenta);recompute();}
+function onLibre(i,campo,v){const l=pres.lineas[i];
+  if(campo==='precioVenta'){l.precioVenta=parseFloat(String(v).replace(',','.'))||0;const lt=document.getElementById('lt-'+i);if(lt)lt.textContent=eur((l.cantidad||0)*l.precioVenta);recompute();}
+  else l[campo]=v;
+}
+function onSecNom(i,v){pres.lineas[i].nombre=v;}
 function quickFill(i,v){pres.lineas[i].cantidad=Math.round(v*100)/100;renderLineas();}
 function delLinea(i){pres.lineas.splice(i,1);renderLineas();}
+function addSeccion(){pres.lineas.push({tipo:'seccion',nombre:''});renderLineas();const ns=document.querySelectorAll('.s-nom');if(ns.length)ns[ns.length-1].focus();}
+function addLibre(){pres.lineas.push({tipo:'libre',partidaId:null,nombre:'',unidad:'ud',cantidad:0,precioVenta:0,coste:0});renderLineas();const ns=document.querySelectorAll('.l-nomin');if(ns.length)ns[ns.length-1].focus();}
 function recompute(){
-  let venta=0,coste=0;pres.lineas.forEach(l=>{venta+=(l.cantidad||0)*(l.precioVenta||0);coste+=(l.cantidad||0)*(l.coste||0);});
+  let venta=0,coste=0;pres.lineas.forEach(l=>{if(tipoDe(l)==='seccion')return;venta+=(l.cantidad||0)*(l.precioVenta||0);coste+=(l.cantidad||0)*(l.coste||0);});
+  pres.lineas.forEach((l,i)=>{if(tipoDe(l)==='seccion'){const el=document.getElementById('ss-'+i);if(el)el.textContent=eur(subtotalDesde(i));}});
   document.getElementById('t-venta').textContent=eur(venta);
   document.getElementById('t-coste').textContent=eur(coste);
   const mg=venta>0?Math.round((venta-coste)/venta*100):0;
@@ -259,7 +304,7 @@ function renderPick(){
 }
 function addPartida(pid){
   const p=catalogo.find(x=>String(x._id)===String(pid));if(!p)return;
-  pres.lineas.push({partidaId:String(p._id),nombre:p.nombre,unidad:p.unidad,cantidad:0,precioVenta:p.precioVenta,coste:p.coste||0});
+  pres.lineas.push({tipo:'partida',partidaId:String(p._id),nombre:p.nombre,unidad:p.unidad,cantidad:0,precioVenta:p.precioVenta,coste:p.coste||0});
   cerrar('ov-pick');renderLineas();
   // hacer scroll a la última y foco en su cantidad
   const cants=document.querySelectorAll('.l-cant');if(cants.length)cants[cants.length-1].focus();

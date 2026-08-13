@@ -67,27 +67,41 @@ async function eliminarPartida(id) {
 // (así el presupuesto no cambia si luego retocas el catálogo).
 const n2 = n => Math.round((Number(n) || 0) * 100) / 100;
 
+// Cada línea tiene un tipo: 'seccion' (título con subtotal, no suma nada),
+// 'partida' (viene del catálogo) o 'libre' (concepto a mano: puerta, lámpara…).
+// Las líneas viejas sin tipo se tratan como 'partida' (retrocompatible).
+function esSeccion(l) { return (l && l.tipo) === 'seccion'; }
+
 function computeTotales(lineas) {
   let venta = 0, coste = 0;
-  (lineas || []).forEach(l => { venta += (num(l.cantidad)) * (Number(l.precioVenta) || 0); coste += (num(l.cantidad)) * (Number(l.coste) || 0); });
+  (lineas || []).forEach(l => {
+    if (esSeccion(l)) return;
+    venta += (num(l.cantidad)) * (Number(l.precioVenta) || 0);
+    coste += (num(l.cantidad)) * (Number(l.coste) || 0);
+  });
   venta = n2(venta); coste = n2(coste);
   return { totalVenta: venta, totalCoste: coste, beneficio: n2(venta - coste), margen: venta > 0 ? Math.round((venta - coste) / venta * 100) : 0 };
 }
 function limpiarLineas(lineas) {
-  return (Array.isArray(lineas) ? lineas : []).map(l => ({
-    partidaId:   l.partidaId ? String(l.partidaId) : null,
-    nombre:      String(l.nombre || '').trim() || 'Partida',
-    unidad:      String(l.unidad || 'ud'),
-    cantidad:    num(l.cantidad),
-    precioVenta: n2(l.precioVenta),
-    coste:       n2(l.coste),
-  }));
+  return (Array.isArray(lineas) ? lineas : []).map(l => {
+    const tipo = ['seccion', 'partida', 'libre'].includes(l.tipo) ? l.tipo : 'partida';
+    if (tipo === 'seccion') return { tipo, nombre: String(l.nombre || '').trim() || 'Sección' };
+    return {
+      tipo,
+      partidaId:   l.partidaId ? String(l.partidaId) : null,
+      nombre:      String(l.nombre || '').trim() || (tipo === 'libre' ? 'Concepto' : 'Partida'),
+      unidad:      String(l.unidad || 'ud'),
+      cantidad:    num(l.cantidad),
+      precioVenta: n2(l.precioVenta),
+      coste:       n2(l.coste),
+    };
+  });
 }
 
 async function getPresupuestos() {
   const db = await getDB();
   const arr = await db.collection('presupuestos').find({ empresaId: EMPRESA }).sort({ updatedAt: -1 }).toArray();
-  return arr.map(p => ({ _id: p._id, nombre: p.nombre, clientName: p.clientName || '', estado: p.estado || 'borrador', nLineas: (p.lineas || []).length, ...computeTotales(p.lineas), updatedAt: p.updatedAt }));
+  return arr.map(p => ({ _id: p._id, nombre: p.nombre, clientName: p.clientName || '', estado: p.estado || 'borrador', nLineas: (p.lineas || []).filter(l => !esSeccion(l)).length, ...computeTotales(p.lineas), updatedAt: p.updatedAt }));
 }
 async function getPresupuesto(id) {
   const db = await getDB();
