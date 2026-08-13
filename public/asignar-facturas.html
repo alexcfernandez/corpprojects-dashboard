@@ -240,7 +240,9 @@ async function loadWorkers(){
   }catch(e){document.getElementById('worker-selector').innerHTML='<div style="color:var(--text3);font-size:13px">Error cargando usuarios</div>';}
 }
 function selectWorker(btn){document.querySelectorAll('.worker-btn').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');document.getElementById('pin-input').focus();}
+function bloqueoTecnico(){document.body.innerHTML='<div style="max-width:440px;margin:80px auto;text-align:center;padding:24px;color:var(--text)"><div style="font-size:44px">🔒</div><h2 style="margin:12px 0 6px">Solo para oficina</h2><p style="color:var(--text2);line-height:1.6">Los técnicos no clasificáis facturas. Usa el <a href="/parte" style="color:var(--blue)">parte de trabajo</a>.</p></div>';}
 async function enterApp(token,info,persist){
+  if((info.role||'')==='tech'){bloqueoTecnico();return;}
   workerToken=token;workerInfo=info;esAdmin=!!info.admin;
   if(persist){localStorage.setItem('cpWT',token);localStorage.setItem('cpWN',info.workerName||'');localStorage.setItem('cpWI',String(info.workerId||''));}
   document.getElementById('header-sub').textContent=info.workerName||'';
@@ -268,7 +270,7 @@ async function tryRestoreSession(){
       if(!r.ok)continue;
       const d=await r.json();
       workerToken=t;
-      await enterApp(t,{workerName:d.name,admin:d.admin},!isAdmin);
+      await enterApp(t,{workerName:d.name,admin:d.admin,role:d.role},!isAdmin);
       return true;
     }catch(e){}
   }
@@ -285,7 +287,7 @@ async function doLogin(){
     const r=await fetch('/api/partes/worker-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workerId:sel.dataset.id,pin})});
     const data=await r.json();
     if(!r.ok)throw new Error(data.error||'PIN incorrecto');
-    await enterApp(data.token,{workerId:data.workerId,workerName:data.workerName},true);
+    await enterApp(data.token,{workerId:data.workerId,workerName:data.workerName,role:data.role},true);
   }catch(err){toast(err.message,'error');document.getElementById('pin-input').value='';}
   finally{btn.disabled=false;btn.innerHTML='Entrar →';}
 }

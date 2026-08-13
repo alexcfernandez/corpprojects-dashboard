@@ -121,18 +121,21 @@ function abrir(id){document.getElementById(id).classList.add('show');}function c
 // ── LOGIN + SSO ──
 async function loadWorkers(){try{const r=await fetch('/api/partes/workers');todosWorkers=await r.json();document.getElementById('worker-selector').innerHTML=todosWorkers.map(w=>`<button class="worker-btn" data-id="${w.id}" onclick="selW(this)"><div class="worker-name">${esc(w.name)}</div></button>`).join('');}catch(e){}}
 function selW(b){document.querySelectorAll('.worker-btn').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');document.getElementById('pin-input').focus();}
-async function enterApp(token,info,persist){workerToken=token;esAdmin=!!info.admin;
+function bloqueoTecnico(){document.body.innerHTML='<div style="max-width:440px;margin:80px auto;text-align:center;padding:24px;color:var(--text)"><div style="font-size:44px">🔒</div><h2 style="margin:12px 0 6px">Solo para oficina</h2><p style="color:var(--text2);line-height:1.6">Los técnicos no accedéis al catálogo de precios. Usa el <a href="/parte" style="color:var(--blue)">parte de trabajo</a>.</p></div>';}
+async function enterApp(token,info,persist){
+  if((info.role||'')==='tech'){bloqueoTecnico();return;}
+  workerToken=token;esAdmin=!!info.admin;
   if(persist){localStorage.setItem('cpWT',token);localStorage.setItem('cpWN',info.workerName||'');}
   document.getElementById('header-sub').textContent=info.workerName||'';
   const lb=document.getElementById('logout-btn');lb.textContent=esAdmin?'← Dashboard':'Salir';lb.style.display='block';
   document.getElementById('f-unidad').innerHTML=unidades.map(u=>`<option value="${u}">${u}</option>`).join('');
   showPage('list');await cargar();}
 async function tryRestore(){const admin=localStorage.getItem('cp_token'),worker=localStorage.getItem('cpWT');
-  for(const [t,isA] of [[admin,true],[worker,false]]){if(!t)continue;try{const r=await fetch('/api/oficina/whoami',{headers:{'Authorization':`Bearer ${t}`}});if(!r.ok)continue;const d=await r.json();await enterApp(t,{workerName:d.name,admin:d.admin},!isA);return true;}catch(e){}}
+  for(const [t,isA] of [[admin,true],[worker,false]]){if(!t)continue;try{const r=await fetch('/api/oficina/whoami',{headers:{'Authorization':`Bearer ${t}`}});if(!r.ok)continue;const d=await r.json();await enterApp(t,{workerName:d.name,admin:d.admin,role:d.role},!isA);return true;}catch(e){}}
   localStorage.removeItem('cpWT');return false;}
 async function doLogin(){const sel=document.querySelector('.worker-btn.selected');if(!sel){toast('Selecciona tu nombre','warn');return;}const pin=document.getElementById('pin-input').value;if(pin.length<4){toast('Introduce el PIN','warn');return;}
   const b=document.getElementById('login-btn');b.disabled=true;b.innerHTML='<span class="spinner"></span>…';
-  try{const r=await fetch('/api/partes/worker-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workerId:sel.dataset.id,pin})});const d=await r.json();if(!r.ok)throw new Error(d.error||'PIN incorrecto');await enterApp(d.token,{workerId:d.workerId,workerName:d.workerName},true);}
+  try{const r=await fetch('/api/partes/worker-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workerId:sel.dataset.id,pin})});const d=await r.json();if(!r.ok)throw new Error(d.error||'PIN incorrecto');await enterApp(d.token,{workerId:d.workerId,workerName:d.workerName,role:d.role},true);}
   catch(e){toast(e.message,'error');document.getElementById('pin-input').value='';}finally{b.disabled=false;b.innerHTML='Entrar →';}}
 function logout(){if(esAdmin){location.href='/';return;}workerToken=null;localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');document.getElementById('logout-btn').style.display='none';showPage('login');}
 

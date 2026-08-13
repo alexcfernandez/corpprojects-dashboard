@@ -204,7 +204,9 @@ function selectWorker(btn){
   btn.classList.add('selected');
   document.getElementById('pin-input').focus();
 }
+function bloqueoTecnico(){document.body.innerHTML='<div style="max-width:440px;margin:80px auto;text-align:center;padding:24px;color:var(--text)"><div style="font-size:44px">🔒</div><h2 style="margin:12px 0 6px">Solo para oficina</h2><p style="color:var(--text2);line-height:1.6">Los técnicos no subís facturas. Usa el <a href="/parte" style="color:var(--blue)">parte de trabajo</a>.</p></div>';}
 async function enterApp(token, info, persist){
+  if((info.role||'')==='tech'){bloqueoTecnico();return;}
   workerToken=token; workerInfo=info; esAdmin=!!info.admin;
   if(persist){
     localStorage.setItem('cpWT',token);
@@ -227,7 +229,7 @@ async function tryRestoreSession(){
       const r=await fetch('/api/oficina/whoami',{headers:{'Authorization':`Bearer ${t}`}});
       if(!r.ok) continue;
       const d=await r.json();
-      await enterApp(t,{workerName:d.name, admin:d.admin}, !isAdmin);
+      await enterApp(t,{workerName:d.name, admin:d.admin, role:d.role}, !isAdmin);
       return true;
     }catch(e){}
   }
@@ -250,7 +252,7 @@ async function doLogin(){
     const data=await r.json();
     if(!r.ok) throw new Error(data.error||'PIN incorrecto');
     hideMsg('login-msg');
-    await enterApp(data.token,{workerId:data.workerId, workerName:data.workerName}, true);
+    await enterApp(data.token,{workerId:data.workerId, workerName:data.workerName, role:data.role}, true);
   }catch(err){
     showMsg('login-msg','❌ '+err.message,'error');
     document.getElementById('pin-input').value='';

@@ -95,13 +95,31 @@ async function requireAuthOficina(req, res, next) {
     try {
       const w = await require('./partes').verifyWorkerToken(token);
       if (!w) return res.status(401).json({ error: 'Token expirado' });
-      req.oficina = { workerId: w.workerId, workerName: w.workerName };
+      req.oficina = { workerId: w.workerId, workerName: w.workerName, role: w.workerRole || 'worker' };
       return next();
     } catch { return res.status(401).json({ error: 'Token inválido' }); }
   }
-  try { req.user = jwt.verify(token, JWT_SECRET); req.oficina = { admin: true }; return next(); }
+  try { req.user = jwt.verify(token, JWT_SECRET); req.oficina = { admin: true, role: 'admin' }; return next(); }
   catch { return res.status(401).json({ error: 'Token inválido' }); }
 }
+
+// ── Candado de DINERO para técnicos ─────────────────────────────────
+// Presupuestos, catálogo (partidas) y facturas son SOLO oficina/admin.
+// Los técnicos (rol 'tech') conservan partes, presencia, mediciones y
+// activos, pero aquí quedan bloqueados. Admin (JWT) y oficina pasan; el
+// auth final (requireAuthOficina) lo hace cada endpoint. Se registra
+// ANTES que esas rutas para interceptarlas por prefijo de URL.
+app.use(['/api/presupuestos', '/api/partidas', '/api/facturas'], async (req, res, next) => {
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  if (!token.startsWith('w_')) return next(); // admin JWT o sin token → lo resuelve el endpoint
+  try {
+    const w = await require('./partes').verifyWorkerToken(token);
+    if (w && w.workerRole === 'tech') {
+      return res.status(403).json({ error: 'Solo oficina: los técnicos no acceden a presupuestos, catálogo ni facturas' });
+    }
+  } catch { /* si falla la verificación, que decida el auth del endpoint */ }
+  next();
+});
 
 // ─────────────────────────────────────────────────────────────
 // WhatsApp (Twilio) — asistente personal. Ruta PÚBLICA (Twilio no envía token).
@@ -1546,6 +1564,7 @@ app.get('/api/oficina/whoami', requireAuthOficina, (req, res) => {
     admin: !!req.oficina?.admin,
     name:  req.oficina?.admin ? 'Administración' : (req.oficina?.workerName || 'Oficina'),
     workerName: req.oficina?.workerName || null,
+    role: req.oficina?.role || (req.oficina?.admin ? 'admin' : 'worker'),
   });
 });
 
@@ -1756,7 +1775,7 @@ app.post('/api/partes/worker-login', async (req, res) => {
         expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000)
       });
       await client.close();
-      return res.json({ token, workerId: String(user._id), workerName: user.name });
+      return res.json({ token, workerId: String(user._id), workerName: user.name, role: user.role });
     }
     const result = await partes.workerLogin(workerId, pin);
     res.json(result);
