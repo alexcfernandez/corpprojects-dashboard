@@ -114,7 +114,8 @@ async function crearMaterial(data, by) {
   const db = await getDB();
   const m = limpiarMaterial(data);
   if (!m.nombre) throw new Error('Ponle un nombre al material');
-  const doc = { empresaId: EMPRESA, ...m, by: by || '', createdAt: new Date(), updatedAt: new Date() };
+  // el historial empieza con el precio de alta (primer punto de la curva)
+  const doc = { empresaId: EMPRESA, ...m, historial: [{ fecha: new Date(), precio: m.precio }], by: by || '', createdAt: new Date(), updatedAt: new Date() };
   const r = await db.collection('materiales').insertOne(doc);
   return { ok: true, id: String(r.insertedId) };
 }
@@ -123,10 +124,13 @@ async function editarMaterial(id, data) {
   const db = await getDB();
   const m = limpiarMaterial(data);
   if (!m.nombre) throw new Error('Ponle un nombre al material');
-  await db.collection('materiales').updateOne(
-    { _id: new ObjectId(id), empresaId: EMPRESA },
-    { $set: { ...m, updatedAt: new Date() } }
-  );
+  const prev = await db.collection('materiales').findOne({ _id: new ObjectId(id), empresaId: EMPRESA });
+  const update = { $set: { ...m, updatedAt: new Date() } };
+  // si el precio CAMBIA, se apunta un nuevo punto en el historial (base del gráfico + aviso)
+  if (prev && Math.round((prev.precio || 0) * 100) !== Math.round(m.precio * 100)) {
+    update.$push = { historial: { fecha: new Date(), precio: m.precio } };
+  }
+  await db.collection('materiales').updateOne({ _id: new ObjectId(id), empresaId: EMPRESA }, update);
   return { ok: true };
 }
 
