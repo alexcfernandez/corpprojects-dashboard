@@ -157,8 +157,11 @@ async function editarMaterial(id, data) {
   if (!m.nombre) throw new Error('Ponle un nombre al material');
   const prev = await db.collection('materiales').findOne({ _id: new ObjectId(id), empresaId: EMPRESA });
   const update = { $set: { ...m, updatedAt: new Date() } };
-  // si el precio CAMBIA, se apunta un nuevo punto en el historial (base del gráfico + aviso)
-  if (prev && Math.round((prev.precio || 0) * 100) !== Math.round(m.precio * 100)) {
+  if (data.resetHistorial) {
+    // reiniciar: deja solo el precio actual (para limpiar saltos de cuando reconfiguras un material)
+    update.$set.historial = [{ fecha: new Date(), precio: m.precio }];
+  } else if (prev && Math.round((prev.precio || 0) * 100) !== Math.round(m.precio * 100)) {
+    // si el precio CAMBIA, se apunta un nuevo punto en el historial (base del gráfico + aviso)
     update.$push = { historial: { fecha: new Date(), precio: m.precio } };
   }
   await db.collection('materiales').updateOne({ _id: new ObjectId(id), empresaId: EMPRESA }, update);

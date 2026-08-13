@@ -66,9 +66,14 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 .rec-line input{width:72px;text-align:right;padding:7px 8px;font-size:14px}
 .rec-line .rc{font-size:12px;color:var(--text2);width:66px;text-align:right;font-variant-numeric:tabular-nums;flex-shrink:0}
 .rec-line .rx{background:none;border:1px solid var(--red);color:var(--red);border-radius:6px;width:28px;height:28px;cursor:pointer;flex-shrink:0;font-size:15px}
-.mat-row{display:flex;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--border)}
-.mat-row .mn{flex:1;min-width:0}
-.mat-row .mn b{font-size:14px}.mat-row .mn small{color:var(--text3);font-size:12px}
+.mat-row{padding:12px 0;border-top:1px solid var(--border)}
+.mat-head{display:flex;align-items:flex-start;gap:8px}
+.mat-head .mn{flex:1;min-width:0}
+.mat-head .mn b{font-size:14px;display:block;word-break:break-word}
+.mat-sub{color:var(--text3);font-size:12px;margin-top:2px}
+.mat-acts{display:flex;gap:6px;flex-shrink:0}
+.mat-price{display:flex;align-items:center;gap:8px;margin-top:7px;flex-wrap:wrap}
+.mat-price .pv{font-weight:700;font-size:15px}
 .pick-row{padding:11px 8px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;justify-content:space-between;gap:10px}
 .pick-row:hover{background:var(--bg3)}
 </style>
@@ -267,20 +272,33 @@ function matEdit(id){const m=materiales.find(x=>String(x._id)===String(id));if(!
   document.getElementById('mat-form-title').textContent='Editar material';document.getElementById('mf-cancel').style.display='block';document.getElementById('mf-save').textContent='Guardar cambios';
   document.getElementById('mf-nombre').value=m.nombre||'';document.getElementById('mf-unidad').value=m.unidad||'ud';document.getElementById('mf-precio').value=m.precio||'';document.getElementById('mf-merma').value=m.merma||'';document.getElementById('mf-formato').value=m.formato||'';document.getElementById('mf-contenido').value=m.contenido||'';
   const h=(m.historial||[]).filter(x=>x&&x.precio!=null);const he=document.getElementById('mf-hist');
-  if(h.length>=2){const prev=h[h.length-2];he.innerHTML=`📈 Cambia el precio y se guarda un punto nuevo. Anterior: <b>${eur(prev.precio)}</b> (${new Date(prev.fecha).toLocaleDateString('es-ES')}) · ${h.length} puntos`;}
+  if(h.length>=2){const prev=h[h.length-2];he.innerHTML=`📈 Anterior: <b>${eur(prev.precio)}</b> (${new Date(prev.fecha).toLocaleDateString('es-ES')}) · ${h.length} puntos · <a href="#" onclick="resetHist();return false" style="color:var(--blue)">↺ Reiniciar histórico</a>`;}
   else he.textContent='Al cambiar el precio se irá guardando el histórico.';
   // subir al formulario (está arriba del todo) para que se vea que estás editando
   const md=document.querySelector('#ov-mat .modal');if(md)md.scrollTop=0;}
 function renderMatList(){const box=document.getElementById('mat-list');
   if(!materiales.length){box.innerHTML='<div class="empty" style="padding:20px">Aún no hay materiales.</div>';return;}
   box.innerHTML=materiales.map(m=>{const sp=spark(m.historial),tb=trendBadge(m.historial);
-    return `<div class="mat-row"><div class="mn"><b>${esc(m.nombre)}</b><br><small>${esc(m.unidad)}${m.merma>0?' · merma '+m.merma+'%':''}${m.contenido>0?' · '+fmtn(m.contenido)+' '+esc(m.unidad)+'/pieza':''}${m.formato?' · '+esc(m.formato):''}</small></div><div style="text-align:right;white-space:nowrap"><div style="font-weight:700">${eur(m.precio)}</div>${sp||tb?`<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;margin-top:2px">${sp}${tb}</div>`:''}</div><button class="btn sec" style="width:auto;padding:6px 10px;font-size:12px" onclick="matEdit('${m._id}')">✏️</button><button class="btn danger" style="width:auto;padding:6px 10px;font-size:12px" onclick="eliminarMat('${m._id}','${esc(m.nombre).replace(/'/g,"\\'")}')">🗑️</button></div>`;}).join('');}
+    const sub=`${esc(m.unidad)}${m.merma>0?' · merma '+m.merma+'%':''}${m.contenido>0?' · '+fmtn(m.contenido)+' '+esc(m.unidad)+'/pieza':''}${m.formato?' · '+esc(m.formato):''}`;
+    return `<div class="mat-row">
+      <div class="mat-head">
+        <div class="mn"><b>${esc(m.nombre)}</b><div class="mat-sub">${sub}</div></div>
+        <div class="mat-acts">
+          <button class="btn sec" style="width:auto;padding:6px 10px;font-size:12px" onclick="matEdit('${m._id}')">✏️</button>
+          <button class="btn danger" style="width:auto;padding:6px 10px;font-size:12px" onclick="eliminarMat('${m._id}','${esc(m.nombre).replace(/'/g,"\\'")}')">🗑️</button>
+        </div>
+      </div>
+      <div class="mat-price"><span class="pv">${eur(m.precio)}</span>${sp}${tb}</div>
+    </div>`;}).join('');}
 async function guardarMat(){const body={nombre:document.getElementById('mf-nombre').value.trim(),unidad:document.getElementById('mf-unidad').value,precio:document.getElementById('mf-precio').value,merma:document.getElementById('mf-merma').value,formato:document.getElementById('mf-formato').value.trim(),contenido:document.getElementById('mf-contenido').value};
   if(!body.nombre){toast('Ponle un nombre al material','warn');return;}
   const b=document.getElementById('mf-save');b.disabled=true;
   try{if(matEditId)await api('PUT','/api/materiales/'+matEditId,body);else await api('POST','/api/materiales',body);
     const dm=await api('GET','/api/materiales');materiales=dm.materiales||[];matNew();renderMatList();renderReceta();toast('Guardado','ok');}
   catch(e){toast(e.message,'error');}finally{b.disabled=false;}}
+async function resetHist(){if(!matEditId)return;if(!confirm('¿Reiniciar el histórico de precio? Deja solo el precio actual (útil tras reconfigurar el material).'))return;
+  const body={nombre:document.getElementById('mf-nombre').value.trim(),unidad:document.getElementById('mf-unidad').value,precio:document.getElementById('mf-precio').value,merma:document.getElementById('mf-merma').value,formato:document.getElementById('mf-formato').value.trim(),contenido:document.getElementById('mf-contenido').value,resetHistorial:true};
+  try{await api('PUT','/api/materiales/'+matEditId,body);const dm=await api('GET','/api/materiales');materiales=dm.materiales||[];const id=matEditId;renderMatList();matEdit(id);toast('Histórico reiniciado','ok');}catch(e){toast(e.message,'error');}}
 async function eliminarMat(id,nombre){if(!confirm('¿Eliminar el material "'+nombre+'"?'))return;
   try{await api('DELETE','/api/materiales/'+id);const dm=await api('GET','/api/materiales');materiales=dm.materiales||[];renderMatList();toast('Eliminado','ok');}catch(e){toast(e.message,'error');}}
 
