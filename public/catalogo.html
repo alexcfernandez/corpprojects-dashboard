@@ -128,7 +128,8 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 <!-- MATERIALES -->
 <div class="overlay" id="ov-mat"><div class="modal">
   <div style="font-weight:700;font-size:17px;margin-bottom:4px">🧱 Materiales</div>
-  <div class="hint" style="margin-bottom:14px">Tu lista de productos con su precio. Luego los usas en la receta de cada partida.</div>
+  <div class="hint" style="margin-bottom:10px">Tu lista de productos con su precio. Luego los usas en la receta de cada partida.</div>
+  <button class="btn sec" style="margin-bottom:14px" onclick="cargarEjemplos()">📦 Cargar set de ejemplo (pladur + pintura · Obramat)</button>
   <div class="field"><label class="fld" id="mat-form-title">Nuevo material</label>
     <input type="text" id="mf-nombre" placeholder="Ej. Placa pladur 13 mm" style="margin-bottom:8px">
     <div class="row3">
@@ -280,6 +281,57 @@ async function guardarMat(){const body={nombre:document.getElementById('mf-nombr
   catch(e){toast(e.message,'error');}finally{b.disabled=false;}}
 async function eliminarMat(id,nombre){if(!confirm('¿Eliminar el material "'+nombre+'"?'))return;
   try{await api('DELETE','/api/materiales/'+id);const dm=await api('GET','/api/materiales');materiales=dm.materiales||[];renderMatList();toast('Eliminado','ok');}catch(e){toast(e.message,'error');}}
+
+// ── SET DE EJEMPLO (materiales reales Obramat + partidas con receta) ──
+// [nombre, unidad, precio €/ud sin IVA, merma %, contenido uds/pieza, formato]
+const SEED_MAT=[
+ ['Placa pladur BA13','m²',2.32,10,3.6,'Placa 3000×1200 (3,6 m²)'],
+ ['Perfil F530','ml',0.59,0,3,'Perfil 3 m'],
+ ['Canal clip perimetral','ml',0.40,0,3,'Perfil 3 m'],
+ ['Cruceta F530','ud',0.244,0,50,'Caja 50 ud'],
+ ['Anclaje directo','ud',0.19,0,0,''],
+ ['Empalme TC47','ud',0.17,0,0,''],
+ ['Taco de golpe 6 mm','ud',0.0263,0,1100,'Caja 1100'],
+ ['Tornillo placa yeso 3,5×35','ud',0.00575,0,1000,'Caja 1000'],
+ ['Tornillo chapa-chapa','ud',0.00516,0,500,'Caja 500'],
+ ['Pasta de juntas 30 min','kg',0.75,5,20,'Saco ~20 kg (precio aprox)'],
+ ['Cinta de papel juntas','ml',0.017,5,150,'Rollo ~150 m (precio aprox)'],
+ ['Pintura plástica blanca mate 15 L','L',2.15,0,15,'Bidón 15 L · rinde ~150 m²/mano'],
+ ['Rodillo microfibra 22 cm','ud',5.00,0,0,'(precio aprox)'],
+ ['Cinta de pintor 48 mm','ud',2.00,0,6,'Lote 6 rollos (aprox)'],
+ ['Cartón ondulado cubre-suelo','m²',0.36,0,45,'Rollo 0,9×50 m (aprox)'],
+ ['Plástico protector','m²',0.10,0,0,'(precio aprox)'],
+];
+// [nombre, capítulo, unidad, receta[[material, consumo/ud, merma%]]]
+const SEED_PART=[
+ ['Techo continuo pladur F530 (doble estructura)','Pladur','m²',[
+   ['Placa pladur BA13',1.0,10],['Perfil F530',3.6,5],['Canal clip perimetral',0.7,0],['Cruceta F530',2.8,0],
+   ['Anclaje directo',1.2,0],['Taco de golpe 6 mm',1.2,0],['Empalme TC47',0.6,0],
+   ['Tornillo placa yeso 3,5×35',17,0],['Tornillo chapa-chapa',4,0],['Pasta de juntas 30 min',0.4,0],['Cinta de papel juntas',1.5,0]]],
+ ['Pintar paredes/techo (2 manos)','Pintura','m²',[
+   ['Pintura plástica blanca mate 15 L',0.2,0],['Rodillo microfibra 22 cm',0.02,0],['Cinta de pintor 48 mm',0.05,0]]],
+ ['Cubrir y proteger zona','Preparación','m²',[
+   ['Cartón ondulado cubre-suelo',1.0,0],['Plástico protector',0.5,0],['Cinta de pintor 48 mm',0.1,0]]],
+];
+async function cargarEjemplos(){
+  if(!confirm('¿Cargar el set de ejemplo? Añade materiales y partidas de pladur/pintura con precios reales de Obramat. No duplica lo que ya exista.'))return;
+  try{
+    let dm=await api('GET','/api/materiales'); let mats=dm.materiales||[];
+    const has=n=>mats.some(m=>String(m.nombre).toLowerCase()===n.toLowerCase());
+    let nm=0;
+    for(const [n,u,p,me,c,f] of SEED_MAT){ if(has(n))continue; await api('POST','/api/materiales',{nombre:n,unidad:u,precio:p,merma:me,contenido:c,formato:f}); nm++; }
+    dm=await api('GET','/api/materiales'); mats=dm.materiales||[]; materiales=mats;
+    const find=n=>mats.find(m=>String(m.nombre).toLowerCase()===n.toLowerCase());
+    const dp=await api('GET','/api/partidas'); const parts=dp.partidas||[]; const pHas=n=>parts.some(p=>String(p.nombre).toLowerCase()===n.toLowerCase());
+    let np=0;
+    for(const [n,cap,u,rec] of SEED_PART){ if(pHas(n))continue;
+      const receta=rec.map(([mn,cons,merma])=>{const m=find(mn);return m?{materialId:String(m._id),nombre:m.nombre,unidad:m.unidad,precio:m.precio,consumo:cons,merma:merma||0}:null;}).filter(Boolean);
+      const coste=receta.reduce((s,r)=>s+r.consumo*(r.precio||0)*(1+(r.merma||0)/100),0);
+      await api('POST','/api/partidas',{nombre:n,capitulo:cap,unidad:u,precioVenta:Math.max(0.01,Math.round(coste*100)/100),receta}); np++; }
+    await cargar(); renderMatList();
+    toast('Cargado: '+nm+' materiales, '+np+' partidas. Revisa los precios de venta.','ok');
+  }catch(e){toast(e.message,'error');}
+}
 
 async function guardar(){
   const body={nombre:document.getElementById('f-nombre').value.trim(),capitulo:document.getElementById('f-capitulo').value.trim(),unidad:document.getElementById('f-unidad').value,precioVenta:document.getElementById('f-venta').value,coste:document.getElementById('f-coste').value,notas:document.getElementById('f-notas').value.trim(),receta:recetaActual};

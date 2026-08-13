@@ -9,12 +9,12 @@ const EMPRESA = process.env.EMPRESA_ID || 'corp';
 // Datos de la empresa que emite el presupuesto (cabecera del PDF).
 // Multi-empresa-ready: se sobreescriben por variables de entorno.
 const DATOS_EMPRESA = {
-  nombre:    process.env.EMPRESA_NOMBRE    || 'Corp Projects Holding SL',
-  cif:       process.env.EMPRESA_CIF       || '',
-  direccion: process.env.EMPRESA_DIRECCION || '',
-  telefono:  process.env.EMPRESA_TELEFONO  || '',
-  email:     process.env.EMPRESA_EMAIL     || '',
-  web:       process.env.EMPRESA_WEB       || '',
+  nombre:    process.env.EMPRESA_NOMBRE    || 'Corp. Projects Holding, S.L.',
+  cif:       process.env.EMPRESA_CIF       || 'B09899253',
+  direccion: process.env.EMPRESA_DIRECCION || 'Carrer Nou 12, 2n 2n B · 17001 Girona',
+  telefono:  process.env.EMPRESA_TELEFONO  || '674 013 723',
+  email:     process.env.EMPRESA_EMAIL     || 'hola@corpprojects.es',
+  web:       process.env.EMPRESA_WEB       || 'corpprojects.es',
 };
 function getEmpresa() { return { ...DATOS_EMPRESA }; }
 
