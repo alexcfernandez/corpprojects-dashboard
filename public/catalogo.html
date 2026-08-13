@@ -136,7 +136,11 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
       <input type="number" id="mf-precio" inputmode="decimal" step="0.01" placeholder="€/ud">
       <input type="number" id="mf-merma" inputmode="numeric" step="1" placeholder="merma %">
     </div>
-    <input type="text" id="mf-formato" placeholder="Cómo se compra (opcional): Placa 1,2×2,5 m…" style="margin-top:8px">
+    <div class="row2" style="margin-top:8px">
+      <input type="text" id="mf-formato" placeholder="Cómo se compra: Placa 1,2×2,5 m…">
+      <input type="number" id="mf-contenido" inputmode="decimal" step="0.01" placeholder="uds/pieza (ej. 3)">
+    </div>
+    <div class="hint">«uds/pieza» = cuántas unidades trae una pieza de compra (una placa = 3 m², un perfil = 3 ml). Sirve para la lista de la compra. Déjalo vacío si se compra por unidad suelta.</div>
     <div class="row2" style="margin-top:8px">
       <button class="btn sec" id="mf-cancel" onclick="matNew()" style="display:none">Cancelar edición</button>
       <button class="btn" id="mf-save" onclick="guardarMat()">Añadir material</button>
@@ -159,6 +163,7 @@ if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catc
 let workerToken=null, esAdmin=false, todosWorkers=[], partidas=[], unidades=[], editId=null;
 let materiales=[], matUnidades=[], recetaActual=[], matEditId=null;
 const numv=v=>{const n=parseFloat(String(v).replace(',','.'));return Number.isFinite(n)?n:0;};
+const fmtn=n=>(Number(n)||0).toLocaleString('es-ES',{maximumFractionDigits:2});
 function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('page-'+id).classList.add('active');}
 let _tt=null;function toast(t,ty){const e=document.getElementById('toast');e.textContent=t;e.className='show '+(ty||'ok');clearTimeout(_tt);_tt=setTimeout(()=>e.className='',3200);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -253,14 +258,14 @@ function addReceta(matId){const m=materiales.find(x=>String(x._id)===String(matI
 // ── MATERIALES (CRUD) ──
 function abrirMat(){matNew();renderMatList();document.getElementById('ov-mat').classList.add('show');}
 function cerrarMat(){document.getElementById('ov-mat').classList.remove('show');}
-function matNew(){matEditId=null;document.getElementById('mat-form-title').textContent='Nuevo material';document.getElementById('mf-cancel').style.display='none';document.getElementById('mf-save').textContent='Añadir material';['mf-nombre','mf-precio','mf-merma','mf-formato'].forEach(i=>document.getElementById(i).value='');document.getElementById('mf-unidad').value=matUnidades[0]||'ud';}
+function matNew(){matEditId=null;document.getElementById('mat-form-title').textContent='Nuevo material';document.getElementById('mf-cancel').style.display='none';document.getElementById('mf-save').textContent='Añadir material';['mf-nombre','mf-precio','mf-merma','mf-formato','mf-contenido'].forEach(i=>document.getElementById(i).value='');document.getElementById('mf-unidad').value=matUnidades[0]||'ud';}
 function matEdit(id){const m=materiales.find(x=>String(x._id)===String(id));if(!m)return;matEditId=id;
   document.getElementById('mat-form-title').textContent='Editar material';document.getElementById('mf-cancel').style.display='block';document.getElementById('mf-save').textContent='Guardar cambios';
-  document.getElementById('mf-nombre').value=m.nombre||'';document.getElementById('mf-unidad').value=m.unidad||'ud';document.getElementById('mf-precio').value=m.precio||'';document.getElementById('mf-merma').value=m.merma||'';document.getElementById('mf-formato').value=m.formato||'';}
+  document.getElementById('mf-nombre').value=m.nombre||'';document.getElementById('mf-unidad').value=m.unidad||'ud';document.getElementById('mf-precio').value=m.precio||'';document.getElementById('mf-merma').value=m.merma||'';document.getElementById('mf-formato').value=m.formato||'';document.getElementById('mf-contenido').value=m.contenido||'';}
 function renderMatList(){const box=document.getElementById('mat-list');
   if(!materiales.length){box.innerHTML='<div class="empty" style="padding:20px">Aún no hay materiales.</div>';return;}
-  box.innerHTML=materiales.map(m=>`<div class="mat-row"><div class="mn"><b>${esc(m.nombre)}</b><br><small>${esc(m.unidad)}${m.merma>0?' · merma '+m.merma+'%':''}${m.formato?' · '+esc(m.formato):''}</small></div><div style="font-weight:700;white-space:nowrap">${eur(m.precio)}</div><button class="btn sec" style="width:auto;padding:6px 10px;font-size:12px" onclick="matEdit('${m._id}')">✏️</button><button class="btn danger" style="width:auto;padding:6px 10px;font-size:12px" onclick="eliminarMat('${m._id}','${esc(m.nombre).replace(/'/g,"\\'")}')">🗑️</button></div>`).join('');}
-async function guardarMat(){const body={nombre:document.getElementById('mf-nombre').value.trim(),unidad:document.getElementById('mf-unidad').value,precio:document.getElementById('mf-precio').value,merma:document.getElementById('mf-merma').value,formato:document.getElementById('mf-formato').value.trim()};
+  box.innerHTML=materiales.map(m=>`<div class="mat-row"><div class="mn"><b>${esc(m.nombre)}</b><br><small>${esc(m.unidad)}${m.merma>0?' · merma '+m.merma+'%':''}${m.contenido>0?' · '+fmtn(m.contenido)+' '+esc(m.unidad)+'/pieza':''}${m.formato?' · '+esc(m.formato):''}</small></div><div style="font-weight:700;white-space:nowrap">${eur(m.precio)}</div><button class="btn sec" style="width:auto;padding:6px 10px;font-size:12px" onclick="matEdit('${m._id}')">✏️</button><button class="btn danger" style="width:auto;padding:6px 10px;font-size:12px" onclick="eliminarMat('${m._id}','${esc(m.nombre).replace(/'/g,"\\'")}')">🗑️</button></div>`).join('');}
+async function guardarMat(){const body={nombre:document.getElementById('mf-nombre').value.trim(),unidad:document.getElementById('mf-unidad').value,precio:document.getElementById('mf-precio').value,merma:document.getElementById('mf-merma').value,formato:document.getElementById('mf-formato').value.trim(),contenido:document.getElementById('mf-contenido').value};
   if(!body.nombre){toast('Ponle un nombre al material','warn');return;}
   const b=document.getElementById('mf-save');b.disabled=true;
   try{if(matEditId)await api('PUT','/api/materiales/'+matEditId,body);else await api('POST','/api/materiales',body);

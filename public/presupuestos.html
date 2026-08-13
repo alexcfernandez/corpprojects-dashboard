@@ -128,7 +128,7 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 
 <!-- DETALLE -->
 <div class="page" id="page-det"><div class="container">
-  <div class="toolbar"><button class="tool-btn" onclick="volver()">← Presupuestos</button><button class="tool-btn danger" onclick="eliminarPres()" id="det-del" style="display:none">Eliminar</button></div>
+  <div class="toolbar"><button class="tool-btn" onclick="volver()">← Presupuestos</button><button class="tool-btn" onclick="verCompra()" id="det-compra" style="display:none">🛒 Compra</button><button class="tool-btn danger" onclick="eliminarPres()" id="det-del" style="display:none">Eliminar</button></div>
   <input type="text" id="d-nombre" class="det-head" placeholder="Nombre del presupuesto" style="width:100%">
   <input type="text" id="d-cliente" autocomplete="off" placeholder="Cliente" style="margin-bottom:10px">
   <div class="iva-head">
@@ -172,6 +172,14 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
   <div style="font-weight:700;font-size:16px;margin-bottom:10px">Añadir partida</div>
   <input type="text" id="pk-search" placeholder="Buscar partida…" oninput="renderPick()" style="margin-bottom:10px">
   <div id="pk-list" style="max-height:56vh;overflow-y:auto"></div>
+</div></div>
+
+<!-- LISTA DE LA COMPRA -->
+<div class="overlay" id="ov-compra"><div class="modal">
+  <div style="font-weight:700;font-size:17px;margin-bottom:4px">🛒 Lista de la compra</div>
+  <div class="hint" style="margin-bottom:12px">Materiales de las partidas del presupuesto, redondeados a piezas enteras.</div>
+  <div id="compra-body"><div class="empty" style="padding:20px"><span class="spinner"></span></div></div>
+  <button class="btn sec" style="margin-top:12px" onclick="cerrar('ov-compra')">Cerrar</button>
 </div></div>
 
 <script src="/cliente-autocomplete.js"></script>
@@ -242,6 +250,7 @@ async function abrirPres(id){
     document.getElementById('d-nombre').value=pres.nombre||'';document.getElementById('d-cliente').value=pres.clientName||'';
     document.getElementById('d-iva').value=String(Number.isFinite(pres.iva)?pres.iva:10);
     document.getElementById('det-del').style.display='block';
+    document.getElementById('det-compra').style.display='block';
     const mt=pres.medicionTotales;const mr=document.getElementById('d-medref');
     if(mt){mr.style.display='block';mr.innerHTML=`📐 Medición: <b>Suelo ${fmt(mt.suelo)}</b> · <b>Paredes ${fmt(mt.paredes)}</b> · <b>Techo ${fmt(mt.techo)}</b> · <b>Pintura ${fmt((mt.paredes||0)+(mt.techo||0))}</b> m² · <b>Rodapié ${fmt(mt.rodapie)}</b> m`;}
     else mr.style.display='none';
@@ -335,10 +344,32 @@ function recompute(){
   document.getElementById('t-ivapct').textContent=tipos.size>1?'(varios)':(g+'%');
   document.getElementById('t-total').textContent=eur(venta+iva);
 }
-async function guardar(){if(!pres)return;
-  try{await api('PUT','/api/presupuestos/'+pres._id,{nombre:document.getElementById('d-nombre').value.trim(),clientName:document.getElementById('d-cliente').value.trim(),iva:ivaGlobal(),lineas:pres.lineas});toast('Guardado','ok');}
-  catch(e){toast(e.message,'error');}}
+async function guardar(silent){if(!pres)return;
+  try{await api('PUT','/api/presupuestos/'+pres._id,{nombre:document.getElementById('d-nombre').value.trim(),clientName:document.getElementById('d-cliente').value.trim(),iva:ivaGlobal(),lineas:pres.lineas});if(!silent)toast('Guardado','ok');}
+  catch(e){toast(e.message,'error');if(silent)throw e;}}
 async function eliminarPres(){if(!pres)return;if(!confirm('¿Eliminar este presupuesto?'))return;try{await api('DELETE','/api/presupuestos/'+pres._id);volver();toast('Eliminado','ok');}catch(e){toast(e.message,'error');}}
+
+// ── LISTA DE LA COMPRA ──
+async function verCompra(){if(!pres)return;
+  abrir('ov-compra');document.getElementById('compra-body').innerHTML='<div class="empty" style="padding:20px"><span class="spinner"></span></div>';
+  try{await guardar(true);const d=await api('GET','/api/presupuestos/'+pres._id+'/materiales');renderCompra(d);}
+  catch(e){document.getElementById('compra-body').innerHTML='<div class="empty" style="padding:20px;color:var(--red)">'+esc(e.message)+'</div>';}}
+function renderCompra(d){
+  const items=d.items||[], sinReceta=d.sinReceta||[];
+  let html='';
+  if(!items.length){html='<div class="empty" style="padding:16px">Ninguna partida con receta todavía. Añade materiales a las partidas en el catálogo (🧱).</div>';}
+  else{
+    html='<div style="display:grid;gap:8px">'+items.map(it=>{
+      const compra=it.piezas!=null?`<b style="color:var(--text)">${it.piezas} ${it.piezas===1?'pieza':'piezas'}</b>${it.formato?' · '+esc(it.formato):''}`:`<b style="color:var(--text)">${fmt(it.unidades)} ${esc(it.unidad)}</b>`;
+      return `<div style="display:flex;justify-content:space-between;gap:10px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px">
+        <div style="min-width:0"><div style="font-weight:600;font-size:14px">${esc(it.nombre)}</div>
+        <div style="font-size:12px;color:var(--text3)">necesitas ${fmt(it.unidades)} ${esc(it.unidad)} → comprar ${compra}</div></div>
+        <div style="text-align:right;white-space:nowrap;font-weight:600">${eur(it.coste)}</div></div>`;}).join('')+'</div>';
+    html+=`<div style="display:flex;justify-content:space-between;margin-top:12px;padding-top:10px;border-top:1px solid var(--border2);font-weight:700"><span>Total materiales</span><span style="color:var(--green)">${eur(d.totalCoste)}</span></div>`;
+  }
+  if(sinReceta.length){html+=`<div class="hint" style="margin-top:12px">⚠️ Sin receta (no cuentan aún): ${sinReceta.map(esc).join(', ')}</div>`;}
+  document.getElementById('compra-body').innerHTML=html;
+}
 
 // ── PICKER PARTIDA ──
 function abrirPicker(){document.getElementById('pk-search').value='';renderPick();abrir('ov-pick');}

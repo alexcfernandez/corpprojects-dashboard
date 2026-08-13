@@ -94,11 +94,12 @@ async function eliminarPartida(id) {
 // con su unidad y precio. Sobre ellos se montan las recetas de las partidas.
 function limpiarMaterial(data) {
   return {
-    nombre:  String(data.nombre || '').trim(),
-    unidad:  MAT_UNIDADES.includes(data.unidad) ? data.unidad : 'ud',
-    precio:  Math.round(num(data.precio) * 100) / 100,     // € por unidad
-    merma:   Math.max(0, num(data.merma)),                 // % desperdicio por defecto
-    formato: String(data.formato || '').trim(),            // opcional: "Placa 1,2×2,5 m", "Perfil 3 m"
+    nombre:   String(data.nombre || '').trim(),
+    unidad:   MAT_UNIDADES.includes(data.unidad) ? data.unidad : 'ud',
+    precio:   Math.round(num(data.precio) * 100) / 100,     // € por unidad
+    merma:    Math.max(0, num(data.merma)),                 // % desperdicio por defecto
+    formato:  String(data.formato || '').trim(),            // opcional: "Placa 1,2×2,5 m", "Perfil 3 m"
+    contenido: Math.max(0, num(data.contenido)),            // unidades por pieza de compra (3 m²/placa); 0 = sin redondeo (1)
   };
 }
 
@@ -231,8 +232,64 @@ async function eliminarPresupuesto(id) {
   return { ok: true };
 }
 
+// ── LISTA DE LA COMPRA ───────────────────────────────────────────
+// Agrega los materiales de todas las partidas (con receta) de un presupuesto,
+// multiplicando consumo × cantidad × (1+merma%), suma por material y redondea
+// a PIEZAS enteras según el contenido de compra (placa de 3 m² → nº de placas).
+async function listaMateriales(id) {
+  const db = await getDB();
+  const p = await db.collection('presupuestos').findOne({ _id: new ObjectId(id), empresaId: EMPRESA });
+  if (!p) throw new Error('Presupuesto no encontrado');
+
+  const partidaIds = [...new Set((p.lineas || []).filter(l => l.partidaId && ObjectId.isValid(l.partidaId)).map(l => String(l.partidaId)))];
+  const partidas = partidaIds.length
+    ? await db.collection('partidas').find({ _id: { $in: partidaIds.map(x => new ObjectId(x)) }, empresaId: EMPRESA }).toArray()
+    : [];
+  const pById = new Map(partidas.map(x => [String(x._id), x]));
+
+  const acc = new Map();      // clave = materialId || 'n:'+nombre
+  const sinReceta = [];       // partidas sin receta (no se pueden desglosar)
+  for (const l of (p.lineas || [])) {
+    if ((l.tipo || 'partida') === 'seccion') continue;
+    const cant = num(l.cantidad);
+    if (cant <= 0) continue;
+    if (!l.partidaId) { if (l.tipo === 'libre') sinReceta.push(l.nombre || 'Línea libre'); continue; }
+    const part = pById.get(String(l.partidaId));
+    if (!part || !(part.receta || []).length) { sinReceta.push(l.nombre || (part && part.nombre) || 'Partida'); continue; }
+    for (const r of part.receta) {
+      const units = cant * num(r.consumo) * (1 + (num(r.merma) || 0) / 100);
+      const key = r.materialId ? ('id:' + r.materialId) : ('n:' + r.nombre);
+      const cur = acc.get(key) || { materialId: r.materialId || null, nombre: r.nombre, unidad: r.unidad, precio: Number(r.precio) || 0, unidades: 0 };
+      cur.unidades += units;
+      acc.set(key, cur);
+    }
+  }
+
+  // enriquecer con datos ACTUALES del material (precio, contenido, formato)
+  const matIds = [...acc.values()].filter(m => m.materialId && ObjectId.isValid(m.materialId)).map(m => m.materialId);
+  const mats = matIds.length
+    ? await db.collection('materiales').find({ _id: { $in: matIds.map(x => new ObjectId(x)) }, empresaId: EMPRESA }).toArray()
+    : [];
+  const matById = new Map(mats.map(m => [String(m._id), m]));
+
+  const items = [...acc.values()].map(m => {
+    const mat = m.materialId ? matById.get(String(m.materialId)) : null;
+    const precio = mat ? Number(mat.precio) || 0 : m.precio;
+    const contenido = mat && num(mat.contenido) > 0 ? num(mat.contenido) : 0;
+    const formato = mat ? (mat.formato || '') : '';
+    const unidad = mat ? mat.unidad : m.unidad;
+    const unidades = Math.round(m.unidades * 100) / 100;
+    const piezas = contenido > 0 ? Math.ceil(unidades / contenido - 1e-9) : null;
+    const coste = Math.round((piezas != null ? piezas * contenido : unidades) * precio * 100) / 100;
+    return { nombre: m.nombre, unidad, unidades, contenido: contenido || null, formato, piezas, precio, coste };
+  }).sort((a, b) => b.coste - a.coste);
+
+  const totalCoste = Math.round(items.reduce((s, i) => s + i.coste, 0) * 100) / 100;
+  return { items, totalCoste, sinReceta };
+}
+
 module.exports = {
-  UNIDADES, MAT_UNIDADES,
+  UNIDADES, MAT_UNIDADES, listaMateriales,
   getPartidas, crearPartida, editarPartida, eliminarPartida,
   getMateriales, crearMaterial, editarMaterial, eliminarMaterial,
   getPresupuestos, getPresupuesto, crearPresupuesto, guardarPresupuesto, eliminarPresupuesto,

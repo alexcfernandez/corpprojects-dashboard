@@ -1732,6 +1732,10 @@ app.get('/api/presupuestos/:id', requireAuthOficina, async (req, res) => {
   try { res.json(await presupuestos.getPresupuesto(req.params.id)); }
   catch (err) { res.status(404).json({ error: err.message }); }
 });
+app.get('/api/presupuestos/:id/materiales', requireAuthOficina, async (req, res) => {
+  try { res.json(await presupuestos.listaMateriales(req.params.id)); }
+  catch (err) { res.status(404).json({ error: err.message }); }
+});
 app.post('/api/presupuestos', requireAuthOficina, async (req, res) => {
   try {
     const by = req.oficina?.workerName || (req.oficina?.admin ? 'admin' : 'oficina');
