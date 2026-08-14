@@ -255,6 +255,7 @@
               <div style="font-size:11px;color:${ROLE_COLORS[r]}">${ROLE_LABELS[r]||r} ${ROLES_PASSWORD.includes(r)?(u.hasPassword?'· <span style="color:var(--green)">🔑 con contraseña</span>':'· <span style="color:var(--amber)">⚠️ sin contraseña</span>'):''}</div>
               ${u.notes?`<div style="font-size:11px;color:var(--text3);margin-top:2px">${u.notes}</div>`:''}
               ${u.lastLogin?`<div style="font-size:10px;color:var(--text3)">Último acceso: ${new Date(u.lastLogin).toLocaleDateString('es-ES')}</div>`:''}
+              ${ROLES_FIELD.includes(r)?(u.gpsConsentAt?`<div style="font-size:10px;color:var(--green)">📍 Consentimiento GPS firmado el ${new Date(u.gpsConsentAt).toLocaleDateString('es-ES')}</div>`:`<div style="font-size:10px;color:var(--amber)">📍 GPS sin firmar</div>`):''}
             </div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;flex-shrink:0">
               ${ROLES_FIELD.includes(r)?`<button class="btn bgh" style="padding:5px 10px;font-size:11px" onclick="enlaceMagico('${u._id}','${String(u.name).replace(/'/g,"\\'")}')">🔗 Acceso</button>`:''}

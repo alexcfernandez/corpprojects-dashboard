@@ -292,6 +292,27 @@ async function getUserByMagicToken(token) {
   return db.collection('users').findOne({ magicToken: String(token), active: true });
 }
 
+// ── CONSENTIMIENTO GPS (RGPD + Estatuto de los Trabajadores) ──────
+// Sube la versión si cambia el texto → obliga a volver a consentir.
+const GPS_CONSENT_VERSION = 1;
+function hasGpsConsent(u) {
+  return !!(u && u.gpsConsent && Number(u.gpsConsent.version || 0) >= GPS_CONSENT_VERSION);
+}
+async function setGpsConsent(id, { signature, version } = {}) {
+  const db = await getDB();
+  await db.collection('users').updateOne(
+    { _id: new ObjectId(id) },
+    { $set: { gpsConsent: { acceptedAt: new Date(), version: Number(version) || GPS_CONSENT_VERSION, signature: signature || null }, updatedAt: new Date() } }
+  );
+  return { ok: true };
+}
+async function userHasGpsConsent(id) {
+  if (!id || !/^[a-f0-9]{24}$/i.test(String(id))) return false; // id no-ObjectId → sin consentimiento
+  const db = await getDB();
+  const u = await db.collection('users').findOne({ _id: new ObjectId(id) }, { projection: { gpsConsent: 1 } });
+  return hasGpsConsent(u);
+}
+
 module.exports = {
   ROLES, ROLE_CAPS, ROLE_LABEL, ROLES_PASSWORD, normalizeRole, can, canSeeMoney,
   initDefaultUsers,
@@ -299,4 +320,5 @@ module.exports = {
   loginWithPin, verifyUserToken, logout, hasPermission,
   ensureMagicToken, getUserByMagicToken,
   setUserPassword, loginWithPassword,
+  GPS_CONSENT_VERSION, hasGpsConsent, setGpsConsent, userHasGpsConsent,
 };

@@ -1134,7 +1134,22 @@ app.get('/api/fichaje/estado', async (req, res) => {
 });
 app.post('/api/fichaje/fichar', async (req, res) => {
   try { const w = await _worker(req, res); if (!w) return;
-    res.json(await require('./fichajes').fichar(w.workerId, w.workerName, (req.body || {}).loc)); }
+    // Sin consentimiento GPS firmado NO se guarda la ubicación (RGPD).
+    const consentido = await users.userHasGpsConsent(w.workerId);
+    const loc = consentido ? (req.body || {}).loc : null;
+    res.json(await require('./fichajes').fichar(w.workerId, w.workerName, loc)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+// Consentimiento GPS del trabajador (leer estado / firmar).
+app.get('/api/fichaje/consent', async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return;
+    res.json({ consentido: await users.userHasGpsConsent(w.workerId), version: users.GPS_CONSENT_VERSION }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/fichaje/consent', async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return;
+    await users.setGpsConsent(w.workerId, { signature: (req.body || {}).signature });
+    res.json({ ok: true }); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.get('/api/fichaje/mios', async (req, res) => {
@@ -1525,7 +1540,7 @@ app.get('/api/users/me', async (req, res) => {
 app.get('/api/users', requireAuth, async (req, res) => {
   try {
     const list = await users.getUsers(true);
-    res.json(list.map(u => { const { passwordHash, ...rest } = u; return { ...rest, pin: '••••', hasPassword: !!passwordHash }; }));
+    res.json(list.map(u => { const { passwordHash, gpsConsent, ...rest } = u; return { ...rest, pin: '••••', hasPassword: !!passwordHash, gpsConsentAt: (gpsConsent && gpsConsent.acceptedAt) || null }; }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -2081,6 +2096,13 @@ app.post('/api/partes', uploadMemory.any(), async (req, res) => {
     bodyData.fotosTrabajo = fotosTrabajo;
     bodyData.fotosAlbaran = fotosAlbaran;
 
+    // RGPD: sin consentimiento GPS firmado, no se guarda la ubicación del parte.
+    try {
+      if (/^[a-f0-9]{24}$/i.test(String(workerInfo.workerId)) && !(await users.userHasGpsConsent(workerInfo.workerId))) {
+        bodyData.gpsLat = null; bodyData.gpsLng = null; bodyData.gpsAccuracy = null;
+      }
+    } catch (e) { /* ante duda, no bloquear el parte */ }
+
     const parte = await partes.createParte(bodyData, workerInfo);
 
     // Cierre del ciclo pedido→parte (3C)
@@ -2323,6 +2345,13 @@ app.post('/api/partes/confirmar', uploadMemory.any(), async (req, res) => {
     }
     bodyData.fotosTrabajo = fotosTrabajo;
     bodyData.fotosAlbaran = fotosAlbaran;
+
+    // RGPD: sin consentimiento GPS firmado, no se guarda la ubicación del parte.
+    try {
+      if (/^[a-f0-9]{24}$/i.test(String(workerInfo.workerId)) && !(await users.userHasGpsConsent(workerInfo.workerId))) {
+        bodyData.gpsLat = null; bodyData.gpsLng = null; bodyData.gpsAccuracy = null;
+      }
+    } catch (e) { /* ante duda, no bloquear el parte */ }
 
     const parte = await partes.createParte(bodyData, workerInfo);
 
