@@ -45,19 +45,29 @@ async function estadoActual(userId, fecha) {
   return estadoDe(doc || { fecha: f });
 }
 
+// Normaliza la ubicación recibida del móvil a {lat,lng,acc} o null.
+function limpiarLoc(loc) {
+  if (!loc) return null;
+  const lat = Number(loc.lat), lng = Number(loc.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return { lat, lng, acc: Number(loc.acc) || null };
+}
+
 // Alterna entrada/salida. Devuelve la acción y el nuevo estado.
-async function fichar(userId, userName) {
+// loc = ubicación GPS opcional del momento de fichar {lat,lng,acc}.
+async function fichar(userId, userName, loc) {
   const db = await getDB();
   const fecha = fechaHoy();
   const now = new Date();
+  const ubi = limpiarLoc(loc);
   const doc = await db.collection('fichajes').findOne({ empresaId: EMPRESA, userId: String(userId), fecha });
   const tramos = (doc && Array.isArray(doc.tramos)) ? doc.tramos : [];
   const ultimo = tramos[tramos.length - 1];
   const abierto = !!(ultimo && !ultimo.salida);
 
   let accion;
-  if (abierto) { ultimo.salida = now; accion = 'salida'; }
-  else { tramos.push({ entrada: now, salida: null }); accion = 'entrada'; }
+  if (abierto) { ultimo.salida = now; ultimo.salidaLoc = ubi; accion = 'salida'; }
+  else { tramos.push({ entrada: now, salida: null, entradaLoc: ubi }); accion = 'entrada'; }
 
   await db.collection('fichajes').updateOne(
     { empresaId: EMPRESA, userId: String(userId), fecha },

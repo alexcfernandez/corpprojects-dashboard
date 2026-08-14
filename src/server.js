@@ -1134,7 +1134,7 @@ app.get('/api/fichaje/estado', async (req, res) => {
 });
 app.post('/api/fichaje/fichar', async (req, res) => {
   try { const w = await _worker(req, res); if (!w) return;
-    res.json(await require('./fichajes').fichar(w.workerId, w.workerName)); }
+    res.json(await require('./fichajes').fichar(w.workerId, w.workerName, (req.body || {}).loc)); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.get('/api/fichaje/mios', async (req, res) => {
@@ -1145,6 +1145,43 @@ app.get('/api/fichaje/mios', async (req, res) => {
 app.get('/api/fichaje/dia', requireAuth, async (req, res) => {
   try { res.json(await require('./fichajes').getFichajesDia(req.query.fecha)); }
   catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── MAPA GPS ── puntos del día = sellos de los partes + entradas/salidas de
+// fichaje que tengan ubicación. Datos sensibles (control de personal): solo
+// Dueño/Oficina.
+app.get('/api/gps/dia', requireAuth, async (req, res) => {
+  const role = users.normalizeRole(req.user?.role || 'owner');
+  if (role !== 'owner' && role !== 'oficina') return res.status(403).json({ error: 'Sin acceso al mapa GPS' });
+  try {
+    const fecha = req.query.fecha || new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
+    const puntos = [];
+    const workers = {};
+    const addW = (id, name) => { if (id) workers[String(id)] = name || workers[String(id)] || ''; };
+
+    // Partes con GPS de ese día
+    const { partes } = await require('./partes').getPartes({ from: fecha, to: fecha, limit: 500 });
+    for (const p of (partes || [])) {
+      if (Number.isFinite(Number(p.gpsLat)) && Number.isFinite(Number(p.gpsLng))) {
+        addW(p.workerId, p.workerName);
+        puntos.push({ tipo: 'parte', lat: Number(p.gpsLat), lng: Number(p.gpsLng), acc: p.gpsAccuracy || null,
+          hora: (p._meta && p._meta.submittedAt) || p.updatedAt || null,
+          quienId: String(p.workerId || ''), quien: p.workerName || '', etiqueta: p.clientName || (p.description || '').slice(0, 40) });
+      }
+    }
+    // Fichajes con GPS de ese día (entrada/salida de cada tramo)
+    const fichs = await require('./fichajes').getFichajesDia(fecha);
+    for (const f of (fichs || [])) {
+      addW(f.userId, f.userName);
+      for (const t of (f.tramos || [])) {
+        if (t.entradaLoc) puntos.push({ tipo: 'entrada', lat: t.entradaLoc.lat, lng: t.entradaLoc.lng, acc: t.entradaLoc.acc || null,
+          hora: t.entrada || null, quienId: String(f.userId || ''), quien: f.userName || '', etiqueta: 'Fichó entrada' });
+        if (t.salidaLoc)  puntos.push({ tipo: 'salida',  lat: t.salidaLoc.lat,  lng: t.salidaLoc.lng,  acc: t.salidaLoc.acc || null,
+          hora: t.salida || null,  quienId: String(f.userId || ''), quien: f.userName || '', etiqueta: 'Fichó salida' });
+      }
+    }
+    res.json({ fecha, puntos, workers: Object.entries(workers).map(([id, name]) => ({ id, name })) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 // Enlace mágico: canjea el token del trabajador por una sesión (sin PIN).
 app.post('/api/fichaje/magic-login', async (req, res) => {
@@ -2806,6 +2843,7 @@ app.get('/informe-presencia', (req, res) => res.sendFile(path.join(__dirname, '.
 app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
 app.get('/fichar', (req, res) => res.sendFile(path.join(__dirname, '../public/fichar.html')));
 app.get('/fichajes', (req, res) => res.sendFile(path.join(__dirname, '../public/fichajes.html')));
+app.get('/gps', (req, res) => res.sendFile(path.join(__dirname, '../public/gps.html')));
 app.get('/subir-factura', (req, res) => res.sendFile(path.join(__dirname, '../public/subir-factura.html')));
 app.get('/asignar-facturas', (req, res) => res.sendFile(path.join(__dirname, '../public/asignar-facturas.html')));
 app.get('/activos', (req, res) => res.sendFile(path.join(__dirname, '../public/activos.html')));
