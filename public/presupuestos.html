@@ -44,6 +44,7 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 .card-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .card-nm{font-weight:600;font-size:15px}.card-cli{font-size:13px;color:var(--text3);margin-top:2px}
 .card-tot{font-size:13px;color:var(--text2);margin-top:6px;font-variant-numeric:tabular-nums}
+.card-por{font-size:11px;color:var(--text3);margin-top:4px}
 .badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;border-radius:20px;background:var(--bg3);color:var(--text3)}
 .empty{text-align:center;color:var(--text3);font-size:14px;padding:40px 20px}
 /* detalle */
@@ -277,6 +278,7 @@ function renderLista(){
     <div class="card-top"><div class="card-nm">${esc(p.nombre)}</div>${estadoBadge(p.estado||'borrador')}</div>
     ${p.clientName?`<div class="card-cli">${esc(p.clientName)}</div>`:''}
     <div class="card-tot">${p.nLineas} partida(s) · <b style="color:var(--green)">${eur(p.totalVenta)}</b>${p.margen?` · margen ${p.margen}%`:''}</div>
+    ${p.creadoPor?`<div class="card-por">👤 Creado por ${esc(p.creadoPor)}</div>`:''}
   </div>`).join('');
 }
 function volver(){pres=null;cargar();showPage('list');}

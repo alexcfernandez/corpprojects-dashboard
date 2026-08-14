@@ -270,4 +270,23 @@ async function getLog({ type, limit = 200 } = {}) {
   return db.collection('activityLog').find(q).sort({ at: -1 }).limit(Math.min(limit, 500)).toArray();
 }
 
-module.exports = { scan, getLog, scanType, reset };
+// ── REGISTRO INTERNO (quién del equipo hizo qué) ────────────────────────────
+// Escribe en la MISMA colección activityLog con source:'equipo' + el autor.
+// Nunca lanza: el log no debe romper la acción principal.
+async function registrar({ actor, actorRole, kind, entidad, ref, detalle, changes } = {}) {
+  try {
+    const db = await getDB();
+    await db.collection('activityLog').insertOne({
+      source:   'equipo',
+      actor:    actor || 'Sistema',
+      actorRole: actorRole || '',
+      kind:     kind || 'modificado',      // creado | modificado | borrado | acceso
+      label:    entidad || '',
+      ref:      ref || '',
+      changes:  changes || (detalle ? [{ campo: '', antes: '', despues: detalle }] : []),
+      at:       new Date(),
+    });
+  } catch (e) { console.warn('[Activity] registrar() falló (ignorado):', e.message); }
+}
+
+module.exports = { scan, getLog, scanType, reset, registrar };

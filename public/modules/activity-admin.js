@@ -4,7 +4,7 @@
   const tok = () => localStorage.getItem('cp_token');
   const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-  let _cid=null, _items=[], _filtro='';
+  let _cid=null, _items=[], _filtro='', _fsource='';
 
   async function api(path, opts={}){
     const r = await fetch(`${API}${path}`,{...opts,headers:{'Authorization':`Bearer ${tok()}`,'Content-Type':'application/json',...(opts.headers||{})}});
@@ -12,8 +12,8 @@
     return r.json();
   }
 
-  const ICON = { creado:'🟢', modificado:'🔵', borrado:'🔴' };
-  const KIND = { creado:'Creado', modificado:'Modificado', borrado:'Borrado' };
+  const ICON = { creado:'🟢', modificado:'🔵', borrado:'🔴', acceso:'🔑' };
+  const KIND = { creado:'Creado', modificado:'Modificado', borrado:'Borrado', acceso:'Acceso' };
 
   function fecha(at){
     try{ return new Date(at).toLocaleString('es-ES',{timeZone:'Europe/Madrid',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }
@@ -33,35 +33,43 @@
 
   function _draw(){
     const el = document.getElementById(_cid); if(!el) return;
-    const lista = _filtro ? _items.filter(i=>i.kind===_filtro) : _items;
+    const lista = _items.filter(i =>
+      (!_filtro  || i.kind===_filtro) &&
+      (!_fsource || (i.source||'stel')===_fsource)
+    );
 
     const filas = lista.map(it=>{
+      const equipo = (it.source==='equipo');
       const cambios = (it.changes||[]).map(c=>{
         const flecha = (c.antes && c.antes!=='—') ? `${esc(c.antes)} → ${esc(c.despues)}` : esc(c.despues);
-        return `<div style="font-size:12px;color:var(--text2)"><span style="color:var(--text3)">${esc(c.campo)}:</span> ${flecha}</div>`;
+        return `<div style="font-size:12px;color:var(--text2)">${c.campo?`<span style="color:var(--text3)">${esc(c.campo)}:</span> `:''}${flecha}</div>`;
       }).join('');
+      const quien = equipo && it.actor ? `<span style="color:var(--blue)">👤 ${esc(it.actor)}</span> · ` : '';
       return `<div style="display:flex;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border2)">
         <div style="font-size:15px">${ICON[it.kind]||'•'}</div>
         <div style="flex:1;min-width:0">
           <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
-            <strong style="font-size:13px">${esc(it.label||'')} ${esc(it.ref||'')}</strong>
-            <span style="font-size:11px;color:var(--text3)">${KIND[it.kind]||it.kind} · ${fecha(it.at)}</span>
+            <strong style="font-size:13px">${equipo?'':'🏢 '}${esc(it.label||'')} ${esc(it.ref||'')}</strong>
+            <span style="font-size:11px;color:var(--text3)">${quien}${KIND[it.kind]||it.kind} · ${fecha(it.at)}</span>
           </div>
           ${cambios}
         </div>
       </div>`;
-    }).join('') || '<div style="text-align:center;padding:40px;color:var(--text3)">Sin actividad registrada todavía. En cuanto se mueva algo en StelOrder, aparecerá aquí.</div>';
+    }).join('') || '<div style="text-align:center;padding:40px;color:var(--text3)">Sin actividad registrada todavía.</div>';
 
     const btnFiltro = (val,txt)=>`<button class="btn ${_filtro===val?'bp':'bgh'}" style="padding:5px 10px;font-size:12px" onclick="CP.Actividad.filtrar('${val}')">${txt}</button>`;
+    const btnFuente = (val,txt)=>`<button class="btn ${_fsource===val?'bp':'bgh'}" style="padding:5px 10px;font-size:12px" onclick="CP.Actividad.fuente('${val}')">${txt}</button>`;
 
     el.innerHTML = `
-      <div class="alert ain" style="margin-bottom:16px"><div>📜</div><div><strong>Actividad de StelOrder</strong> — registro de lo que se crea, cambia o cierra en la oficina. Se actualiza cada 15 min; pulsa "Escanear ahora" para verlo al momento.</div></div>
+      <div class="alert ain" style="margin-bottom:16px"><div>📜</div><div><strong>Registro de actividad</strong> — <strong>👥 Equipo</strong>: quién de los tuyos crea/edita presupuestos, gestiona usuarios o entra. <strong>🏢 StelOrder</strong>: lo que se crea o cambia en la oficina (cada 15 min).</div></div>
       <div class="card">
         <div class="card-title">
-          Últimos cambios
+          Últimos movimientos
           <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-            ${btnFiltro('','Todos')}${btnFiltro('creado','🟢 Creados')}${btnFiltro('modificado','🔵 Modificados')}${btnFiltro('borrado','🔴 Borrados')}
-            <button class="btn bp" style="padding:6px 12px;font-size:12px" onclick="CP.Actividad.escanear(this)">🔄 Escanear ahora</button>
+            ${btnFuente('','Todo')}${btnFuente('equipo','👥 Equipo')}${btnFuente('stel','🏢 StelOrder')}
+            <span style="width:1px;height:20px;background:var(--border2)"></span>
+            ${btnFiltro('','Todos')}${btnFiltro('creado','🟢')}${btnFiltro('modificado','🔵')}${btnFiltro('borrado','🔴')}
+            <button class="btn bp" style="padding:6px 12px;font-size:12px" onclick="CP.Actividad.escanear(this)">🔄 Escanear</button>
             <button class="btn bgh" style="padding:6px 12px;font-size:12px" onclick="CP.Actividad.reiniciar(this)">🗑 Reiniciar</button>
           </div>
         </div>
@@ -72,6 +80,7 @@
   const Actividad = {
     render,
     filtrar(v){ _filtro=v; _draw(); },
+    fuente(v){ _fsource=v; _draw(); },
     async escanear(btn){
       const old = btn ? btn.textContent : '';
       if(btn){ btn.disabled=true; btn.textContent='Escaneando…'; }

@@ -137,6 +137,13 @@ app.use(['/api/presupuestos', '/api/partidas', '/api/materiales', '/api/facturas
   next();
 });
 
+// Identidad del que hace la petición, para el registro de actividad.
+function actorDe(req) {
+  if (req.oficina) return { name: req.oficina.name || req.oficina.workerName || 'Oficina', role: req.oficina.role || '' };
+  if (req.user)    return { name: req.user.name || 'Dueño', role: req.user.role || 'owner' };
+  return { name: 'Sistema', role: '' };
+}
+
 // ─────────────────────────────────────────────────────────────
 // WhatsApp (Twilio) — asistente personal. Ruta PÚBLICA (Twilio no envía token).
 // Responde de forma ASÍNCRONA por la API de Twilio para no agotar el tiempo
@@ -522,6 +529,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     const { login, password } = req.body || {};
     const id = await users.loginWithPassword(login, password);
     const token = jwt.sign({ uid: id.uid, name: id.name, role: id.role }, JWT_SECRET, { expiresIn:'24h' });
+    activity.registrar({ actor: id.name, actorRole: id.role, kind: 'acceso', entidad: 'Acceso', detalle: 'Entró con su cuenta' });
     res.json({ token, expiresIn:'24h', name: id.name, role: id.role });
   } catch (err) { res.status(401).json({ error: err.message }); }
 });
@@ -1466,6 +1474,8 @@ app.get('/api/users/:id', requireAuth, async (req, res) => {
 app.post('/api/users', requireAuth, async (req, res) => {
   try {
     const user = await users.createUser(req.body);
+    const a = actorDe(req);
+    activity.registrar({ actor: a.name, actorRole: a.role, kind: 'creado', entidad: 'Usuario', ref: req.body?.name || '', detalle: 'Rol: ' + (users.ROLE_LABEL[users.normalizeRole(req.body?.role)] || '') });
     res.json({ ok: true, user });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -1475,6 +1485,9 @@ app.post('/api/users', requireAuth, async (req, res) => {
 app.put('/api/users/:id', requireAuth, async (req, res) => {
   try {
     await users.updateUser(req.params.id, req.body);
+    const a = actorDe(req);
+    const det = req.body?.password ? 'Cambió la contraseña' : (req.body?.active === true ? 'Reactivado' : 'Datos actualizados');
+    activity.registrar({ actor: a.name, actorRole: a.role, kind: 'modificado', entidad: 'Usuario', ref: req.body?.name || req.params.id, detalle: det });
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -1484,6 +1497,8 @@ app.put('/api/users/:id', requireAuth, async (req, res) => {
 app.delete('/api/users/:id', requireAuth, async (req, res) => {
   try {
     await users.deactivateUser(req.params.id);
+    const a = actorDe(req);
+    activity.registrar({ actor: a.name, actorRole: a.role, kind: 'borrado', entidad: 'Usuario', ref: req.params.id, detalle: 'Desactivado' });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1846,14 +1861,22 @@ app.get('/api/presupuestos/:id/materiales', requireAuthOficina, async (req, res)
   catch (err) { res.status(404).json({ error: err.message }); }
 });
 app.put('/api/presupuestos/:id/estado', requireAuthOficina, async (req, res) => {
-  try { res.json(await presupuestos.setEstado(req.params.id, (req.body || {}).estado)); }
+  try {
+    const estado = (req.body || {}).estado;
+    const r = await presupuestos.setEstado(req.params.id, estado);
+    const a = actorDe(req);
+    activity.registrar({ actor: a.name, actorRole: a.role, kind: 'modificado', entidad: 'Presupuesto', ref: req.params.id, detalle: 'Estado → ' + estado });
+    res.json(r);
+  }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.get('/api/empresa', requireAuthOficina, (req, res) => res.json(presupuestos.getEmpresa()));
 app.post('/api/presupuestos', requireAuthOficina, async (req, res) => {
   try {
     const by = req.oficina?.name || req.oficina?.workerName || 'Oficina';
-    res.json(await presupuestos.crearPresupuesto(req.body || {}, by));
+    const nuevo = await presupuestos.crearPresupuesto(req.body || {}, by);
+    activity.registrar({ actor: by, actorRole: req.oficina?.role, kind: 'creado', entidad: 'Presupuesto', ref: (req.body && req.body.nombre) || nuevo.numero || '' });
+    res.json(nuevo);
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.put('/api/presupuestos/:id', requireAuthOficina, async (req, res) => {
@@ -1861,7 +1884,12 @@ app.put('/api/presupuestos/:id', requireAuthOficina, async (req, res) => {
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.delete('/api/presupuestos/:id', requireAuthOficina, async (req, res) => {
-  try { res.json(await presupuestos.eliminarPresupuesto(req.params.id)); }
+  try {
+    const r = await presupuestos.eliminarPresupuesto(req.params.id);
+    const a = actorDe(req);
+    activity.registrar({ actor: a.name, actorRole: a.role, kind: 'borrado', entidad: 'Presupuesto', ref: req.params.id });
+    res.json(r);
+  }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 
