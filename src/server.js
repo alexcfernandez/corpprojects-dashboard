@@ -1038,6 +1038,16 @@ app.post('/api/workorders/:id/finish', async (req, res) => {
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
+// Normaliza un teléfono a E.164 (+34 si es un móvil español de 9 dígitos).
+function normalizarTelE164(t) {
+  let s = String(t || '').replace(/[\s().-]/g, '');
+  if (!s) return s;
+  if (s.startsWith('+')) return s;
+  if (s.startsWith('00')) return '+' + s.slice(2);
+  if (/^\d{9}$/.test(s)) return '+34' + s;
+  return s;
+}
+
 // ── FICHAJE (registro de jornada del trabajador) ──
 async function _worker(req, res) {
   const token = req.headers.authorization?.replace('Bearer ', '');
@@ -1462,7 +1472,10 @@ app.post('/api/users/:id/magic-link', requireAuth, async (req, res) => {
     const enviar = req.body && req.body.enviar;
     if (enviar === 'whatsapp') {
       if (!user.telefono) return res.status(400).json({ error: 'Este trabajador no tiene teléfono en su ficha', url });
-      await require('./notifications').sendWhatsAppTo(user.telefono, msg); sent = 'whatsapp';
+      const tel = normalizarTelE164(user.telefono);
+      const ok = await require('./notifications').sendWhatsAppTo(tel, msg);
+      if (!ok) return res.status(502).json({ error: 'WhatsApp no disponible (canal sin conectar, o Meta exige plantilla para mensajes en frío). Usa el email o copia el enlace.', url });
+      sent = 'whatsapp';
     } else if (enviar === 'email') {
       if (!user.email) return res.status(400).json({ error: 'Este trabajador no tiene email en su ficha', url });
       await require('./notifications').sendEmail({ to: user.email, subject: 'Tu acceso a la app de Corp Projects', text: msg, html: `<p>Hola ${nombre},</p><p>Este es tu acceso a la app de Corp Projects para <b>fichar</b> tu jornada y mandar partes. Ábrelo en el móvil y añádelo a la pantalla de inicio:</p><p><a href="${url}">${url}</a></p>` }); sent = 'email';
