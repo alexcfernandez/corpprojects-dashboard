@@ -173,7 +173,7 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 <!-- BARRA TOTALES -->
 <div class="totbar" id="totbar" style="display:none"><div class="totbar-in">
   <div style="flex:1;min-width:0">
-    <div class="totals-mini">Base <b id="t-venta">0 €</b><span id="t-desc-wrap" style="display:none"> · Desc <b id="t-desc" style="color:var(--amber)">0 €</b></span> · Coste <b id="t-coste">0 €</b> · Margen <b id="t-margen">0%</b></div>
+    <div class="totals-mini">Base <b id="t-venta">0 €</b><span id="t-desc-wrap" style="display:none"> · Desc <b id="t-desc" style="color:var(--amber)">0 €</b></span><span id="t-costewrap"> · Coste <b id="t-coste">0 €</b> · Margen <b id="t-margen">0%</b></span></div>
     <div class="totals-main">+ IVA <span id="t-ivapct">10%</span> <b id="t-iva">0 €</b> &nbsp;·&nbsp; Total <b id="t-total" class="big">0 €</b></div>
   </div>
   <button class="savebtn" onclick="guardar()">Guardar</button>
@@ -222,6 +222,10 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 <script>
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
 let workerToken=null, esAdmin=false, todosWorkers=[], lista=[], pres=null, catalogo=[], mediciones=[], empresa=null;
+// ¿Puede ver dinero (coste/margen/lista de compra)? Solo Dueño/Oficina. El
+// Encargado hace presupuestos pero solo ve el precio de venta. (El servidor ya
+// no le manda el coste; esto solo limpia la interfaz.)
+const VE_DINERO=(()=>{try{const r=(JSON.parse(localStorage.getItem('cp_user')||'{}').role)||'owner';return r==='owner'||r==='oficina';}catch(e){return true;}})();
 function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('page-'+id).classList.add('active');document.getElementById('totbar').style.display=id==='det'?'block':'none';}
 let _tt=null;function toast(t,ty){const e=document.getElementById('toast');e.textContent=t;e.className='show '+(ty||'ok');clearTimeout(_tt);_tt=setTimeout(()=>e.className='',3200);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -306,7 +310,8 @@ async function abrirPres(id){
     document.getElementById('d-desc-tipo').value=(pres.descuento&&pres.descuento.tipo==='eur')?'eur':'pct';
     renderEstadoBar();
     document.getElementById('det-del').style.display='block';
-    document.getElementById('det-compra').style.display='block';
+    document.getElementById('det-compra').style.display=VE_DINERO?'block':'none';
+    document.getElementById('t-costewrap').style.display=VE_DINERO?'':'none';
     document.getElementById('det-pdf').style.display='block';
     document.getElementById('det-hoja').style.display='block';
     const mt=pres.medicionTotales;const mr=document.getElementById('d-medref');

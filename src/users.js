@@ -35,6 +35,12 @@ function can(role, capability) {
   const caps = ROLE_CAPS[normalizeRole(role)];
   return !!caps && caps.includes(capability);
 }
+// ¿Este rol puede ver datos económicos del negocio (facturación, tesorería,
+// cobros, obras, importes)? Solo Dueño y Oficina. Encargado y Técnico NO.
+function canSeeMoney(role) {
+  const r = normalizeRole(role);
+  return r === 'owner' || r === 'oficina';
+}
 
 // Compatibilidad hacia atrás con código que aún lea el objeto ROLES antiguo.
 const ROLES = {
@@ -287,7 +293,7 @@ async function getUserByMagicToken(token) {
 }
 
 module.exports = {
-  ROLES, ROLE_CAPS, ROLE_LABEL, ROLES_PASSWORD, normalizeRole, can,
+  ROLES, ROLE_CAPS, ROLE_LABEL, ROLES_PASSWORD, normalizeRole, can, canSeeMoney,
   initDefaultUsers,
   getUsers, getUser, createUser, updateUser, deactivateUser,
   loginWithPin, verifyUserToken, logout, hasPermission,

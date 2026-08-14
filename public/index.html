@@ -637,8 +637,8 @@ const CP_ROLE_CAPS={
 };
 const CP_ROLE_LABEL={owner:'Dueño',oficina:'Oficina',encargado:'Encargado',tecnico:'Técnico'};
 // Qué capacidad exige cada pestaña / enlace. Lo no listado es visible para todos.
-const CP_TAB_CAP={facturas:'facturas',pendientes:'facturas',cobros:'facturas',banco:'facturas',pagos:'facturas',presupuestos:'presupuestos',familias:'clientes',emails:'clientes',usuarios:'usuarios',actividad:'registro'};
-const CP_TOOL_CAP={'/subir-factura':'facturas','/asignar-facturas':'facturas','/catalogo':'presupuestos','/presupuestos':'presupuestos','/competencia':'facturas'};
+const CP_TAB_CAP={facturas:'facturas',pendientes:'facturas',cobros:'facturas',banco:'facturas',pagos:'facturas',obras:'facturas',comunidades:'facturas',alertas:'facturas',presupuestos:'presupuestos',familias:'clientes',emails:'clientes',usuarios:'usuarios',actividad:'registro'};
+const CP_TOOL_CAP={'/subir-factura':'facturas','/asignar-facturas':'facturas','/catalogo':'facturas','/presupuestos':'presupuestos','/competencia':'facturas'};
 function cpUser(){ try{ return JSON.parse(localStorage.getItem('cp_user')||'{}'); }catch(e){ return {}; } }
 function cpRole(){ return cpUser().role || 'owner'; }  // sin cuenta (clave general) = Dueño
 function cpCan(cap){ return (CP_ROLE_CAPS[cpRole()]||CP_ROLE_CAPS.owner).includes(cap); }
@@ -647,10 +647,14 @@ function applyRoleVisibility(){
     const m=(b.getAttribute('onclick')||'').match(/showTab\('([^']+)'/); if(!m) return;
     const cap=CP_TAB_CAP[m[1]]; b.style.display=(cap && !cpCan(cap))?'none':'';
   });
-  document.querySelectorAll('.nav-btn[onclick*="location.href"]').forEach(b=>{
+  // Enlaces a páginas: en el menú (.nav-btn) y en los accesos rápidos de la portada (.tq)
+  document.querySelectorAll('.nav-btn[onclick*="location.href"], .tools-quick .tq[onclick*="location.href"]').forEach(b=>{
     const m=(b.getAttribute('onclick')||'').match(/location\.href='([^']+)'/); if(!m) return;
     const cap=CP_TOOL_CAP[m[1]]; b.style.display=(cap && !cpCan(cap))?'none':'';
   });
+  // La rejilla de accesos rápidos de la portada es para Dueño/Oficina; el
+  // Encargado usa su propia portada operativa (renderInicioOperativo).
+  document.querySelectorAll('.tools-quick').forEach(t=>{ t.style.display=cpCan('facturas')?'':'none'; });
   // Ocultar un grupo si todas sus pestañas quedaron ocultas
   document.querySelectorAll('.nav-grp').forEach(g=>{
     const gm=(g.getAttribute('onclick')||'').match(/showGrupo\('([^']+)'/); if(!gm) return;
@@ -1268,9 +1272,37 @@ function showNR(m){const el=document.getElementById('nRes');if(el){el.textConten
 // ── TABS ──────────────────────────────────────────────────────────
 function eur(n){ return (n||0).toLocaleString('es-ES',{maximumFractionDigits:0})+' €'; }
 
+// Portada para roles sin dinero (Encargado): accesos directos a su trabajo.
+function renderInicioOperativo(c){
+  const u=cpUser();
+  const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const nombre=(u.name||'').split(' ')[0]||'';
+  const accesos=[
+    ['💶 Presupuestos','presupuestos','operacion','tab'],
+    ['📋 Partes de trabajo','partes','operacion','tab'],
+    ['🗓 Planificación','planning','operacion','tab'],
+    ['🔧 Pedidos de trabajo','pedidos','operacion','tab'],
+    ['📅 Presencia','presencia','operacion','tab'],
+    ['📐 Mediciones','/medir','','link'],
+    ['🕐 Fichar jornada','/fichar','','link'],
+  ];
+  c.innerHTML=`
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-size:20px;font-weight:800">Hola${nombre?', '+esc(nombre):''} 👋</div>
+      <div style="color:var(--text2);margin-top:4px">Este es tu espacio de trabajo. Desde aquí haces presupuestos, partes y mediciones en obra.</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
+      ${accesos.map(([txt,dest,grupo,tipo])=>`
+        <div class="card" style="margin:0;cursor:pointer" onclick="${tipo==='link'?`location.href='${dest}'`:`irA('${grupo}','${dest}')`}">
+          <div style="font-size:16px;font-weight:600">${txt}</div>
+        </div>`).join('')}
+    </div>`;
+}
 async function renderInicio(){
   const c=document.getElementById('inicio-container');
   if(!c) return;
+  // Sin acceso a dinero (Encargado/Técnico): portada operativa, sin cifras.
+  if(!cpCan('facturas')){ renderInicioOperativo(c); return; }
   let d;
   try{ d=await apiCall('/api/inicio'); }
   catch(e){ c.innerHTML='<div style="color:var(--red);padding:40px;text-align:center">No se pudo cargar el resumen: '+e.message+'</div>'; return; }

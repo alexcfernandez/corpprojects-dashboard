@@ -144,6 +144,40 @@ function actorDe(req) {
   return { name: 'Sistema', role: '' };
 }
 
+// ── BLINDAJE DE DATOS ECONÓMICOS ────────────────────────────────────
+// Bloquea (403) todo lo que muestre dinero del negocio (facturación, cobros,
+// tesorería, obras, importes) a quien no sea Dueño/Oficina. A nivel de
+// SERVIDOR y por prefijo de URL: aunque el menú lo oculte, no se puede colar
+// por la API. El Encargado y el Técnico caen aquí.
+async function roleDeToken(token) {
+  if (!token) return null;
+  if (token.startsWith('w_')) {
+    try { const w = await require('./partes').verifyWorkerToken(token); return w ? users.normalizeRole(w.workerRole || 'tecnico') : null; }
+    catch { return null; }
+  }
+  try { const u = jwt.verify(token, JWT_SECRET); return users.normalizeRole(u.role || 'owner'); }
+  catch { return null; }
+}
+// Oculta coste/margen (no el precio de venta) a quien no ve dinero: el
+// Encargado hace presupuestos y ve el PRECIO que cobra, pero no lo que cuesta
+// ni lo que se gana. Se quita en el SERVIDOR: no llega ni a su navegador.
+function sinCosteLista(items) { return (items || []).map(p => { const { totalCoste, coste, margen, ...r } = p; return r; }); }
+function sinCostePres(p) {
+  const out = { ...p };
+  if (Array.isArray(out.lineas)) out.lineas = out.lineas.map(l => { const { coste, ...r } = l; return r; });
+  if (out.totales) { const { coste, margen, ...t } = out.totales; out.totales = t; }
+  return out;
+}
+function sinCostePartidas(items) { return (items || []).map(p => { const { coste, costeManual, receta, ...r } = p; return r; }); }
+const MONEY_PREFIXES = ['/api/summary','/api/inicio','/api/invoices','/api/estimates','/api/cobros','/api/pagos','/api/families','/api/comunidades','/api/obras'];
+app.use(MONEY_PREFIXES, async (req, res, next) => {
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  if (!token) return next(); // sin token → que responda el auth del endpoint (401)
+  const role = await roleDeToken(token);
+  if (role && !users.canSeeMoney(role)) return res.status(403).json({ error: 'Tu rol no tiene acceso a datos económicos' });
+  next();
+});
+
 // ─────────────────────────────────────────────────────────────
 // WhatsApp (Twilio) — asistente personal. Ruta PÚBLICA (Twilio no envía token).
 // Responde de forma ASÍNCRONA por la API de Twilio para no agotar el tiempo
@@ -1809,7 +1843,11 @@ app.delete('/api/activos/:id', requireAuthOficina, async (req, res) => {
 
 // ── CATÁLOGO DE PARTIDAS (base de precios · motor de presupuestos) ──
 app.get('/api/partidas', requireAuthOficina, async (req, res) => {
-  try { res.json({ unidades: presupuestos.UNIDADES, partidas: await presupuestos.getPartidas({ search: req.query.search }) }); }
+  try {
+    let partidas = await presupuestos.getPartidas({ search: req.query.search });
+    if (!users.canSeeMoney(req.oficina?.role)) partidas = sinCostePartidas(partidas); // Encargado: sin coste ni receta
+    res.json({ unidades: presupuestos.UNIDADES, partidas });
+  }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 app.post('/api/partidas', requireAuthOficina, async (req, res) => {
@@ -1829,6 +1867,8 @@ app.delete('/api/partidas/:id', requireAuthOficina, async (req, res) => {
 
 // ── MATERIALES (base de precios de compra · descompuesto) ──
 app.get('/api/materiales', requireAuthOficina, async (req, res) => {
+  // El catálogo de materiales es puro precio de compra → solo Dueño/Oficina.
+  if (!users.canSeeMoney(req.oficina?.role)) return res.status(403).json({ error: 'Tu rol no tiene acceso al catálogo de precios' });
   try { res.json({ unidades: presupuestos.MAT_UNIDADES, materiales: await presupuestos.getMateriales({ search: req.query.search }) }); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1849,14 +1889,22 @@ app.delete('/api/materiales/:id', requireAuthOficina, async (req, res) => {
 
 // ── PRESUPUESTOS (medición × partidas) ──
 app.get('/api/presupuestos', requireAuthOficina, async (req, res) => {
-  try { res.json(await presupuestos.getPresupuestos()); }
+  try {
+    const list = await presupuestos.getPresupuestos();
+    res.json(users.canSeeMoney(req.oficina?.role) ? list : sinCosteLista(list));
+  }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 app.get('/api/presupuestos/:id', requireAuthOficina, async (req, res) => {
-  try { res.json(await presupuestos.getPresupuesto(req.params.id)); }
+  try {
+    const p = await presupuestos.getPresupuesto(req.params.id);
+    res.json(users.canSeeMoney(req.oficina?.role) ? p : sinCostePres(p));
+  }
   catch (err) { res.status(404).json({ error: err.message }); }
 });
 app.get('/api/presupuestos/:id/materiales', requireAuthOficina, async (req, res) => {
+  // La lista de la compra es coste puro → solo Dueño/Oficina.
+  if (!users.canSeeMoney(req.oficina?.role)) return res.status(403).json({ error: 'Tu rol no tiene acceso a la lista de la compra' });
   try { res.json(await presupuestos.listaMateriales(req.params.id)); }
   catch (err) { res.status(404).json({ error: err.message }); }
 });
