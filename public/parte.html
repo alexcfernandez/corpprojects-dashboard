@@ -194,6 +194,13 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <input type="date" id="f-date" onchange="detectarJornada()">
       </div>
 
+      <div class="field" id="f-obra-field" style="display:none">
+        <label>Obra</label>
+        <select id="f-obra" onchange="onObraChange()" style="width:100%;background:var(--bg3,#1a1e27);border:1px solid var(--border2,rgba(255,255,255,.15));border-radius:10px;padding:12px;color:var(--text,#f0f2f7);font-size:16px;font-family:inherit">
+          <option value="">— Sin obra / escribir cliente —</option>
+        </select>
+      </div>
+
       <div class="field">
         <label>Cliente / Obra</label>
         <input type="text" id="f-client" list="f-clients-list" placeholder="Escribe el nombre del cliente..." autocomplete="off" oninput="buscarExpediente()">
@@ -412,8 +419,32 @@ async function enterApp(token, info) {
   localStorage.setItem('cpWI', String(info.workerId || ''));
   document.getElementById('header-sub').textContent = info.workerName || '';
   showPage('form');
-  await Promise.all([loadClientSuggestions(), loadAsignacionesHoy(), loadExternos(), loadMisPedidos()]);
+  await Promise.all([loadClientSuggestions(), loadAsignacionesHoy(), loadExternos(), loadMisPedidos(), loadObras()]);
   renderEquipo();
+}
+
+// ── OBRAS (elegir la obra a la que va el parte) ──
+let obraSel = null; // {id, ref, clientName}
+async function loadObras(){
+  try{
+    const r = await fetch('/api/campo/obras', { headers:{'Authorization':`Bearer ${workerToken}`} });
+    if(!r.ok) return;
+    const obras = await r.json();
+    if(!Array.isArray(obras) || !obras.length) return;
+    const sel = document.getElementById('f-obra');
+    sel.innerHTML = '<option value="">— Sin obra / escribir cliente —</option>' +
+      obras.map(o=>`<option value="${o.id}" data-cli="${(o.clientName||'').replace(/"/g,'&quot;')}">${(o.reference||o.clientName||'Obra').replace(/</g,'&lt;')}</option>`).join('');
+    document.getElementById('f-obra-field').style.display='';
+  }catch(e){}
+}
+function onObraChange(){
+  const sel = document.getElementById('f-obra');
+  const opt = sel.options[sel.selectedIndex];
+  if(!sel.value){ obraSel=null; return; }
+  obraSel = { id: sel.value, ref: opt.textContent, clientName: opt.getAttribute('data-cli')||'' };
+  // Rellena el cliente con el de la obra (para que también cuadre por nombre).
+  const cli = document.getElementById('f-client');
+  if(obraSel.clientName){ cli.value = obraSel.clientName; buscarExpediente(); }
 }
 
 // Restaurar sesión guardada (si el token sigue vivo, entra sin PIN)
@@ -911,6 +942,7 @@ async function submitParte() {
     const parteData = {
       ...workerInfo,
       date, clientName, description, horas, notas, materiales,
+      obraId: obraSel?.id || null, obraRef: obraSel?.ref || null,
       estadoTrabajo:    estadoTrabajoSel,
       pendienteDetalle: estadoTrabajoSel==='material' ? materialDetalle : pendienteDetalle,
       materialDetalle,

@@ -1152,6 +1152,13 @@ app.post('/api/fichaje/consent', async (req, res) => {
     res.json({ ok: true }); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+// Obras ACTIVAS para el operario (elegir en el parte). Mínimo: sin importes.
+app.get('/api/campo/obras', async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return;
+    const obras = await require('./obras').getObras({ status: 'activa' });
+    res.json(obras.map(o => ({ id: String(o._id), reference: o.reference, clientName: o.clientName, address: o.address || '' })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 app.get('/api/fichaje/mios', async (req, res) => {
   try { const w = await _worker(req, res); if (!w) return;
     res.json(await require('./fichajes').getFichajesTrabajador(w.workerId, req.query.from, req.query.to)); }

@@ -42,6 +42,8 @@ async function createParte(data, workerInfo) {
     workerName:  workerInfo.workerName,
     date:        data.date,
     clientName:  data.clientName || '',
+    obraId:      data.obraId ? String(data.obraId) : null,   // obra elegida en el parte (cuenta en su rentabilidad)
+    obraRef:     data.obraRef || null,
     description: data.description || '',
     horas:       parseFloat(data.horas || 8),
     materiales:  data.materiales || [],

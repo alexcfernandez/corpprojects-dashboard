@@ -261,10 +261,10 @@ async function getRentabilidad(obraId) {
   const orObrasClient = matchTexts.map(t => ({ 'obras.clientName': { $regex: esc(t), $options: 'i' } }));
   const NADA = { _id: null }; // sin textos → no casa nada
 
-  // 1. Partes asociados a esta obra (por cualquiera de sus nombres/alias).
-  const partes = await db.collection('partes').find(
-    orClientName.length ? { $or: orClientName } : NADA
-  ).sort({ date: 1 }).toArray();
+  // 1. Partes asociados a esta obra: por obraId EXPLÍCITO (el operario la eligió
+  //    en el parte) o por cualquiera de sus nombres/alias.
+  const orPartes = [{ obraId: String(obra._id) }, ...orClientName];
+  const partes = await db.collection('partes').find({ $or: orPartes }).sort({ date: 1 }).toArray();
 
   // 2. Coste de personal — desde PARTES y, si no hay parte ese día, desde PRESENCIA.
   //    Tarifa real = coste/hora de la plantilla (con fallback razonable).
