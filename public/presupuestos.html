@@ -132,7 +132,7 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 
 <!-- DETALLE -->
 <div class="page" id="page-det"><div class="container">
-  <div class="toolbar"><button class="tool-btn" onclick="volver()">← Presupuestos</button><button class="tool-btn" onclick="abrirPdf()" id="det-pdf" style="display:none">📄 PDF</button><button class="tool-btn" onclick="verCompra()" id="det-compra" style="display:none">🛒 Compra</button><button class="tool-btn danger" onclick="eliminarPres()" id="det-del" style="display:none">Eliminar</button></div>
+  <div class="toolbar"><button class="tool-btn" onclick="volver()">← Presupuestos</button><button class="tool-btn" onclick="abrirPdf()" id="det-pdf" style="display:none">📄 PDF</button><button class="tool-btn" onclick="hojaTrabajo()" id="det-hoja" style="display:none">🔧 Hoja</button><button class="tool-btn" onclick="verCompra()" id="det-compra" style="display:none">🛒 Compra</button><button class="tool-btn danger" onclick="eliminarPres()" id="det-del" style="display:none">Eliminar</button></div>
   <input type="text" id="d-nombre" class="det-head" placeholder="Nombre del presupuesto" style="width:100%">
   <input type="text" id="d-cliente" autocomplete="off" placeholder="Cliente" style="margin-bottom:10px">
   <div class="iva-head">
@@ -278,6 +278,7 @@ async function abrirPres(id){
     document.getElementById('det-del').style.display='block';
     document.getElementById('det-compra').style.display='block';
     document.getElementById('det-pdf').style.display='block';
+    document.getElementById('det-hoja').style.display='block';
     const mt=pres.medicionTotales;const mr=document.getElementById('d-medref');
     if(mt){mr.style.display='block';mr.innerHTML=`📐 Medición: <b>Suelo ${fmt(mt.suelo)}</b> · <b>Paredes ${fmt(mt.paredes)}</b> · <b>Techo ${fmt(mt.techo)}</b> · <b>Pintura ${fmt((mt.paredes||0)+(mt.techo||0))}</b> m² · <b>Rodapié ${fmt(mt.rodapie)}</b> m`;}
     else mr.style.display='none';
@@ -438,6 +439,44 @@ async function generarPDF(){if(!pres)return;
   w.document.open();w.document.write(html);w.document.close();
   cerrar('ov-pdf');
   setTimeout(()=>{try{w.focus();w.print();}catch(e){}},500);}
+// ── HOJA DE TRABAJO (para el obrero, SIN precios) ──
+function _imprimir(html){const w=window.open('','_blank');if(!w){toast('Permite las ventanas emergentes','warn');return;}w.document.open();w.document.write(html);w.document.close();setTimeout(()=>{try{w.focus();w.print();}catch(e){}},500);}
+function hojaTrabajo(){if(!pres)return;
+  if(!empresa){api('GET','/api/empresa').then(e=>{empresa=e;_imprimir(hojaTrabajoHtml());}).catch(()=>{empresa={};_imprimir(hojaTrabajoHtml());});return;}
+  _imprimir(hojaTrabajoHtml());}
+function hojaTrabajoHtml(){
+  const e=empresa||{}, c=pres.clientData||{};
+  const fecha=new Date().toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'});
+  let filas='';
+  pres.lineas.forEach(l=>{
+    if(tipoDe(l)==='seccion'){filas+=`<tr class="sec"><td colspan="4">${esc(l.nombre||'Sección')}</td></tr>`;return;}
+    filas+=`<tr><td class="chk">☐</td><td>${esc(l.nombre)}</td><td class="num">${fmt(l.cantidad||0)}</td><td>${esc(l.unidad||'')}</td></tr>`;
+  });
+  const cli=[pres.clientName,c.direccion].filter(Boolean).map(esc).join(' · ');
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Hoja de trabajo</title><style>
+*{box-sizing:border-box}html,body{background:#fff}body{font-family:-apple-system,Arial,sans-serif;color:#1a1a1a;margin:0;padding:32px;font-size:14px;line-height:1.5}
+.top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1a1a1a;padding-bottom:12px;margin-bottom:16px}
+.top b{font-size:17px}.top .r{text-align:right;color:#555;font-size:12px}
+.h2{font-size:16px;font-weight:700;margin:2px 0 14px}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#888;border-bottom:1px solid #ccc;padding:7px 8px}
+td{padding:9px 8px;border-bottom:1px solid #eee;vertical-align:top}
+td.num,th.num{text-align:right;white-space:nowrap}
+td.chk{width:28px;font-size:18px;color:#888}
+tr.sec td{background:#f3f4f6;font-weight:700;border-top:1px solid #ccc}
+.notas{margin-top:22px;border:1px solid #ccc;border-radius:8px;padding:12px;min-height:90px}
+.notas .h{font-size:11px;text-transform:uppercase;color:#888;margin-bottom:6px}
+@media print{body{padding:0}.noprint{display:none}}
+.bar{background:#4d9cf8;color:#fff;padding:8px 12px;border-radius:6px;border:none;font-size:13px;cursor:pointer;font-family:inherit}
+</style></head><body>
+<div class="noprint" style="text-align:right;margin-bottom:12px"><button class="bar" onclick="window.print()">🖨️ Imprimir</button></div>
+<div class="top"><div><b>${esc(e.nombre||'')}</b><div style="color:#555;font-size:12px">Hoja de trabajo${cli?' · '+cli:''}</div></div><div class="r">Fecha: ${fecha}</div></div>
+<div class="h2">${esc(pres.nombre||'')}</div>
+<table><thead><tr><th></th><th>Trabajo a realizar</th><th class="num">Cant.</th><th>Ud.</th></tr></thead>
+<tbody>${filas||'<tr><td colspan="4">Sin tareas</td></tr>'}</tbody></table>
+<div class="notas"><div class="h">Observaciones / firmas</div></div>
+</body></html>`;
+}
 function buildPdfHtml(){
   const e=empresa||{}, c=pres.clientData||{}, g=ivaGlobal();
   const fecha=pres.createdAt?new Date(pres.createdAt):new Date();
