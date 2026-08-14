@@ -417,6 +417,7 @@ async function getRentabilidad(obraId) {
     }
   }
 
+  const costePresupuestado = Number(obra.costePresupuestado) || 0;
   return {
     obra,
     partes: partes.length,
@@ -426,6 +427,8 @@ async function getRentabilidad(obraId) {
     totalProveedores,
     proveedores,
     totalCoste,
+    costePresupuestado,                       // lo que esperábamos gastar (del presupuesto)
+    desvioCoste: Math.round((totalCoste - costePresupuestado) * 100) / 100, // real − presupuestado (+ = de más)
     facturado,
     beneficio,
     margen,

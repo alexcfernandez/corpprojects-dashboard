@@ -279,6 +279,17 @@
             Sin facturación registrada. Añade el presupuesto para ver la rentabilidad.
           </div>`}
 
+          ${rent.costePresupuestado > 0 ? `
+          <div class="card" style="margin-bottom:14px">
+            <div class="card-title">📐 Presupuestado vs Real (coste)</div>
+            <div class="metrics-row">
+              <div class="mc"><div class="ml">Coste presupuestado</div><div class="mv b">${eur(rent.costePresupuestado)}</div></div>
+              <div class="mc"><div class="ml">Coste real (acumulado)</div><div class="mv r">${eur(rent.totalCoste)}</div></div>
+              <div class="mc"><div class="ml">Desvío</div><div class="mv ${rent.desvioCoste<=0?'g':'r'}">${rent.desvioCoste>0?'+':''}${eur(rent.desvioCoste)} (${rent.desvioCoste>0?'+':''}${(rent.desvioCoste/rent.costePresupuestado*100).toFixed(0)}%)</div></div>
+            </div>
+            <div style="font-size:11px;color:var(--text3);margin-top:8px">${rent.desvioCoste>0?'⚠️ Vas gastando más de lo presupuestado.':'✅ De momento, por debajo de lo presupuestado.'}</div>
+          </div>` : ''}
+
           <div class="metrics-row" style="margin-bottom:14px">
             <div class="mc"><div class="ml">Facturado</div><div class="mv b">${eur(rent.facturado)}</div></div>
             <div class="mc"><div class="ml">Coste personal</div><div class="mv r">${eur(rent.totalCostePersonal)}</div></div>
