@@ -145,9 +145,12 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 <!-- FORMULARIO -->
 <div id="page-form" class="page">
   <div class="container" style="padding-bottom:60px">
-    <div style="margin:20px 0 16px;display:flex;align-items:center;justify-content:space-between">
+    <div style="margin:20px 0 16px;display:flex;align-items:center;justify-content:space-between;gap:10px">
       <div style="font-size:18px;font-weight:700">Nuevo parte</div>
-      <button onclick="logout()" style="background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer">Salir</button>
+      <div style="display:flex;gap:10px;align-items:center">
+        <a id="fichar-link" href="/fichar" style="background:var(--bg3,#1a1e27);border:1px solid var(--border2,rgba(255,255,255,.15));border-radius:8px;color:var(--text2,#8b92a8);font-size:13px;padding:6px 12px;text-decoration:none">🕐 Fichar</a>
+        <button onclick="logout()" style="background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer">Salir</button>
+      </div>
     </div>
 
     <!-- BANNER JORNADA EXTRA (solo sábado/domingo) -->

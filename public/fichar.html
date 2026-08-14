@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Fichar — Corp Projects</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/tool-theme.css">
+<meta name="theme-color" content="#4d9cf8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Fichar">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.15);
+  --text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;--green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b;--r:14px;--rs:10px;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:16px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:14px 20px;display:flex;align-items:center;gap:10px}
+.logo{width:34px;height:34px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#fff}
+.header-text{font-weight:600;font-size:15px}.header-sub{font-size:12px;color:var(--text3)}
+.header-logout{margin-left:auto;background:none;border:1px solid var(--border2);border-radius:8px;color:var(--text3);padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit}
+.page{display:none}.page.active{display:block}
+.container{padding:20px;max-width:520px;margin:0 auto}
+.card{background:var(--bg2);border:1px solid var(--border2);border-radius:18px;padding:24px;margin-top:20px}
+.login-title{font-size:18px;font-weight:600;text-align:center}.login-sub{font-size:13px;color:var(--text3);text-align:center;margin:4px 0 22px}
+.worker-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
+.worker-btn{background:var(--bg3);border:2px solid var(--border);border-radius:var(--r);padding:14px 10px;text-align:center;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;color:var(--text)}
+.worker-btn.selected{border-color:var(--blue);background:rgba(77,156,248,.1)}
+.pin-input{width:100%;background:var(--bg3);border:2px solid var(--border2);border-radius:var(--rs);padding:14px;color:var(--text);font-size:24px;font-weight:700;text-align:center;letter-spacing:8px;outline:none;font-family:monospace}
+.btn{width:100%;background:var(--blue);border:none;border-radius:var(--r);padding:16px;color:#fff;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn:disabled{opacity:.55}
+.spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;display:inline-block;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* estado */
+.estado{text-align:center;padding:14px 0}
+.estado .dot{width:14px;height:14px;border-radius:50%;display:inline-block;margin-right:8px;vertical-align:middle}
+.estado .lbl{font-size:22px;font-weight:700}
+.estado .desde{color:var(--text3);font-size:14px;margin-top:6px}
+.horas{text-align:center;margin:6px 0 22px}
+.horas .n{font-size:44px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-1px}
+.horas .u{color:var(--text3);font-size:13px;text-transform:uppercase;letter-spacing:.08em}
+.fichar-btn{width:100%;border:none;border-radius:18px;padding:22px;font-size:20px;font-weight:800;cursor:pointer;font-family:inherit;color:#062015}
+.fichar-btn.entrada{background:var(--green)}
+.fichar-btn.salida{background:var(--red);color:#fff}
+.tramos{margin-top:22px}
+.tramos h3{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:8px}
+.tramo{display:flex;justify-content:space-between;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:11px 14px;margin-bottom:7px;font-variant-numeric:tabular-nums}
+.tramo .abierto{color:var(--green);font-weight:700}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);max-width:92%;min-width:220px;padding:13px 18px;border-radius:12px;font-size:15px;font-weight:500;z-index:300;opacity:0;pointer-events:none;transition:all .22s;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast.ok{background:#12301f;border:1px solid var(--green);color:#7ff0c0}#toast.error{background:#3a1414;border:1px solid var(--red);color:#ff9d9d}#toast.warn{background:#33280d;border:1px solid var(--amber);color:#ffd98a}
+</style>
+</head>
+<body>
+<script>try{if(localStorage.getItem("cp_theme")==="light")document.body.classList.add("light");}catch(e){}</script>
+
+<div class="header">
+  <div class="logo">CP</div>
+  <div><div class="header-text">Fichar</div><div class="header-sub" id="header-sub"></div></div>
+  <button class="header-logout" id="logout-btn" onclick="logout()" style="display:none">Salir</button>
+</div>
+<div id="toast"></div>
+
+<!-- LOGIN -->
+<div class="page active" id="page-login"><div class="container"><div class="card">
+  <div class="login-title">Fichar jornada</div><div class="login-sub">Elige tu nombre e introduce el PIN</div>
+  <div class="worker-grid" id="worker-selector"></div>
+  <input type="tel" inputmode="numeric" id="pin-input" class="pin-input" placeholder="••••" maxlength="6" onkeydown="if(event.key==='Enter')doLogin()">
+  <div style="height:16px"></div><button class="btn" id="login-btn" onclick="doLogin()">Entrar →</button>
+</div></div></div>
+
+<!-- FICHAJE -->
+<div class="page" id="page-fichar"><div class="container">
+  <div class="card">
+    <div class="estado" id="estado"></div>
+    <div class="horas"><div class="n" id="horas-hoy">0:00</div><div class="u">horas de hoy</div></div>
+    <button class="fichar-btn entrada" id="fichar-btn" onclick="fichar()">Fichar entrada</button>
+  </div>
+  <div class="tramos">
+    <h3>Tramos de hoy</h3>
+    <div id="tramos-lista"></div>
+  </div>
+</div></div>
+
+<script>
+if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
+let workerToken=null, todosWorkers=[], preW=new URLSearchParams(location.search).get('w');
+function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('page-'+id).classList.add('active');}
+let _tt=null;function toast(t,ty){const e=document.getElementById('toast');e.textContent=t;e.className='show '+(ty||'ok');clearTimeout(_tt);_tt=setTimeout(()=>e.className='',2600);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function authH(x){return Object.assign({'Authorization':`Bearer ${workerToken}`},x||{});}
+function hm(mins){mins=Math.max(0,Math.round(mins||0));const h=Math.floor(mins/60),m=mins%60;return h+':'+String(m).padStart(2,'0');}
+function hora(ts){return ts?new Date(ts).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}):'';}
+
+// ── LOGIN ──
+async function loadWorkers(){try{const r=await fetch('/api/partes/workers');todosWorkers=await r.json();
+  document.getElementById('worker-selector').innerHTML=todosWorkers.map(w=>`<button class="worker-btn" data-id="${w.id}" onclick="selW(this)">${esc(w.name)}</button>`).join('');
+  if(preW){const b=document.querySelector(`.worker-btn[data-id="${preW}"]`);if(b){selW(b);document.getElementById('pin-input').focus();}}
+}catch(e){}}
+function selW(b){document.querySelectorAll('.worker-btn').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');document.getElementById('pin-input').focus();}
+async function doLogin(){const sel=document.querySelector('.worker-btn.selected');if(!sel){toast('Selecciona tu nombre','warn');return;}const pin=document.getElementById('pin-input').value;if(pin.length<4){toast('Introduce el PIN','warn');return;}
+  const b=document.getElementById('login-btn');b.disabled=true;b.innerHTML='<span class="spinner"></span>';
+  try{const r=await fetch('/api/partes/worker-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workerId:sel.dataset.id,pin})});const d=await r.json();if(!r.ok)throw new Error(d.error||'PIN incorrecto');
+    workerToken=d.token;localStorage.setItem('cpWT',d.token);localStorage.setItem('cpWN',d.workerName||'');
+    entrar(d.workerName);}
+  catch(e){toast(e.message,'error');document.getElementById('pin-input').value='';}
+  finally{b.disabled=false;b.innerHTML='Entrar →';}}
+async function tryRestore(){const t=localStorage.getItem('cpWT');if(!t)return false;
+  try{const r=await fetch('/api/fichaje/estado',{headers:{'Authorization':`Bearer ${t}`}});if(!r.ok)return false;workerToken=t;entrar(localStorage.getItem('cpWN')||'');return true;}catch(e){return false;}}
+function entrar(nombre){document.getElementById('header-sub').textContent=nombre||'';document.getElementById('logout-btn').style.display='block';showPage('fichar');cargar();}
+function logout(){workerToken=null;localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');document.getElementById('logout-btn').style.display='none';showPage('login');}
+
+// ── FICHAJE ──
+async function cargar(){try{const r=await fetch('/api/fichaje/estado',{headers:authH()});const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');render(d);}catch(e){toast(e.message,'error');}}
+function render(d){
+  const dentro=!!d.dentro;
+  document.getElementById('estado').innerHTML=
+    `<span class="dot" style="background:${dentro?'var(--green)':'var(--text3)'}"></span><span class="lbl">${dentro?'Dentro':'Fuera'}</span>`+
+    (dentro?`<div class="desde">desde las ${hora(d.desde)}</div>`:'');
+  document.getElementById('horas-hoy').textContent=hm(d.minutos);
+  const btn=document.getElementById('fichar-btn');
+  btn.textContent=dentro?'Fichar salida':'Fichar entrada';
+  btn.className='fichar-btn '+(dentro?'salida':'entrada');
+  const tr=(d.tramos||[]);
+  document.getElementById('tramos-lista').innerHTML=tr.length?tr.map(t=>
+    `<div class="tramo"><span>${hora(t.entrada)} — ${t.salida?hora(t.salida):'<span class="abierto">en curso</span>'}</span><span style="color:var(--text3)">${t.salida?hm((new Date(t.salida)-new Date(t.entrada))/60000):''}</span></div>`
+  ).join(''):'<div class="tramo" style="color:var(--text3);justify-content:center">Aún no has fichado hoy</div>';
+}
+async function fichar(){const btn=document.getElementById('fichar-btn');btn.disabled=true;
+  try{const r=await fetch('/api/fichaje/fichar',{method:'POST',headers:authH()});const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');
+    render(d);toast(d.accion==='entrada'?'✅ Entrada fichada':'👋 Salida fichada','ok');}
+  catch(e){toast(e.message,'error');}
+  finally{btn.disabled=false;}}
+
+// refrescar el contador cada minuto si está dentro
+setInterval(()=>{if(workerToken&&document.getElementById('page-fichar').classList.contains('active'))cargar();},60000);
+
+(async function(){await loadWorkers();const ok=await tryRestore();if(!ok)showPage('login');})();
+</script>
+</body>
+</html>

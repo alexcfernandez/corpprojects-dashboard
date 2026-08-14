@@ -1038,6 +1038,34 @@ app.post('/api/workorders/:id/finish', async (req, res) => {
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
+// ── FICHAJE (registro de jornada del trabajador) ──
+async function _worker(req, res) {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) { res.status(401).json({ error: 'No autorizado' }); return null; }
+  const w = await require('./partes').verifyWorkerToken(token);
+  if (!w) { res.status(401).json({ error: 'Token expirado' }); return null; }
+  return w;
+}
+app.get('/api/fichaje/estado', async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return;
+    res.json(await require('./fichajes').estadoActual(w.workerId)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/fichaje/fichar', async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return;
+    res.json(await require('./fichajes').fichar(w.workerId, w.workerName)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/fichaje/mios', async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return;
+    res.json(await require('./fichajes').getFichajesTrabajador(w.workerId, req.query.from, req.query.to)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/fichaje/dia', requireAuth, async (req, res) => {
+  try { res.json(await require('./fichajes').getFichajesDia(req.query.fecha)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Estado de pausa de los avisos de pedidos.
 app.get('/api/workorders/alert-status', requireAuth, async (req, res) => {
   try { res.json({ paused: await avisos.isPedidosPaused() }); }
@@ -2615,6 +2643,7 @@ app.delete('/api/pagos/:id', requireAuth, async (req, res) => {
 // ── Rutas HTML ────────────────────────────────────────────────────
 app.get('/informe-presencia', (req, res) => res.sendFile(path.join(__dirname, '../public/informe-presencia.html')));
 app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
+app.get('/fichar', (req, res) => res.sendFile(path.join(__dirname, '../public/fichar.html')));
 app.get('/subir-factura', (req, res) => res.sendFile(path.join(__dirname, '../public/subir-factura.html')));
 app.get('/asignar-facturas', (req, res) => res.sendFile(path.join(__dirname, '../public/asignar-facturas.html')));
 app.get('/activos', (req, res) => res.sendFile(path.join(__dirname, '../public/activos.html')));

@@ -115,6 +115,8 @@ async function ensureIndexes(db) {
     ['partidas',               { empresaId: 1, capitulo: 1, nombre: 1 }],
     ['materiales',             { empresaId: 1, nombre: 1 }],
     ['presupuestos',           { empresaId: 1, updatedAt: -1 }],
+    ['fichajes',               { empresaId: 1, fecha: -1 }],
+    ['fichajes',               { empresaId: 1, userId: 1, fecha: -1 }, { unique: true }],
   ];
 
   for (const [coll, keys, opts] of indexes) {
