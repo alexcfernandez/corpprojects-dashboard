@@ -144,6 +144,11 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
       <option value="0">0 % (exento)</option>
     </select>
   </div>
+  <div class="iva-head">
+    <span>Descuento <small style="color:var(--text3)">(no sale en el PDF si es 0)</small></span>
+    <input type="number" id="d-desc-valor" inputmode="decimal" step="0.01" placeholder="0" style="width:90px;text-align:right" oninput="recompute()">
+    <select id="d-desc-tipo" onchange="recompute()" style="width:auto"><option value="pct">%</option><option value="eur">€</option></select>
+  </div>
   <div class="med-ref" id="d-medref" style="display:none"></div>
   <div id="lineas"></div>
   <div class="addrow">
@@ -156,7 +161,7 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 <!-- BARRA TOTALES -->
 <div class="totbar" id="totbar" style="display:none"><div class="totbar-in">
   <div style="flex:1;min-width:0">
-    <div class="totals-mini">Base <b id="t-venta">0 €</b> · Coste <b id="t-coste">0 €</b> · Margen <b id="t-margen">0%</b></div>
+    <div class="totals-mini">Base <b id="t-venta">0 €</b><span id="t-desc-wrap" style="display:none"> · Desc <b id="t-desc" style="color:var(--amber)">0 €</b></span> · Coste <b id="t-coste">0 €</b> · Margen <b id="t-margen">0%</b></div>
     <div class="totals-main">+ IVA <span id="t-ivapct">10%</span> <b id="t-iva">0 €</b> &nbsp;·&nbsp; Total <b id="t-total" class="big">0 €</b></div>
   </div>
   <button class="savebtn" onclick="guardar()">Guardar</button>
@@ -268,6 +273,8 @@ async function abrirPres(id){
   try{pres=await api('GET','/api/presupuestos/'+id);
     document.getElementById('d-nombre').value=pres.nombre||'';document.getElementById('d-cliente').value=pres.clientName||'';
     document.getElementById('d-iva').value=String(Number.isFinite(pres.iva)?pres.iva:10);
+    document.getElementById('d-desc-valor').value=(pres.descuento&&pres.descuento.valor)?pres.descuento.valor:'';
+    document.getElementById('d-desc-tipo').value=(pres.descuento&&pres.descuento.tipo==='eur')?'eur':'pct';
     document.getElementById('det-del').style.display='block';
     document.getElementById('det-compra').style.display='block';
     document.getElementById('det-pdf').style.display='block';
@@ -358,23 +365,31 @@ function quickFill(i,v){pres.lineas[i].cantidad=Math.round(v*100)/100;renderLine
 function delLinea(i){pres.lineas.splice(i,1);renderLineas();}
 function addSeccion(){pres.lineas.push({tipo:'seccion',nombre:''});renderLineas();const ns=document.querySelectorAll('.s-nom');if(ns.length)ns[ns.length-1].focus();}
 function addLibre(){pres.lineas.push({tipo:'libre',partidaId:null,nombre:'',unidad:'ud',cantidad:0,precioVenta:0,coste:0});renderLineas();const ns=document.querySelectorAll('.l-nomin');if(ns.length)ns[ns.length-1].focus();}
+function descPres(){const v=parseFloat(String(document.getElementById('d-desc-valor').value||'').replace(',','.'))||0;return v>0?{tipo:document.getElementById('d-desc-tipo').value==='eur'?'eur':'pct',valor:v}:null;}
 function recompute(){
-  const g=ivaGlobal(); let venta=0,coste=0,iva=0; const tipos=new Set();
+  const g=ivaGlobal(); let venta=0,coste=0; const filas=[],tipos=new Set();
   pres.lineas.forEach(l=>{if(tipoDe(l)==='seccion')return;
     const v=(l.cantidad||0)*(l.precioVenta||0);venta+=v;coste+=(l.cantidad||0)*(l.coste||0);
-    const r=(l.iva==null?g:Number(l.iva));iva+=v*r/100;if(v>0)tipos.add(r);
+    const r=(l.iva==null?g:Number(l.iva));filas.push([v,r]);if(v>0)tipos.add(r);
   });
+  const d=descPres(); let desc=0;
+  if(d&&venta>0){desc=d.tipo==='eur'?Math.min(d.valor,venta):venta*d.valor/100;}
+  desc=Math.round(desc*100)/100;
+  const factor=venta>0?(venta-desc)/venta:1, baseFinal=venta-desc;
+  let iva=0;filas.forEach(([v,r])=>{iva+=v*factor*r/100;});
   pres.lineas.forEach((l,i)=>{if(tipoDe(l)==='seccion'){const el=document.getElementById('ss-'+i);if(el)el.textContent=eur(subtotalDesde(i));}});
   document.getElementById('t-venta').textContent=eur(venta);
+  const dw=document.getElementById('t-desc-wrap');
+  if(desc>0){dw.style.display='inline';document.getElementById('t-desc').textContent='−'+eur(desc);}else dw.style.display='none';
   document.getElementById('t-coste').textContent=eur(coste);
-  const mg=venta>0?Math.round((venta-coste)/venta*100):0;
+  const mg=baseFinal>0?Math.round((baseFinal-coste)/baseFinal*100):0;
   const em=document.getElementById('t-margen');em.textContent=mg+'%';em.style.color=mg>=25?'var(--green)':mg>=10?'var(--amber)':'var(--red)';
   document.getElementById('t-iva').textContent=eur(iva);
   document.getElementById('t-ivapct').textContent=tipos.size>1?'(varios)':(g+'%');
-  document.getElementById('t-total').textContent=eur(venta+iva);
+  document.getElementById('t-total').textContent=eur(baseFinal+iva);
 }
 async function guardar(silent){if(!pres)return;
-  try{await api('PUT','/api/presupuestos/'+pres._id,{nombre:document.getElementById('d-nombre').value.trim(),clientName:document.getElementById('d-cliente').value.trim(),iva:ivaGlobal(),lineas:pres.lineas,clientData:pres.clientData||{},condiciones:pres.condiciones||'',validezDias:pres.validezDias||30});if(!silent)toast('Guardado','ok');}
+  try{await api('PUT','/api/presupuestos/'+pres._id,{nombre:document.getElementById('d-nombre').value.trim(),clientName:document.getElementById('d-cliente').value.trim(),iva:ivaGlobal(),descuento:descPres(),lineas:pres.lineas,clientData:pres.clientData||{},condiciones:pres.condiciones||'',validezDias:pres.validezDias||30});if(!silent)toast('Guardado','ok');}
   catch(e){toast(e.message,'error');if(silent)throw e;}}
 async function eliminarPres(){if(!pres)return;if(!confirm('¿Eliminar este presupuesto?'))return;try{await api('DELETE','/api/presupuestos/'+pres._id);volver();toast('Eliminado','ok');}catch(e){toast(e.message,'error');}}
 
@@ -436,9 +451,15 @@ function buildPdfHtml(){
     filas+=`<tr><td>${esc(l.nombre)}</td><td class="num">${fmt(l.cantidad||0)}</td><td>${esc(l.unidad||'')}</td><td class="num">${eur(l.precioVenta)}</td><td class="num">${eur(imp)}</td></tr>`;
   });
   base=Math.round(base*100)/100;
+  const d=descPres(); let desc=0;
+  if(d&&base>0){desc=d.tipo==='eur'?Math.min(d.valor,base):base*d.valor/100;}
+  desc=Math.round(desc*100)/100;
+  const factor=base>0?(base-desc)/base:1, baseFinal=Math.round((base-desc)*100)/100;
   let ivaTotal=0,ivaRows='';
-  Object.keys(ivaPorTipo).sort((a,b)=>a-b).forEach(r=>{const v=Math.round(ivaPorTipo[r]*100)/100;ivaTotal+=v;ivaRows+=`<tr><td>IVA ${r}%</td><td class="num">${eur(v)}</td></tr>`;});
-  const total=Math.round((base+ivaTotal)*100)/100;
+  Object.keys(ivaPorTipo).sort((a,b)=>a-b).forEach(r=>{const v=Math.round(ivaPorTipo[r]*factor*100)/100;ivaTotal+=v;ivaRows+=`<tr><td>IVA ${r}%</td><td class="num">${eur(v)}</td></tr>`;});
+  ivaTotal=Math.round(ivaTotal*100)/100;
+  const total=Math.round((baseFinal+ivaTotal)*100)/100;
+  const descRows=desc>0?`<tr><td>Descuento${d.tipo==='pct'?' ('+fmt(d.valor)+'%)':''}</td><td class="num">−${eur(desc)}</td></tr><tr><td>Base con descuento</td><td class="num">${eur(baseFinal)}</td></tr>`:'';
   const empLine=[e.cif?('CIF '+e.cif):'',e.direccion,e.telefono?('Tel '+e.telefono):'',e.email,e.web].filter(Boolean).join(' · ');
   const cliLines=[pres.clientName,c.direccion,c.nif?('NIF '+c.nif):'',[c.telefono,c.email].filter(Boolean).join(' · ')].filter(Boolean).map(x=>`<div>${esc(x)}</div>`).join('');
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(pres.numero||'Presupuesto')}</title><style>
@@ -470,7 +491,8 @@ tr.sec td{background:#f3f4f6;font-weight:700;border-top:1px solid #ccc}
 <table><thead><tr><th>Concepto</th><th class="num">Cant.</th><th>Ud.</th><th class="num">Precio</th><th class="num">Importe</th></tr></thead>
 <tbody>${filas||'<tr><td colspan="5">Sin líneas</td></tr>'}</tbody></table>
 <div class="tot"><table>
-  <tr><td>Base imponible</td><td class="num">${eur(base)}</td></tr>
+  <tr><td>${desc>0?'Subtotal':'Base imponible'}</td><td class="num">${eur(base)}</td></tr>
+  ${descRows}
   ${ivaRows}
   <tr class="tt"><td>Total</td><td class="num">${eur(total)}</td></tr>
 </table></div>

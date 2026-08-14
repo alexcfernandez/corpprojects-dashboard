@@ -189,19 +189,41 @@ function esSeccion(l) { return (l && l.tipo) === 'seccion'; }
 // IVA: cada presupuesto tiene un tipo por defecto (ivaDefault, normalmente 10%
 // en reforma de vivienda). Una línea puede llevar su propio `iva` (override);
 // si es null/undefined hereda el del presupuesto. Total = base + IVA.
-function computeTotales(lineas, ivaDefault) {
+// Descuento GLOBAL opcional: { tipo:'pct'|'eur', valor }. null = sin descuento.
+function limpiarDescuento(d) {
+  if (!d || !(Number(d.valor) > 0)) return null;
+  return { tipo: d.tipo === 'eur' ? 'eur' : 'pct', valor: Math.round(num(d.valor) * 100) / 100 };
+}
+function computeTotales(lineas, ivaDefault, descuento) {
   const g = Number.isFinite(ivaDefault) ? ivaDefault : 10;
-  let venta = 0, coste = 0, iva = 0;
+  let venta = 0, coste = 0;
+  const filas = [];
   (lineas || []).forEach(l => {
     if (esSeccion(l)) return;
     const v = (num(l.cantidad)) * (Number(l.precioVenta) || 0);
     venta += v;
     coste += (num(l.cantidad)) * (Number(l.coste) || 0);
     const r = (l.iva === null || l.iva === undefined) ? g : Number(l.iva);
-    iva += v * (Number.isFinite(r) ? r : g) / 100;
+    filas.push({ v, r: Number.isFinite(r) ? r : g });
   });
-  venta = n2(venta); coste = n2(coste); iva = n2(iva);
-  return { totalVenta: venta, totalCoste: coste, totalIva: iva, totalConIva: n2(venta + iva), beneficio: n2(venta - coste), margen: venta > 0 ? Math.round((venta - coste) / venta * 100) : 0 };
+  venta = n2(venta); coste = n2(coste);
+  // descuento: si es €, no puede pasar de la base; se PRORRATEA entre líneas
+  // (factor) para que el IVA por tipo siga saliendo bien.
+  let desc = 0;
+  if (descuento && Number(descuento.valor) > 0 && venta > 0) {
+    desc = descuento.tipo === 'eur' ? Math.min(Number(descuento.valor), venta) : venta * Number(descuento.valor) / 100;
+  }
+  desc = n2(desc);
+  const factor = venta > 0 ? (venta - desc) / venta : 1;
+  let iva = 0;
+  filas.forEach(f => { iva += f.v * factor * f.r / 100; });
+  iva = n2(iva);
+  const baseFinal = n2(venta - desc);
+  return {
+    totalVenta: venta, totalCoste: coste, descuento: desc, baseConDescuento: baseFinal,
+    totalIva: iva, totalConIva: n2(baseFinal + iva),
+    beneficio: n2(baseFinal - coste), margen: baseFinal > 0 ? Math.round((baseFinal - coste) / baseFinal * 100) : 0,
+  };
 }
 function limpiarLineas(lineas) {
   return (Array.isArray(lineas) ? lineas : []).map(l => {
@@ -224,13 +246,13 @@ function limpiarLineas(lineas) {
 async function getPresupuestos() {
   const db = await getDB();
   const arr = await db.collection('presupuestos').find({ empresaId: EMPRESA }).sort({ updatedAt: -1 }).toArray();
-  return arr.map(p => ({ _id: p._id, nombre: p.nombre, clientName: p.clientName || '', estado: p.estado || 'borrador', nLineas: (p.lineas || []).filter(l => !esSeccion(l)).length, ...computeTotales(p.lineas, p.iva), updatedAt: p.updatedAt }));
+  return arr.map(p => ({ _id: p._id, nombre: p.nombre, clientName: p.clientName || '', estado: p.estado || 'borrador', nLineas: (p.lineas || []).filter(l => !esSeccion(l)).length, ...computeTotales(p.lineas, p.iva, p.descuento), updatedAt: p.updatedAt }));
 }
 async function getPresupuesto(id) {
   const db = await getDB();
   const p = await db.collection('presupuestos').findOne({ _id: new ObjectId(id), empresaId: EMPRESA });
   if (!p) throw new Error('Presupuesto no encontrado');
-  return { ...p, iva: Number.isFinite(p.iva) ? p.iva : 10, totales: computeTotales(p.lineas, p.iva) };
+  return { ...p, iva: Number.isFinite(p.iva) ? p.iva : 10, descuento: p.descuento || null, totales: computeTotales(p.lineas, p.iva, p.descuento) };
 }
 async function crearPresupuesto(data, by) {
   const db = await getDB();
@@ -244,6 +266,7 @@ async function crearPresupuesto(data, by) {
     medicionId: data.medicionId ? String(data.medicionId) : null,
     medicionTotales: data.medicionTotales || null,
     iva: Number.isFinite(Number(data.iva)) ? Number(data.iva) : 10,
+    descuento: limpiarDescuento(data.descuento),
     validezDias: Number.isFinite(Number(data.validezDias)) ? Number(data.validezDias) : 30,
     lineas: limpiarLineas(data.lineas),
     notas: String(data.notas || '').trim(),
@@ -266,6 +289,7 @@ async function guardarPresupuesto(id, data) {
   if ('validezDias' in data && Number.isFinite(Number(data.validezDias))) set.validezDias = Number(data.validezDias);
   if ('estado' in data) set.estado = String(data.estado || 'borrador');
   if ('iva' in data && Number.isFinite(Number(data.iva))) set.iva = Number(data.iva);
+  if ('descuento' in data) set.descuento = limpiarDescuento(data.descuento);
   if ('medicionId' in data) set.medicionId = data.medicionId ? String(data.medicionId) : null;
   if ('medicionTotales' in data) set.medicionTotales = data.medicionTotales || null;
   await db.collection('presupuestos').updateOne({ _id: new ObjectId(id), empresaId: EMPRESA }, { $set: set });
