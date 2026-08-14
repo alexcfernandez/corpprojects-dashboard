@@ -1,9 +1,10 @@
 // Service Worker — Corp Projects Dashboard
-const CACHE = 'cp-v42';
+const CACHE = 'cp-v43';
 const STATIC = [
   '/',
   '/parte',
   '/fichar',
+  '/fichajes',
   '/subir-factura',
   '/asignar-facturas',
   '/activos',

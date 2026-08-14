@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fichajes — Corp Projects</title>
+<link rel="stylesheet" href="/tool-theme.css">
+<meta name="theme-color" content="#4d9cf8">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.15);
+  --text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;--green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b;--rs:10px;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:16px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:14px 20px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:10}
+.logo{width:34px;height:34px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#fff}
+.header-text{font-weight:600;font-size:15px}.header-sub{font-size:12px;color:var(--text3)}
+.header-logout{margin-left:auto;background:none;border:1px solid var(--border2);border-radius:8px;color:var(--text3);padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit;text-decoration:none}
+.container{padding:20px;max-width:720px;margin:0 auto}
+.datebar{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.datebar button{background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);color:var(--text);width:40px;height:40px;font-size:18px;cursor:pointer;font-family:inherit}
+.datebar .d{flex:1;text-align:center;font-weight:600;font-size:16px}
+.datebar .hoy{width:auto;padding:0 12px;font-size:13px;color:var(--text2)}
+.kpis{display:flex;gap:8px;margin:10px 0 16px}
+.kpi{flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;text-align:center}
+.kpi .n{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}.kpi .l{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
+.row{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:13px 15px;margin-bottom:8px;display:flex;align-items:center;gap:12px}
+.row .nm{flex:1;min-width:0}
+.row .nm b{font-size:14.5px}.row .nm .sub{font-size:12px;color:var(--text3);margin-top:2px;font-variant-numeric:tabular-nums}
+.row .tot{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:100px;white-space:nowrap}
+.b-ok{background:rgba(34,196,135,.12);color:var(--green)}.b-curso{background:rgba(77,156,248,.12);color:var(--blue)}
+.b-no{background:rgba(240,82,82,.12);color:var(--red)}.b-warn{background:rgba(245,158,11,.14);color:var(--amber)}
+.empty{text-align:center;color:var(--text3);font-size:14px;padding:40px 20px}
+</style>
+</head>
+<body>
+<script>try{if(localStorage.getItem("cp_theme")==="light")document.body.classList.add("light");}catch(e){}</script>
+<div class="header">
+  <div class="logo">CP</div>
+  <div><div class="header-text">Fichajes</div><div class="header-sub" id="hsub">Registro de jornada</div></div>
+  <a class="header-logout" href="/">← Dashboard</a>
+</div>
+<div class="container">
+  <div class="datebar">
+    <button onclick="mover(-1)">‹</button>
+    <div class="d" id="d-label"></div>
+    <button onclick="mover(1)" id="next-btn">›</button>
+    <button class="hoy" onclick="hoy()">Hoy</button>
+  </div>
+  <div class="kpis">
+    <div class="kpi"><div class="n" id="k-fichados">–</div><div class="l">Fichados</div></div>
+    <div class="kpi"><div class="n" id="k-nofichados">–</div><div class="l">Sin fichar</div></div>
+    <div class="kpi"><div class="n" id="k-horas">–</div><div class="l">Horas total</div></div>
+  </div>
+  <div id="lista"></div>
+</div>
+
+<script>
+const tok=localStorage.getItem('cp_token');
+let fecha=new Date();
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function hm(mins){mins=Math.max(0,Math.round(mins||0));return Math.floor(mins/60)+':'+String(mins%60).padStart(2,'0');}
+function hora(ts){return ts?new Date(ts).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}):'—';}
+function iso(d){return d.toLocaleDateString('en-CA');}
+function esHoy(d){return iso(d)===iso(new Date());}
+function fechaLarga(d){return d.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});}
+function authH(){return {'Authorization':`Bearer ${tok}`};}
+
+function mover(n){fecha.setDate(fecha.getDate()+n);cargar();}
+function hoy(){fecha=new Date();cargar();}
+
+async function cargar(){
+  document.getElementById('d-label').textContent=fechaLarga(fecha)+(esHoy(fecha)?' · hoy':'');
+  document.getElementById('next-btn').disabled=esHoy(fecha);
+  document.getElementById('next-btn').style.opacity=esHoy(fecha)?'.4':'1';
+  const el=document.getElementById('lista');el.innerHTML='<div class="empty">Cargando…</div>';
+  try{
+    const [rf,rw]=await Promise.all([
+      fetch('/api/fichaje/dia?fecha='+iso(fecha),{headers:authH()}),
+      fetch('/api/partes/workers',{headers:authH()})
+    ]);
+    if(rf.status===401){el.innerHTML='<div class="empty">Sesión caducada. Abre desde el dashboard.</div>';return;}
+    const fichajes=await rf.json(); const workers=(await rw.json())||[];
+    render(fichajes,workers);
+  }catch(e){el.innerHTML='<div class="empty" style="color:var(--red)">'+esc(e.message)+'</div>';}
+}
+
+function render(fichajes,workers){
+  const byId={}; (fichajes||[]).forEach(f=>byId[String(f.userId)]=f);
+  let totalMin=0, nFichados=0, nNo=0, filas='';
+  // orden: trabajadores del roster (tech/office); los que fichan arriba
+  const rows=workers.map(w=>({w,f:byId[String(w.id)]||null}));
+  rows.sort((a,b)=>(a.f?0:1)-(b.f?0:1)||String(a.w.name).localeCompare(String(b.w.name)));
+  rows.forEach(({w,f})=>{
+    if(!f){nNo++;filas+=`<div class="row"><div class="nm"><b>${esc(w.name)}</b><div class="sub">no ha fichado</div></div><span class="badge b-no">Sin fichar</span></div>`;return;}
+    nFichados++;
+    const tr=f.tramos||[];
+    const entrada=tr.length?hora(tr[0].entrada):'—';
+    const abierto=f.dentro;
+    const ultSal=tr.length&&tr[tr.length-1].salida?hora(tr[tr.length-1].salida):null;
+    const min=f.minutos||0; totalMin+=min;
+    // aviso: tramo abierto demasiado tiempo (>14h) = probablemente olvidó cerrar
+    const largo=abierto && min>14*60;
+    const badge=largo?'<span class="badge b-warn">⚠ Sin cerrar</span>':abierto?'<span class="badge b-curso">En curso</span>':'<span class="badge b-ok">Cerrado</span>';
+    const pausas=tr.length>1?` · ${tr.length} tramos`:'';
+    filas+=`<div class="row"><div class="nm"><b>${esc(w.name)}</b><div class="sub">Entrada ${entrada}${abierto?' · sigue dentro':(' · salida '+ultSal)}${pausas}</div></div><div style="text-align:right"><div class="tot">${hm(min)}</div>${badge}</div></div>`;
+  });
+  document.getElementById('k-fichados').textContent=nFichados;
+  document.getElementById('k-nofichados').textContent=nNo;
+  document.getElementById('k-horas').textContent=hm(totalMin);
+  document.getElementById('lista').innerHTML=filas||'<div class="empty">No hay trabajadores.</div>';
+}
+
+if(!tok){document.getElementById('lista').innerHTML='<div class="empty">Abre esta página desde el dashboard (necesita sesión de admin).</div>';}
+else cargar();
+</script>
+</body>
+</html>
