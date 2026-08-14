@@ -1065,6 +1065,23 @@ app.get('/api/fichaje/dia', requireAuth, async (req, res) => {
   try { res.json(await require('./fichajes').getFichajesDia(req.query.fecha)); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
+// Enlace mágico: canjea el token del trabajador por una sesión (sin PIN).
+app.post('/api/fichaje/magic-login', async (req, res) => {
+  try {
+    const u = await users.getUserByMagicToken((req.body || {}).token);
+    if (!u) return res.status(401).json({ error: 'Enlace no válido o caducado' });
+    const crypto = require('crypto');
+    const wtoken = 'w_' + crypto.randomBytes(16).toString('hex');
+    const db = await require('./db').getDB();
+    await db.collection('worker_tokens').insertOne({
+      token: wtoken, workerId: String(u._id), workerName: u.name, workerRole: u.role,
+      createdAt: new Date(), expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+    });
+    const primeraVez = !u.lastLogin;
+    await db.collection('users').updateOne({ _id: u._id }, { $set: { lastLogin: new Date() } });
+    res.json({ token: wtoken, workerId: String(u._id), workerName: u.name, role: u.role, primeraVez });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
 
 // Estado de pausa de los avisos de pedidos.
 app.get('/api/workorders/alert-status', requireAuth, async (req, res) => {
@@ -1431,6 +1448,27 @@ app.delete('/api/users/:id', requireAuth, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Genera (y opcionalmente envía) el ENLACE MÁGICO de acceso del trabajador.
+app.post('/api/users/:id/magic-link', requireAuth, async (req, res) => {
+  try {
+    const { user } = await users.ensureMagicToken(req.params.id, req.body && req.body.regen);
+    const base = (req.headers['x-forwarded-proto'] || req.protocol || 'https') + '://' + req.get('host');
+    const url = `${base}/fichar?t=${user.magicToken}`;
+    const nombre = String(user.name || '').split(' ')[0];
+    const msg = `Hola ${nombre}, este es tu acceso a la app de Corp Projects para FICHAR tu jornada y mandar partes. Ábrelo en el móvil y añádelo a la pantalla de inicio:\n${url}`;
+    let sent = null;
+    const enviar = req.body && req.body.enviar;
+    if (enviar === 'whatsapp') {
+      if (!user.telefono) return res.status(400).json({ error: 'Este trabajador no tiene teléfono en su ficha', url });
+      await require('./notifications').sendWhatsAppTo(user.telefono, msg); sent = 'whatsapp';
+    } else if (enviar === 'email') {
+      if (!user.email) return res.status(400).json({ error: 'Este trabajador no tiene email en su ficha', url });
+      await require('./notifications').sendEmail({ to: user.email, subject: 'Tu acceso a la app de Corp Projects', text: msg, html: `<p>Hola ${nombre},</p><p>Este es tu acceso a la app de Corp Projects para <b>fichar</b> tu jornada y mandar partes. Ábrelo en el móvil y añádelo a la pantalla de inicio:</p><p><a href="${url}">${url}</a></p>` }); sent = 'email';
+    }
+    res.json({ ok: true, url, sent });
+  } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
 app.get('/api/roles', requireAuth, (req, res) => res.json(users.ROLES));

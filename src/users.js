@@ -72,6 +72,8 @@ async function createUser(data) {
     color:     data.color    || '#4d9cf8',
     costeHora: parseFloat(data.costeHora || 0),
     nota:      data.nota     || '',
+    telefono:  (data.telefono || '').trim(),
+    email:     (data.email || '').trim(),
     active:    true,
     notes:     data.notes    || '',
     docs: {
@@ -100,7 +102,7 @@ async function createUser(data) {
 
 async function updateUser(id, data) {
   const db      = await getDB();
-  const allowed = ['name','role','pin','color','costeHora','nota','active','notes','docs'];
+  const allowed = ['name','role','pin','color','costeHora','nota','active','notes','docs','telefono','email'];
   const set     = { updatedAt: new Date() };
   allowed.forEach(k => { if (data[k] !== undefined) set[k] = data[k]; });
 
@@ -182,8 +184,27 @@ function hasPermission(role, permission) {
   return roleData.permissions.includes(permission);
 }
 
+// ── Enlace mágico (login sin PIN por token, para onboarding y recordatorios) ──
+// Reutiliza el token si ya existe (idempotente: copiar y enviar dan el MISMO
+// enlace). Con regen=true fuerza uno nuevo (invalida el anterior).
+async function ensureMagicToken(id, regen) {
+  const db = await getDB();
+  const u0 = await db.collection('users').findOne({ _id: new ObjectId(id) });
+  if (u0 && u0.magicToken && !regen) return { token: u0.magicToken, user: u0 };
+  const token = 'm_' + crypto.randomBytes(20).toString('hex');
+  await db.collection('users').updateOne({ _id: new ObjectId(id) }, { $set: { magicToken: token, magicTokenAt: new Date() } });
+  const user = await db.collection('users').findOne({ _id: new ObjectId(id) });
+  return { token, user };
+}
+async function getUserByMagicToken(token) {
+  if (!token || !String(token).startsWith('m_')) return null;
+  const db = await getDB();
+  return db.collection('users').findOne({ magicToken: String(token), active: true });
+}
+
 module.exports = {
   ROLES, initDefaultUsers,
   getUsers, getUser, createUser, updateUser, deactivateUser,
   loginWithPin, verifyUserToken, logout, hasPermission,
+  ensureMagicToken, getUserByMagicToken,
 };

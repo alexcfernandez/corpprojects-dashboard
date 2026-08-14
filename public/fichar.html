@@ -136,7 +136,32 @@ async function fichar(){const btn=document.getElementById('fichar-btn');btn.disa
 // refrescar el contador cada minuto si está dentro
 setInterval(()=>{if(workerToken&&document.getElementById('page-fichar').classList.contains('active'))cargar();},60000);
 
-(async function(){await loadWorkers();const ok=await tryRestore();if(!ok)showPage('login');})();
+// ── ENLACE MÁGICO (login sin PIN) ──
+async function magicLogin(t){
+  try{const r=await fetch('/api/fichaje/magic-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Enlace no válido');
+    workerToken=d.token;localStorage.setItem('cpWT',d.token);localStorage.setItem('cpWN',d.workerName||'');
+    history.replaceState(null,'',location.pathname);
+    entrar(d.workerName);
+    if(d.primeraVez)mostrarBienvenida(d.workerName);
+    return true;}
+  catch(e){toast(e.message,'error');return false;}}
+function mostrarBienvenida(nombre){const ov=document.createElement('div');ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border2);border-radius:18px;padding:24px;max-width:420px;width:100%">
+    <div style="font-size:20px;font-weight:700;margin-bottom:6px">👋 ¡Hola ${esc((nombre||'').split(' ')[0])}!</div>
+    <div style="color:var(--text2);font-size:14px;line-height:1.6;margin-bottom:16px">Bienvenido a la app de Corp Projects. Desde aquí:</div>
+    <div style="display:grid;gap:12px;margin-bottom:18px">
+      <div style="display:flex;gap:10px"><div style="font-size:20px">🕐</div><div><b>Fichar jornada</b><div style="color:var(--text3);font-size:13px">Al llegar, «Fichar entrada»; al irte, «Fichar salida».</div></div></div>
+      <div style="display:flex;gap:10px"><div style="font-size:20px">📋</div><div><b>Parte de trabajo</b><div style="color:var(--text3);font-size:13px">Al acabar un trabajo, lo mandas con fotos y materiales.</div></div></div>
+      <div style="display:flex;gap:10px"><div style="font-size:20px">📲</div><div><b>Añádela a inicio</b><div style="color:var(--text3);font-size:13px">Compartir → «Añadir a pantalla de inicio» para tenerla como app.</div></div></div>
+    </div>
+    <button class="btn" onclick="this.closest('div').parentNode.remove()">Entendido</button>
+  </div>`;
+  document.body.appendChild(ov);}
+
+(async function(){await loadWorkers();
+  const t=new URLSearchParams(location.search).get('t');
+  if(t){const ok=await magicLogin(t);if(ok)return;}
+  const ok=await tryRestore();if(!ok)showPage('login');})();
 </script>
 </body>
 </html>

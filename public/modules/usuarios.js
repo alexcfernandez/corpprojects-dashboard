@@ -134,6 +134,17 @@
     </div>
     <div class="g2" style="margin-bottom:12px">
       <div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">📱 Teléfono</div>
+        <input type="tel" id="u-telefono" value="${user.telefono||''}" placeholder="+34 6XX XXX XXX" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px">
+        <div style="font-size:10px;color:var(--text3);margin-top:3px">Para enviarle el enlace de acceso por WhatsApp</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">✉️ Email</div>
+        <input type="text" id="u-email" value="${user.email||''}" placeholder="trabajador@email.com" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px">
+      </div>
+    </div>
+    <div class="g2" style="margin-bottom:12px">
+      <div>
         <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">Color</div>
         <div style="display:flex;gap:8px;align-items:center;padding-top:6px">
           ${['#4d9cf8','#22c487','#f59e0b','#a78bfa','#f05252','#e879a1','#6b7280'].map(c=>`
@@ -216,7 +227,7 @@
               ${u.lastLogin?`<div style="font-size:10px;color:var(--text3)">Último acceso: ${new Date(u.lastLogin).toLocaleDateString('es-ES')}</div>`:''}
             </div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;flex-shrink:0">
-              ${(u.role==='tech'||u.role==='office')?`<button class="btn bgh" style="padding:5px 10px;font-size:11px" onclick="copyWorkerLink('${u._id}','${u.name}')">🔗 Enlace</button>`:''}
+              ${(u.role==='tech'||u.role==='office')?`<button class="btn bgh" style="padding:5px 10px;font-size:11px" onclick="enlaceMagico('${u._id}','${String(u.name).replace(/'/g,"\\'")}')">🔗 Acceso</button>`:''}
               <button class="btn bgh" style="padding:5px 10px;font-size:11px" onclick="CP.Usuarios.editUser('${u._id}')">✏️ Editar</button>
               ${u.active!==false
                 ? `<button class="btn bgh" style="padding:5px 10px;font-size:11px;color:var(--red);border-color:var(--red)" onclick="CP.Usuarios.deactivateUser('${u._id}','${u.name}')" title="Desactivar">⏸️</button>`
@@ -308,6 +319,8 @@
     role:      document.getElementById('u-role')?.value,
     pin:       document.getElementById('u-pin')?.value?.trim(),
     costeHora: parseFloat(document.getElementById('u-coste-hora')?.value || 0),
+    telefono:  document.getElementById('u-telefono')?.value?.trim(),
+    email:     document.getElementById('u-email')?.value?.trim(),
     color:     document.getElementById('u-color')?.value,
     notes:     document.getElementById('u-notes')?.value?.trim(),
     docs: {
@@ -347,23 +360,35 @@
     }
   }
 
-  // Copiar enlace directo del trabajador
-  window.copyWorkerLink = function(userId, userName) {
-    const base = location.origin;
-    const url  = `${base}/parte?w=${userId}`;
-    
-    // Copiar al portapapeles
-    navigator.clipboard.writeText(url).then(() => {
-      // Mostrar toast
-      const toast = document.createElement('div');
-      toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--green);color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:99999;animation:fadeIn .2s';
-      toast.textContent = `✅ Enlace de ${userName.split(' ')[0]} copiado`;
-      document.body.appendChild(toast);
-      setTimeout(() => toast.remove(), 2500);
-    }).catch(() => {
-      // Fallback — mostrar el enlace
-      prompt(`Enlace de ${userName}:`, url);
-    });
+  // Enlace MÁGICO del trabajador: genera (idempotente) y ofrece copiar / enviar.
+  window.enlaceMagico = async function(userId, userName) {
+    let data;
+    try { data = await api(`/api/users/${userId}/magic-link`, { method:'POST', body: JSON.stringify({}) }); }
+    catch(e){ alert('No se pudo generar el enlace: ' + e.message); return; }
+    const url = (data.url || '').replace(/"/g,'&quot;');
+    const nombre = String(userName||'').split(' ')[0];
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML = `<div style="background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:22px;max-width:440px;width:100%">
+      <div style="font-weight:700;font-size:16px;margin-bottom:4px">🔗 Acceso de ${nombre}</div>
+      <div style="color:var(--text3);font-size:12px;margin-bottom:12px">Al abrir este enlace entra SIN PIN y puede fichar y mandar partes. La primera vez le mostramos una mini-guía. El mismo enlace sirve para los recordatorios.</div>
+      <input readonly value="${url}" onclick="this.select()" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px;color:var(--text);font-size:12px;margin-bottom:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button class="btn bgh" onclick="navigator.clipboard.writeText('${url}').then(()=>{this.textContent='✅ Copiado'})">📋 Copiar</button>
+        <button class="btn bgh" onclick="enviarMagico('${userId}','whatsapp',this)">📲 WhatsApp</button>
+        <button class="btn bgh" onclick="enviarMagico('${userId}','email',this)">✉️ Email</button>
+        <button class="btn bgh" onclick="this.closest('div').parentNode.remove()">Cerrar</button>
+      </div>
+      <div id="magic-msg" style="font-size:12px;margin-top:10px"></div>
+    </div>`;
+    document.body.appendChild(ov);
+  };
+  window.enviarMagico = async function(userId, via, btn) {
+    const msg = document.getElementById('magic-msg'); btn.disabled = true; const old = btn.textContent; btn.textContent = 'Enviando…';
+    try { await api(`/api/users/${userId}/magic-link`, { method:'POST', body: JSON.stringify({ enviar: via }) });
+      if (msg) { msg.textContent = via==='whatsapp' ? '✅ Enviado por WhatsApp' : '✅ Enviado por email'; msg.style.color = 'var(--green)'; } }
+    catch(e){ if (msg) { msg.textContent = '❌ ' + e.message; msg.style.color = 'var(--red)'; } }
+    finally { btn.disabled = false; btn.textContent = old; }
   };
 
   CP.Usuarios = { render, showTab, loadUsers, editUser, deactivateUser, reactivateUser, submitUser, resetForm };
