@@ -9,12 +9,82 @@ async function getDB() {
 }
 
 // ── ROLES ────────────────────────────────────────────────────────
+// Roles de negocio (4 niveles) + sus capacidades. Un usuario con más
+// capacidades manda sobre uno con menos. 'owner' (Dueño) lo puede todo.
+//   field      → campo: partes, fichaje, presencia, mediciones, llaves
+//   presupuestos, catalogo → hacer presupuestos y ver/gestionar el catálogo
+//   facturas, clientes     → facturación y clientes
+//   usuarios, ajustes, registro → administración del sistema (solo Dueño)
+const ROLE_CAPS = {
+  owner:     ['field', 'presupuestos', 'catalogo', 'facturas', 'clientes', 'usuarios', 'ajustes', 'registro'],
+  oficina:   ['field', 'presupuestos', 'catalogo', 'facturas', 'clientes'],
+  encargado: ['field', 'presupuestos', 'catalogo'],
+  tecnico:   ['field'],
+};
+const ROLE_LABEL = { owner: 'Dueño', oficina: 'Oficina', encargado: 'Encargado', tecnico: 'Técnico' };
+// Roles que entran por contraseña (dashboard); el resto entra por PIN/enlace.
+const ROLES_PASSWORD = ['owner', 'oficina', 'encargado'];
+
+// Normaliza roles antiguos (admin/office/tech/worker/client) a los 4 nuevos.
+function normalizeRole(role) {
+  const map = { admin: 'owner', office: 'oficina', tech: 'tecnico', worker: 'tecnico', client: 'tecnico',
+                owner: 'owner', oficina: 'oficina', encargado: 'encargado', tecnico: 'tecnico' };
+  return map[role] || 'tecnico';
+}
+function can(role, capability) {
+  const caps = ROLE_CAPS[normalizeRole(role)];
+  return !!caps && caps.includes(capability);
+}
+
+// Compatibilidad hacia atrás con código que aún lea el objeto ROLES antiguo.
 const ROLES = {
   admin:  { label: 'Administrador', color: '#f05252', permissions: ['all'] },
   office: { label: 'Oficina',       color: '#4d9cf8', permissions: ['dashboard', 'partes', 'presencia', 'facturas', 'presupuestos'] },
   tech:   { label: 'Técnico',       color: '#22c487', permissions: ['partes_create'] },
   client: { label: 'Cliente',       color: '#a78bfa', permissions: ['invoices_read'] },
 };
+
+// ── CONTRASEÑAS (scrypt, sin dependencias externas) ──────────────
+function hashPassword(pw) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const h    = crypto.scryptSync(String(pw), salt, 64).toString('hex');
+  return `${salt}:${h}`;
+}
+function verifyPassword(pw, stored) {
+  if (!stored || !String(stored).includes(':')) return false;
+  const [salt, h] = String(stored).split(':');
+  const hh = crypto.scryptSync(String(pw), salt, 64).toString('hex');
+  const a = Buffer.from(h, 'hex'), b = Buffer.from(hh, 'hex');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+async function setUserPassword(id, password) {
+  if (!password || String(password).length < 6) throw new Error('La contraseña debe tener al menos 6 caracteres');
+  const db = await getDB();
+  await db.collection('users').updateOne(
+    { _id: new ObjectId(id) },
+    { $set: { passwordHash: hashPassword(password), passwordAt: new Date(), updatedAt: new Date() } }
+  );
+  return { ok: true };
+}
+// Login por email/usuario + contraseña. Devuelve la identidad (el servidor
+// firma el JWT). No revela si el fallo es de usuario o de contraseña.
+async function loginWithPassword(login, password) {
+  const db = await getDB();
+  const key = String(login || '').trim().toLowerCase();
+  if (!key || !password) throw new Error('Credenciales incorrectas');
+  const user = await db.collection('users').findOne({
+    active: true,
+    $or: [{ email: { $regex: `^${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } },
+          { username: key }],
+  });
+  if (!user || !user.passwordHash || !verifyPassword(password, user.passwordHash)) {
+    throw new Error('Credenciales incorrectas');
+  }
+  await db.collection('users').updateOne({ _id: user._id }, { $set: { lastLogin: new Date() } });
+  const role = normalizeRole(user.role);
+  console.log(`[Users] Login contraseña: ${user.name} (${role})`);
+  return { uid: String(user._id), name: user.name, role };
+}
 
 // ── INIT — crear usuarios por defecto si no hay ninguno ──────────
 async function initDefaultUsers() {
@@ -203,8 +273,10 @@ async function getUserByMagicToken(token) {
 }
 
 module.exports = {
-  ROLES, initDefaultUsers,
+  ROLES, ROLE_CAPS, ROLE_LABEL, ROLES_PASSWORD, normalizeRole, can,
+  initDefaultUsers,
   getUsers, getUser, createUser, updateUser, deactivateUser,
   loginWithPin, verifyUserToken, logout, hasPermission,
   ensureMagicToken, getUserByMagicToken,
+  setUserPassword, loginWithPassword,
 };

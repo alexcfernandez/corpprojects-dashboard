@@ -247,7 +247,7 @@ function limpiarLineas(lineas) {
 async function getPresupuestos() {
   const db = await getDB();
   const arr = await db.collection('presupuestos').find({ empresaId: EMPRESA }).sort({ updatedAt: -1 }).toArray();
-  return arr.map(p => ({ _id: p._id, nombre: p.nombre, clientName: p.clientName || '', estado: p.estado || 'borrador', nLineas: (p.lineas || []).filter(l => !esSeccion(l)).length, ...computeTotales(p.lineas, p.iva, p.descuento), updatedAt: p.updatedAt }));
+  return arr.map(p => ({ _id: p._id, nombre: p.nombre, clientName: p.clientName || '', estado: p.estado || 'borrador', creadoPor: p.by || '', nLineas: (p.lineas || []).filter(l => !esSeccion(l)).length, ...computeTotales(p.lineas, p.iva, p.descuento), updatedAt: p.updatedAt }));
 }
 async function getPresupuesto(id) {
   const db = await getDB();

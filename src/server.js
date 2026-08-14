@@ -99,7 +99,13 @@ async function requireAuthOficina(req, res, next) {
       return next();
     } catch { return res.status(401).json({ error: 'Token inválido' }); }
   }
-  try { req.user = jwt.verify(token, JWT_SECRET); req.oficina = { admin: true, role: 'admin' }; return next(); }
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    const role = req.user.role || 'owner';           // JWT antiguo sin rol = Dueño
+    req.oficina = { admin: role === 'owner' || role === 'oficina', role,
+                    name: req.user.name || 'Dueño', uid: req.user.uid || null };
+    return next();
+  }
   catch { return res.status(401).json({ error: 'Token inválido' }); }
 }
 
@@ -493,8 +499,21 @@ app.post('/api/login', loginLimiter, async (req, res) => {
   if (!password) return res.status(400).json({ error: 'Contraseña requerida' });
   if (password !== process.env.DASHBOARD_PASSWORD)
     return res.status(401).json({ error: 'Contraseña incorrecta' });
-  const token = jwt.sign({ user:'admin' }, JWT_SECRET, { expiresIn:'24h' });
-  res.json({ token, expiresIn:'24h' });
+  // Contraseña compartida = acceso de Dueño (retrocompatible; convive con las
+  // cuentas por persona hasta que se retire).
+  const token = jwt.sign({ user:'admin', role:'owner', name:'Dueño' }, JWT_SECRET, { expiresIn:'24h' });
+  res.json({ token, expiresIn:'24h', role:'owner', name:'Dueño' });
+});
+
+// Login por cuenta personal (email/usuario + contraseña) — Dueño/Oficina/
+// Encargado. Los técnicos entran por PIN/enlace mágico (no por aquí).
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
+  try {
+    const { login, password } = req.body || {};
+    const id = await users.loginWithPassword(login, password);
+    const token = jwt.sign({ uid: id.uid, name: id.name, role: id.role }, JWT_SECRET, { expiresIn:'24h' });
+    res.json({ token, expiresIn:'24h', name: id.name, role: id.role });
+  } catch (err) { res.status(401).json({ error: err.message }); }
 });
 
 // ── StelOrder ─────────────────────────────────────────────────────
@@ -1822,7 +1841,7 @@ app.put('/api/presupuestos/:id/estado', requireAuthOficina, async (req, res) => 
 app.get('/api/empresa', requireAuthOficina, (req, res) => res.json(presupuestos.getEmpresa()));
 app.post('/api/presupuestos', requireAuthOficina, async (req, res) => {
   try {
-    const by = req.oficina?.workerName || (req.oficina?.admin ? 'admin' : 'oficina');
+    const by = req.oficina?.name || req.oficina?.workerName || 'Oficina';
     res.json(await presupuestos.crearPresupuesto(req.body || {}, by));
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
