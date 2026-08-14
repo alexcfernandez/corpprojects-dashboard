@@ -354,7 +354,7 @@ function renderLineas(){
       <div class="l-in">
         <input class="l-cant" type="number" inputmode="decimal" step="0.01" value="${l.cantidad||''}" oninput="onCant(${i},this.value)">
         <span class="l-x">${esc(l.unidad)} ×</span>
-        <input class="l-precio" type="number" inputmode="decimal" step="0.01" value="${l.precioVenta||''}" oninput="onPrecio(${i},this.value)" placeholder="venta">
+        <input class="l-precio" type="number" inputmode="decimal" step="0.01" value="${l.precioVenta||''}" oninput="onPrecio(${i},this.value)" placeholder="tu precio">
         <span class="l-calc">= <b id="lt-${i}">${eur((l.cantidad||0)*l.precioVenta)}</b></span>
       </div>
       ${refLinea(i,l)}
@@ -365,7 +365,8 @@ function renderLineas(){
 }
 function mgLinea(l){const v=Number(l.precioVenta)||0,c=Number(l.coste)||0;return v>0?Math.round((v-c)/v*100):0;}
 function refLinea(i,l){if(!(Number(l.coste)>0))return '';const mg=mgLinea(l);const col=mg>=25?'var(--green)':mg>=10?'var(--amber)':'var(--red)';
-  return `<div class="l-ref" id="ref-${i}">Coste <b>${eur(l.coste)}/${esc(l.unidad)}</b> · tu venta <b>${eur(l.precioVenta)}/${esc(l.unidad)}</b> · margen <b style="color:${col}">${mg}%</b></div>`;}
+  const nudge=mg<=0?` · <span style="color:var(--amber)">⚠️ pon tu precio arriba ↑</span>`:'';
+  return `<div class="l-ref" id="ref-${i}">Te cuesta (ref.) <b>${eur(l.coste)}/${esc(l.unidad)}</b> · vendes a <b>${eur(l.precioVenta)}/${esc(l.unidad)}</b> · margen <b style="color:${col}">${mg}%</b>${nudge}</div>`;}
 function onCant(i,v){pres.lineas[i].cantidad=parseFloat(String(v).replace(',','.'))||0;document.getElementById('lt-'+i).textContent=eur(pres.lineas[i].cantidad*pres.lineas[i].precioVenta);recompute();}
 function onPrecio(i,v){const l=pres.lineas[i];l.precioVenta=parseFloat(String(v).replace(',','.'))||0;
   const lt=document.getElementById('lt-'+i);if(lt)lt.textContent=eur((l.cantidad||0)*l.precioVenta);
@@ -491,7 +492,7 @@ tr.sec td{background:#f3f4f6;font-weight:700;border-top:1px solid #ccc}
 @media print{body{padding:0}.noprint{display:none}}
 .bar{background:#4d9cf8;color:#fff;padding:8px 12px;border-radius:6px;border:none;font-size:13px;cursor:pointer;font-family:inherit}
 </style></head><body>
-<div class="noprint" style="text-align:right;margin-bottom:12px"><button class="bar" onclick="window.print()">🖨️ Imprimir</button></div>
+<div class="noprint" style="display:flex;justify-content:space-between;margin-bottom:12px"><button class="bar" onclick="window.close()">✕ Cerrar</button><button class="bar" onclick="window.print()">🖨️ Imprimir</button></div>
 <div class="top"><div><b>${esc(e.nombre||'')}</b><div style="color:#555;font-size:12px">Hoja de trabajo${cli?' · '+cli:''}</div></div><div class="r">Fecha: ${fecha}</div></div>
 <div class="h2">${esc(pres.nombre||'')}</div>
 <table><thead><tr><th></th><th>Trabajo a realizar</th><th class="num">Cant.</th><th>Ud.</th></tr></thead>
@@ -542,7 +543,7 @@ tr.sec td{background:#f3f4f6;font-weight:700;border-top:1px solid #ccc}
 @media print{body{padding:0}.noprint{display:none}}
 .bar{background:#4d9cf8;color:#fff;padding:8px 12px;border-radius:6px;border:none;font-size:13px;cursor:pointer;font-family:inherit}
 </style></head><body>
-<div class="noprint" style="text-align:right;margin-bottom:12px"><button class="bar" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button></div>
+<div class="noprint" style="display:flex;justify-content:space-between;margin-bottom:12px"><button class="bar" onclick="window.close()">✕ Cerrar</button><button class="bar" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button></div>
 <div class="top">
   <div class="emp"><b>${esc(e.nombre||'')}</b>${empLine?`<div class="sub">${esc(empLine)}</div>`:''}</div>
   <div class="doc"><div class="n">Presupuesto ${esc(pres.numero||'')}</div><div class="m">Fecha: ${fTxt}</div><div class="m">Válido hasta: ${vto}</div></div>

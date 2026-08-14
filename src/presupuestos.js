@@ -358,7 +358,9 @@ async function listaMateriales(id) {
 
   const items = [...acc.values()].map(m => {
     const mat = m.materialId ? matById.get(String(m.materialId)) : null;
-    const precio = mat ? Number(mat.precio) || 0 : m.precio;
+    // Precio = el de la RECETA (snapshot), coherente con el coste del presupuesto.
+    // El material solo se usa para el contenido/formato (redondeo a piezas).
+    const precio = m.precio;
     const contenido = mat && num(mat.contenido) > 0 ? num(mat.contenido) : 0;
     const formato = mat ? (mat.formato || '') : '';
     const unidad = mat ? mat.unidad : m.unidad;
