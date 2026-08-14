@@ -234,6 +234,7 @@ function limpiarLineas(lineas) {
       tipo,
       partidaId:   l.partidaId ? String(l.partidaId) : null,
       nombre:      String(l.nombre || '').trim() || (tipo === 'libre' ? 'Concepto' : 'Partida'),
+      descripcion: String(l.descripcion || '').trim(),
       unidad:      String(l.unidad || 'ud'),
       cantidad:    num(l.cantidad),
       precioVenta: n2(l.precioVenta),

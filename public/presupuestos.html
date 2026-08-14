@@ -54,6 +54,12 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 .l-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .l-nom{font-weight:600;font-size:14px}
 .l-del{background:rgba(240,82,82,.12);border:1px solid var(--red);color:var(--red);border-radius:7px;width:30px;height:32px;font-size:15px;cursor:pointer;flex-shrink:0}
+.l-move{display:inline-flex;gap:4px;flex-shrink:0}
+.l-move button{background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:7px;width:30px;height:32px;font-size:15px;line-height:1;cursor:pointer;font-family:inherit}
+.l-move button:hover:not(:disabled){border-color:var(--blue);color:var(--text)}
+.l-move button:disabled{opacity:.28;cursor:default}
+.l-desc{width:100%;margin-top:8px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text2);font-size:13px;font-family:inherit;resize:vertical;min-height:34px;outline:none}
+.l-desc:focus{border-color:var(--blue)}
 .l-in{display:flex;align-items:center;gap:8px;margin-top:9px;flex-wrap:wrap}
 .l-cant{width:90px;text-align:right}
 .l-u{font-size:13px;color:var(--text3)}
@@ -334,11 +340,13 @@ function renderLineas(){
     if(tipo==='seccion') return `<div class="seccion">
       <input class="s-nom" value="${esc(l.nombre)}" oninput="onSecNom(${i},this.value)" placeholder="Título de sección (Cocina, Baño…)">
       <span class="s-sub" id="ss-${i}">${eur(subtotalDesde(i))}</span>
+      ${moveBtns(i)}
       <button class="l-del" onclick="delLinea(${i})">×</button>
     </div>`;
     const quick=medQuick(l.unidad).filter(q=>q[1]>0).map(q=>`<button onclick="quickFill(${i},${q[1]})">${q[0]} ${fmt(q[1])}</button>`).join('');
     if(tipo==='libre') return `<div class="linea libre">
-      <div class="l-top"><input class="l-nomin" value="${esc(l.nombre)}" oninput="onLibre(${i},'nombre',this.value)" placeholder="Concepto (Puerta, Lámpara, Mano de obra…)"><button class="l-del" onclick="delLinea(${i})">×</button></div>
+      <div class="l-top"><input class="l-nomin" value="${esc(l.nombre)}" oninput="onLibre(${i},'nombre',this.value)" placeholder="Concepto (Puerta, Lámpara, Mano de obra…)">${moveBtns(i)}<button class="l-del" onclick="delLinea(${i})">×</button></div>
+      <textarea class="l-desc" rows="2" oninput="onDesc(${i},this.value)" placeholder="Descripción (opcional): detalle del trabajo o del material…">${esc(l.descripcion||'')}</textarea>
       <div class="l-in">
         <input class="l-cant" type="number" inputmode="decimal" step="0.01" value="${l.cantidad||''}" oninput="onCant(${i},this.value)" placeholder="cant.">
         <input class="l-unid" type="text" value="${esc(l.unidad)}" oninput="onLibre(${i},'unidad',this.value)" placeholder="ud">
@@ -350,7 +358,8 @@ function renderLineas(){
       ${ivaSel(i,l)}
     </div>`;
     return `<div class="linea">
-      <div class="l-top"><span class="l-nom">${esc(l.nombre)}</span><button class="l-del" onclick="delLinea(${i})">×</button></div>
+      <div class="l-top"><span class="l-nom">${esc(l.nombre)}</span>${moveBtns(i)}<button class="l-del" onclick="delLinea(${i})">×</button></div>
+      <textarea class="l-desc" rows="2" oninput="onDesc(${i},this.value)" placeholder="Descripción (opcional): qué incluye esta partida…">${esc(l.descripcion||'')}</textarea>
       <div class="l-in">
         <input class="l-cant" type="number" inputmode="decimal" step="0.01" value="${l.cantidad||''}" oninput="onCant(${i},this.value)">
         <span class="l-x">${esc(l.unidad)} ×</span>
@@ -363,6 +372,10 @@ function renderLineas(){
     </div>`;}).join('');
   recompute();
 }
+function moveBtns(i){const n=pres.lineas.length;
+  return `<span class="l-move"><button title="Subir" onclick="moveLinea(${i},-1)" ${i<=0?'disabled':''}>↑</button><button title="Bajar" onclick="moveLinea(${i},1)" ${i>=n-1?'disabled':''}>↓</button></span>`;}
+function moveLinea(i,dir){const j=i+dir;if(j<0||j>=pres.lineas.length)return;const a=pres.lineas;[a[i],a[j]]=[a[j],a[i]];renderLineas();}
+function onDesc(i,v){pres.lineas[i].descripcion=v;}
 function mgLinea(l){const v=Number(l.precioVenta)||0,c=Number(l.coste)||0;return v>0?Math.round((v-c)/v*100):0;}
 function refLinea(i,l){if(!(Number(l.coste)>0))return '';const mg=mgLinea(l);const col=mg>=25?'var(--green)':mg>=10?'var(--amber)':'var(--red)';
   const nudge=mg<=0?` · <span style="color:var(--amber)">⚠️ pon tu precio arriba ↑</span>`:'';
@@ -473,7 +486,8 @@ function hojaTrabajoHtml(){
   let filas='';
   pres.lineas.forEach(l=>{
     if(tipoDe(l)==='seccion'){filas+=`<tr class="sec"><td colspan="4">${esc(l.nombre||'Sección')}</td></tr>`;return;}
-    filas+=`<tr><td class="chk">☐</td><td>${esc(l.nombre)}</td><td class="num">${fmt(l.cantidad||0)}</td><td>${esc(l.unidad||'')}</td></tr>`;
+    const nom=esc(l.nombre)+(l.descripcion?`<div style="color:#666;font-size:12px;margin-top:2px;font-weight:400">${esc(l.descripcion).replace(/\n/g,'<br>')}</div>`:'');
+    filas+=`<tr><td class="chk">☐</td><td>${nom}</td><td class="num">${fmt(l.cantidad||0)}</td><td>${esc(l.unidad||'')}</td></tr>`;
   });
   const cli=[pres.clientName,c.direccion].filter(Boolean).map(esc).join(' · ');
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Hoja de trabajo</title><style>
@@ -510,7 +524,8 @@ function buildPdfHtml(){
     if(tipoDe(l)==='seccion'){filas+=`<tr class="sec"><td colspan="4">${esc(l.nombre||'Sección')}</td><td class="num">${eur(subtotalDesde(i))}</td></tr>`;return;}
     const imp=(l.cantidad||0)*(l.precioVenta||0);base+=imp;
     const rate=(l.iva==null?g:Number(l.iva));ivaPorTipo[rate]=(ivaPorTipo[rate]||0)+imp*rate/100;
-    filas+=`<tr><td>${esc(l.nombre)}</td><td class="num">${fmt(l.cantidad||0)}</td><td>${esc(l.unidad||'')}</td><td class="num">${eur(l.precioVenta)}</td><td class="num">${eur(imp)}</td></tr>`;
+    const nom=esc(l.nombre)+(l.descripcion?`<div style="color:#777;font-size:11px;margin-top:2px">${esc(l.descripcion).replace(/\n/g,'<br>')}</div>`:'');
+    filas+=`<tr><td>${nom}</td><td class="num">${fmt(l.cantidad||0)}</td><td>${esc(l.unidad||'')}</td><td class="num">${eur(l.precioVenta)}</td><td class="num">${eur(imp)}</td></tr>`;
   });
   base=Math.round(base*100)/100;
   const d=descPres(); let desc=0;
