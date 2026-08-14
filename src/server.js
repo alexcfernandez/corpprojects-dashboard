@@ -117,13 +117,23 @@ async function requireAuthOficina(req, res, next) {
 // ANTES que esas rutas para interceptarlas por prefijo de URL.
 app.use(['/api/presupuestos', '/api/partidas', '/api/materiales', '/api/facturas'], async (req, res, next) => {
   const token = (req.headers.authorization || '').replace('Bearer ', '');
-  if (!token.startsWith('w_')) return next(); // admin JWT o sin token → lo resuelve el endpoint
+  if (token.startsWith('w_')) {
+    try {
+      const w = await require('./partes').verifyWorkerToken(token);
+      if (w && w.workerRole === 'tech') {
+        return res.status(403).json({ error: 'Solo oficina: los técnicos no acceden a presupuestos, catálogo ni facturas' });
+      }
+    } catch { /* si falla la verificación, que decida el auth del endpoint */ }
+    return next();
+  }
+  // JWT por cuenta: el Encargado hace presupuestos/catálogo pero NO facturas.
   try {
-    const w = await require('./partes').verifyWorkerToken(token);
-    if (w && w.workerRole === 'tech') {
-      return res.status(403).json({ error: 'Solo oficina: los técnicos no acceden a presupuestos, catálogo ni facturas' });
+    const u = jwt.verify(token, JWT_SECRET);
+    const role = u.role || 'owner';
+    if ((req.originalUrl || '').startsWith('/api/facturas') && !users.can(role, 'facturas')) {
+      return res.status(403).json({ error: 'Tu rol no tiene acceso a facturas' });
     }
-  } catch { /* si falla la verificación, que decida el auth del endpoint */ }
+  } catch { /* sin token/ inválido → lo resuelve el auth del endpoint */ }
   next();
 });
 

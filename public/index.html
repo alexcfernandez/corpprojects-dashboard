@@ -71,6 +71,7 @@ function cpUpdateBanner(){
     <span style="font-size:11px;color:var(--text3)"><span class="live-dot"></span><span id="lastUpd">Cargando...</span></span>
     <button onclick="toggleTheme()" title="Cambiar tema" style="background:none;border:1px solid var(--border2);border-radius:8px;padding:5px 10px;color:var(--text2);cursor:pointer;font-size:14px;transition:all .2s" id="theme-toggle-btn">🌙</button>
     <button class="sync-btn" onclick="hardRefresh()" id="syncBtn">🔄 Actualizar</button>
+    <span id="cp-who" style="font-size:11px;color:var(--text2);background:var(--bg3);border:1px solid var(--border2);border-radius:100px;padding:4px 10px;white-space:nowrap"></span>
     <button class="logout-btn" onclick="doLogout()">Salir</button>
   </div>
 </header>
@@ -622,8 +623,44 @@ function showApp(){
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('app').style.display='block';
   document.getElementById('theme-toggle-fixed').style.display='flex';
+  applyRoleVisibility();
   loadAll();
   renderInicio();
+}
+
+// ── PERMISOS POR ROL (oculta lo que cada rol no puede) ──────────────
+const CP_ROLE_CAPS={
+  owner:    ['field','presupuestos','catalogo','facturas','clientes','usuarios','ajustes','registro'],
+  oficina:  ['field','presupuestos','catalogo','facturas','clientes'],
+  encargado:['field','presupuestos','catalogo'],
+  tecnico:  ['field'],
+};
+const CP_ROLE_LABEL={owner:'Dueño',oficina:'Oficina',encargado:'Encargado',tecnico:'Técnico'};
+// Qué capacidad exige cada pestaña / enlace. Lo no listado es visible para todos.
+const CP_TAB_CAP={facturas:'facturas',pendientes:'facturas',cobros:'facturas',banco:'facturas',pagos:'facturas',presupuestos:'presupuestos',familias:'clientes',emails:'clientes',usuarios:'usuarios',actividad:'registro'};
+const CP_TOOL_CAP={'/subir-factura':'facturas','/asignar-facturas':'facturas','/catalogo':'presupuestos','/presupuestos':'presupuestos','/competencia':'facturas'};
+function cpUser(){ try{ return JSON.parse(localStorage.getItem('cp_user')||'{}'); }catch(e){ return {}; } }
+function cpRole(){ return cpUser().role || 'owner'; }  // sin cuenta (clave general) = Dueño
+function cpCan(cap){ return (CP_ROLE_CAPS[cpRole()]||CP_ROLE_CAPS.owner).includes(cap); }
+function applyRoleVisibility(){
+  document.querySelectorAll('.nav-btn[onclick*="showTab"]').forEach(b=>{
+    const m=(b.getAttribute('onclick')||'').match(/showTab\('([^']+)'/); if(!m) return;
+    const cap=CP_TAB_CAP[m[1]]; b.style.display=(cap && !cpCan(cap))?'none':'';
+  });
+  document.querySelectorAll('.nav-btn[onclick*="location.href"]').forEach(b=>{
+    const m=(b.getAttribute('onclick')||'').match(/location\.href='([^']+)'/); if(!m) return;
+    const cap=CP_TOOL_CAP[m[1]]; b.style.display=(cap && !cpCan(cap))?'none':'';
+  });
+  // Ocultar un grupo si todas sus pestañas quedaron ocultas
+  document.querySelectorAll('.nav-grp').forEach(g=>{
+    const gm=(g.getAttribute('onclick')||'').match(/showGrupo\('([^']+)'/); if(!gm) return;
+    const sub=document.querySelector(`.subgrp[data-grp="${gm[1]}"]`); if(!sub) return;
+    const any=[...sub.querySelectorAll('.nav-btn')].some(b=>b.style.display!=='none');
+    g.style.display=any?'':'none';
+  });
+  // Badge de quién ha entrado
+  const who=document.getElementById('cp-who');
+  if(who){ const u=cpUser(); who.textContent=u.name?`${u.name} · ${CP_ROLE_LABEL[cpRole()]||''}`:'Dueño (clave general)'; }
 }
 
 // ── API HELPERS ───────────────────────────────────────────────────
@@ -1352,7 +1389,8 @@ function showGrupo(grp, btn){
     // Abrir la primera pestaña del grupo automáticamente. Excepción: Herramientas
     // son enlaces a páginas standalone; auto-abrir redirigiría al entrar al menú.
     if(grp!=='herramientas'){
-      const firstBtn=target.querySelector('.nav-btn');
+      // Abrir la primera pestaña VISIBLE (respeta los permisos por rol).
+      const firstBtn=[...target.querySelectorAll('.nav-btn')].find(b=>b.style.display!=='none');
       if(firstBtn) firstBtn.click();
     }
   }
@@ -1459,6 +1497,7 @@ async function init() {
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     document.getElementById('theme-toggle-fixed').style.display = 'flex';
+    applyRoleVisibility();
     try { await window.CP_CONFIG.loadWorkers(); } catch (e) {}
     loadAll();
     renderInicio();
