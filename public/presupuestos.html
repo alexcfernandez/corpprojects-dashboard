@@ -79,6 +79,10 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 .addrow{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
 .addrow .btn{flex:1;min-width:100px;padding:12px 8px;font-size:14px}
 /* IVA */
+.estado-bar{margin-bottom:12px}
+.est-chips{display:flex;gap:6px;flex-wrap:wrap}
+.est-chip{background:var(--bg3);border:1.5px solid var(--border2);border-radius:100px;padding:8px 16px;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+.est-fecha{font-size:12px;color:var(--text3);margin-top:6px}
 .iva-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--rs);padding:8px 12px}
 .iva-head span{font-size:13px;color:var(--text2);flex-shrink:0}
 .iva-head select{flex:1;padding:9px 11px}
@@ -149,6 +153,7 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
     <input type="number" id="d-desc-valor" inputmode="decimal" step="0.01" placeholder="0" style="width:90px;text-align:right" oninput="recompute()">
     <select id="d-desc-tipo" onchange="recompute()" style="width:auto"><option value="pct">%</option><option value="eur">€</option></select>
   </div>
+  <div class="estado-bar" id="estado-bar"></div>
   <div class="med-ref" id="d-medref" style="display:none"></div>
   <div id="lineas"></div>
   <div class="addrow">
@@ -243,11 +248,27 @@ function logout(){if(esAdmin){location.href='/';return;}workerToken=null;localSt
 // ── LISTA ──
 async function cargar(){document.getElementById('lista').innerHTML='<div class="empty"><span class="spinner"></span></div>';
   try{lista=await api('GET','/api/presupuestos');renderLista();}catch(e){toast(e.message,'error');}}
+const ESTADO_INFO={borrador:['Borrador','var(--text3)'],enviado:['Enviado','var(--blue)'],aceptado:['Aceptado','var(--green)'],rechazado:['Rechazado','var(--red)']};
+function estadoBadge(e){const i=ESTADO_INFO[e]||ESTADO_INFO.borrador;return `<span class="badge" style="color:${i[1]};border-color:${i[1]};background:transparent">${i[0]}</span>`;}
+function renderEstadoBar(){
+  const cur=(pres&&pres.estado)||'borrador';
+  const chips=Object.keys(ESTADO_INFO).map(e=>{const i=ESTADO_INFO[e];const on=e===cur;return `<button class="est-chip" style="${on?`border-color:${i[1]};color:${i[1]};background:color-mix(in srgb,${i[1]} 14%,transparent)`:''}" onclick="onEstado('${e}')">${i[0]}</button>`;}).join('');
+  let f='';
+  if(cur==='enviado'&&pres.enviadoAt)f='📤 Enviado el '+new Date(pres.enviadoAt).toLocaleDateString('es-ES');
+  else if(cur==='aceptado'&&pres.aceptadoAt)f='✅ Aceptado el '+new Date(pres.aceptadoAt).toLocaleDateString('es-ES');
+  else if(cur==='rechazado'&&pres.rechazadoAt)f='❌ Rechazado el '+new Date(pres.rechazadoAt).toLocaleDateString('es-ES');
+  document.getElementById('estado-bar').innerHTML=`<div class="est-chips">${chips}</div>${f?`<div class="est-fecha">${f}</div>`:''}`;
+}
+async function onEstado(e){if(!pres)return;
+  try{await api('PUT','/api/presupuestos/'+pres._id+'/estado',{estado:e});pres.estado=e;const now=new Date().toISOString();
+    if(e==='enviado')pres.enviadoAt=now;if(e==='aceptado')pres.aceptadoAt=now;if(e==='rechazado')pres.rechazadoAt=now;
+    renderEstadoBar();toast('Estado: '+ESTADO_INFO[e][0],'ok');}
+  catch(err){toast(err.message,'error');}}
 function renderLista(){
   document.getElementById('count').textContent=`${lista.length} presupuesto(s)`;
   if(!lista.length){document.getElementById('lista').innerHTML='<div class="empty">Aún no hay presupuestos. Pulsa «+ Nuevo presupuesto».</div>';return;}
   document.getElementById('lista').innerHTML=lista.map(p=>`<div class="card" onclick="abrirPres('${p._id}')">
-    <div class="card-top"><div class="card-nm">${esc(p.nombre)}</div><span class="badge">${esc(p.estado||'borrador')}</span></div>
+    <div class="card-top"><div class="card-nm">${esc(p.nombre)}</div>${estadoBadge(p.estado||'borrador')}</div>
     ${p.clientName?`<div class="card-cli">${esc(p.clientName)}</div>`:''}
     <div class="card-tot">${p.nLineas} partida(s) · <b style="color:var(--green)">${eur(p.totalVenta)}</b>${p.margen?` · margen ${p.margen}%`:''}</div>
   </div>`).join('');
@@ -275,6 +296,7 @@ async function abrirPres(id){
     document.getElementById('d-iva').value=String(Number.isFinite(pres.iva)?pres.iva:10);
     document.getElementById('d-desc-valor').value=(pres.descuento&&pres.descuento.valor)?pres.descuento.valor:'';
     document.getElementById('d-desc-tipo').value=(pres.descuento&&pres.descuento.tipo==='eur')?'eur':'pct';
+    renderEstadoBar();
     document.getElementById('det-del').style.display='block';
     document.getElementById('det-compra').style.display='block';
     document.getElementById('det-pdf').style.display='block';

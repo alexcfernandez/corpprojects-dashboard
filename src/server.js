@@ -1815,6 +1815,10 @@ app.get('/api/presupuestos/:id/materiales', requireAuthOficina, async (req, res)
   try { res.json(await presupuestos.listaMateriales(req.params.id)); }
   catch (err) { res.status(404).json({ error: err.message }); }
 });
+app.put('/api/presupuestos/:id/estado', requireAuthOficina, async (req, res) => {
+  try { res.json(await presupuestos.setEstado(req.params.id, (req.body || {}).estado)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/empresa', requireAuthOficina, (req, res) => res.json(presupuestos.getEmpresa()));
 app.post('/api/presupuestos', requireAuthOficina, async (req, res) => {
   try {

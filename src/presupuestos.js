@@ -300,6 +300,20 @@ async function eliminarPresupuesto(id) {
   await db.collection('presupuestos').deleteOne({ _id: new ObjectId(id), empresaId: EMPRESA });
   return { ok: true };
 }
+// Estados del presupuesto: borrador → enviado → aceptado/rechazado.
+// Guarda la fecha de cada hito (enviadoAt/aceptadoAt/rechazadoAt) para el seguimiento.
+const ESTADOS = ['borrador', 'enviado', 'aceptado', 'rechazado'];
+async function setEstado(id, estado) {
+  if (!ESTADOS.includes(estado)) throw new Error('Estado no válido');
+  const db = await getDB();
+  const now = new Date();
+  const set = { estado, estadoAt: now, updatedAt: now };
+  if (estado === 'enviado')   set.enviadoAt = now;
+  if (estado === 'aceptado')  set.aceptadoAt = now;
+  if (estado === 'rechazado') set.rechazadoAt = now;
+  await db.collection('presupuestos').updateOne({ _id: new ObjectId(id), empresaId: EMPRESA }, { $set: set });
+  return { ok: true, estado, estadoAt: now };
+}
 
 // ── LISTA DE LA COMPRA ───────────────────────────────────────────
 // Agrega los materiales de todas las partidas (con receta) de un presupuesto,
@@ -363,4 +377,5 @@ module.exports = {
   getPartidas, crearPartida, editarPartida, eliminarPartida,
   getMateriales, crearMaterial, editarMaterial, eliminarMaterial,
   getPresupuestos, getPresupuesto, crearPresupuesto, guardarPresupuesto, eliminarPresupuesto,
+  ESTADOS, setEstado,
 };
