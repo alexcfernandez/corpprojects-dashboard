@@ -172,7 +172,9 @@ async function createObra(data) {
     endDate:      data.endDate || null,
 
     // Presupuesto
-    budgetAmount: parseFloat(data.budgetAmount || 0),  // Precio presupuestado
+    budgetAmount: parseFloat(data.budgetAmount || 0),  // Precio presupuestado (venta)
+    costePresupuestado: parseFloat(data.costePresupuestado || 0), // Coste que esperábamos gastar
+    presupuestoId: data.presupuestoId ? String(data.presupuestoId) : null, // origen (si nace de un presupuesto)
     invoicedAmount: 0,  // Se calcula cruzando con StelOrder
 
     // Control

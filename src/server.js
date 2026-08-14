@@ -1963,10 +1963,18 @@ app.get('/api/presupuestos/:id/materiales', requireAuthOficina, async (req, res)
 app.put('/api/presupuestos/:id/estado', requireAuthOficina, async (req, res) => {
   try {
     const estado = (req.body || {}).estado;
-    const r = await presupuestos.setEstado(req.params.id, estado);
     const a = actorDe(req);
+    const r = await presupuestos.setEstado(req.params.id, estado);
     activity.registrar({ actor: a.name, actorRole: a.role, kind: 'modificado', entidad: 'Presupuesto', ref: req.params.id, detalle: 'Estado → ' + estado });
-    res.json(r);
+    // Presupuesto ACEPTADO → crea la OBRA (una sola vez) y la enlaza.
+    let obra = null;
+    if (estado === 'aceptado') {
+      try {
+        obra = await presupuestos.crearObraDesdePresupuesto(req.params.id);
+        if (obra && obra.creada) activity.registrar({ actor: a.name, actorRole: a.role, kind: 'creado', entidad: 'Obra', ref: obra.reference, detalle: 'Desde presupuesto aceptado' });
+      } catch (e) { console.warn('[Presupuesto→Obra]', e.message); }
+    }
+    res.json({ ...r, obra });
   }
   catch (err) { res.status(400).json({ error: err.message }); }
 });

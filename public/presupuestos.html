@@ -87,6 +87,7 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 .addrow .btn{flex:1;min-width:100px;padding:12px 8px;font-size:14px}
 /* IVA */
 .estado-bar{margin-bottom:12px}
+.est-obra{margin-top:8px;font-size:12px;color:var(--green);background:color-mix(in srgb,var(--green) 12%,transparent);border:1px solid color-mix(in srgb,var(--green) 40%,transparent);border-radius:8px;padding:7px 10px}
 .est-chips{display:flex;gap:6px;flex-wrap:wrap}
 .est-chip{background:var(--bg3);border:1.5px solid var(--border2);border-radius:100px;padding:8px 16px;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
 .est-fecha{font-size:12px;color:var(--text3);margin-top:6px}
@@ -268,12 +269,16 @@ function renderEstadoBar(){
   if(cur==='enviado'&&pres.enviadoAt)f='📤 Enviado el '+new Date(pres.enviadoAt).toLocaleDateString('es-ES');
   else if(cur==='aceptado'&&pres.aceptadoAt)f='✅ Aceptado el '+new Date(pres.aceptadoAt).toLocaleDateString('es-ES');
   else if(cur==='rechazado'&&pres.rechazadoAt)f='❌ Rechazado el '+new Date(pres.rechazadoAt).toLocaleDateString('es-ES');
-  document.getElementById('estado-bar').innerHTML=`<div class="est-chips">${chips}</div>${f?`<div class="est-fecha">${f}</div>`:''}`;
+  const obra=pres.obraId?`<div class="est-obra">🏗️ Obra creada${pres.obraRef?' · '+esc(pres.obraRef):''} — se ve en el panel · Operación · Obras</div>`:'';
+  document.getElementById('estado-bar').innerHTML=`<div class="est-chips">${chips}</div>${f?`<div class="est-fecha">${f}</div>`:''}${obra}`;
 }
 async function onEstado(e){if(!pres)return;
-  try{await api('PUT','/api/presupuestos/'+pres._id+'/estado',{estado:e});pres.estado=e;const now=new Date().toISOString();
+  try{const res=await api('PUT','/api/presupuestos/'+pres._id+'/estado',{estado:e});pres.estado=e;const now=new Date().toISOString();
     if(e==='enviado')pres.enviadoAt=now;if(e==='aceptado')pres.aceptadoAt=now;if(e==='rechazado')pres.rechazadoAt=now;
-    renderEstadoBar();toast('Estado: '+ESTADO_INFO[e][0],'ok');}
+    if(res&&res.obra&&res.obra.obraId){pres.obraId=res.obra.obraId;pres.obraRef=res.obra.reference;}
+    renderEstadoBar();
+    if(res&&res.obra&&res.obra.creada)toast('🏗️ Obra creada: '+(res.obra.reference||''),'ok');
+    else toast('Estado: '+ESTADO_INFO[e][0],'ok');}
   catch(err){toast(err.message,'error');}}
 function renderLista(){
   document.getElementById('count').textContent=`${lista.length} presupuesto(s)`;
@@ -283,6 +288,7 @@ function renderLista(){
     ${p.clientName?`<div class="card-cli">${esc(p.clientName)}</div>`:''}
     <div class="card-tot">${p.nLineas} partida(s) · <b style="color:var(--green)">${eur(p.totalVenta)}</b>${p.margen?` · margen ${p.margen}%`:''}</div>
     ${p.creadoPor?`<div class="card-por">👤 Creado por ${esc(p.creadoPor)}</div>`:''}
+    ${p.obraId?`<div class="card-por" style="color:var(--green)">🏗️ Obra creada</div>`:''}
   </div>`).join('');
 }
 function volver(){pres=null;cargar();showPage('list');}

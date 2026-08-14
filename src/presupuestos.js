@@ -247,7 +247,7 @@ function limpiarLineas(lineas) {
 async function getPresupuestos() {
   const db = await getDB();
   const arr = await db.collection('presupuestos').find({ empresaId: EMPRESA }).sort({ updatedAt: -1 }).toArray();
-  return arr.map(p => ({ _id: p._id, nombre: p.nombre, clientName: p.clientName || '', estado: p.estado || 'borrador', creadoPor: p.by || '', nLineas: (p.lineas || []).filter(l => !esSeccion(l)).length, ...computeTotales(p.lineas, p.iva, p.descuento), updatedAt: p.updatedAt }));
+  return arr.map(p => ({ _id: p._id, nombre: p.nombre, clientName: p.clientName || '', estado: p.estado || 'borrador', creadoPor: p.by || '', obraId: p.obraId || null, nLineas: (p.lineas || []).filter(l => !esSeccion(l)).length, ...computeTotales(p.lineas, p.iva, p.descuento), updatedAt: p.updatedAt }));
 }
 async function getPresupuesto(id) {
   const db = await getDB();
@@ -316,6 +316,39 @@ async function setEstado(id, estado) {
   return { ok: true, estado, estadoAt: now };
 }
 
+// Presupuesto ACEPTADO → OBRA. Crea la obra sembrada con lo presupuestado
+// (venta = presupuesto, coste esperado) y la enlaza. Idempotente: si el
+// presupuesto ya tiene obra, no crea otra.
+async function crearObraDesdePresupuesto(id) {
+  const db = await getDB();
+  const p = await db.collection('presupuestos').findOne({ _id: new ObjectId(id), empresaId: EMPRESA });
+  if (!p) throw new Error('Presupuesto no encontrado');
+  if (p.obraId) return { yaExistia: true, obraId: String(p.obraId), reference: p.obraRef || p.nombre };
+
+  const t = computeTotales(p.lineas, p.iva, p.descuento);
+  const cliente = (p.clientName || '').trim() || 'Sin cliente';
+  const ref = (p.nombre || p.numero || 'Obra').trim();
+  const aliases = [];
+  if (p.numero) aliases.push(p.numero);
+
+  const obra = await require('./obras').createObra({
+    clientName: cliente,
+    reference: ref,
+    description: p.nombre || '',
+    address: (p.clientData && p.clientData.direccion) || '',
+    budgetAmount: t.baseConDescuento,        // lo que cobramos (venta con descuento)
+    costePresupuestado: t.totalCoste,        // lo que esperábamos gastar
+    presupuestoId: String(p._id),
+    aliases,
+    status: 'activa',
+  });
+  await db.collection('presupuestos').updateOne(
+    { _id: p._id },
+    { $set: { obraId: String(obra.id), obraRef: ref, updatedAt: new Date() } }
+  );
+  return { creada: true, obraId: String(obra.id), reference: ref };
+}
+
 // ── LISTA DE LA COMPRA ───────────────────────────────────────────
 // Agrega los materiales de todas las partidas (con receta) de un presupuesto,
 // multiplicando consumo × cantidad × (1+merma%), suma por material y redondea
@@ -380,5 +413,5 @@ module.exports = {
   getPartidas, crearPartida, editarPartida, eliminarPartida,
   getMateriales, crearMaterial, editarMaterial, eliminarMaterial,
   getPresupuestos, getPresupuesto, crearPresupuesto, guardarPresupuesto, eliminarPresupuesto,
-  ESTADOS, setEstado,
+  ESTADOS, setEstado, crearObraDesdePresupuesto,
 };
