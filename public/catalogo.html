@@ -137,16 +137,17 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
   <button class="btn sec" style="margin-bottom:14px" onclick="cargarEjemplos()">📦 Cargar set de ejemplo (pladur + pintura · Obramat)</button>
   <div class="field"><label class="fld" id="mat-form-title">Nuevo material</label>
     <input type="text" id="mf-nombre" placeholder="Ej. Placa pladur 13 mm" style="margin-bottom:8px">
-    <div class="row3">
-      <select id="mf-unidad"></select>
-      <input type="number" id="mf-precio" inputmode="decimal" step="0.01" placeholder="€/ud">
+    <div class="row2">
+      <select id="mf-unidad" onchange="matCalc()"></select>
       <input type="number" id="mf-merma" inputmode="numeric" step="1" placeholder="merma %">
     </div>
     <div class="row2" style="margin-top:8px">
-      <input type="text" id="mf-formato" placeholder="Cómo se compra: Placa 1,2×2,5 m…">
-      <input type="number" id="mf-contenido" inputmode="decimal" step="0.01" placeholder="uds/pieza (ej. 3)">
+      <input type="number" id="mf-precio" inputmode="decimal" step="0.01" placeholder="precio de la pieza €" oninput="matCalc()">
+      <input type="number" id="mf-contenido" inputmode="decimal" step="0.01" placeholder="uds por pieza (ej. 15)" oninput="matCalc()">
     </div>
-    <div class="hint">«uds/pieza» = cuántas unidades trae una pieza de compra (una placa = 3 m², un perfil = 3 ml). Sirve para la lista de la compra. Déjalo vacío si se compra por unidad suelta.</div>
+    <input type="text" id="mf-formato" placeholder="Cómo se compra: Bidón 15 L, Caja 1000…" style="margin-top:8px">
+    <div class="hint" id="mf-calc" style="margin-top:6px"></div>
+    <div class="hint">Pon el <b>precio de la pieza entera</b> (lo que pagas: el bote, la placa, la caja) y <b>cuánto trae</b>. El programa saca solo el precio por unidad. Deja «uds por pieza» vacío si se compra suelto.</div>
     <div class="hint" id="mf-hist" style="margin-top:6px"></div>
     <div class="row2" style="margin-top:8px">
       <button class="btn sec" id="mf-cancel" onclick="matNew()" style="display:none">Cancelar edición</button>
@@ -171,6 +172,9 @@ let workerToken=null, esAdmin=false, todosWorkers=[], partidas=[], unidades=[], 
 let materiales=[], matUnidades=[], recetaActual=[], matEditId=null;
 const numv=v=>{const n=parseFloat(String(v).replace(',','.'));return Number.isFinite(n)?n:0;};
 const fmtn=n=>(Number(n)||0).toLocaleString('es-ES',{maximumFractionDigits:2});
+const eurp=n=>{n=Number(n)||0;return n>0&&n<1?n.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:4})+' €':eur(n);};
+function matCalc(){const pieza=numv(document.getElementById('mf-precio').value),cont=numv(document.getElementById('mf-contenido').value),u=document.getElementById('mf-unidad').value,el=document.getElementById('mf-calc');
+  if(pieza>0&&cont>0&&cont!==1)el.innerHTML=`= <b style="color:var(--text)">${eurp(pieza/cont)}</b> por ${esc(u)}`;else el.textContent='';}
 function spark(h){const p=(h||[]).filter(x=>x&&x.precio!=null);if(p.length<2)return '';const w=54,ht=16,v=p.map(x=>x.precio),mn=Math.min(...v),mx=Math.max(...v),rg=(mx-mn)||1,st=w/(p.length-1);const up=v[v.length-1]>=v[0];const pts=p.map((x,i)=>`${(i*st).toFixed(1)},${(ht-2-((x.precio-mn)/rg)*(ht-4)).toFixed(1)}`).join(' ');return `<svg width="${w}" height="${ht}" style="vertical-align:middle"><polyline points="${pts}" fill="none" stroke="${up?'var(--red)':'var(--green)'}" stroke-width="1.5"/></svg>`;}
 function trendBadge(h){const p=(h||[]).filter(x=>x&&x.precio!=null);if(p.length<2)return '';const first=p[0].precio,last=p[p.length-1].precio;if(!(first>0))return '';const pct=Math.round((last-first)/first*100);if(pct===0)return '<span style="font-size:10px;color:var(--text3)">= igual</span>';const up=pct>0;const d=new Date(p[0].fecha);return `<span style="font-size:10px;color:${up?'var(--red)':'var(--green)'}">${up?'↑':'↓'}${Math.abs(pct)}% desde ${d.toLocaleDateString('es-ES',{month:'short',year:'2-digit'})}</span>`;}
 function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('page-'+id).classList.add('active');}
@@ -267,10 +271,11 @@ function addReceta(matId){const m=materiales.find(x=>String(x._id)===String(matI
 // ── MATERIALES (CRUD) ──
 function abrirMat(){matNew();renderMatList();document.getElementById('ov-mat').classList.add('show');}
 function cerrarMat(){document.getElementById('ov-mat').classList.remove('show');}
-function matNew(){matEditId=null;document.getElementById('mat-form-title').textContent='Nuevo material';document.getElementById('mf-cancel').style.display='none';document.getElementById('mf-save').textContent='Añadir material';['mf-nombre','mf-precio','mf-merma','mf-formato','mf-contenido'].forEach(i=>document.getElementById(i).value='');document.getElementById('mf-unidad').value=matUnidades[0]||'ud';document.getElementById('mf-hist').textContent='';}
+function matNew(){matEditId=null;document.getElementById('mat-form-title').textContent='Nuevo material';document.getElementById('mf-cancel').style.display='none';document.getElementById('mf-save').textContent='Añadir material';['mf-nombre','mf-precio','mf-merma','mf-formato','mf-contenido'].forEach(i=>document.getElementById(i).value='');document.getElementById('mf-unidad').value=matUnidades[0]||'ud';document.getElementById('mf-hist').textContent='';document.getElementById('mf-calc').textContent='';}
 function matEdit(id){const m=materiales.find(x=>String(x._id)===String(id));if(!m)return;matEditId=id;
   document.getElementById('mat-form-title').textContent='Editar material';document.getElementById('mf-cancel').style.display='block';document.getElementById('mf-save').textContent='Guardar cambios';
-  document.getElementById('mf-nombre').value=m.nombre||'';document.getElementById('mf-unidad').value=m.unidad||'ud';document.getElementById('mf-precio').value=m.precio||'';document.getElementById('mf-merma').value=m.merma||'';document.getElementById('mf-formato').value=m.formato||'';document.getElementById('mf-contenido').value=m.contenido||'';
+  const pieza=Number(m.contenido)>0?m.precio*m.contenido:m.precio; // precio de la pieza = €/ud × contenido
+  document.getElementById('mf-nombre').value=m.nombre||'';document.getElementById('mf-unidad').value=m.unidad||'ud';document.getElementById('mf-precio').value=pieza?Math.round(pieza*100)/100:'';document.getElementById('mf-merma').value=m.merma||'';document.getElementById('mf-formato').value=m.formato||'';document.getElementById('mf-contenido').value=m.contenido||'';matCalc();
   const h=(m.historial||[]).filter(x=>x&&x.precio!=null);const he=document.getElementById('mf-hist');
   if(h.length>=2){const prev=h[h.length-2];he.innerHTML=`📈 Anterior: <b>${eur(prev.precio)}</b> (${new Date(prev.fecha).toLocaleDateString('es-ES')}) · ${h.length} puntos · <a href="#" onclick="resetHist();return false" style="color:var(--blue)">↺ Reiniciar histórico</a>`;}
   else he.textContent='Al cambiar el precio se irá guardando el histórico.';
@@ -279,6 +284,8 @@ function matEdit(id){const m=materiales.find(x=>String(x._id)===String(id));if(!
 function renderMatList(){const box=document.getElementById('mat-list');
   if(!materiales.length){box.innerHTML='<div class="empty" style="padding:20px">Aún no hay materiales.</div>';return;}
   box.innerHTML=materiales.map(m=>{const sp=spark(m.historial),tb=trendBadge(m.historial);
+    const pieza=Number(m.contenido)>0?m.precio*m.contenido:m.precio;
+    const perU=Number(m.contenido)>1?` <span style="color:var(--text3);font-size:12px">(${eurp(m.precio)}/${esc(m.unidad)})</span>`:'';
     const sub=`${esc(m.unidad)}${m.merma>0?' · merma '+m.merma+'%':''}${m.contenido>0?' · '+fmtn(m.contenido)+' '+esc(m.unidad)+'/pieza':''}${m.formato?' · '+esc(m.formato):''}`;
     return `<div class="mat-row">
       <div class="mat-head">
@@ -288,16 +295,20 @@ function renderMatList(){const box=document.getElementById('mat-list');
           <button class="btn danger" style="width:auto;padding:6px 10px;font-size:12px" onclick="eliminarMat('${m._id}','${esc(m.nombre).replace(/'/g,"\\'")}')">🗑️</button>
         </div>
       </div>
-      <div class="mat-price"><span class="pv">${eur(m.precio)}</span>${sp}${tb}</div>
+      <div class="mat-price"><span class="pv">${eur(pieza)}</span>${perU}${sp}${tb}</div>
     </div>`;}).join('');}
-async function guardarMat(){const body={nombre:document.getElementById('mf-nombre').value.trim(),unidad:document.getElementById('mf-unidad').value,precio:document.getElementById('mf-precio').value,merma:document.getElementById('mf-merma').value,formato:document.getElementById('mf-formato').value.trim(),contenido:document.getElementById('mf-contenido').value};
+async function guardarMat(){
+  const pieza=numv(document.getElementById('mf-precio').value), cont=numv(document.getElementById('mf-contenido').value);
+  const precioUnit=cont>0?pieza/cont:pieza; // divide: precio de la pieza ÷ lo que trae = €/unidad
+  const body={nombre:document.getElementById('mf-nombre').value.trim(),unidad:document.getElementById('mf-unidad').value,precio:precioUnit,merma:document.getElementById('mf-merma').value,formato:document.getElementById('mf-formato').value.trim(),contenido:cont};
   if(!body.nombre){toast('Ponle un nombre al material','warn');return;}
   const b=document.getElementById('mf-save');b.disabled=true;
   try{if(matEditId)await api('PUT','/api/materiales/'+matEditId,body);else await api('POST','/api/materiales',body);
     const dm=await api('GET','/api/materiales');materiales=dm.materiales||[];matNew();renderMatList();renderReceta();toast('Guardado','ok');}
   catch(e){toast(e.message,'error');}finally{b.disabled=false;}}
 async function resetHist(){if(!matEditId)return;if(!confirm('¿Reiniciar el histórico de precio? Deja solo el precio actual (útil tras reconfigurar el material).'))return;
-  const body={nombre:document.getElementById('mf-nombre').value.trim(),unidad:document.getElementById('mf-unidad').value,precio:document.getElementById('mf-precio').value,merma:document.getElementById('mf-merma').value,formato:document.getElementById('mf-formato').value.trim(),contenido:document.getElementById('mf-contenido').value,resetHistorial:true};
+  const pieza=numv(document.getElementById('mf-precio').value), cont=numv(document.getElementById('mf-contenido').value);
+  const body={nombre:document.getElementById('mf-nombre').value.trim(),unidad:document.getElementById('mf-unidad').value,precio:cont>0?pieza/cont:pieza,merma:document.getElementById('mf-merma').value,formato:document.getElementById('mf-formato').value.trim(),contenido:cont,resetHistorial:true};
   try{await api('PUT','/api/materiales/'+matEditId,body);const dm=await api('GET','/api/materiales');materiales=dm.materiales||[];const id=matEditId;renderMatList();matEdit(id);toast('Histórico reiniciado','ok');}catch(e){toast(e.message,'error');}}
 async function eliminarMat(id,nombre){if(!confirm('¿Eliminar el material "'+nombre+'"?'))return;
   try{await api('DELETE','/api/materiales/'+id);const dm=await api('GET','/api/materiales');materiales=dm.materiales||[];renderMatList();toast('Eliminado','ok');}catch(e){toast(e.message,'error');}}

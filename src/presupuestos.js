@@ -55,7 +55,7 @@ function limpiarReceta(receta) {
     materialId: r.materialId ? String(r.materialId) : null,
     nombre:     String(r.nombre || '').trim() || 'Material',
     unidad:     String(r.unidad || 'ud'),
-    precio:     Math.round(num(r.precio) * 100) / 100,   // € por unidad (snapshot)
+    precio:     Math.round(num(r.precio) * 10000) / 10000, // € por unidad (snapshot, 4 dec)
     consumo:    num(r.consumo),                           // unidades de material por unidad de partida
     merma:      Math.max(0, num(r.merma)),                // % desperdicio
   }));
@@ -127,7 +127,7 @@ function limpiarMaterial(data) {
   return {
     nombre:   String(data.nombre || '').trim(),
     unidad:   MAT_UNIDADES.includes(data.unidad) ? data.unidad : 'ud',
-    precio:   Math.round(num(data.precio) * 100) / 100,     // € por unidad
+    precio:   Math.round(num(data.precio) * 10000) / 10000, // € por unidad (4 dec: materiales baratos como tornillos)
     merma:    Math.max(0, num(data.merma)),                 // % desperdicio por defecto
     formato:  String(data.formato || '').trim(),            // opcional: "Placa 1,2×2,5 m", "Perfil 3 m"
     contenido: Math.max(0, num(data.contenido)),            // unidades por pieza de compra (3 m²/placa); 0 = sin redondeo (1)
