@@ -51,8 +51,10 @@ function cpUpdateBanner(){
     <div class="login-logo">CP</div>
     <div class="login-title">Corp Projects</div>
     <div class="login-sub">Dashboard financiero privado</div>
-    <input type="password" class="login-input" id="loginPass" placeholder="Contraseña de acceso" onkeydown="if(event.key==='Enter')doLogin()">
+    <input type="text" class="login-input" id="loginUser" placeholder="Email de tu cuenta" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()">
+    <input type="password" class="login-input" id="loginPass" placeholder="Contraseña" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
     <button class="login-btn" onclick="doLogin()" id="loginBtn">Entrar →</button>
+    <div class="login-hint" style="font-size:11px;color:var(--text3);margin-top:8px">Deja el email vacío para usar la clave general.</div>
     <div class="login-error" id="loginError"></div>
   </div>
 </div>
@@ -587,13 +589,19 @@ function fP(f){return f&&f!=='Sin familia'?`<span class="fpill">${f}</span>`:''}
 
 // ── AUTH ──────────────────────────────────────────────────────────
 async function doLogin(){
+  const user=document.getElementById('loginUser')?.value.trim();
   const pass=document.getElementById('loginPass').value;if(!pass)return;
   const btn=document.getElementById('loginBtn');btn.disabled=true;btn.textContent='Verificando...';
   document.getElementById('loginError').style.display='none';
   try{
-    const r=await fetch(`${API}/api/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pass})});
+    // Con email → cuenta personal (/api/auth/login). Sin email → clave general.
+    const url = user ? `${API}/api/auth/login` : `${API}/api/login`;
+    const body = user ? {login:user,password:pass} : {password:pass};
+    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');
     tok=d.token;localStorage.setItem('cp_token',tok);
+    if(d.name) localStorage.setItem('cp_user',JSON.stringify({name:d.name,role:d.role||'owner'}));
+    else localStorage.removeItem('cp_user');
     // ── Cargar workers en config central antes de mostrar la app ──
     await window.CP_CONFIG.loadWorkers();
     showApp();
@@ -603,10 +611,11 @@ async function doLogin(){
   }
 }
 function doLogout(){
-  localStorage.removeItem('cp_token');tok=null;
+  localStorage.removeItem('cp_token');localStorage.removeItem('cp_user');tok=null;
   document.getElementById('app').style.display='none';
   document.getElementById('loginScreen').style.display='flex';
   document.getElementById('loginPass').value='';
+  const lu=document.getElementById('loginUser');if(lu)lu.value='';
   document.getElementById('theme-toggle-fixed').style.display='none';
 }
 function showApp(){

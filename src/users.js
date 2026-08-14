@@ -135,15 +135,17 @@ async function createUser(data) {
     if (existing) throw new Error(`El PIN ${data.pin} ya está en uso por ${existing.name}`);
   }
 
+  const role = normalizeRole(data.role);
   const user = {
     name:      data.name?.trim(),
-    role:      data.role     || 'tech',
+    role,
     pin:       data.pin,
     color:     data.color    || '#4d9cf8',
     costeHora: parseFloat(data.costeHora || 0),
     nota:      data.nota     || '',
     telefono:  (data.telefono || '').trim(),
     email:     (data.email || '').trim(),
+    username:  (data.username || '').trim().toLowerCase(),
     active:    true,
     notes:     data.notes    || '',
     docs: {
@@ -157,9 +159,16 @@ async function createUser(data) {
     lastLogin: null,
   };
 
-  if (!user.name)                        throw new Error('El nombre es obligatorio');
-  if (!user.pin || user.pin.length < 4)  throw new Error('El PIN debe tener al menos 4 dígitos');
-  if (!user.costeHora || user.costeHora <= 0) throw new Error('El coste/hora es obligatorio');
+  const isPassword = ROLES_PASSWORD.includes(role);              // owner/oficina/encargado → entran por contraseña
+  if (!user.name) throw new Error('El nombre es obligatorio');
+  if (role === 'tecnico') {
+    if (!user.pin || user.pin.length < 4)       throw new Error('El PIN debe tener al menos 4 dígitos');
+    if (!user.costeHora || user.costeHora <= 0) throw new Error('El coste/hora es obligatorio');
+  }
+  if (isPassword && !user.email && !user.username) {
+    throw new Error('Una cuenta de Dueño/Oficina/Encargado necesita un email (es su usuario para entrar)');
+  }
+  if (data.password) user.passwordHash = hashPassword(data.password);
 
   const result = await db.collection('users').insertOne(user);
   console.log(`[Users] Nuevo usuario: ${user.name} (${user.role}) — ${user.costeHora}€/h`);
@@ -172,12 +181,17 @@ async function createUser(data) {
 
 async function updateUser(id, data) {
   const db      = await getDB();
-  const allowed = ['name','role','pin','color','costeHora','nota','active','notes','docs','telefono','email'];
+  const allowed = ['name','role','pin','color','costeHora','nota','active','notes','docs','telefono','email','username'];
   const set     = { updatedAt: new Date() };
   allowed.forEach(k => { if (data[k] !== undefined) set[k] = data[k]; });
 
   // Parsear costeHora como número
   if (set.costeHora !== undefined) set.costeHora = parseFloat(set.costeHora || 0);
+  // Normalizar rol a los 4 nuevos
+  if (set.role !== undefined) set.role = normalizeRole(set.role);
+  if (set.username !== undefined) set.username = String(set.username || '').trim().toLowerCase();
+  // Contraseña (opcional): se guarda cifrada, nunca en claro
+  if (data.password) set.passwordHash = hashPassword(data.password);
 
   // Si cambia PIN, verificar que no esté en uso
   if (data.pin) {

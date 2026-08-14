@@ -1436,7 +1436,7 @@ app.get('/api/users/me', async (req, res) => {
 app.get('/api/users', requireAuth, async (req, res) => {
   try {
     const list = await users.getUsers(true);
-    res.json(list.map(u => ({ ...u, pin: '••••' })));
+    res.json(list.map(u => { const { passwordHash, ...rest } = u; return { ...rest, pin: '••••', hasPassword: !!passwordHash }; }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1446,7 +1446,8 @@ app.get('/api/users/:id', requireAuth, async (req, res) => {
   try {
     const u = await users.getUser(req.params.id);
     if (!u) return res.status(404).json({ error: 'Usuario no encontrado' });
-    res.json(u);
+    const { passwordHash, ...rest } = u;
+    res.json({ ...rest, hasPassword: !!passwordHash });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

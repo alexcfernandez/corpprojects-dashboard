@@ -3,23 +3,28 @@
   'use strict';
 
   const ROLE_COLORS = {
-    admin:  '#f05252',
-    office: '#4d9cf8',
-    tech:   '#22c487',
-    client: '#a78bfa',
+    owner:     '#f05252',
+    oficina:   '#4d9cf8',
+    encargado: '#f59e0b',
+    tecnico:   '#22c487',
   };
   const ROLE_LABELS = {
-    admin:  '👔 Administrador',
-    office: '🖥️ Oficina',
-    tech:   '🔧 Técnico',
-    client: '👥 Cliente',
+    owner:     '👑 Dueño',
+    oficina:   '🖥️ Oficina',
+    encargado: '🦺 Encargado',
+    tecnico:   '🔧 Técnico',
   };
+  const ROLE_ICON = { owner:'👑', oficina:'🖥️', encargado:'🦺', tecnico:'🔧' };
   const ROLE_DESC = {
-    admin:  'Acceso total al dashboard y configuración',
-    office: 'Dashboard completo, partes y presencia. Sin configuración',
-    tech:   'Solo formulario de partes desde móvil',
-    client: 'Solo consulta sus facturas pendientes (próximamente)',
+    owner:     'Todo el sistema + gestionar usuarios y ver el registro',
+    oficina:   'Presupuestos, facturas, catálogo, clientes y campo. Sin gestionar usuarios',
+    encargado: 'Presupuestos, catálogo y campo. Sin facturas ni usuarios',
+    tecnico:   'Solo campo: partes, fichaje, mediciones y llaves. Nada de dinero',
   };
+  const ROLES_PASSWORD = ['owner','oficina','encargado']; // entran con contraseña
+  const ROLES_FIELD    = ['tecnico','encargado'];         // van a obra → PIN + coste/hora
+  // Mapea roles antiguos (admin/office/tech) a los 4 nuevos, para mostrar bien.
+  function normRole(r){ return ({admin:'owner',office:'oficina',tech:'tecnico',worker:'tecnico',client:'tecnico',owner:'owner',oficina:'oficina',encargado:'encargado',tecnico:'tecnico'})[r] || 'tecnico'; }
 
   function api(url, opts={}) {
     const tok = localStorage.getItem('cp_token');
@@ -91,20 +96,24 @@
               </div>
               <div style="font-size:12px;color:var(--text2);margin-bottom:10px">${ROLE_DESC[k]}</div>
               <div style="font-size:11px;color:var(--text3)">
-                ${k==='admin'?'✅ Todo el dashboard<br>✅ Gestión de usuarios<br>✅ Ver metadatos GPS y control<br>✅ Configuración del sistema':
-                  k==='office'?'✅ Facturación y cobros<br>✅ Presupuestos y familias<br>✅ Presencia y partes<br>❌ Configuración y usuarios':
-                  k==='tech'?'✅ Formulario de partes (/parte)<br>❌ Acceso al dashboard':
-                  '✅ Sus facturas pendientes<br>✅ Sus documentos<br>❌ Datos de otros clientes'}
+                ${k==='owner'?'✅ Presupuestos, facturas, catálogo<br>✅ Campo (partes, fichaje, mediciones)<br>✅ Gestionar usuarios<br>✅ Registro de actividad y ajustes':
+                  k==='oficina'?'✅ Presupuestos, facturas, catálogo<br>✅ Clientes<br>✅ Campo<br>❌ Gestionar usuarios / ajustes':
+                  k==='encargado'?'✅ Presupuestos y catálogo<br>✅ Campo<br>❌ Facturas<br>❌ Gestionar usuarios':
+                  '✅ Partes, fichaje, presencia<br>✅ Mediciones y llaves<br>❌ Presupuestos / facturas / dinero'}
+              </div>
+              <div style="font-size:10px;color:var(--text3);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+                ${ROLES_PASSWORD.includes(k)?'🔑 Entra con email + contraseña':'📱 Entra con PIN o enlace mágico'}
               </div>
             </div>`).join('')}
         </div>
         <div class="alert ain" style="margin-top:14px">
           <div>ℹ️</div>
-          <div><strong>Portal de clientes</strong> — próximamente Cinc Gestió, Fabian y otras familias podrán entrar con su propio acceso y ver solo sus facturas pendientes.</div>
+          <div>Cada persona entra con su propia cuenta y <strong>todo lo que crea queda firmado con su nombre</strong>. El Dueño da de alta al resto y le pone su rol.</div>
         </div>
       </div>`;
 
     loadUsers();
+    onRoleChange();
   }
 
   function renderForm(user={}) {
@@ -116,18 +125,28 @@
       </div>
       <div>
         <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">Rol *</div>
-        <select id="u-role" style="width:100%;background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;font-size:13px">
-          ${Object.entries(ROLE_LABELS).map(([k,v])=>`<option value="${k}" ${user.role===k?'selected':''}>${v}</option>`).join('')}
+        <select id="u-role" onchange="CP.Usuarios.onRoleChange()" style="width:100%;background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;font-size:13px">
+          ${Object.entries(ROLE_LABELS).map(([k,v])=>`<option value="${k}" ${normRole(user.role)===k?'selected':''}>${v}</option>`).join('')}
         </select>
+        <div id="u-role-desc" style="font-size:10px;color:var(--text3);margin-top:4px"></div>
       </div>
     </div>
-    <div class="g2" style="margin-bottom:12px">
+    <div id="u-pass-block" class="g2" style="margin-bottom:12px">
       <div>
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">PIN de acceso * (4 dígitos)</div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">🔑 Contraseña ${user._id?'(dejar vacío = no cambiar)':'*'}</div>
+        <input type="password" id="u-pass" value="" placeholder="Mínimo 6 caracteres" autocomplete="new-password" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px">
+        <div style="font-size:10px;color:var(--text3);margin-top:3px">Con esto entra al dashboard (junto con su email)</div>
+      </div>
+      <div></div>
+    </div>
+    <div id="u-field-block" class="g2" style="margin-bottom:12px">
+      <div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">PIN de acceso (4 dígitos)</div>
         <input type="text" id="u-pin" value="${user.pin&&user.pin!=='••••'?user.pin:''}" placeholder="Ej: 6789" maxlength="6" inputmode="numeric" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px;font-family:monospace;letter-spacing:4px">
+        <div style="font-size:10px;color:var(--text3);margin-top:3px">Para entrar en la app de campo (o enlace mágico)</div>
       </div>
       <div>
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">Coste/hora real (€) *</div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">Coste/hora real (€)</div>
         <input type="number" id="u-coste-hora" value="${user.costeHora||''}" placeholder="Ej: 13.28" min="0" step="0.01" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px">
         <div style="font-size:10px;color:var(--text3);margin-top:3px">Sueldo + SS prorrateado por hora</div>
       </div>
@@ -184,6 +203,17 @@
     if (el) el.style.borderColor = '#fff';
   };
 
+  // Muestra/oculta contraseña (oficina) vs PIN+coste (campo) según el rol.
+  function onRoleChange() {
+    const role = document.getElementById('u-role')?.value || 'tecnico';
+    const pass = document.getElementById('u-pass-block');
+    const field = document.getElementById('u-field-block');
+    const desc = document.getElementById('u-role-desc');
+    if (pass)  pass.style.display  = ROLES_PASSWORD.includes(role) ? '' : 'none';
+    if (field) field.style.display = ROLES_FIELD.includes(role)    ? '' : 'none';
+    if (desc)  desc.textContent    = ROLE_DESC[role] || '';
+  }
+
   function showTab(id, btn) {
     document.querySelectorAll('#usuarios-container .p-tab').forEach(p => { p.style.display='none'; p.classList.remove('active'); });
     document.querySelectorAll('#usuarios-container .btab').forEach(b => b.classList.remove('active'));
@@ -206,7 +236,7 @@
       const metrics = document.getElementById('u-metrics');
       if (metrics) {
         const byRole = {};
-        filtered.forEach(u => { byRole[u.role] = (byRole[u.role]||0)+1; });
+        filtered.forEach(u => { const r=normRole(u.role); byRole[r] = (byRole[r]||0)+1; });
         metrics.innerHTML = `
           <div class="mc"><div class="ml">Total usuarios</div><div class="mv b">${filtered.length}</div></div>
           ${Object.entries(ROLE_LABELS).map(([k,v])=>byRole[k]?`<div class="mc"><div class="ml">${v}</div><div class="mv" style="color:${ROLE_COLORS[k]}">${byRole[k]}</div></div>`:'').join('')}`;
@@ -215,25 +245,25 @@
       if (!filtered.length) { el.innerHTML='<div class="empty"><div class="ei">👥</div><div class="et">No hay usuarios</div></div>'; return; }
 
       el.innerHTML = `<div style="display:grid;gap:10px">
-        ${filtered.map(u => `
+        ${filtered.map(u => { const r=normRole(u.role); return `
           <div style="background:var(--bg3);border:1px solid ${u.active===false?'rgba(255,255,255,.05)':'var(--border)'};border-radius:var(--rs);padding:14px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;opacity:${u.active===false?'0.5':'1'}">
             <div style="width:40px;height:40px;border-radius:50%;background:${u.color||'#4d9cf8'}22;border:2px solid ${u.color||'#4d9cf8'};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">
-              ${u.role==='admin'?'👔':u.role==='office'?'🖥️':u.role==='tech'?'🔧':'👥'}
+              ${ROLE_ICON[r]||'👤'}
             </div>
             <div style="flex:1 1 150px;min-width:0">
               <div style="font-weight:600;font-size:13px">${u.name} ${u.active===false?'<span style="font-size:10px;color:var(--text3)">(inactivo)</span>':''}</div>
-              <div style="font-size:11px;color:${ROLE_COLORS[u.role]}">${ROLE_LABELS[u.role]||u.role}</div>
+              <div style="font-size:11px;color:${ROLE_COLORS[r]}">${ROLE_LABELS[r]||r} ${ROLES_PASSWORD.includes(r)?(u.hasPassword?'· <span style="color:var(--green)">🔑 con contraseña</span>':'· <span style="color:var(--amber)">⚠️ sin contraseña</span>'):''}</div>
               ${u.notes?`<div style="font-size:11px;color:var(--text3);margin-top:2px">${u.notes}</div>`:''}
               ${u.lastLogin?`<div style="font-size:10px;color:var(--text3)">Último acceso: ${new Date(u.lastLogin).toLocaleDateString('es-ES')}</div>`:''}
             </div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;flex-shrink:0">
-              ${(u.role==='tech'||u.role==='office')?`<button class="btn bgh" style="padding:5px 10px;font-size:11px" onclick="enlaceMagico('${u._id}','${String(u.name).replace(/'/g,"\\'")}')">🔗 Acceso</button>`:''}
+              ${ROLES_FIELD.includes(r)?`<button class="btn bgh" style="padding:5px 10px;font-size:11px" onclick="enlaceMagico('${u._id}','${String(u.name).replace(/'/g,"\\'")}')">🔗 Acceso</button>`:''}
               <button class="btn bgh" style="padding:5px 10px;font-size:11px" onclick="CP.Usuarios.editUser('${u._id}')">✏️ Editar</button>
               ${u.active!==false
                 ? `<button class="btn bgh" style="padding:5px 10px;font-size:11px;color:var(--red);border-color:var(--red)" onclick="CP.Usuarios.deactivateUser('${u._id}','${u.name}')" title="Desactivar">⏸️</button>`
                 : `<button class="btn bgh" style="padding:5px 10px;font-size:11px;color:var(--green);border-color:var(--green)" onclick="CP.Usuarios.reactivateUser('${u._id}','${u.name}')" title="Reactivar">▶️</button>`}
             </div>
-          </div>`).join('')}
+          </div>`; }).join('')}
       </div>`;
     } catch (err) {
       el.innerHTML = `<div style="color:var(--red);font-size:12px">Error: ${err.message}</div>`;
@@ -263,14 +293,20 @@
           btn.onclick = () => updateUser(id);
         }
       }
-      if (document.getElementById('u-name')) document.getElementById('u-name').value = u.name||'';
-      if (document.getElementById('u-role')) document.getElementById('u-role').value = u.role||'tech';
-      if (document.getElementById('u-pin'))  document.getElementById('u-pin').value  = u.pin||'';
-      if (document.getElementById('u-color'))document.getElementById('u-color').value= u.color||'#4d9cf8';
-      if (document.getElementById('u-notes'))document.getElementById('u-notes').value= u.notes||'';
-      if (document.getElementById('u-dni'))  document.getElementById('u-dni').value  = u.docs?.dni||'';
-      if (document.getElementById('u-carnet'))document.getElementById('u-carnet').value=u.docs?.carnet||'';
-      if (document.getElementById('u-emergency'))document.getElementById('u-emergency').value=u.docs?.emergency||'';
+      const set=(id,v)=>{const e=document.getElementById(id);if(e)e.value=v;};
+      set('u-name', u.name||'');
+      set('u-role', normRole(u.role));
+      set('u-pass', '');
+      set('u-pin',  u.pin&&u.pin!=='••••'?u.pin:'');
+      set('u-coste-hora', u.costeHora||'');
+      set('u-telefono', u.telefono||'');
+      set('u-email', u.email||'');
+      set('u-color', u.color||'#4d9cf8');
+      set('u-notes', u.notes||'');
+      set('u-dni', u.docs?.dni||'');
+      set('u-carnet', u.docs?.carnet||'');
+      set('u-emergency', u.docs?.emergency||'');
+      onRoleChange();
     } catch(err) { alert('Error: '+err.message); }
   }
 
@@ -317,6 +353,7 @@
   return {
     name:      document.getElementById('u-name')?.value?.trim(),
     role:      document.getElementById('u-role')?.value,
+    password:  document.getElementById('u-pass')?.value || '',
     pin:       document.getElementById('u-pin')?.value?.trim(),
     costeHora: parseFloat(document.getElementById('u-coste-hora')?.value || 0),
     telefono:  document.getElementById('u-telefono')?.value?.trim(),
@@ -347,7 +384,7 @@
   }
 
   function resetForm() {
-    ['u-name','u-pin','u-notes','u-dni','u-carnet','u-emergency'].forEach(id => {
+    ['u-name','u-pass','u-pin','u-coste-hora','u-telefono','u-email','u-notes','u-dni','u-carnet','u-emergency'].forEach(id => {
       const e = document.getElementById(id); if(e) e.value='';
     });
     const msg = document.getElementById('u-form-msg');
@@ -358,6 +395,7 @@
       const btn = card.querySelector('.btn.bp');
       if (btn) { btn.textContent='💾 Crear usuario'; btn.onclick = submitUser; }
     }
+    onRoleChange();
   }
 
   // Enlace MÁGICO del trabajador: genera (idempotente) y ofrece copiar / enviar.
@@ -391,6 +429,6 @@
     finally { btn.disabled = false; btn.textContent = old; }
   };
 
-  CP.Usuarios = { render, showTab, loadUsers, editUser, deactivateUser, reactivateUser, submitUser, resetForm };
+  CP.Usuarios = { render, showTab, loadUsers, editUser, deactivateUser, reactivateUser, submitUser, resetForm, onRoleChange };
 
 })(window.CP = window.CP || {});
