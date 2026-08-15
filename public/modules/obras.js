@@ -446,7 +446,7 @@
   }
 
   // Picker: asignar a la obra una factura de proveedor ya subida (sin clasificar).
-  let _fpData = [], _fpObra = {};
+  let _fpData = [], _fpObra = {}, _fpDetalle = null;
   async function abrirPickerFacturas(obraId, obraRef) {
     document.getElementById('fac-picker')?.remove();
     _fpObra = { id: obraId, ref: obraRef };
@@ -480,11 +480,63 @@
     const q = (document.getElementById('fp-search').value || '').toLowerCase();
     _fpRender(_fpData.filter(f => [f.supplier, f.number].some(x => String(x || '').toLowerCase().includes(q))));
   }
+  // Al elegir una factura: mostramos sus LÍNEAS con checkboxes para asignar
+  // toda la factura o solo las líneas que van a esta obra.
   async function _fpPick(fId) {
     const f = _fpData.find(x => String(x.id) === String(fId));
+    const box = document.getElementById('fp-list'); if (!box) return;
+    box.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:12px">Cargando líneas de la factura…</div>';
+    let det = null;
+    try { det = await api('/api/facturas/proveedor/' + fId + '/detalle'); } catch (e) {}
+    const lineas = (det && det.lineas) || [];
+    const usables = lineas.filter(l => l.importe != null);
+    _fpDetalle = { id: fId, total: (f ? Number(f.total) || 0 : (det ? det.total : 0)), supplier: (f && f.supplier) || (det && det.supplier) || '', number: (f && f.number) || (det && det.number) || '' };
+    if (!usables.length) { _fpPickManual(fId); return; } // sin líneas con importe → importe a mano
+    box.innerHTML = `
+      <button class="btn bgh" style="padding:4px 10px;font-size:12px;margin-bottom:8px" onclick="CP.Obras._fpBack()">← Volver a facturas</button>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:8px">${String(_fpDetalle.supplier).replace(/</g,'&lt;')} · ${String(_fpDetalle.number).replace(/</g,'&lt;')} · total <b>${eur(_fpDetalle.total)}</b></div>
+      <label style="display:flex;gap:9px;align-items:center;font-weight:600;font-size:13px;padding:9px;background:var(--bg3);border-radius:8px;cursor:pointer;margin-bottom:8px">
+        <input type="checkbox" id="fp-all" onchange="CP.Obras._fpToggleAll()"> Seleccionar TODA la factura
+      </label>
+      <div style="max-height:42vh;overflow:auto">${lineas.map(l => `
+        <label style="display:flex;gap:10px;align-items:flex-start;padding:9px 8px;border-bottom:1px solid var(--border);cursor:${l.importe!=null?'pointer':'default'};opacity:${l.importe!=null?'1':'.5'}">
+          <input type="checkbox" class="fp-lin" data-imp="${l.importe||0}" ${l.importe==null?'disabled':''} onchange="CP.Obras._fpSum()" style="margin-top:3px;flex-shrink:0">
+          <div style="flex:1;min-width:0"><div style="font-size:13px">${String(l.concepto).replace(/</g,'&lt;')}</div>
+            <div style="font-size:11px;color:var(--text3)">${l.units?fmtUnits(l.units)+' ud · ':''}${l.importe!=null?eur(l.importe):'importe no disponible'}</div></div>
+        </label>`).join('')}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--border2)">
+        <div style="font-size:13px">Seleccionado: <b id="fp-sel-total" style="color:var(--green)">${eur(0)}</b></div>
+        <button class="btn bp" id="fp-asignar" onclick="CP.Obras._fpAsignar()" disabled style="opacity:.5">Asignar a la obra</button>
+      </div>`;
+  }
+  function fmtUnits(u){ const n=Number(u)||0; return n%1===0?String(n):n.toFixed(2); }
+  function _fpBack() { _fpRender(_fpData); }
+  function _fpToggleAll() {
+    const on = document.getElementById('fp-all').checked;
+    document.querySelectorAll('.fp-lin:not(:disabled)').forEach(c => { c.checked = on; });
+    _fpSum();
+  }
+  function _fpSum() {
+    let s = 0; document.querySelectorAll('.fp-lin:checked').forEach(c => { s += Number(c.getAttribute('data-imp')) || 0; });
+    s = Math.round(s * 100) / 100;
+    const el = document.getElementById('fp-sel-total'); if (el) el.textContent = eur(s);
+    const b = document.getElementById('fp-asignar'); if (b) { b.disabled = !(s > 0); b.style.opacity = s > 0 ? '1' : '.5'; }
+    return s;
+  }
+  async function _fpAsignar() {
+    const importe = _fpSum();
+    if (!(importe > 0)) { alert('Selecciona al menos una línea'); return; }
+    try {
+      await api('/api/facturas/proveedor/' + _fpDetalle.id + '/repartir', { method: 'POST', body: JSON.stringify({ obraId: _fpObra.id, obraRef: _fpObra.ref, importe }) });
+      document.getElementById('fac-picker')?.remove();
+      openObra(_fpObra.id);
+    } catch (err) { alert('No se pudo asignar: ' + err.message); }
+  }
+  async function _fpPickManual(fId) {
+    const f = _fpData.find(x => String(x.id) === String(fId));
     const total = f ? Number(f.total) || 0 : 0;
-    const val = prompt('¿Cuánto de esta factura (' + (f ? eur(total) : '') + ') va a ESTA obra?\n\nDeja el total si es entera. Si la factura es de varias obras, pon solo la parte que corresponde (podrás repartir el resto a otras obras).', total);
-    if (val === null) return;
+    const val = prompt('Esta factura no trae líneas con importe. ¿Cuánto va a ESTA obra?', total);
+    if (val === null) { _fpRender(_fpData); return; }
     const importe = parseFloat(String(val).replace(',', '.').replace(/[^0-9.]/g, ''));
     if (!(importe > 0)) { alert('Importe no válido'); return; }
     try {
@@ -518,6 +570,6 @@
     } catch (err) { alert('No se pudo borrar: ' + err.message); }
   }
 
-  CP.Obras = { render, showTab, loadResumen, loadLista, openObra, saveObraChanges, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick };
+  CP.Obras = { render, showTab, loadResumen, loadLista, openObra, saveObraChanges, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick, _fpBack, _fpToggleAll, _fpSum, _fpAsignar };
 
 })(window.CP = window.CP || {});
