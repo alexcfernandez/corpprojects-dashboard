@@ -336,11 +336,18 @@ async function syncObraSiExiste(id) {
   const p = await db.collection('presupuestos').findOne({ _id: new ObjectId(id), empresaId: EMPRESA });
   if (!p || !p.obraId) return null;
   const t = computeTotales(p.lineas, p.iva, p.descuento, p.costeManoObra);
+  const obra = await db.collection('obras').findOne({ _id: new ObjectId(p.obraId) });
+  const antes = obra ? (Number(obra.budgetAmount) || 0) : 0;
+  const cambio = Math.abs((t.baseConDescuento || 0) - antes) > 0.005; // ¿cambió el importe?
   await db.collection('obras').updateOne(
     { _id: new ObjectId(p.obraId) },
     { $set: { budgetAmount: t.baseConDescuento, costePresupuestado: t.totalCoste, updatedAt: new Date() } }
   );
-  return { obraId: String(p.obraId), budgetAmount: t.baseConDescuento };
+  // Si ya estaba aceptado y el importe cambia → marca de "modificado tras aceptación".
+  if (cambio && p.estado === 'aceptado') {
+    await db.collection('presupuestos').updateOne({ _id: p._id }, { $set: { modificadoTrasAceptarAt: new Date() } });
+  }
+  return { obraId: String(p.obraId), budgetAmount: t.baseConDescuento, cambio: cambio && p.estado === 'aceptado' };
 }
 async function eliminarPresupuesto(id) {
   const db = await getDB();

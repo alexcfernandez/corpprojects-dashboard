@@ -306,7 +306,8 @@ function renderEstadoBar(){
   if(cur==='enviado'&&pres.enviadoAt)f='📤 Enviado el '+new Date(pres.enviadoAt).toLocaleDateString('es-ES');
   else if(cur==='aceptado'&&pres.aceptadoAt)f='✅ Aceptado el '+new Date(pres.aceptadoAt).toLocaleDateString('es-ES');
   else if(cur==='rechazado'&&pres.rechazadoAt)f='❌ Rechazado el '+new Date(pres.rechazadoAt).toLocaleDateString('es-ES');
-  const obra=pres.obraId?`<div class="est-obra">🏗️ Obra creada${pres.obraRef?' · '+esc(pres.obraRef):''} — <a href="/?obra=${encodeURIComponent(pres.obraId)}" style="color:inherit;font-weight:600;text-decoration:underline">ver ficha de la obra →</a><div style="font-size:11px;color:var(--text3);margin-top:3px">Si acordáis un extra, añádelo aquí abajo y se actualiza solo en la obra.</div></div>`:'';
+  const modNota=pres.modificadoTrasAceptarAt?`<div style="font-size:11px;color:var(--amber);margin-top:5px">⚠️ Modificado tras aceptación${pres.modificadoTrasAceptarAt?' · '+new Date(pres.modificadoTrasAceptarAt).toLocaleDateString('es-ES'):''} (extra añadido)</div>`:'';
+  const obra=pres.obraId?`<div class="est-obra">🏗️ Obra creada${pres.obraRef?' · '+esc(pres.obraRef):''} — <a href="/?obra=${encodeURIComponent(pres.obraId)}" style="color:inherit;font-weight:600;text-decoration:underline">ver ficha de la obra →</a><div style="font-size:11px;color:var(--text3);margin-top:3px">Si acordáis un extra, añádelo aquí abajo y se actualiza solo en la obra.</div>${modNota}</div>`:'';
   document.getElementById('estado-bar').innerHTML=`<div class="est-chips">${chips}</div>${f?`<div class="est-fecha">${f}</div>`:''}${obra}`;
 }
 async function onEstado(e){if(!pres)return;
@@ -572,7 +573,8 @@ function setSaveStatus(s){const el=document.getElementById('save-status');if(!el
 function autosave(){if(!pres)return;clearTimeout(_autosaveTimer);setSaveStatus('editando');
   _autosaveTimer=setTimeout(()=>{guardar(true,true);},1000);}
 async function guardar(silent,esAuto){if(!pres)return;
-  try{await api('PUT','/api/presupuestos/'+pres._id,{nombre:document.getElementById('d-nombre').value.trim(),clientName:document.getElementById('d-cliente').value.trim(),iva:ivaGlobal(),descuento:descPres(),lineas:pres.lineas,clientData:pres.clientData||{},condiciones:pres.condiciones||'',validezDias:pres.validezDias||30,equipo:pres.equipo||[],tiempoEstimado:pres.tiempoEstimado||null,costeManoObra:pres.costeManoObra||0});
+  try{const res=await api('PUT','/api/presupuestos/'+pres._id,{nombre:document.getElementById('d-nombre').value.trim(),clientName:document.getElementById('d-cliente').value.trim(),iva:ivaGlobal(),descuento:descPres(),lineas:pres.lineas,clientData:pres.clientData||{},condiciones:pres.condiciones||'',validezDias:pres.validezDias||30,equipo:pres.equipo||[],tiempoEstimado:pres.tiempoEstimado||null,costeManoObra:pres.costeManoObra||0});
+    if(res&&res.obraSync&&res.obraSync.cambio&&!pres.modificadoTrasAceptarAt){pres.modificadoTrasAceptarAt=new Date().toISOString();renderEstadoBar();}
     setSaveStatus('guardado');if(!silent)toast('Guardado','ok');}
   catch(e){setSaveStatus('error');if(!esAuto)toast(e.message,'error');if(silent&&!esAuto)throw e;}}
 // Auto-guardar ante cualquier edición dentro del editor.

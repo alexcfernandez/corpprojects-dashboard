@@ -2072,8 +2072,14 @@ app.post('/api/presupuestos', requireAuthOficina, async (req, res) => {
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.put('/api/presupuestos/:id', requireAuthOficina, async (req, res) => {
-  try { res.json(await presupuestos.guardarPresupuesto(req.params.id, req.body || {})); }
-  catch (err) { res.status(400).json({ error: err.message }); }
+  try {
+    const r = await presupuestos.guardarPresupuesto(req.params.id, req.body || {});
+    if (r && r.obraSync && r.obraSync.cambio) {
+      const a = actorDe(req);
+      activity.registrar({ actor: a.name, actorRole: a.role, kind: 'modificado', entidad: 'Presupuesto', ref: req.params.id, detalle: 'Modificado tras aceptación (extra)' });
+    }
+    res.json(r);
+  } catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.delete('/api/presupuestos/:id', requireAuthOficina, async (req, res) => {
   try {

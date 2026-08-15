@@ -261,6 +261,7 @@
       const ok   = rent.beneficio >= 0;
       const cert = rent.certificaciones || { certs:[], certificado:0, cobrado:0, pendiente:0, sinCertificar:0, pctCertificado:0 };
       const ce = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+      _obraData = { obra, certs: cert.certs };
 
       modal.innerHTML = `
         <div class="modal-box" style="max-width:620px">
@@ -348,7 +349,7 @@
               <td><strong>${ce(c.concepto)}</strong>${c.pct?` <span style="color:var(--text3);font-size:11px">(${c.pct}%)</span>`:''}</td>
               <td style="text-align:right">${eur(c.importe)}</td>
               <td>${c.estado==='cobrado'?`<span style="color:var(--green)">✅ Cobrado${c.cobradoAt?' · '+new Date(c.cobradoAt).toLocaleDateString('es-ES'):''}</span>`:'<span style="color:var(--amber)">⏳ Pendiente</span>'}</td>
-              <td style="text-align:right;white-space:nowrap">${c.estado==='cobrado'?`<button class="btn bgh" style="padding:3px 8px;font-size:11px" title="Marcar pendiente" onclick="CP.Obras.certEstado('${obra._id}','${c.id}','pendiente')">↺</button>`:`<button class="btn bgh" style="padding:3px 9px;font-size:11px;color:var(--green);border-color:var(--green)" onclick="CP.Obras.certEstado('${obra._id}','${c.id}','cobrado')">Cobrado ✓</button>`} <button class="btn bgh" style="padding:3px 8px;font-size:11px;color:var(--red)" onclick="CP.Obras.delCert('${obra._id}','${c.id}')">✕</button></td></tr>`).join('')}</tbody></table>`:'<div style="font-size:12px;color:var(--text3);margin-bottom:8px">Sin certificaciones todavía. Cobra la obra por partes (ej. 40% al empezar).</div>'}
+              <td style="text-align:right;white-space:nowrap"><button class="btn bgh" style="padding:3px 8px;font-size:11px" title="Recibo para el cliente" onclick="CP.Obras.reciboCert('${c.id}')">📄</button> ${c.estado==='cobrado'?`<button class="btn bgh" style="padding:3px 8px;font-size:11px" title="Marcar pendiente" onclick="CP.Obras.certEstado('${obra._id}','${c.id}','pendiente')">↺</button>`:`<button class="btn bgh" style="padding:3px 9px;font-size:11px;color:var(--green);border-color:var(--green)" onclick="CP.Obras.certEstado('${obra._id}','${c.id}','cobrado')">Cobrado ✓</button>`} <button class="btn bgh" style="padding:3px 8px;font-size:11px;color:var(--red)" onclick="CP.Obras.delCert('${obra._id}','${c.id}')">✕</button></td></tr>`).join('')}</tbody></table>`:'<div style="font-size:12px;color:var(--text3);margin-bottom:8px">Sin certificaciones todavía. Cobra la obra por partes (ej. 40% al empezar).</div>'}
             <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;align-items:center">
               <input type="text" id="ob-cert-concepto" class="field-input" placeholder="Concepto (ej: 40% inicio)" style="flex:1;min-width:130px">
               <input type="number" id="ob-cert-pct" class="field-input" placeholder="%" style="width:60px" min="0" max="100">
@@ -489,6 +490,48 @@
     try { await api(`/api/obras/${id}/certificacion/${certId}`, { method:'DELETE' }); openObra(id); loadResumen(); }
     catch (err) { alert('Error: ' + err.message); }
   }
+  async function getEmpresaCached(){ if(_empresaCache) return _empresaCache; try{ _empresaCache = await api('/api/empresa'); }catch(e){ _empresaCache = {}; } return _empresaCache; }
+  // Recibo/certificación imprimible para enviar al cliente.
+  async function reciboCert(certId){
+    if(!_obraData){ alert('Abre la obra primero'); return; }
+    const c = (_obraData.certs||[]).find(x=>x.id===certId); if(!c){ return; }
+    const e = await getEmpresaCached(); const o = _obraData.obra || {};
+    const esc = s => String(s==null?'':s).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    const eur2 = n => (Number(n)||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+    const fch = x => { try{ return new Date(x||Date.now()).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'}); }catch(_){ return ''; } };
+    const empSub=[e.cif?('CIF '+e.cif):'',e.direccion,e.telefono?('Tel '+e.telefono):'',e.email].filter(Boolean).join(' · ');
+    const pago = e.iban ? `<div class="box"><div class="h">Datos para el pago (transferencia)</div>
+      <div class="r"><span>Titular</span><b>${esc(e.titular||e.nombre||'')}</b></div>
+      <div class="r"><span>IBAN</span><b>${esc(e.iban)}</b></div>
+      <div class="r"><span>Concepto</span><b>${esc(o.reference||'')} · ${esc(c.concepto||'')}</b></div></div>` : '';
+    const html=`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Recibo · ${esc(o.reference||'')}</title><style>
+*{box-sizing:border-box}html,body{background:#fff}body{font-family:-apple-system,Arial,sans-serif;color:#1a1a1a;margin:0;padding:34px;font-size:14px;line-height:1.55}
+.top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1a1a1a;padding-bottom:14px;margin-bottom:20px}
+.emp b{font-size:18px}.emp .s{color:#555;font-size:11px;margin-top:3px;max-width:340px}
+.doc{text-align:right}.doc .n{font-size:16px;font-weight:800}.doc .m{color:#555;font-size:12px}
+.parts{display:flex;gap:22px;margin-bottom:18px;flex-wrap:wrap}.part{flex:1;min-width:200px}
+.h{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#888;margin-bottom:4px}
+.imp{margin:10px 0 18px;padding:16px;background:#f5f7fa;border-radius:10px;display:flex;justify-content:space-between;align-items:center}
+.imp .c{font-weight:700;font-size:15px}.imp .v{font-size:24px;font-weight:800}
+.box{border:1px solid #ddd;border-radius:10px;padding:14px;margin-top:6px}
+.box .r{display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px solid #f0f0f0}.box .r:last-child{border-bottom:none}
+@media print{body{padding:0}.noprint{display:none}}
+.bar{background:#4d9cf8;color:#fff;padding:8px 12px;border-radius:6px;border:none;font-size:13px;cursor:pointer;font-family:inherit}
+</style></head><body>
+<div class="noprint" style="display:flex;justify-content:space-between;margin-bottom:12px"><button class="bar" onclick="window.close()">✕ Cerrar</button><button class="bar" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button></div>
+<div class="top"><div class="emp"><b>${esc(e.nombre||'')}</b>${empSub?`<div class="s">${esc(empSub)}</div>`:''}</div>
+  <div class="doc"><div class="n">RECIBO / CERTIFICACIÓN</div><div class="m">Fecha: ${fch(c.fecha)}</div></div></div>
+<div class="parts">
+  <div class="part"><div class="h">Cliente</div><b>${esc(o.clientName||'—')}</b></div>
+  <div class="part"><div class="h">Obra</div><b>${esc(o.reference||'—')}</b>${o.address?`<div style="color:#555">${esc(o.address)}</div>`:''}</div>
+</div>
+<div class="imp"><div class="c">${esc(c.concepto||'Certificación')}${c.pct?` (${c.pct}% del presupuesto)`:''}</div><div class="v">${eur2(c.importe)}</div></div>
+${pago}
+<div style="margin-top:20px;font-size:12px;color:#777">Este documento certifica la cantidad indicada correspondiente a la obra referenciada.</div>
+</body></html>`;
+    const w=window.open('','_blank'); if(!w){ alert('Permite las ventanas emergentes'); return; }
+    w.document.open(); w.document.write(html); w.document.close();
+  }
   async function delMaterial(id, matId) {
     if (!confirm('¿Borrar este material?')) return;
     try { await api(`/api/obras/${id}/material/${matId}`, { method:'DELETE' }); openObra(id); loadResumen(); }
@@ -496,7 +539,7 @@
   }
 
   // Picker: asignar a la obra una factura de proveedor ya subida (sin clasificar).
-  let _fpData = [], _fpObra = {}, _fpDetalle = null;
+  let _fpData = [], _fpObra = {}, _fpDetalle = null, _obraData = null, _empresaCache = null;
   async function abrirPickerFacturas(obraId, obraRef) {
     document.getElementById('fac-picker')?.remove();
     _fpObra = { id: obraId, ref: obraRef };
@@ -620,6 +663,6 @@
     } catch (err) { alert('No se pudo borrar: ' + err.message); }
   }
 
-  CP.Obras = { render, showTab, loadResumen, loadLista, openObra, saveObraChanges, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, addCert, certRapida, certEstado, delCert, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick, _fpBack, _fpToggleAll, _fpSum, _fpAsignar };
+  CP.Obras = { render, showTab, loadResumen, loadLista, openObra, saveObraChanges, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, addCert, certRapida, certEstado, delCert, reciboCert, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick, _fpBack, _fpToggleAll, _fpSum, _fpAsignar };
 
 })(window.CP = window.CP || {});
