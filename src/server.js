@@ -72,6 +72,15 @@ const uploadFactura = multer({
   limits: { fileSize: 20 * 1024 * 1024, files: 15 }
 });
 
+// El service worker y los HTML NUNCA se cachean en el navegador: así las
+// actualizaciones llegan siempre y un móvil no se queda pegado a una versión
+// vieja (que era lo que servía nombres/datos en blanco).
+app.use((req, res, next) => {
+  if (req.path === '/sw.js' || req.path === '/' || req.path.endsWith('.html')) {
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  }
+  next();
+});
 app.use(express.static(path.join(__dirname, '../public')));
 
 const limiter = rateLimit({ windowMs: 15*60*1000, max: 300, message: { error: 'Rate limit.' } });
