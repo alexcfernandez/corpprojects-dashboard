@@ -82,6 +82,13 @@ async function fichar(userId, userName, loc) {
     try { await require('./attendance').marcarPresenciaFichaje(String(userId), userName, fecha); }
     catch (e) { console.warn('[Fichaje] marcarPresencia:', e.message); }
   }
+  // Al fichar SALIDA (cerrar un tramo), volcamos las horas trabajadas hasta ahora
+  // a su presencia del día (solo si sigue siendo la presencia autogenerada del
+  // fichaje; si hay parte o edición manual, esas horas mandan).
+  if (accion === 'salida') {
+    try { await require('./attendance').actualizarHorasFichaje(String(userId), fecha, Math.round(minutosDe(tramos) / 6) / 10); }
+    catch (e) { console.warn('[Fichaje] actualizarHoras:', e.message); }
+  }
   return { accion, ...estadoDe({ tramos, fecha }) };
 }
 

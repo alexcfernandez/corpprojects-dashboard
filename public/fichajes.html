@@ -31,6 +31,15 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .b-ok{background:rgba(34,196,135,.12);color:var(--green)}.b-curso{background:rgba(77,156,248,.12);color:var(--blue)}
 .b-no{background:rgba(240,82,82,.12);color:var(--red)}.b-warn{background:rgba(245,158,11,.14);color:var(--amber)}
 .empty{text-align:center;color:var(--text3);font-size:14px;padding:40px 20px}
+.row.clickable{cursor:pointer}
+.row .chev{color:var(--text3);font-size:12px;transition:transform .15s;display:inline-block;margin-left:2px}
+.row .chev.open{transform:rotate(90deg)}
+.tramos-detail{background:var(--bg3);border:1px solid var(--border);border-top:none;border-radius:0 0 12px 12px;margin:-8px 0 8px;padding:6px 15px 10px}
+.tramo{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;font-variant-numeric:tabular-nums}
+.tramo:last-child{border-bottom:none}
+.tramo .ti{color:var(--text3);width:64px;flex-shrink:0}
+.tramo .tt{flex:1}.tramo .td{color:var(--text2);white-space:nowrap}
+.tramo .abierto{color:var(--blue)}
 </style>
 </head>
 <body>
@@ -66,6 +75,7 @@ function esHoy(d){return iso(d)===iso(new Date());}
 function fechaLarga(d){return d.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});}
 function authH(){return {'Authorization':`Bearer ${tok}`};}
 
+function toggleTr(id){const d=document.getElementById(id);const c=document.getElementById(id+'-chev');if(!d)return;const open=d.style.display==='none';d.style.display=open?'block':'none';if(c)c.classList.toggle('open',open);}
 function mover(n){fecha.setDate(fecha.getDate()+n);cargar();}
 function hoy(){fecha=new Date();cargar();}
 
@@ -103,7 +113,16 @@ function render(fichajes,workers){
     const largo=abierto && min>14*60;
     const badge=largo?'<span class="badge b-warn">⚠ Sin cerrar</span>':abierto?'<span class="badge b-curso">En curso</span>':'<span class="badge b-ok">Cerrado</span>';
     const pausas=tr.length>1?` · ${tr.length} tramos`:'';
-    filas+=`<div class="row"><div class="nm"><b>${esc(w.name)}</b><div class="sub">Entrada ${entrada}${abierto?' · sigue dentro':(' · salida '+ultSal)}${pausas}</div></div><div style="text-align:right"><div class="tot">${hm(min)}</div>${badge}</div></div>`;
+    const rid='fj'+String(w.id).replace(/[^a-zA-Z0-9]/g,'');
+    // Detalle de tramos (entrada → salida + duración de cada uno)
+    const trDet=tr.map((t,i)=>{
+      const e=hora(t.entrada);
+      const abiertoT=!t.salida;
+      const s=abiertoT?'en curso':hora(t.salida);
+      const durMin=abiertoT?((Date.now()-new Date(t.entrada).getTime())/60000):((new Date(t.salida).getTime()-new Date(t.entrada).getTime())/60000);
+      return `<div class="tramo"><span class="ti">Tramo ${i+1}</span><span class="tt">${e} → <span class="${abiertoT?'abierto':''}">${s}</span></span><span class="td">${hm(durMin)}</span></div>`;
+    }).join('');
+    filas+=`<div class="row clickable" onclick="toggleTr('${rid}')"><div class="nm"><b>${esc(w.name)}</b><div class="sub">Entrada ${entrada}${abierto?' · sigue dentro':(' · salida '+ultSal)}${pausas}</div></div><div style="text-align:right"><div class="tot">${hm(min)}</div>${badge}</div><span class="chev" id="${rid}-chev">▸</span></div><div class="tramos-detail" id="${rid}" style="display:none">${trDet}</div>`;
   });
   document.getElementById('k-fichados').textContent=nFichados;
   document.getElementById('k-nofichados').textContent=nNo;
