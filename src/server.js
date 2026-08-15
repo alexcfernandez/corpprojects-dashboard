@@ -178,7 +178,7 @@ function sinCostePres(p) {
   return out;
 }
 function sinCostePartidas(items) { return (items || []).map(p => { const { coste, costeManual, receta, ...r } = p; return r; }); }
-const MONEY_PREFIXES = ['/api/summary','/api/inicio','/api/invoices','/api/estimates','/api/cobros','/api/pagos','/api/families','/api/comunidades','/api/obras'];
+const MONEY_PREFIXES = ['/api/summary','/api/inicio','/api/invoices','/api/estimates','/api/cobros','/api/pagos','/api/families','/api/comunidades','/api/obras','/api/informes'];
 app.use(MONEY_PREFIXES, async (req, res, next) => {
   const token = (req.headers.authorization || '').replace('Bearer ', '');
   if (!token) return next(); // sin token → que responda el auth del endpoint (401)
@@ -673,6 +673,30 @@ app.get('/api/invoices/pending',   requireAuth, async (req,res) => res.json(awai
 app.get('/api/invoices',           requireAuth, async (req,res) => res.json(await getInvoices()));
 app.get('/api/clients',            requireAuth, async (req,res) => { const {clients} = await getClients(); res.json(clients); });
 app.get('/api/estimates',          requireAuth, async (req,res) => res.json(await getEstimatesSummary()));
+
+// ── INFORMES: ventas/gastos/resultado por año + serie mensual año-vs-año ──
+app.get('/api/informes', requireAuth, async (req, res) => {
+  try {
+    const stel = require('./stelorder');
+    const [ventas, gastosInv] = await Promise.all([
+      stel.getInvoices().catch(() => []),
+      stel.getPurchaseInvoices().catch(() => []),
+    ]);
+    const round = x => Math.round((x || 0) * 100) / 100;
+    const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    const nowY = new Date().getFullYear();
+    const porAno = {};
+    const add = (y, campo, imp) => { if (!porAno[y]) porAno[y] = { year: y, ventas: 0, gastos: 0 }; porAno[y][campo] += (Number(imp) || 0); };
+    for (const inv of (ventas || []))    { const d = new Date(inv.date); if (!isNaN(d)) add(d.getFullYear(), 'ventas', inv.totalAmount); }
+    for (const g of (gastosInv || []))   { const d = new Date(g.date);   if (!isNaN(d)) add(d.getFullYear(), 'gastos', g.total); }
+    const anos = Object.values(porAno).map(a => ({ year: a.year, ventas: round(a.ventas), gastos: round(a.gastos), resultado: round(a.ventas - a.gastos) })).sort((a, b) => a.year - b.year);
+    // Serie mensual de VENTAS: año actual y anterior (para el gráfico año-vs-año).
+    const serie = MESES.map(label => ({ label, [nowY - 1]: 0, [nowY]: 0 }));
+    for (const inv of (ventas || [])) { const d = new Date(inv.date); if (isNaN(d)) continue; const y = d.getFullYear(); if (y === nowY || y === nowY - 1) serie[d.getMonth()][y] += (Number(inv.totalAmount) || 0); }
+    serie.forEach(r => { r[nowY - 1] = round(r[nowY - 1]); r[nowY] = round(r[nowY]); });
+    res.json({ anos, serie, anoActual: nowY, anoAnterior: nowY - 1 });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 // Presencia (Fase 3): lanzar el aviso a mano para probar sin esperar a las 17:30.
 //   GET  /api/presencia/aviso?dry=1  → previsualiza a QUIÉN se avisaría (NO envía)

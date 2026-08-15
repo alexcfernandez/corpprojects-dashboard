@@ -85,6 +85,7 @@ function cpUpdateBanner(){
 <nav class="nav" id="subnav" style="display:none;background:var(--bg3)">
   <!-- DINERO -->
   <span class="subgrp" data-grp="dinero" style="display:none">
+    <button class="nav-btn" onclick="showTab('informes',this)">📈 Informes</button>
     <button class="nav-btn" onclick="showTab('facturas',this)">📊 Facturación</button>
     <button class="nav-btn" onclick="showTab('pendientes',this)">🔴 Pendientes cobro</button>
     <button class="nav-btn" onclick="showTab('cobros',this)">💸 Cobros</button>
@@ -540,6 +541,10 @@ function cpUpdateBanner(){
   <div id="actividad-container"><div style="text-align:center;padding:60px;color:var(--text3)">Cargando actividad…</div></div>
 </div>
 
+<div id="tab-informes" class="panel">
+  <div id="informes-container"><div style="text-align:center;padding:60px;color:var(--text3)">Cargando informes…</div></div>
+</div>
+
 </main>
 </div>
 
@@ -659,7 +664,7 @@ const CP_ROLE_CAPS={
 };
 const CP_ROLE_LABEL={owner:'Dueño',oficina:'Oficina',encargado:'Encargado',tecnico:'Técnico'};
 // Qué capacidad exige cada pestaña / enlace. Lo no listado es visible para todos.
-const CP_TAB_CAP={facturas:'facturas',pendientes:'facturas',cobros:'facturas',banco:'facturas',pagos:'facturas',obras:'facturas',comunidades:'facturas',alertas:'facturas',presupuestos:'presupuestos',familias:'clientes',emails:'clientes',usuarios:'usuarios',actividad:'registro'};
+const CP_TAB_CAP={informes:'facturas',facturas:'facturas',pendientes:'facturas',cobros:'facturas',banco:'facturas',pagos:'facturas',obras:'facturas',comunidades:'facturas',alertas:'facturas',presupuestos:'presupuestos',familias:'clientes',emails:'clientes',usuarios:'usuarios',actividad:'registro'};
 const CP_TOOL_CAP={'/subir-factura':'facturas','/asignar-facturas':'facturas','/catalogo':'facturas','/presupuestos':'presupuestos','/competencia':'facturas','/gps':'facturas'};
 function cpUser(){ try{ return JSON.parse(localStorage.getItem('cp_user')||'{}'); }catch(e){ return {}; } }
 function cpRole(){ return cpUser().role || 'owner'; }  // sin cuenta (clave general) = Dueño
@@ -1320,6 +1325,34 @@ function renderInicioOperativo(c){
         </div>`).join('')}
     </div>`;
 }
+// ── INFORMES (ventas/gastos/resultado + año vs año) ──
+let _informesChart=null;
+async function renderInformes(){
+  const c=document.getElementById('informes-container'); if(!c) return;
+  let d;
+  try{ d=await apiCall('/api/informes'); }catch(e){ c.innerHTML='<div style="color:var(--red);padding:40px;text-align:center">No se pudo cargar: '+e.message+'</div>'; return; }
+  if(!d||d.error){ c.innerHTML='<div style="padding:40px;text-align:center;color:var(--text3)">Sin datos de facturación todavía.</div>'; return; }
+  const anos=d.anos||[]; const actual=anos.find(a=>a.year===d.anoActual)||{ventas:0,gastos:0,resultado:0};
+  const eur=n=>(Number(n)||0).toLocaleString('es-ES',{maximumFractionDigits:0})+' €';
+  c.innerHTML=`
+    <div class="alert ain" style="margin-bottom:16px"><div>📈</div><div><strong>Informes</strong> — ventas, gastos y resultado por año, y la evolución mes a mes frente al año pasado.</div></div>
+    <div class="metrics-row" style="margin-bottom:16px">
+      <div class="mc"><div class="ml">Ventas ${d.anoActual}</div><div class="mv b">${eur(actual.ventas)}</div></div>
+      <div class="mc"><div class="ml">Gastos ${d.anoActual}</div><div class="mv r">${eur(actual.gastos)}</div></div>
+      <div class="mc"><div class="ml">Resultado ${d.anoActual}</div><div class="mv ${actual.resultado>=0?'g':'r'}">${eur(actual.resultado)}</div></div>
+    </div>
+    <div class="card" style="margin-bottom:16px"><div class="card-title">Ventas mes a mes · ${d.anoActual} vs ${d.anoAnterior}</div><div style="height:300px"><canvas id="infChart"></canvas></div></div>
+    <div class="card"><div class="card-title">Por año</div><table><thead><tr><th>Año</th><th style="text-align:right">Ventas</th><th style="text-align:right">Gastos</th><th style="text-align:right">Resultado</th></tr></thead>
+      <tbody>${anos.length?anos.slice().reverse().map(a=>`<tr><td><strong>${a.year}</strong></td><td style="text-align:right">${eur(a.ventas)}</td><td style="text-align:right;color:var(--red)">${eur(a.gastos)}</td><td style="text-align:right;color:${a.resultado>=0?'var(--green)':'var(--red)'};font-weight:600">${eur(a.resultado)}</td></tr>`).join(''):'<tr><td colspan="4" style="color:var(--text3)">Sin datos</td></tr>'}</tbody></table></div>`;
+  if(_informesChart){ _informesChart.destroy(); _informesChart=null; }
+  const ctx=document.getElementById('infChart');
+  if(ctx&&window.Chart){
+    _informesChart=new Chart(ctx,{type:'bar',data:{labels:d.serie.map(r=>r.label),datasets:[
+      {label:String(d.anoAnterior),data:d.serie.map(r=>r[d.anoAnterior]||0),backgroundColor:'rgba(139,146,168,.5)',borderRadius:4},
+      {label:String(d.anoActual),data:d.serie.map(r=>r[d.anoActual]||0),backgroundColor:'rgba(77,156,248,.9)',borderRadius:4},
+    ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top'}},scales:{y:{ticks:{callback:v=>eur(v)}}}}});
+  }
+}
 async function renderInicio(){
   const c=document.getElementById('inicio-container');
   if(!c) return;
@@ -1483,6 +1516,7 @@ function showTab(id, btn){
     return;
   }
   if(id==='banco'){ showBTab('resumen', document.querySelector('.btab')); loadBanco(); }
+  if(id==='informes'){ renderInformes(); }
   startAutoRefresh(id);
   if(id==='emails'){
     if(window.initEmails) window.initEmails();
