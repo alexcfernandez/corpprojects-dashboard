@@ -51,11 +51,11 @@ function cpUpdateBanner(){
     <div class="login-logo">CP</div>
     <div class="login-title">Corp Projects</div>
     <div class="login-sub">Dashboard financiero privado</div>
-    <input type="text" class="login-input" id="loginUser" placeholder="Email de tu cuenta" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()">
-    <input type="password" class="login-input" id="loginPass" placeholder="Contraseña" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    <input type="password" class="login-input" id="loginPass" placeholder="Contraseña de acceso" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    <div id="cuentaBox" style="display:none"><input type="text" class="login-input" id="loginUser" placeholder="Tu email" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()"></div>
     <button class="login-btn" onclick="doLogin()" id="loginBtn">Entrar →</button>
-    <div class="login-hint" style="font-size:11px;color:var(--text3);margin-top:8px">Deja el email vacío para usar la clave general.</div>
     <div class="login-error" id="loginError"></div>
+    <div style="margin-top:14px;text-align:center"><span id="cuentaLink" onclick="toggleCuenta()" style="cursor:pointer;font-size:12px;color:var(--text3);text-decoration:underline">Entrar con mi cuenta de empleado (email)</span></div>
   </div>
 </div>
 
@@ -590,8 +590,16 @@ function eB(k){return{accepted:'<span class="badge bgo">✅ Aceptado</span>',pen
 function fP(f){return f&&f!=='Sin familia'?`<span class="fpill">${f}</span>`:''}
 
 // ── AUTH ──────────────────────────────────────────────────────────
+function toggleCuenta(){
+  const box=document.getElementById('cuentaBox');const abierto=box.style.display!=='none';
+  box.style.display=abierto?'none':'block';
+  document.getElementById('cuentaLink').textContent=abierto?'Entrar con mi cuenta de empleado (email)':'← Volver a la contraseña general';
+  if(!abierto){const u=document.getElementById('loginUser');if(u)u.focus();}
+}
 async function doLogin(){
-  const user=document.getElementById('loginUser')?.value.trim();
+  // El email solo cuenta si la opción "cuenta de empleado" está abierta.
+  const cuentaAbierta=document.getElementById('cuentaBox')?.style.display!=='none';
+  const user=cuentaAbierta?(document.getElementById('loginUser')?.value.trim()||''):'';
   const pass=document.getElementById('loginPass').value;if(!pass)return;
   const btn=document.getElementById('loginBtn');btn.disabled=true;btn.textContent='Verificando...';
   document.getElementById('loginError').style.display='none';
@@ -618,6 +626,8 @@ function doLogout(){
   document.getElementById('loginScreen').style.display='flex';
   document.getElementById('loginPass').value='';
   const lu=document.getElementById('loginUser');if(lu)lu.value='';
+  const cb=document.getElementById('cuentaBox');if(cb)cb.style.display='none';
+  const cl=document.getElementById('cuentaLink');if(cl)cl.textContent='Entrar con mi cuenta de empleado (email)';
   document.getElementById('theme-toggle-fixed').style.display='none';
 }
 function showApp(){

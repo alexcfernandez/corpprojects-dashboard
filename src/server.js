@@ -2067,9 +2067,13 @@ app.post('/api/partes/worker-login', async (req, res) => {
 
 app.get('/api/partes/workers', async (req, res) => {
   try {
-    const { getUsers } = require('./users');
+    const { getUsers, normalizeRole } = require('./users');
     const allUsers = await getUsers(false);
-    const techs = allUsers.filter(u => u.role === 'tech' || u.role === 'office');
+    // Cualquiera que va a la app de campo: técnico, encargado, oficina o dueño.
+    // Se normaliza el rol para entender tanto los antiguos (tech/office/admin)
+    // como los nuevos (tecnico/encargado/oficina/owner).
+    const CAMPO = ['owner', 'oficina', 'encargado', 'tecnico'];
+    const techs = allUsers.filter(u => u.role !== 'client' && CAMPO.includes(normalizeRole(u.role)));
     if (techs.length > 0) {
       res.json(techs.map(u => ({ id: String(u._id), name: u.name, color: u.color || '#4d9cf8', role: u.role, costeHora: u.costeHora || 15 })));
     } else {
