@@ -1994,6 +1994,37 @@ app.put('/api/presupuestos/:id/estado', requireAuthOficina, async (req, res) => 
   }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+// Genera (idempotente) el ENLACE PÚBLICO y da el presupuesto por ENVIADO.
+app.post('/api/presupuestos/:id/enlace', requireAuthOficina, async (req, res) => {
+  try {
+    const token = await presupuestos.ensurePublicToken(req.params.id);
+    const a = actorDe(req);
+    try {
+      const p = await presupuestos.getPresupuesto(req.params.id);
+      if ((p.estado || 'borrador') === 'borrador') {
+        await presupuestos.setEstado(req.params.id, 'enviado');
+        activity.registrar({ actor: a.name, actorRole: a.role, kind: 'modificado', entidad: 'Presupuesto', ref: req.params.id, detalle: 'Enviado (enlace generado)' });
+      }
+    } catch (e) {}
+    const base = process.env.PUBLIC_URL || (req.protocol + '://' + req.get('host'));
+    res.json({ token, url: base + '/p/' + token });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+// ── PÚBLICO (sin login): el cliente ve y acepta el presupuesto por el enlace ──
+app.get('/api/p/:token', async (req, res) => {
+  try { res.json(await presupuestos.getPublico(req.params.token, req.ip)); }
+  catch (err) { res.status(404).json({ error: err.message }); }
+});
+app.post('/api/p/:token/responder', async (req, res) => {
+  try {
+    const r = await presupuestos.responder(req.params.token, req.body || {});
+    if (r.estado === 'aceptado' && r.presupuestoId) {
+      try { await presupuestos.crearObraDesdePresupuesto(r.presupuestoId); } catch (e) { console.warn('[Publico→Obra]', e.message); }
+      try { activity.registrar({ actor: (r.respuesta && r.respuesta.nombre) || 'Cliente', kind: 'modificado', entidad: 'Presupuesto', ref: r.presupuestoId, detalle: 'Aceptado por el cliente (online)' }); } catch (e) {}
+    }
+    res.json(r);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/empresa', requireAuthOficina, (req, res) => res.json(presupuestos.getEmpresa()));
 app.post('/api/presupuestos', requireAuthOficina, async (req, res) => {
   try {
@@ -2907,6 +2938,7 @@ app.get('/activos', (req, res) => res.sendFile(path.join(__dirname, '../public/a
 app.get('/medir', (req, res) => res.sendFile(path.join(__dirname, '../public/medir.html')));
 app.get('/catalogo', (req, res) => res.sendFile(path.join(__dirname, '../public/catalogo.html')));
 app.get('/presupuestos', (req, res) => res.sendFile(path.join(__dirname, '../public/presupuestos.html')));
+app.get('/p/:token', (req, res) => res.sendFile(path.join(__dirname, '../public/p.html')));
 app.get('/amidaments', (req, res) => res.sendFile(path.join(__dirname, '../public/amidaments.html')));
 app.get('/competencia', (req, res) => res.sendFile(path.join(__dirname, '../public/competencia.html')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Presupuesto</title>
+<meta name="theme-color" content="#4d9cf8">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#eef1f5;color:#1a1d24;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:15px;line-height:1.55;padding:16px}
+.doc{max-width:760px;margin:0 auto;background:#fff;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.08);overflow:hidden}
+.hd{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:26px 28px;border-bottom:1px solid #eee;flex-wrap:wrap}
+.logo{display:flex;align-items:center;gap:12px}
+.logo .ic{width:44px;height:44px;border-radius:11px;background:linear-gradient(135deg,#4d9cf8,#22c487);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:17px}
+.emp b{font-size:17px}.emp .s{color:#666;font-size:12px;margin-top:2px;max-width:320px}
+.doc-n{text-align:right}.doc-n .n{font-size:17px;font-weight:800}.doc-n .m{color:#666;font-size:12px}
+.parts{display:flex;gap:22px;padding:20px 28px;flex-wrap:wrap}
+.part{flex:1;min-width:200px}
+.part .h{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#999;font-weight:700;margin-bottom:5px}
+.part b{font-size:15px}
+.tit{padding:4px 28px 0;font-size:18px;font-weight:800}
+table{width:100%;border-collapse:collapse;margin-top:12px}
+th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#999;border-bottom:1px solid #ddd;padding:9px 28px}
+th.num{text-align:right}
+td{padding:11px 28px;border-bottom:1px solid #f0f0f0;vertical-align:top}
+td.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+tr.sec td{background:#f5f7fa;font-weight:700}
+tr.txt td{font-weight:600;border-bottom:none;padding-top:14px;color:#333}
+.desc{color:#777;font-size:12px;margin-top:2px}
+.tot{margin:14px 28px 4px auto;width:min(320px,100%)}
+.tot .r{display:flex;justify-content:space-between;padding:5px 0;font-size:14px}
+.tot .big{border-top:2px solid #1a1d24;margin-top:6px;padding-top:11px;font-size:20px;font-weight:800}
+.cond{margin:18px 28px;padding:14px;background:#f7f9fb;border-radius:10px;font-size:13px;color:#444;white-space:pre-wrap}
+.cond .h{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#999;font-weight:700;margin-bottom:6px}
+.foot{padding:22px 28px 30px;border-top:1px solid #eee}
+.est{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;padding:7px 13px;border-radius:100px;margin-bottom:14px}
+.btns{display:flex;gap:12px;flex-wrap:wrap}
+.btn{flex:1;min-width:150px;border:none;border-radius:12px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit}
+.btn.ok{background:#22c487;color:#062015}.btn.no{background:#fff;border:1.5px solid #e0554e;color:#e0554e}
+.msg{text-align:center;padding:34px 20px}
+.msg .em{font-size:44px}.msg .t{font-size:19px;font-weight:800;margin-top:8px}.msg .s{color:#666;margin-top:6px}
+.load{text-align:center;padding:70px 20px;color:#888}
+.name-in{width:100%;padding:13px;border:1.5px solid #ddd;border-radius:10px;font-size:16px;font-family:inherit;margin-bottom:12px}
+.legal{font-size:11px;color:#999;text-align:center;margin-top:14px}
+</style>
+</head>
+<body>
+<div class="doc" id="doc"><div class="load">Cargando presupuesto…</div></div>
+<script>
+const token=location.pathname.split('/').pop();
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const eur=n=>(Number(n)||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+const fmt=n=>(Number(n)||0).toLocaleString('es-ES',{maximumFractionDigits:2});
+const fecha=x=>{try{return new Date(x).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'});}catch(e){return '';}};
+function imp(l){if(l.tipo==='seccion'||l.tipo==='nota')return 0;if(l.modo==='cerrado')return Number(l.precioCerrado)||0;return (Number(l.cantidad)||0)*(Number(l.precioVenta)||0);}
+let DATA=null;
+
+async function cargar(){
+  try{const r=await fetch('/api/p/'+token);if(!r.ok)throw 0;DATA=await r.json();render();}
+  catch(e){document.getElementById('doc').innerHTML='<div class="msg"><div class="em">🔍</div><div class="t">Presupuesto no encontrado</div><div class="s">El enlace no es válido o ha caducado.</div></div>';}
+}
+function subtot(lineas,i){let s=0;for(let j=i+1;j<lineas.length;j++){if(lineas[j].tipo==='seccion')break;s+=imp(lineas[j]);}return s;}
+function render(){
+  const d=DATA,e=d.empresa||{},c=d.clientData||{};
+  const filas=(d.lineas||[]).map((l,i)=>{
+    if(l.tipo==='seccion')return `<tr class="sec"><td colspan="4">${esc(l.nombre||'')}</td><td class="num">${eur(subtot(d.lineas,i))}</td></tr>`;
+    const descHtml=l.descripcion?`<div class="desc">${esc(l.descripcion).replace(/\n/g,'<br>')}</div>`:'';
+    if(l.tipo==='nota')return `<tr class="txt"><td colspan="5">${esc(l.nombre||'')}${descHtml}</td></tr>`;
+    const nom=esc(l.nombre)+descHtml;
+    if(l.modo==='cerrado')return `<tr><td>${nom}</td><td class="num"></td><td></td><td class="num"></td><td class="num">${eur(imp(l))}</td></tr>`;
+    return `<tr><td>${nom}</td><td class="num">${fmt(l.cantidad||0)}</td><td>${esc(l.unidad||'')}</td><td class="num">${eur(l.precioVenta)}</td><td class="num">${eur(imp(l))}</td></tr>`;
+  }).join('');
+  const t=d.totales||{};
+  const descRow=(t.descuento>0)?`<div class="r"><span>Descuento${d.descuento&&d.descuento.tipo==='pct'?' ('+fmt(d.descuento.valor)+'%)':''}</span><span>−${eur(t.descuento)}</span></div><div class="r"><span>Base con descuento</span><span>${eur(t.baseConDescuento)}</span></div>`:'';
+  const vto=d.fecha?fecha(new Date(new Date(d.fecha).getTime()+(d.validezDias||30)*86400000)):'';
+  const cli=[c.direccion,c.nif?('NIF '+c.nif):'',[c.telefono,c.email].filter(Boolean).join(' · ')].filter(Boolean).map(x=>`<div style="color:#555;font-size:13px">${esc(x)}</div>`).join('');
+  document.getElementById('doc').innerHTML=`
+    <div class="hd">
+      <div class="logo"><div class="ic">CP</div><div class="emp"><b>${esc(e.nombre||'')}</b>${e.cif?`<div class="s">CIF ${esc(e.cif)}${e.direccion?' · '+esc(e.direccion):''}</div>`:''}${[e.telefono,e.email].filter(Boolean).length?`<div class="s">${esc([e.telefono,e.email].filter(Boolean).join(' · '))}</div>`:''}</div></div>
+      <div class="doc-n"><div class="n">Presupuesto ${esc(d.numero||'')}</div>${d.fecha?`<div class="m">Fecha: ${fecha(d.fecha)}</div>`:''}${vto?`<div class="m">Válido hasta: ${vto}</div>`:''}</div>
+    </div>
+    <div class="parts">
+      <div class="part"><div class="h">Cliente</div><b>${esc(d.clientName||'—')}</b>${cli}</div>
+      <div class="part"><div class="h">Proyecto / obra</div><b>${esc(d.nombre||'—')}</b></div>
+    </div>
+    <table><thead><tr><th>Concepto</th><th class="num">Cant.</th><th>Ud.</th><th class="num">Precio</th><th class="num">Importe</th></tr></thead>
+    <tbody>${filas||'<tr><td colspan="5">—</td></tr>'}</tbody></table>
+    <div class="tot">
+      <div class="r"><span>${t.descuento>0?'Subtotal':'Base imponible'}</span><span>${eur(t.totalVenta)}</span></div>
+      ${descRow}
+      <div class="r"><span>IVA ${d.iva}%</span><span>${eur(t.totalIva)}</span></div>
+      <div class="r big"><span>Total</span><span>${eur(t.totalConIva)}</span></div>
+    </div>
+    ${d.condiciones?`<div class="cond"><div class="h">Condiciones</div>${esc(d.condiciones)}</div>`:''}
+    <div class="foot" id="foot">${footHtml()}</div>`;
+}
+function footHtml(){
+  const d=DATA,resp=d.respuesta;
+  if(resp&&resp.accion==='aceptar')return `<div class="est" style="background:#e7f8f0;color:#127a52">✅ Presupuesto aceptado${resp.at?' el '+fecha(resp.at):''}${resp.nombre?' por '+esc(resp.nombre):''}</div><div style="color:#666;font-size:13px">¡Gracias! Nos pondremos en marcha. Cualquier duda, contáctanos.</div>`;
+  if(resp&&resp.accion==='rechazar')return `<div class="est" style="background:#fdeceb;color:#c0392b">❌ Presupuesto rechazado${resp.at?' el '+fecha(resp.at):''}</div>`;
+  return `<div class="est" style="background:#eef4ff;color:#2b6bd6">📄 Revisa el presupuesto y, si estás de acuerdo, acéptalo aquí abajo.</div>
+    <div class="btns">
+      <button class="btn ok" onclick="pedirAceptar()">✅ Aceptar presupuesto</button>
+      <button class="btn no" onclick="responder('rechazar')">Rechazar</button>
+    </div>
+    <div class="legal">Al aceptar, confirmas la conformidad con este presupuesto y sus condiciones.</div>`;
+}
+function pedirAceptar(){
+  document.getElementById('foot').innerHTML=`
+    <div class="est" style="background:#eef4ff;color:#2b6bd6">Confirma tu aceptación</div>
+    <input class="name-in" id="acc-nombre" placeholder="Tu nombre (opcional)">
+    <div class="btns">
+      <button class="btn ok" id="acc-btn" onclick="responder('aceptar')">✅ Confirmar aceptación</button>
+      <button class="btn no" onclick="render()">Cancelar</button>
+    </div>`;
+}
+async function responder(accion){
+  if(accion==='rechazar'&&!confirm('¿Seguro que quieres rechazar el presupuesto?'))return;
+  const nombre=(document.getElementById('acc-nombre')||{}).value||'';
+  const btn=document.getElementById('acc-btn');if(btn){btn.disabled=true;btn.textContent='Enviando…';}
+  try{
+    const r=await fetch('/api/p/'+token+'/responder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accion,nombre})});
+    const j=await r.json();if(!r.ok)throw new Error(j.error||'Error');
+    DATA.respuesta=j.respuesta||{accion,at:new Date(),nombre};
+    document.getElementById('doc').innerHTML=`<div class="msg"><div class="em">${accion==='aceptar'?'🎉':'👍'}</div><div class="t">${accion==='aceptar'?'¡Presupuesto aceptado!':'Presupuesto rechazado'}</div><div class="s">${accion==='aceptar'?'Gracias, nos ponemos en marcha.':'Gracias por tu respuesta.'}</div></div>`;
+  }catch(e){alert('No se pudo registrar: '+e.message);if(btn){btn.disabled=false;btn.textContent='✅ Confirmar aceptación';}}
+}
+cargar();
+</script>
+</body>
+</html>

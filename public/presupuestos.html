@@ -102,6 +102,12 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 .estado-bar{margin-bottom:12px}
 .est-obra{margin-top:8px;font-size:12px;color:var(--green);background:color-mix(in srgb,var(--green) 12%,transparent);border:1px solid color-mix(in srgb,var(--green) 40%,transparent);border-radius:8px;padding:7px 10px}
 .d-lab{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;font-weight:700;margin-bottom:4px}
+.enviar-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:12px 13px;margin-bottom:12px}
+.env-title{font-size:13px;font-weight:700;margin-bottom:9px}
+.env-btns{display:flex;flex-wrap:wrap;gap:8px}
+.env-b{flex:1;min-width:110px;background:var(--bg3);border:1px solid var(--border2);border-radius:9px;color:var(--text);padding:10px 8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+.env-b:hover{border-color:var(--blue)}
+.env-stats{font-size:12px;color:var(--text3);margin-top:9px}
 .equipo-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:12px 13px;margin-bottom:12px}
 .eq-title{font-size:13px;font-weight:700;margin-bottom:9px}
 .eq-workers{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
@@ -172,6 +178,7 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
   <div class="d-lab" style="margin-top:10px">Cliente</div>
   <input type="text" id="d-cliente" autocomplete="off" placeholder="Nombre del cliente" style="margin-bottom:4px">
   <div class="estado-bar" id="estado-bar"></div>
+  <div id="enviar-cont"></div>
   <div id="equipo-cont"></div>
   <div class="med-ref" id="d-medref" style="display:none"></div>
   <div id="lineas"></div>
@@ -354,7 +361,7 @@ async function abrirPres(id){
     if(mt){mr.style.display='block';mr.innerHTML=`📐 Medición: <b>Suelo ${fmt(mt.suelo)}</b> · <b>Paredes ${fmt(mt.paredes)}</b> · <b>Techo ${fmt(mt.techo)}</b> · <b>Pintura ${fmt((mt.paredes||0)+(mt.techo||0))}</b> m² · <b>Rodapié ${fmt(mt.rodapie)}</b> m`;}
     else mr.style.display='none';
     if(!catalogo.length){try{const c=await api('GET','/api/partidas');catalogo=c.partidas||[];}catch(e){}}
-    await loadPlantilla();renderEquipo();
+    await loadPlantilla();renderEquipo();renderEnviar();
     renderLineas();showPage('det');setSaveStatus('guardado');
   }catch(e){toast(e.message,'error');}
 }
@@ -410,6 +417,35 @@ function renderLineas(){
     </div>`;}).join('');
   recompute();
 }
+// ── ENVIAR AL CLIENTE (enlace público) ──
+function renderEnviar(){const cont=document.getElementById('enviar-cont');if(!cont||!pres)return;
+  if(pres.publicToken&&!pres.publicUrl)pres.publicUrl=location.origin+'/p/'+pres.publicToken;
+  const nV=(pres.vistas||[]).length;const ultV=nV?pres.vistas[nV-1].at:null;const resp=pres.respuesta;
+  const stats=resp?(resp.accion==='aceptar'
+      ?`<span style="color:var(--green)">✅ Aceptado por el cliente${resp.nombre?' ('+esc(resp.nombre)+')':''}${resp.at?' el '+new Date(resp.at).toLocaleDateString('es-ES'):''}</span>`
+      :`<span style="color:var(--red)">❌ Rechazado por el cliente${resp.at?' el '+new Date(resp.at).toLocaleDateString('es-ES'):''}</span>`)
+    :(nV?`👁 Visto <b>${nV}</b> ${nV===1?'vez':'veces'}${ultV?' · última '+new Date(ultV).toLocaleDateString('es-ES'):''}`:(pres.publicToken?'Enviado · el cliente aún no lo ha abierto':'Aún no enviado'));
+  cont.innerHTML=`<div class="enviar-box">
+    <div class="env-title">📤 Enviar al cliente <span style="font-weight:400;color:var(--text3);font-size:11px">· lo ve y lo acepta online</span></div>
+    <div class="env-btns">
+      <button class="env-b" onclick="enviarPres('whatsapp')">📲 WhatsApp</button>
+      <button class="env-b" onclick="enviarPres('email')">✉️ Email</button>
+      <button class="env-b" onclick="enviarPres('copiar')">🔗 Copiar enlace</button>
+    </div>
+    <div class="env-stats">${stats}</div>
+  </div>`;}
+async function enlacePublico(){
+  if(pres.publicUrl)return pres.publicUrl;
+  const d=await api('POST','/api/presupuestos/'+pres._id+'/enlace',{});
+  pres.publicToken=d.token;pres.publicUrl=d.url;
+  if((pres.estado||'borrador')==='borrador'){pres.estado='enviado';pres.enviadoAt=new Date().toISOString();renderEstadoBar();}
+  renderEnviar();return d.url;}
+async function enviarPres(via){
+  let url;try{url=await enlacePublico();}catch(e){toast(e.message,'error');return;}
+  if(via==='copiar'){try{await navigator.clipboard.writeText(url);toast('🔗 Enlace copiado','ok');}catch(e){prompt('Copia el enlace:',url);}return;}
+  if(via==='whatsapp'){const msg=`Hola, aquí tienes tu presupuesto${pres.numero?' '+pres.numero:''}: ${url}`;const tel=(pres.clientData&&pres.clientData.telefono||'').replace(/[^0-9]/g,'');window.open('https://wa.me/'+(tel||'')+'?text='+encodeURIComponent(msg),'_blank');return;}
+  if(via==='email'){const to=(pres.clientData&&pres.clientData.email)||'';const subj='Presupuesto'+(pres.numero?' '+pres.numero:'');const body=`Hola,\n\nAquí tienes tu presupuesto: ${url}\n\nUn saludo.`;window.location.href='mailto:'+encodeURIComponent(to)+'?subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(body);return;}
+}
 // ── EQUIPO Y TIEMPO ESTIMADO (mano de obra) ──
 let plantilla=[];
 async function loadPlantilla(){if(plantilla.length)return;try{const r=await fetch('/api/partes/workers',{headers:authH()});plantilla=(await r.json())||[];}catch(e){plantilla=[];}}
@@ -417,7 +453,9 @@ function horasEstim(){const t=pres&&pres.tiempoEstimado;if(!t||!(Number(t.valor)
 function computeManoObra(){if(!pres)return 0;const h=horasEstim();let c=0;(pres.equipo||[]).forEach(w=>{const p=plantilla.find(x=>String(x.id)===String(w.id));c+=h*(p?Number(p.costeHora)||0:0);});pres.costeManoObra=Math.round(c*100)/100;return pres.costeManoObra;}
 function renderEquipo(){const cont=document.getElementById('equipo-cont');if(!cont||!pres)return;
   const t=pres.tiempoEstimado||{valor:'',unidad:'dias'};const eq=pres.equipo||[];
-  const chips=plantilla.length?plantilla.map(w=>{const on=eq.some(x=>String(x.id)===String(w.id));return `<button class="eq-chip ${on?'on':''}" onclick="toggleWorker('${w.id}','${esc(String(w.name)).replace(/'/g,"\\'")}')">${esc(w.name)}</button>`;}).join(''):'<span style="color:var(--text3);font-size:12px">Sin trabajadores dados de alta</span>';
+  // Solo gente de CAMPO (los que van a obra): fuera oficina/dueño/admin.
+  const campo=plantilla.filter(w=>!['office','oficina','admin','owner','client'].includes(String(w.role||'')));
+  const chips=campo.length?campo.map(w=>{const on=eq.some(x=>String(x.id)===String(w.id));return `<button class="eq-chip ${on?'on':''}" onclick="toggleWorker('${w.id}','${esc(String(w.name)).replace(/'/g,"\\'")}')">${esc(w.name)}</button>`;}).join(''):'<span style="color:var(--text3);font-size:12px">Sin trabajadores dados de alta</span>';
   const mo=computeManoObra();
   cont.innerHTML=`<div class="equipo-box">
     <div class="eq-title">👷 Equipo y tiempo estimado <span style="font-weight:400;color:var(--text3);font-size:11px">· solo para ti (no sale en el PDF del cliente)</span></div>

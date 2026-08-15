@@ -4,6 +4,7 @@
 // con el coste real para ver el margen. Sobre esto irá el presupuesto (medición
 // × partidas). Multi-empresa desde el diseño (cada partida lleva empresaId).
 const { ObjectId } = require('mongodb');
+const crypto = require('crypto');
 const EMPRESA = process.env.EMPRESA_ID || 'corp';
 
 // Datos de la empresa que emite el presupuesto (cabecera del PDF).
@@ -343,6 +344,53 @@ async function setEstado(id, estado) {
   return { ok: true, estado, estadoAt: now };
 }
 
+// ── ENLACE PÚBLICO (enviar / ver / aceptar online) ───────────────
+// Genera (idempotente) el token público del presupuesto.
+async function ensurePublicToken(id) {
+  const db = await getDB();
+  const p = await db.collection('presupuestos').findOne({ _id: new ObjectId(id), empresaId: EMPRESA });
+  if (!p) throw new Error('Presupuesto no encontrado');
+  if (p.publicToken) return p.publicToken;
+  const token = 'q_' + crypto.randomBytes(16).toString('hex');
+  await db.collection('presupuestos').updateOne({ _id: p._id }, { $set: { publicToken: token, updatedAt: new Date() } });
+  return token;
+}
+// Datos del presupuesto para el cliente (sin coste/margen/equipo) + registra la visita.
+async function getPublico(token, ip) {
+  const db = await getDB();
+  const p = await db.collection('presupuestos').findOne({ publicToken: String(token), empresaId: EMPRESA });
+  if (!p) throw new Error('Presupuesto no encontrado');
+  // Registrar visita (contador + últimas marcas de tiempo, cap 200).
+  await db.collection('presupuestos').updateOne(
+    { _id: p._id },
+    { $push: { vistas: { $each: [{ at: new Date(), ip: ip || null }], $slice: -200 } } }
+  );
+  const t = computeTotales(p.lineas, p.iva, p.descuento, p.costeManoObra);
+  const lineas = (p.lineas || []).map(l => { const { coste, ...r } = l; return r; }); // fuera el coste
+  return {
+    numero: p.numero, nombre: p.nombre, clientName: p.clientName, clientData: p.clientData || {},
+    empresa: getEmpresa(), fecha: p.createdAt, validezDias: p.validezDias || 30,
+    iva: Number.isFinite(p.iva) ? p.iva : 10, descuento: p.descuento || null,
+    lineas, totales: t, condiciones: p.condiciones || '',
+    estado: p.estado || 'borrador', respuesta: p.respuesta || null,
+  };
+}
+// El cliente acepta o rechaza desde el enlace. Idempotente.
+async function responder(token, { accion, nombre, firma } = {}) {
+  const db = await getDB();
+  const p = await db.collection('presupuestos').findOne({ publicToken: String(token), empresaId: EMPRESA });
+  if (!p) throw new Error('Presupuesto no encontrado');
+  if (!['aceptar', 'rechazar'].includes(accion)) throw new Error('Acción no válida');
+  if (p.respuesta && p.respuesta.accion) return { yaRespondido: true, estado: p.estado, respuesta: p.respuesta };
+  const estado = accion === 'aceptar' ? 'aceptado' : 'rechazado';
+  const now = new Date();
+  const respuesta = { accion, at: now, nombre: String(nombre || '').trim(), firma: firma || null };
+  const set = { estado, estadoAt: now, respuesta, updatedAt: now };
+  set[estado === 'aceptado' ? 'aceptadoAt' : 'rechazadoAt'] = now;
+  await db.collection('presupuestos').updateOne({ _id: p._id }, { $set: set });
+  return { ok: true, estado, respuesta, presupuestoId: String(p._id) };
+}
+
 // Presupuesto ACEPTADO → OBRA. Crea la obra sembrada con lo presupuestado
 // (venta = presupuesto, coste esperado) y la enlaza. Idempotente: si el
 // presupuesto ya tiene obra, no crea otra.
@@ -443,4 +491,5 @@ module.exports = {
   getMateriales, crearMaterial, editarMaterial, eliminarMaterial,
   getPresupuestos, getPresupuesto, crearPresupuesto, guardarPresupuesto, eliminarPresupuesto,
   ESTADOS, setEstado, crearObraDesdePresupuesto,
+  ensurePublicToken, getPublico, responder,
 };
