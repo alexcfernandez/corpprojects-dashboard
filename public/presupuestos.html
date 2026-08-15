@@ -70,6 +70,11 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 .l-precio-fld .l-lab{color:var(--blue)}
 .l-tot-fld{margin-left:auto;text-align:right}
 .l-tot{font-size:19px;font-weight:800;color:var(--green);font-variant-numeric:tabular-nums;white-space:nowrap;padding-bottom:4px}
+.l-modo{display:inline-flex;margin-top:11px;border:1px solid var(--border2);border-radius:8px;overflow:hidden}
+.l-modo button{background:var(--bg3);border:none;color:var(--text3);padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit}
+.l-modo button.on{background:var(--blue);color:#fff;font-weight:600}
+.linea.nota{border-left:3px solid var(--text3)}
+.linea.nota .l-nomin{width:100%;background:var(--bg3);border:1.5px solid var(--border2);border-radius:8px;padding:9px 11px;color:var(--text);font-size:14px;font-weight:700;outline:none;font-family:inherit}
 .l-cant{width:90px;text-align:right}
 .l-u{font-size:13px;color:var(--text3)}
 .l-calc{margin-left:auto;font-size:13px;color:var(--text2);font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -176,6 +181,7 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
     <button class="btn sec" onclick="abrirPicker()"><i></i>+ Partida</button>
     <button class="btn sec" onclick="addLibre()">+ Línea libre</button>
     <button class="btn sec" onclick="addSeccion()">+ Sección</button>
+    <button class="btn sec" onclick="addNota()">+ Texto</button>
   </div>
 </div></div>
 
@@ -346,7 +352,7 @@ function medQuick(unidad){
 }
 function tipoDe(l){return (l&&l.tipo)||'partida';}
 function subtotalDesde(i){ // suma de las líneas (no-sección) hasta la próxima sección
-  let s=0;for(let j=i+1;j<pres.lineas.length;j++){const l=pres.lineas[j];if(tipoDe(l)==='seccion')break;s+=(l.cantidad||0)*(l.precioVenta||0);}return s;
+  let s=0;for(let j=i+1;j<pres.lineas.length;j++){const l=pres.lineas[j];if(tipoDe(l)==='seccion')break;s+=impLinea(l);}return s;
 }
 function ivaGlobal(){const el=document.getElementById('d-iva');return el?(Number(el.value)||0):10;}
 function ivaSel(i,l){
@@ -367,32 +373,23 @@ function renderLineas(){
       ${moveBtns(i)}
       <button class="l-del" onclick="delLinea(${i})">×</button>
     </div>`;
+    if(tipo==='nota') return `<div class="linea nota">
+      <div class="l-top"><input class="l-nomin" value="${esc(l.nombre)}" oninput="onLibre(${i},'nombre',this.value)" placeholder="Título / texto (sin precio, no suma)">${moveBtns(i)}<button class="l-del" onclick="delLinea(${i})">×</button></div>
+      <textarea class="l-desc" rows="2" oninput="onDesc(${i},this.value)" placeholder="Texto (opcional): condiciones, aclaraciones…">${esc(l.descripcion||'')}</textarea>
+    </div>`;
     const quick=medQuick(l.unidad).filter(q=>q[1]>0).map(q=>`<button onclick="quickFill(${i},${q[1]})">${q[0]} ${fmt(q[1])}</button>`).join('');
     if(tipo==='libre') return `<div class="linea libre">
       <div class="l-top"><input class="l-nomin" value="${esc(l.nombre)}" oninput="onLibre(${i},'nombre',this.value)" placeholder="Concepto (Puerta, Lámpara, Mano de obra…)">${moveBtns(i)}<button class="l-del" onclick="delLinea(${i})">×</button></div>
       <textarea class="l-desc" rows="2" oninput="onDesc(${i},this.value)" placeholder="Descripción (opcional): detalle del trabajo o del material…">${esc(l.descripcion||'')}</textarea>
-      <div class="l-in">
-        <div class="l-fld"><span class="l-lab">Cantidad</span>
-          <div class="l-inp"><input class="l-cant" type="number" inputmode="decimal" step="0.01" value="${l.cantidad||''}" oninput="onCant(${i},this.value)" placeholder="0"><input class="l-unid" type="text" value="${esc(l.unidad)}" oninput="onLibre(${i},'unidad',this.value)" placeholder="ud"></div></div>
-        <div class="l-fld l-precio-fld"><span class="l-lab">Tu precio · €</span>
-          <input class="l-precio" type="number" inputmode="decimal" step="0.01" value="${l.precioVenta||''}" oninput="onLibre(${i},'precioVenta',this.value)" placeholder="0,00"></div>
-        <div class="l-fld l-tot-fld"><span class="l-lab">Total</span>
-          <div class="l-tot"><span id="lt-${i}">${eur((l.cantidad||0)*l.precioVenta)}</span></div></div>
-      </div>
+      ${precioBox(i,l,true)}
+      ${refLinea(i,l)}
       ${quick?`<div class="l-quick">${quick}</div>`:''}
       ${ivaSel(i,l)}
     </div>`;
     return `<div class="linea">
       <div class="l-top"><span class="l-nom">${esc(l.nombre)}</span>${moveBtns(i)}<button class="l-del" onclick="delLinea(${i})">×</button></div>
       <textarea class="l-desc" rows="2" oninput="onDesc(${i},this.value)" placeholder="Descripción (opcional): qué incluye esta partida…">${esc(l.descripcion||'')}</textarea>
-      <div class="l-in">
-        <div class="l-fld"><span class="l-lab">Cantidad</span>
-          <div class="l-inp"><input class="l-cant" type="number" inputmode="decimal" step="0.01" value="${l.cantidad||''}" oninput="onCant(${i},this.value)"><span class="l-u2">${esc(l.unidad)}</span></div></div>
-        <div class="l-fld l-precio-fld"><span class="l-lab">Tu precio · €/${esc(l.unidad)}</span>
-          <input class="l-precio" type="number" inputmode="decimal" step="0.01" value="${l.precioVenta||''}" oninput="onPrecio(${i},this.value)" placeholder="0,00"></div>
-        <div class="l-fld l-tot-fld"><span class="l-lab">Total</span>
-          <div class="l-tot"><span id="lt-${i}">${eur((l.cantidad||0)*l.precioVenta)}</span></div></div>
-      </div>
+      ${precioBox(i,l,false)}
       ${refLinea(i,l)}
       ${quick?`<div class="l-quick">${quick}</div>`:''}
       ${ivaSel(i,l)}
@@ -403,17 +400,57 @@ function moveBtns(i){const n=pres.lineas.length;
   return `<span class="l-move"><button title="Subir" onclick="moveLinea(${i},-1)" ${i<=0?'disabled':''}>↑</button><button title="Bajar" onclick="moveLinea(${i},1)" ${i>=n-1?'disabled':''}>↓</button></span>`;}
 function moveLinea(i,dir){const j=i+dir;if(j<0||j>=pres.lineas.length)return;const a=pres.lineas;[a[i],a[j]]=[a[j],a[i]];renderLineas();autosave();}
 function onDesc(i,v){pres.lineas[i].descripcion=v;}
-function mgLinea(l){const v=Number(l.precioVenta)||0,c=Number(l.coste)||0;return v>0?Math.round((v-c)/v*100):0;}
-function refLinea(i,l){if(!(Number(l.coste)>0))return '';const mg=mgLinea(l);const col=mg>=25?'var(--green)':mg>=10?'var(--amber)':'var(--red)';
-  const nudge=mg<=0?` · <span style="color:var(--amber)">⚠️ sube «Tu precio» (caja azul) para ganar margen</span>`:'';
-  return `<div class="l-ref" id="ref-${i}">Te cuesta (ref.) <b>${eur(l.coste)}/${esc(l.unidad)}</b> · margen <b style="color:${col}">${mg}%</b>${nudge}</div>`;}
-function onCant(i,v){pres.lineas[i].cantidad=parseFloat(String(v).replace(',','.'))||0;document.getElementById('lt-'+i).textContent=eur(pres.lineas[i].cantidad*pres.lineas[i].precioVenta);recompute();}
+// Importe de venta de una línea (modo cerrado = precio cerrado; si no, cant×precio).
+function impLinea(l){const t=tipoDe(l);if(t==='seccion'||t==='nota')return 0;if(l.modo==='cerrado')return Number(l.precioCerrado)||0;return (l.cantidad||0)*(Number(l.precioVenta)||0);}
+// Selector desglosado/cerrado + las cajas de precio (compartido partida/libre).
+function precioBox(i,l,esLibre){
+  const modo=l.modo==='cerrado'?'cerrado':'desglosado';
+  const toggle=`<div class="l-modo">
+    <button class="${modo==='desglosado'?'on':''}" onclick="onModo(${i},'desglosado')">Cantidad × precio</button>
+    <button class="${modo==='cerrado'?'on':''}" onclick="onModo(${i},'cerrado')">Precio cerrado</button></div>`;
+  const cantInput=esLibre
+    ? `<input class="l-cant" type="number" inputmode="decimal" step="0.01" value="${l.cantidad||''}" oninput="onCant(${i},this.value)" placeholder="0"><input class="l-unid" type="text" value="${esc(l.unidad)}" oninput="onLibre(${i},'unidad',this.value)" placeholder="ud">`
+    : `<input class="l-cant" type="number" inputmode="decimal" step="0.01" value="${l.cantidad||''}" oninput="onCant(${i},this.value)"><span class="l-u2">${esc(l.unidad)}</span>`;
+  let inHtml;
+  if(modo==='cerrado'){
+    inHtml=`<div class="l-in">
+      <div class="l-fld"><span class="l-lab">Cantidad (para tu coste)</span><div class="l-inp">${cantInput}</div></div>
+      <div class="l-fld l-precio-fld"><span class="l-lab">Total al cliente · €</span>
+        <input class="l-precio" type="number" inputmode="decimal" step="0.01" value="${l.precioCerrado||''}" oninput="onPrecioCerrado(${i},this.value)" placeholder="0,00"></div>
+      <div class="l-fld l-tot-fld"><span class="l-lab">Total</span><div class="l-tot"><span id="lt-${i}">${eur(impLinea(l))}</span></div></div>
+    </div>`;
+  }else{
+    const precioOn=esLibre?`onLibre(${i},'precioVenta',this.value)`:`onPrecio(${i},this.value)`;
+    inHtml=`<div class="l-in">
+      <div class="l-fld"><span class="l-lab">Cantidad</span><div class="l-inp">${cantInput}</div></div>
+      <div class="l-fld l-precio-fld"><span class="l-lab">Tu precio · €/${esLibre?'ud':esc(l.unidad)}</span>
+        <input class="l-precio" type="number" inputmode="decimal" step="0.01" value="${l.precioVenta||''}" oninput="${precioOn}" placeholder="0,00"></div>
+      <div class="l-fld l-tot-fld"><span class="l-lab">Total</span><div class="l-tot"><span id="lt-${i}">${eur(impLinea(l))}</span></div></div>
+    </div>`;
+  }
+  return toggle+inHtml;
+}
+function onModo(i,modo){const l=pres.lineas[i];l.modo=modo;
+  if(modo==='cerrado'&&!(Number(l.precioCerrado)>0))l.precioCerrado=Math.round((l.cantidad||0)*(l.precioVenta||0)*100)/100;
+  renderLineas();autosave();}
+function onPrecioCerrado(i,v){const l=pres.lineas[i];l.precioCerrado=parseFloat(String(v).replace(',','.'))||0;
+  const lt=document.getElementById('lt-'+i);if(lt)lt.textContent=eur(impLinea(l));
+  const rf=document.getElementById('ref-'+i);if(rf)rf.outerHTML=refLinea(i,l);recompute();}
+function refLinea(i,l){const costT=(l.cantidad||0)*(Number(l.coste)||0);if(!(costT>0))return '';
+  const saleT=impLinea(l);const mg=saleT>0?Math.round((saleT-costT)/saleT*100):0;const col=mg>=25?'var(--green)':mg>=10?'var(--amber)':'var(--red)';
+  const nudge=mg<=0?` · <span style="color:var(--amber)">⚠️ sube el precio para ganar margen</span>`:'';
+  const unit=l.modo!=='cerrado'?` (${eur(l.coste)}/${esc(l.unidad)})`:'';
+  return `<div class="l-ref" id="ref-${i}">Te cuesta (ref.) <b>${eur(costT)}</b>${unit} · margen <b style="color:${col}">${mg}%</b>${nudge}</div>`;}
+function onCant(i,v){const l=pres.lineas[i];l.cantidad=parseFloat(String(v).replace(',','.'))||0;
+  const lt=document.getElementById('lt-'+i);if(lt)lt.textContent=eur(impLinea(l));
+  const rf=document.getElementById('ref-'+i);if(rf)rf.outerHTML=refLinea(i,l);recompute();}
 function onPrecio(i,v){const l=pres.lineas[i];l.precioVenta=parseFloat(String(v).replace(',','.'))||0;
-  const lt=document.getElementById('lt-'+i);if(lt)lt.textContent=eur((l.cantidad||0)*l.precioVenta);
+  const lt=document.getElementById('lt-'+i);if(lt)lt.textContent=eur(impLinea(l));
   const rf=document.getElementById('ref-'+i);if(rf)rf.outerHTML=refLinea(i,l);
   recompute();}
+function addNota(){pres.lineas.push({tipo:'nota',nombre:'',descripcion:''});renderLineas();autosave();const ns=document.querySelectorAll('.nota .l-nomin');if(ns.length)ns[ns.length-1].focus();}
 function onLibre(i,campo,v){const l=pres.lineas[i];
-  if(campo==='precioVenta'){l.precioVenta=parseFloat(String(v).replace(',','.'))||0;const lt=document.getElementById('lt-'+i);if(lt)lt.textContent=eur((l.cantidad||0)*l.precioVenta);recompute();}
+  if(campo==='precioVenta'){l.precioVenta=parseFloat(String(v).replace(',','.'))||0;const lt=document.getElementById('lt-'+i);if(lt)lt.textContent=eur(impLinea(l));const rf=document.getElementById('ref-'+i);if(rf)rf.outerHTML=refLinea(i,l);recompute();}
   else l[campo]=v;
 }
 function onSecNom(i,v){pres.lineas[i].nombre=v;}
@@ -432,8 +469,8 @@ function addLibre(){pres.lineas.push({tipo:'libre',partidaId:null,nombre:'',unid
 function descPres(){const v=parseFloat(String(document.getElementById('d-desc-valor').value||'').replace(',','.'))||0;return v>0?{tipo:document.getElementById('d-desc-tipo').value==='eur'?'eur':'pct',valor:v}:null;}
 function recompute(){
   const g=ivaGlobal(); let venta=0,coste=0; const filas=[],tipos=new Set();
-  pres.lineas.forEach(l=>{if(tipoDe(l)==='seccion')return;
-    const v=(l.cantidad||0)*(l.precioVenta||0);venta+=v;coste+=(l.cantidad||0)*(l.coste||0);
+  pres.lineas.forEach(l=>{const t=tipoDe(l);if(t==='seccion'||t==='nota')return;
+    const v=impLinea(l);venta+=v;coste+=(l.cantidad||0)*(l.coste||0);
     const r=(l.iva==null?g:Number(l.iva));filas.push([v,r]);if(v>0)tipos.add(r);
   });
   const d=descPres(); let desc=0;
@@ -524,6 +561,7 @@ function hojaTrabajoHtml(){
   let filas='';
   pres.lineas.forEach(l=>{
     if(tipoDe(l)==='seccion'){filas+=`<tr class="sec"><td colspan="4">${esc(l.nombre||'Sección')}</td></tr>`;return;}
+    if(tipoDe(l)==='nota'){filas+=`<tr class="sec"><td colspan="4">${esc(l.nombre||'')}${l.descripcion?`<div style="color:#555;font-size:12px;font-weight:400;margin-top:2px">${esc(l.descripcion).replace(/\n/g,'<br>')}</div>`:''}</td></tr>`;return;}
     const nom=esc(l.nombre)+(l.descripcion?`<div style="color:#666;font-size:12px;margin-top:2px;font-weight:400">${esc(l.descripcion).replace(/\n/g,'<br>')}</div>`:'');
     filas+=`<tr><td class="chk">☐</td><td>${nom}</td><td class="num">${fmt(l.cantidad||0)}</td><td>${esc(l.unidad||'')}</td></tr>`;
   });
@@ -560,10 +598,16 @@ function buildPdfHtml(){
   let base=0; const ivaPorTipo={}; let filas='';
   pres.lineas.forEach((l,i)=>{
     if(tipoDe(l)==='seccion'){filas+=`<tr class="sec"><td colspan="4">${esc(l.nombre||'Sección')}</td><td class="num">${eur(subtotalDesde(i))}</td></tr>`;return;}
-    const imp=(l.cantidad||0)*(l.precioVenta||0);base+=imp;
+    const descHtml=l.descripcion?`<div style="color:#777;font-size:11px;margin-top:2px">${esc(l.descripcion).replace(/\n/g,'<br>')}</div>`:'';
+    if(tipoDe(l)==='nota'){filas+=`<tr class="txt"><td colspan="5">${esc(l.nombre||'')}${descHtml}</td></tr>`;return;}
+    const imp=impLinea(l);base+=imp;
     const rate=(l.iva==null?g:Number(l.iva));ivaPorTipo[rate]=(ivaPorTipo[rate]||0)+imp*rate/100;
-    const nom=esc(l.nombre)+(l.descripcion?`<div style="color:#777;font-size:11px;margin-top:2px">${esc(l.descripcion).replace(/\n/g,'<br>')}</div>`:'');
-    filas+=`<tr><td>${nom}</td><td class="num">${fmt(l.cantidad||0)}</td><td>${esc(l.unidad||'')}</td><td class="num">${eur(l.precioVenta)}</td><td class="num">${eur(imp)}</td></tr>`;
+    const nom=esc(l.nombre)+descHtml;
+    if(l.modo==='cerrado'){
+      filas+=`<tr><td>${nom}</td><td class="num"></td><td></td><td class="num"></td><td class="num">${eur(imp)}</td></tr>`;
+    }else{
+      filas+=`<tr><td>${nom}</td><td class="num">${fmt(l.cantidad||0)}</td><td>${esc(l.unidad||'')}</td><td class="num">${eur(l.precioVenta)}</td><td class="num">${eur(imp)}</td></tr>`;
+    }
   });
   base=Math.round(base*100)/100;
   const d=descPres(); let desc=0;
@@ -576,7 +620,12 @@ function buildPdfHtml(){
   const total=Math.round((baseFinal+ivaTotal)*100)/100;
   const descRows=desc>0?`<tr><td>Descuento${d.tipo==='pct'?' ('+fmt(d.valor)+'%)':''}</td><td class="num">−${eur(desc)}</td></tr><tr><td>Base con descuento</td><td class="num">${eur(baseFinal)}</td></tr>`:'';
   const empLine=[e.cif?('CIF '+e.cif):'',e.direccion,e.telefono?('Tel '+e.telefono):'',e.email,e.web].filter(Boolean).join(' · ');
-  const cliLines=[pres.clientName,c.direccion,c.nif?('NIF '+c.nif):'',[c.telefono,c.email].filter(Boolean).join(' · ')].filter(Boolean).map(x=>`<div>${esc(x)}</div>`).join('');
+  const cliLines=[
+    pres.clientName?`<div style="font-weight:700;font-size:13px">${esc(pres.clientName)}</div>`:'',
+    c.direccion?`<div>${esc(c.direccion)}</div>`:'',
+    c.nif?`<div>NIF ${esc(c.nif)}</div>`:'',
+    [c.telefono,c.email].filter(Boolean).length?`<div>${esc([c.telefono,c.email].filter(Boolean).join(' · '))}</div>`:'',
+  ].filter(Boolean).join('');
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(pres.numero||'Presupuesto')}</title><style>
 *{box-sizing:border-box}html,body{background:#fff}body{font-family:-apple-system,Arial,sans-serif;color:#1a1a1a;margin:0;padding:32px;font-size:13px;line-height:1.5}
 .top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1a1a1a;padding-bottom:14px;margin-bottom:20px}
@@ -589,6 +638,7 @@ th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;
 td{padding:6px 8px;border-bottom:1px solid #eee;vertical-align:top}
 td.num,th.num{text-align:right;white-space:nowrap}
 tr.sec td{background:#f3f4f6;font-weight:700;border-top:1px solid #ccc}
+tr.txt td{font-weight:600;border-bottom:none;padding-top:10px;color:#222}
 .tot{margin-left:auto;width:260px;margin-top:14px}.tot td{border:none;padding:3px 8px}
 .tot .tt td{border-top:2px solid #1a1a1a;font-size:15px;font-weight:700;padding-top:8px}
 .cond{margin-top:22px;padding-top:12px;border-top:1px solid #eee;white-space:pre-wrap;color:#333}

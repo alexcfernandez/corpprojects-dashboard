@@ -185,6 +185,14 @@ const n2 = n => Math.round((Number(n) || 0) * 100) / 100;
 // 'partida' (viene del catálogo) o 'libre' (concepto a mano: puerta, lámpara…).
 // Las líneas viejas sin tipo se tratan como 'partida' (retrocompatible).
 function esSeccion(l) { return (l && l.tipo) === 'seccion'; }
+function esNota(l)    { return (l && l.tipo) === 'nota'; }   // título/texto sin precio, no suma
+// Importe de venta de una línea: en modo 'cerrado' es el precio cerrado; si no,
+// cantidad × precio unitario.
+function importeLinea(l) {
+  if (!l || esSeccion(l) || esNota(l)) return 0;
+  if (l.modo === 'cerrado') return Number(l.precioCerrado) || 0;
+  return (num(l.cantidad)) * (Number(l.precioVenta) || 0);
+}
 
 // IVA: cada presupuesto tiene un tipo por defecto (ivaDefault, normalmente 10%
 // en reforma de vivienda). Una línea puede llevar su propio `iva` (override);
@@ -199,8 +207,8 @@ function computeTotales(lineas, ivaDefault, descuento) {
   let venta = 0, coste = 0;
   const filas = [];
   (lineas || []).forEach(l => {
-    if (esSeccion(l)) return;
-    const v = (num(l.cantidad)) * (Number(l.precioVenta) || 0);
+    if (esSeccion(l) || esNota(l)) return;   // secciones y notas no suman
+    const v = importeLinea(l);
     venta += v;
     coste += (num(l.cantidad)) * (Number(l.coste) || 0);
     const r = (l.iva === null || l.iva === undefined) ? g : Number(l.iva);
@@ -227,19 +235,22 @@ function computeTotales(lineas, ivaDefault, descuento) {
 }
 function limpiarLineas(lineas) {
   return (Array.isArray(lineas) ? lineas : []).map(l => {
-    const tipo = ['seccion', 'partida', 'libre'].includes(l.tipo) ? l.tipo : 'partida';
+    const tipo = ['seccion', 'partida', 'libre', 'nota'].includes(l.tipo) ? l.tipo : 'partida';
     if (tipo === 'seccion') return { tipo, nombre: String(l.nombre || '').trim() || 'Sección' };
+    if (tipo === 'nota')    return { tipo, nombre: String(l.nombre || '').trim(), descripcion: String(l.descripcion || '').trim() };
     const ivaOverride = (l.iva === null || l.iva === undefined || l.iva === '') ? null : Number(l.iva);
     return {
       tipo,
-      partidaId:   l.partidaId ? String(l.partidaId) : null,
-      nombre:      String(l.nombre || '').trim() || (tipo === 'libre' ? 'Concepto' : 'Partida'),
-      descripcion: String(l.descripcion || '').trim(),
-      unidad:      String(l.unidad || 'ud'),
-      cantidad:    num(l.cantidad),
-      precioVenta: n2(l.precioVenta),
-      coste:       n2(l.coste),
-      iva:         Number.isFinite(ivaOverride) ? ivaOverride : null,
+      partidaId:    l.partidaId ? String(l.partidaId) : null,
+      nombre:       String(l.nombre || '').trim() || (tipo === 'libre' ? 'Concepto' : 'Partida'),
+      descripcion:  String(l.descripcion || '').trim(),
+      unidad:       String(l.unidad || 'ud'),
+      cantidad:     num(l.cantidad),
+      precioVenta:  n2(l.precioVenta),
+      coste:        n2(l.coste),
+      modo:         l.modo === 'cerrado' ? 'cerrado' : 'desglosado',
+      precioCerrado: n2(l.precioCerrado),
+      iva:          Number.isFinite(ivaOverride) ? ivaOverride : null,
     };
   });
 }
