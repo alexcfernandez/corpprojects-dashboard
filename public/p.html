@@ -42,11 +42,19 @@ tr.txt td{font-weight:600;border-bottom:none;padding-top:14px;color:#333}
 .load{text-align:center;padding:70px 20px;color:#888}
 .name-in{width:100%;padding:13px;border:1.5px solid #ddd;border-radius:10px;font-size:16px;font-family:inherit;margin-bottom:12px}
 .legal{font-size:11px;color:#999;text-align:center;margin-top:14px}
+.pago{margin-top:16px;border:1.5px solid #cfe6d9;background:#f2fbf6;border-radius:12px;padding:16px;text-align:left}
+.pago-h{font-weight:800;margin-bottom:10px;color:#127a52}
+.pago-r{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid #e3f1ea;font-size:14px}
+.pago-r:last-child{border-bottom:none}
+.pago-r b{text-align:right;word-break:break-all}
 </style>
 </head>
 <body>
 <div class="doc" id="doc"><div class="load">Cargando presupuesto…</div></div>
 <script>
+// Esta página es pública y NO debe estar controlada por el service worker del
+// dashboard (evita que un navegador con la PWA instalada sirva algo cacheado).
+if('serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{});}
 const token=location.pathname.split('/').pop();
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const eur=n=>(Number(n)||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
@@ -94,9 +102,20 @@ function render(){
     ${d.condiciones?`<div class="cond"><div class="h">Condiciones</div>${esc(d.condiciones)}</div>`:''}
     <div class="foot" id="foot">${footHtml()}</div>`;
 }
+function pagoHtml(){
+  const e=DATA.empresa||{},t=DATA.totales||{};
+  if(!e.iban)return `<div class="pago"><div class="pago-h">💳 Datos para el pago</div><div style="font-size:13px;color:#555">Contacta con nosotros para los datos de pago: ${esc(e.telefono||'')}${e.email?' · '+esc(e.email):''}</div></div>`;
+  return `<div class="pago">
+    <div class="pago-h">💳 Datos para el pago (transferencia)</div>
+    <div class="pago-r"><span>Titular</span><b>${esc(e.titular||e.nombre||'')}</b></div>
+    <div class="pago-r"><span>IBAN</span><b>${esc(e.iban)}</b></div>
+    <div class="pago-r"><span>Concepto</span><b>Presupuesto ${esc(DATA.numero||'')}</b></div>
+    <div class="pago-r"><span>Importe</span><b>${eur(t.totalConIva)}</b></div>
+  </div>`;
+}
 function footHtml(){
   const d=DATA,resp=d.respuesta;
-  if(resp&&resp.accion==='aceptar')return `<div class="est" style="background:#e7f8f0;color:#127a52">✅ Presupuesto aceptado${resp.at?' el '+fecha(resp.at):''}${resp.nombre?' por '+esc(resp.nombre):''}</div><div style="color:#666;font-size:13px">¡Gracias! Nos pondremos en marcha. Cualquier duda, contáctanos.</div>`;
+  if(resp&&resp.accion==='aceptar')return `<div class="est" style="background:#e7f8f0;color:#127a52">✅ Presupuesto aceptado${resp.at?' el '+fecha(resp.at):''}${resp.nombre?' por '+esc(resp.nombre):''}</div><div style="color:#666;font-size:13px">¡Gracias! Nos pondremos en marcha.</div>${pagoHtml()}`;
   if(resp&&resp.accion==='rechazar')return `<div class="est" style="background:#fdeceb;color:#c0392b">❌ Presupuesto rechazado${resp.at?' el '+fecha(resp.at):''}</div>`;
   return `<div class="est" style="background:#eef4ff;color:#2b6bd6">📄 Revisa el presupuesto y, si estás de acuerdo, acéptalo aquí abajo.</div>
     <div class="btns">
@@ -122,7 +141,7 @@ async function responder(accion){
     const r=await fetch('/api/p/'+token+'/responder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accion,nombre})});
     const j=await r.json();if(!r.ok)throw new Error(j.error||'Error');
     DATA.respuesta=j.respuesta||{accion,at:new Date(),nombre};
-    document.getElementById('doc').innerHTML=`<div class="msg"><div class="em">${accion==='aceptar'?'🎉':'👍'}</div><div class="t">${accion==='aceptar'?'¡Presupuesto aceptado!':'Presupuesto rechazado'}</div><div class="s">${accion==='aceptar'?'Gracias, nos ponemos en marcha.':'Gracias por tu respuesta.'}</div></div>`;
+    document.getElementById('doc').innerHTML=`<div class="msg"><div class="em">${accion==='aceptar'?'🎉':'👍'}</div><div class="t">${accion==='aceptar'?'¡Presupuesto aceptado!':'Presupuesto rechazado'}</div><div class="s">${accion==='aceptar'?'Gracias, nos ponemos en marcha.':'Gracias por tu respuesta.'}</div>${accion==='aceptar'?'<div style="max-width:420px;margin:18px auto 0">'+pagoHtml()+'</div>':''}</div>`;
   }catch(e){alert('No se pudo registrar: '+e.message);if(btn){btn.disabled=false;btn.textContent='✅ Confirmar aceptación';}}
 }
 cargar();

@@ -16,6 +16,8 @@ const DATOS_EMPRESA = {
   telefono:  process.env.EMPRESA_TELEFONO  || '674 013 723',
   email:     process.env.EMPRESA_EMAIL     || 'hola@corpprojects.es',
   web:       process.env.EMPRESA_WEB       || 'corpprojects.es',
+  iban:      process.env.EMPRESA_IBAN      || '',   // datos de pago (se muestran al cliente al aceptar)
+  titular:   process.env.EMPRESA_TITULAR   || (process.env.EMPRESA_NOMBRE || 'Corp. Projects Holding, S.L.'),
 };
 function getEmpresa() { return { ...DATOS_EMPRESA }; }
 
