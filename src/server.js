@@ -85,7 +85,7 @@ app.use(express.static(path.join(__dirname, '../public')));
 
 const limiter = rateLimit({ windowMs: 15*60*1000, max: 300, message: { error: 'Rate limit.' } });
 app.use('/api/', limiter);
-const loginLimiter = rateLimit({ windowMs: 15*60*1000, max: 20, message: { error: 'Demasiados intentos.' } });
+const loginLimiter = rateLimit({ windowMs: 15*60*1000, max: 60, message: { error: 'Demasiados intentos de acceso. Espera unos minutos y vuelve a probar.' } });
 
 function requireAuth(req, res, next) {
   const token = req.headers.authorization?.replace('Bearer ', '');

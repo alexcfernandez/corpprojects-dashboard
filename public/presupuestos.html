@@ -61,7 +61,15 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 .l-move button:disabled{opacity:.28;cursor:default}
 .l-desc{width:100%;margin-top:8px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text2);font-size:13px;font-family:inherit;resize:vertical;min-height:34px;outline:none}
 .l-desc:focus{border-color:var(--blue)}
-.l-in{display:flex;align-items:center;gap:8px;margin-top:9px;flex-wrap:wrap}
+.l-in{display:flex;align-items:flex-end;gap:12px;margin-top:11px;flex-wrap:wrap}
+.l-fld{display:flex;flex-direction:column;gap:4px}
+.l-lab{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;font-weight:700}
+.l-inp{display:flex;align-items:center;gap:6px}
+.l-u2{font-size:13px;color:var(--text3);white-space:nowrap}
+.l-precio-fld .l-precio{border:2px solid var(--blue);background:color-mix(in srgb,var(--blue) 9%,var(--bg3));font-weight:700}
+.l-precio-fld .l-lab{color:var(--blue)}
+.l-tot-fld{margin-left:auto;text-align:right}
+.l-tot{font-size:19px;font-weight:800;color:var(--green);font-variant-numeric:tabular-nums;white-space:nowrap;padding-bottom:4px}
 .l-cant{width:90px;text-align:right}
 .l-u{font-size:13px;color:var(--text3)}
 .l-calc{margin-left:auto;font-size:13px;color:var(--text2);font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -177,7 +185,10 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
     <div class="totals-mini">Base <b id="t-venta">0 €</b><span id="t-desc-wrap" style="display:none"> · Desc <b id="t-desc" style="color:var(--amber)">0 €</b></span><span id="t-costewrap"> · Coste <b id="t-coste">0 €</b> · Margen <b id="t-margen">0%</b></span></div>
     <div class="totals-main">+ IVA <span id="t-ivapct">10%</span> <b id="t-iva">0 €</b> &nbsp;·&nbsp; Total <b id="t-total" class="big">0 €</b></div>
   </div>
-  <button class="savebtn" onclick="guardar()">Guardar</button>
+  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+    <span id="save-status" style="font-size:11px;color:var(--text3);white-space:nowrap">✓ Guardado</span>
+    <button class="savebtn" onclick="guardar()">Guardar</button>
+  </div>
 </div></div>
 
 <!-- NUEVO -->
@@ -324,7 +335,7 @@ async function abrirPres(id){
     if(mt){mr.style.display='block';mr.innerHTML=`📐 Medición: <b>Suelo ${fmt(mt.suelo)}</b> · <b>Paredes ${fmt(mt.paredes)}</b> · <b>Techo ${fmt(mt.techo)}</b> · <b>Pintura ${fmt((mt.paredes||0)+(mt.techo||0))}</b> m² · <b>Rodapié ${fmt(mt.rodapie)}</b> m`;}
     else mr.style.display='none';
     if(!catalogo.length){try{const c=await api('GET','/api/partidas');catalogo=c.partidas||[];}catch(e){}}
-    renderLineas();showPage('det');
+    renderLineas();showPage('det');setSaveStatus('guardado');
   }catch(e){toast(e.message,'error');}
 }
 function medQuick(unidad){
@@ -361,11 +372,12 @@ function renderLineas(){
       <div class="l-top"><input class="l-nomin" value="${esc(l.nombre)}" oninput="onLibre(${i},'nombre',this.value)" placeholder="Concepto (Puerta, Lámpara, Mano de obra…)">${moveBtns(i)}<button class="l-del" onclick="delLinea(${i})">×</button></div>
       <textarea class="l-desc" rows="2" oninput="onDesc(${i},this.value)" placeholder="Descripción (opcional): detalle del trabajo o del material…">${esc(l.descripcion||'')}</textarea>
       <div class="l-in">
-        <input class="l-cant" type="number" inputmode="decimal" step="0.01" value="${l.cantidad||''}" oninput="onCant(${i},this.value)" placeholder="cant.">
-        <input class="l-unid" type="text" value="${esc(l.unidad)}" oninput="onLibre(${i},'unidad',this.value)" placeholder="ud">
-        <span class="l-x">×</span>
-        <input class="l-precio" type="number" inputmode="decimal" step="0.01" value="${l.precioVenta||''}" oninput="onLibre(${i},'precioVenta',this.value)" placeholder="precio">
-        <span class="l-calc">= <b id="lt-${i}">${eur((l.cantidad||0)*l.precioVenta)}</b></span>
+        <div class="l-fld"><span class="l-lab">Cantidad</span>
+          <div class="l-inp"><input class="l-cant" type="number" inputmode="decimal" step="0.01" value="${l.cantidad||''}" oninput="onCant(${i},this.value)" placeholder="0"><input class="l-unid" type="text" value="${esc(l.unidad)}" oninput="onLibre(${i},'unidad',this.value)" placeholder="ud"></div></div>
+        <div class="l-fld l-precio-fld"><span class="l-lab">Tu precio · €</span>
+          <input class="l-precio" type="number" inputmode="decimal" step="0.01" value="${l.precioVenta||''}" oninput="onLibre(${i},'precioVenta',this.value)" placeholder="0,00"></div>
+        <div class="l-fld l-tot-fld"><span class="l-lab">Total</span>
+          <div class="l-tot"><span id="lt-${i}">${eur((l.cantidad||0)*l.precioVenta)}</span></div></div>
       </div>
       ${quick?`<div class="l-quick">${quick}</div>`:''}
       ${ivaSel(i,l)}
@@ -374,10 +386,12 @@ function renderLineas(){
       <div class="l-top"><span class="l-nom">${esc(l.nombre)}</span>${moveBtns(i)}<button class="l-del" onclick="delLinea(${i})">×</button></div>
       <textarea class="l-desc" rows="2" oninput="onDesc(${i},this.value)" placeholder="Descripción (opcional): qué incluye esta partida…">${esc(l.descripcion||'')}</textarea>
       <div class="l-in">
-        <input class="l-cant" type="number" inputmode="decimal" step="0.01" value="${l.cantidad||''}" oninput="onCant(${i},this.value)">
-        <span class="l-x">${esc(l.unidad)} ×</span>
-        <input class="l-precio" type="number" inputmode="decimal" step="0.01" value="${l.precioVenta||''}" oninput="onPrecio(${i},this.value)" placeholder="tu precio">
-        <span class="l-calc">= <b id="lt-${i}">${eur((l.cantidad||0)*l.precioVenta)}</b></span>
+        <div class="l-fld"><span class="l-lab">Cantidad</span>
+          <div class="l-inp"><input class="l-cant" type="number" inputmode="decimal" step="0.01" value="${l.cantidad||''}" oninput="onCant(${i},this.value)"><span class="l-u2">${esc(l.unidad)}</span></div></div>
+        <div class="l-fld l-precio-fld"><span class="l-lab">Tu precio · €/${esc(l.unidad)}</span>
+          <input class="l-precio" type="number" inputmode="decimal" step="0.01" value="${l.precioVenta||''}" oninput="onPrecio(${i},this.value)" placeholder="0,00"></div>
+        <div class="l-fld l-tot-fld"><span class="l-lab">Total</span>
+          <div class="l-tot"><span id="lt-${i}">${eur((l.cantidad||0)*l.precioVenta)}</span></div></div>
       </div>
       ${refLinea(i,l)}
       ${quick?`<div class="l-quick">${quick}</div>`:''}
@@ -387,12 +401,12 @@ function renderLineas(){
 }
 function moveBtns(i){const n=pres.lineas.length;
   return `<span class="l-move"><button title="Subir" onclick="moveLinea(${i},-1)" ${i<=0?'disabled':''}>↑</button><button title="Bajar" onclick="moveLinea(${i},1)" ${i>=n-1?'disabled':''}>↓</button></span>`;}
-function moveLinea(i,dir){const j=i+dir;if(j<0||j>=pres.lineas.length)return;const a=pres.lineas;[a[i],a[j]]=[a[j],a[i]];renderLineas();}
+function moveLinea(i,dir){const j=i+dir;if(j<0||j>=pres.lineas.length)return;const a=pres.lineas;[a[i],a[j]]=[a[j],a[i]];renderLineas();autosave();}
 function onDesc(i,v){pres.lineas[i].descripcion=v;}
 function mgLinea(l){const v=Number(l.precioVenta)||0,c=Number(l.coste)||0;return v>0?Math.round((v-c)/v*100):0;}
 function refLinea(i,l){if(!(Number(l.coste)>0))return '';const mg=mgLinea(l);const col=mg>=25?'var(--green)':mg>=10?'var(--amber)':'var(--red)';
-  const nudge=mg<=0?` · <span style="color:var(--amber)">⚠️ pon tu precio arriba ↑</span>`:'';
-  return `<div class="l-ref" id="ref-${i}">Te cuesta (ref.) <b>${eur(l.coste)}/${esc(l.unidad)}</b> · vendes a <b>${eur(l.precioVenta)}/${esc(l.unidad)}</b> · margen <b style="color:${col}">${mg}%</b>${nudge}</div>`;}
+  const nudge=mg<=0?` · <span style="color:var(--amber)">⚠️ sube «Tu precio» (caja azul) para ganar margen</span>`:'';
+  return `<div class="l-ref" id="ref-${i}">Te cuesta (ref.) <b>${eur(l.coste)}/${esc(l.unidad)}</b> · margen <b style="color:${col}">${mg}%</b>${nudge}</div>`;}
 function onCant(i,v){pres.lineas[i].cantidad=parseFloat(String(v).replace(',','.'))||0;document.getElementById('lt-'+i).textContent=eur(pres.lineas[i].cantidad*pres.lineas[i].precioVenta);recompute();}
 function onPrecio(i,v){const l=pres.lineas[i];l.precioVenta=parseFloat(String(v).replace(',','.'))||0;
   const lt=document.getElementById('lt-'+i);if(lt)lt.textContent=eur((l.cantidad||0)*l.precioVenta);
@@ -411,10 +425,10 @@ function onLineIva(i,v){
   if(r!==g && !confirm(`Esta línea llevará IVA ${r} % cuando el resto va al ${g} %. ¿Es correcto?`)){renderLineas();return;} // avisar + aceptar
   l.iva=r;renderLineas();
 }
-function quickFill(i,v){pres.lineas[i].cantidad=Math.round(v*100)/100;renderLineas();}
-function delLinea(i){pres.lineas.splice(i,1);renderLineas();}
-function addSeccion(){pres.lineas.push({tipo:'seccion',nombre:''});renderLineas();const ns=document.querySelectorAll('.s-nom');if(ns.length)ns[ns.length-1].focus();}
-function addLibre(){pres.lineas.push({tipo:'libre',partidaId:null,nombre:'',unidad:'ud',cantidad:0,precioVenta:0,coste:0});renderLineas();const ns=document.querySelectorAll('.l-nomin');if(ns.length)ns[ns.length-1].focus();}
+function quickFill(i,v){pres.lineas[i].cantidad=Math.round(v*100)/100;renderLineas();autosave();}
+function delLinea(i){pres.lineas.splice(i,1);renderLineas();autosave();}
+function addSeccion(){pres.lineas.push({tipo:'seccion',nombre:''});renderLineas();autosave();const ns=document.querySelectorAll('.s-nom');if(ns.length)ns[ns.length-1].focus();}
+function addLibre(){pres.lineas.push({tipo:'libre',partidaId:null,nombre:'',unidad:'ud',cantidad:0,precioVenta:0,coste:0});renderLineas();autosave();const ns=document.querySelectorAll('.l-nomin');if(ns.length)ns[ns.length-1].focus();}
 function descPres(){const v=parseFloat(String(document.getElementById('d-desc-valor').value||'').replace(',','.'))||0;return v>0?{tipo:document.getElementById('d-desc-tipo').value==='eur'?'eur':'pct',valor:v}:null;}
 function recompute(){
   const g=ivaGlobal(); let venta=0,coste=0; const filas=[],tipos=new Set();
@@ -438,9 +452,20 @@ function recompute(){
   document.getElementById('t-ivapct').textContent=tipos.size>1?'(varios)':(g+'%');
   document.getElementById('t-total').textContent=eur(baseFinal+iva);
 }
-async function guardar(silent){if(!pres)return;
-  try{await api('PUT','/api/presupuestos/'+pres._id,{nombre:document.getElementById('d-nombre').value.trim(),clientName:document.getElementById('d-cliente').value.trim(),iva:ivaGlobal(),descuento:descPres(),lineas:pres.lineas,clientData:pres.clientData||{},condiciones:pres.condiciones||'',validezDias:pres.validezDias||30});if(!silent)toast('Guardado','ok');}
-  catch(e){toast(e.message,'error');if(silent)throw e;}}
+let _autosaveTimer=null;
+function setSaveStatus(s){const el=document.getElementById('save-status');if(!el)return;
+  if(s==='editando'){el.textContent='Guardando…';el.style.color='var(--text3)';}
+  else if(s==='guardado'){el.textContent='✓ Guardado';el.style.color='var(--green)';}
+  else{el.textContent='⚠️ Sin guardar';el.style.color='var(--red)';}}
+// Auto-guardado: tras ~1 s sin tocar nada, guarda solo. Así no se pierde nada.
+function autosave(){if(!pres)return;clearTimeout(_autosaveTimer);setSaveStatus('editando');
+  _autosaveTimer=setTimeout(()=>{guardar(true,true);},1000);}
+async function guardar(silent,esAuto){if(!pres)return;
+  try{await api('PUT','/api/presupuestos/'+pres._id,{nombre:document.getElementById('d-nombre').value.trim(),clientName:document.getElementById('d-cliente').value.trim(),iva:ivaGlobal(),descuento:descPres(),lineas:pres.lineas,clientData:pres.clientData||{},condiciones:pres.condiciones||'',validezDias:pres.validezDias||30});
+    setSaveStatus('guardado');if(!silent)toast('Guardado','ok');}
+  catch(e){setSaveStatus('error');if(!esAuto)toast(e.message,'error');if(silent&&!esAuto)throw e;}}
+// Auto-guardar ante cualquier edición dentro del editor.
+['input','change'].forEach(ev=>{const pd=document.getElementById('page-det');if(pd)pd.addEventListener(ev,()=>{if(pres&&pd.classList.contains('active'))autosave();});});
 async function eliminarPres(){if(!pres)return;if(!confirm('¿Eliminar este presupuesto?'))return;try{await api('DELETE','/api/presupuestos/'+pres._id);volver();toast('Eliminado','ok');}catch(e){toast(e.message,'error');}}
 
 // ── LISTA DE LA COMPRA ──
@@ -605,7 +630,7 @@ function renderPick(){
 function addPartida(pid){
   const p=catalogo.find(x=>String(x._id)===String(pid));if(!p)return;
   pres.lineas.push({tipo:'partida',partidaId:String(p._id),nombre:p.nombre,unidad:p.unidad,cantidad:0,precioVenta:p.precioVenta,coste:p.coste||0});
-  cerrar('ov-pick');renderLineas();
+  cerrar('ov-pick');renderLineas();autosave();
   // hacer scroll a la última y foco en su cantidad
   const cants=document.querySelectorAll('.l-cant');if(cants.length)cants[cants.length-1].focus();
 }
