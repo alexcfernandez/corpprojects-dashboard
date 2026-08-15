@@ -324,7 +324,23 @@ async function guardarPresupuesto(id, data) {
   if ('medicionId' in data) set.medicionId = data.medicionId ? String(data.medicionId) : null;
   if ('medicionTotales' in data) set.medicionTotales = data.medicionTotales || null;
   await db.collection('presupuestos').updateOne({ _id: new ObjectId(id), empresaId: EMPRESA }, { $set: set });
-  return { ok: true };
+  // Si ya tiene OBRA (presupuesto aceptado), propaga los importes: así un EXTRA
+  // acordado con el cliente y añadido aquí se refleja en la obra y sus %.
+  let obraSync = null;
+  try { obraSync = await syncObraSiExiste(id); } catch (e) { console.warn('[Presupuesto→Obra sync]', e.message); }
+  return { ok: true, obraSync };
+}
+// Actualiza los importes de la obra desde el presupuesto (para reflejar extras).
+async function syncObraSiExiste(id) {
+  const db = await getDB();
+  const p = await db.collection('presupuestos').findOne({ _id: new ObjectId(id), empresaId: EMPRESA });
+  if (!p || !p.obraId) return null;
+  const t = computeTotales(p.lineas, p.iva, p.descuento, p.costeManoObra);
+  await db.collection('obras').updateOne(
+    { _id: new ObjectId(p.obraId) },
+    { $set: { budgetAmount: t.baseConDescuento, costePresupuestado: t.totalCoste, updatedAt: new Date() } }
+  );
+  return { obraId: String(p.obraId), budgetAmount: t.baseConDescuento };
 }
 async function eliminarPresupuesto(id) {
   const db = await getDB();
