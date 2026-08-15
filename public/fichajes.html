@@ -40,6 +40,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .tramo .ti{color:var(--text3);width:64px;flex-shrink:0}
 .tramo .tt{flex:1}.tramo .td{color:var(--text2);white-space:nowrap}
 .tramo .abierto{color:var(--blue)}
+.tramo .pin{text-decoration:none;font-size:12px;opacity:.85}.tramo .pin:hover{opacity:1}
 </style>
 </head>
 <body>
@@ -76,6 +77,8 @@ function fechaLarga(d){return d.toLocaleDateString('es-ES',{weekday:'long',day:'
 function authH(){return {'Authorization':`Bearer ${tok}`};}
 
 function toggleTr(id){const d=document.getElementById(id);const c=document.getElementById(id+'-chev');if(!d)return;const open=d.style.display==='none';d.style.display=open?'block':'none';if(c)c.classList.toggle('open',open);}
+// Pin GPS: enlace al mapa con la ubicación del fichaje (si la hay)
+function pin(loc){if(!loc||!Number.isFinite(loc.lat)||!Number.isFinite(loc.lng))return'';const t=loc.acc?('±'+Math.round(loc.acc)+' m'):'ubicación';return ` <a class="pin" href="https://www.google.com/maps?q=${loc.lat},${loc.lng}" target="_blank" rel="noopener" title="${t}" onclick="event.stopPropagation()">📍</a>`;}
 function mover(n){fecha.setDate(fecha.getDate()+n);cargar();}
 function hoy(){fecha=new Date();cargar();}
 
@@ -120,7 +123,7 @@ function render(fichajes,workers){
       const abiertoT=!t.salida;
       const s=abiertoT?'en curso':hora(t.salida);
       const durMin=abiertoT?((Date.now()-new Date(t.entrada).getTime())/60000):((new Date(t.salida).getTime()-new Date(t.entrada).getTime())/60000);
-      return `<div class="tramo"><span class="ti">Tramo ${i+1}</span><span class="tt">${e} → <span class="${abiertoT?'abierto':''}">${s}</span></span><span class="td">${hm(durMin)}</span></div>`;
+      return `<div class="tramo"><span class="ti">Tramo ${i+1}</span><span class="tt">${e}${pin(t.entradaLoc)} → <span class="${abiertoT?'abierto':''}">${s}</span>${abiertoT?'':pin(t.salidaLoc)}</span><span class="td">${hm(durMin)}</span></div>`;
     }).join('');
     filas+=`<div class="row clickable" onclick="toggleTr('${rid}')"><div class="nm"><b>${esc(w.name)}</b><div class="sub">Entrada ${entrada}${abierto?' · sigue dentro':(' · salida '+ultSal)}${pausas}</div></div><div style="text-align:right"><div class="tot">${hm(min)}</div>${badge}</div><span class="chev" id="${rid}-chev">▸</span></div><div class="tramos-detail" id="${rid}" style="display:none">${trDet}</div>`;
   });
