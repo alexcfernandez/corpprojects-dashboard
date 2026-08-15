@@ -269,7 +269,7 @@ function renderEstadoBar(){
   if(cur==='enviado'&&pres.enviadoAt)f='📤 Enviado el '+new Date(pres.enviadoAt).toLocaleDateString('es-ES');
   else if(cur==='aceptado'&&pres.aceptadoAt)f='✅ Aceptado el '+new Date(pres.aceptadoAt).toLocaleDateString('es-ES');
   else if(cur==='rechazado'&&pres.rechazadoAt)f='❌ Rechazado el '+new Date(pres.rechazadoAt).toLocaleDateString('es-ES');
-  const obra=pres.obraId?`<div class="est-obra">🏗️ Obra creada${pres.obraRef?' · '+esc(pres.obraRef):''} — se ve en el panel · Operación · Obras</div>`:'';
+  const obra=pres.obraId?`<div class="est-obra">🏗️ Obra creada${pres.obraRef?' · '+esc(pres.obraRef):''} — <a href="/?obra=${encodeURIComponent(pres.obraId)}" style="color:inherit;font-weight:600;text-decoration:underline">ver ficha de la obra →</a></div>`:'';
   document.getElementById('estado-bar').innerHTML=`<div class="est-chips">${chips}</div>${f?`<div class="est-fecha">${f}</div>`:''}${obra}`;
 }
 async function onEstado(e){if(!pres)return;

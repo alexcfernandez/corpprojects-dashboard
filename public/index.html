@@ -637,6 +637,17 @@ function showApp(){
   applyRoleVisibility();
   loadAll();
   renderInicio();
+  abrirDeeplinks();
+}
+// Enlace directo desde el presupuesto: /?obra=<id> abre la ficha de esa obra.
+function abrirDeeplinks(){
+  const obraId=new URLSearchParams(location.search).get('obra');
+  if(obraId && cpCan('facturas')){
+    irA('operacion','obras');
+    const tryOpen=(n)=>{ const m=window.CP&&window.CP.Obras; if(m&&m.openObra){ m.openObra(obraId); } else if(n>0){ setTimeout(()=>tryOpen(n-1),300); } };
+    tryOpen(8);
+    history.replaceState(null,'',location.pathname);
+  }
 }
 
 // ── PERMISOS POR ROL (oculta lo que cada rol no puede) ──────────────
@@ -1544,6 +1555,7 @@ async function init() {
     try { await window.CP_CONFIG.loadWorkers(); } catch (e) {}
     loadAll();
     renderInicio();
+    abrirDeeplinks();
   } else {
     document.getElementById('loginScreen').style.display = 'flex';
   }
