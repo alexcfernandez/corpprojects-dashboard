@@ -6,6 +6,7 @@
   const ESTADOS = window.CP_CONFIG.estadosObras;
 
   const eur = v => new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0);
+  const ceMod = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
   function api(url, opts={}) {
     const tok = localStorage.getItem('cp_token');
@@ -348,8 +349,8 @@
             ${cert.certs.length?`<table><thead><tr><th>Concepto</th><th style="text-align:right">Importe</th><th>Estado</th><th></th></tr></thead><tbody>${cert.certs.map(c=>`<tr>
               <td><strong>${ce(c.concepto)}</strong>${c.pct?` <span style="color:var(--text3);font-size:11px">(${c.pct}%)</span>`:''}</td>
               <td style="text-align:right">${eur(c.importe)}</td>
-              <td>${c.estado==='cobrado'?`<span style="color:var(--green)">✅ Cobrado${c.cobradoAt?' · '+new Date(c.cobradoAt).toLocaleDateString('es-ES'):''}</span>`:'<span style="color:var(--amber)">⏳ Pendiente</span>'}</td>
-              <td style="text-align:right;white-space:nowrap"><button class="btn bgh" style="padding:3px 8px;font-size:11px" title="Recibo para el cliente" onclick="CP.Obras.reciboCert('${c.id}')">📄</button> ${c.estado==='cobrado'?`<button class="btn bgh" style="padding:3px 8px;font-size:11px" title="Marcar pendiente" onclick="CP.Obras.certEstado('${obra._id}','${c.id}','pendiente')">↺</button>`:`<button class="btn bgh" style="padding:3px 9px;font-size:11px;color:var(--green);border-color:var(--green)" onclick="CP.Obras.certEstado('${obra._id}','${c.id}','cobrado')">Cobrado ✓</button>`} <button class="btn bgh" style="padding:3px 8px;font-size:11px;color:var(--red)" onclick="CP.Obras.delCert('${obra._id}','${c.id}')">✕</button></td></tr>`).join('')}</tbody></table>`:'<div style="font-size:12px;color:var(--text3);margin-bottom:8px">Sin certificaciones todavía. Cobra la obra por partes (ej. 40% al empezar).</div>'}
+              <td>${c.estado==='cobrado'?`<span style="color:var(--green)">✅ Cobrado${c.cobradoAt?' · '+new Date(c.cobradoAt).toLocaleDateString('es-ES'):''}</span>${c.cobradoRef?`<div style="font-size:10px;color:var(--text3)">🏦 ${ce(String(c.cobradoRef.concepto||'').slice(0,32))}${c.cobradoRef.fecha?' · '+c.cobradoRef.fecha:''}</div>`:'<div style="font-size:10px;color:var(--amber)">sin conciliar con el banco</div>'}`:'<span style="color:var(--amber)">⏳ Pendiente</span>'}</td>
+              <td style="text-align:right;white-space:nowrap"><button class="btn bgh" style="padding:3px 8px;font-size:11px" title="Recibo para el cliente" onclick="CP.Obras.reciboCert('${c.id}')">📄</button> ${c.estado==='cobrado'?`<button class="btn bgh" style="padding:3px 8px;font-size:11px" title="Marcar pendiente" onclick="CP.Obras.certEstado('${obra._id}','${c.id}','pendiente')">↺</button>`:`<button class="btn bgh" style="padding:3px 9px;font-size:11px;color:var(--green);border-color:var(--green)" onclick="CP.Obras.conciliarCert('${obra._id}','${c.id}',${c.importe})">Cobrado ✓</button>`} <button class="btn bgh" style="padding:3px 8px;font-size:11px;color:var(--red)" onclick="CP.Obras.delCert('${obra._id}','${c.id}')">✕</button></td></tr>`).join('')}</tbody></table>`:'<div style="font-size:12px;color:var(--text3);margin-bottom:8px">Sin certificaciones todavía. Cobra la obra por partes (ej. 40% al empezar).</div>'}
             <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;align-items:center">
               <input type="text" id="ob-cert-concepto" class="field-input" placeholder="Concepto (ej: 40% inicio)" style="flex:1;min-width:130px">
               <input type="number" id="ob-cert-pct" class="field-input" placeholder="%" style="width:60px" min="0" max="100">
@@ -481,9 +482,40 @@
     try { await api(`/api/obras/${id}/certificacion`, { method:'POST', body: JSON.stringify({ concepto, pct: pct || 0, importe: importe || 0 }) }); openObra(id); loadResumen(); }
     catch (err) { alert('Error: ' + err.message); }
   }
-  async function certEstado(id, certId, estado) {
-    try { await api(`/api/obras/${id}/certificacion/${certId}`, { method:'PUT', body: JSON.stringify({ estado }) }); openObra(id); loadResumen(); }
+  async function certEstado(id, certId, estado, cobradoRef) {
+    try { await api(`/api/obras/${id}/certificacion/${certId}`, { method:'PUT', body: JSON.stringify({ estado, cobradoRef }) }); openObra(id); loadResumen(); }
     catch (err) { alert('Error: ' + err.message); }
+  }
+  // Conciliación: al marcar cobrada una certificación, elige el movimiento del banco que la casa.
+  async function conciliarCert(obraId, certId, importe) {
+    _ccObra = obraId; _ccCert = certId; _ccData = [];
+    document.getElementById('cc-picker')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'cc-picker'; modal.className = 'modal-overlay'; modal.style.zIndex = '10002';
+    modal.innerHTML = `<div class="modal-box" style="max-width:520px">
+      <div class="modal-header"><div style="font-size:15px;font-weight:700">Conciliar cobro · ${eur(importe)}</div><button class="btn bgh" onclick="document.getElementById('cc-picker').remove()">✕</button></div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Elige el ingreso del banco que corresponde a este cobro. Los que cuadran con el importe salen primero y en verde.</div>
+      <div id="cc-list"><div style="color:var(--text3);font-size:12px;padding:12px">Cargando ingresos del banco…</div></div>
+      <div style="margin-top:10px;text-align:right"><button class="btn bgh" onclick="CP.Obras.certEstado('${obraId}','${certId}','cobrado');document.getElementById('cc-picker').remove()">Marcar cobrado sin conciliar</button></div>
+    </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    try {
+      const d = await api('/api/banco/entradas?importe=' + encodeURIComponent(importe));
+      _ccData = d.entradas || [];
+      const box = document.getElementById('cc-list');
+      if (!box) return;
+      if (!_ccData.length) { box.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:12px">No hay ingresos en el banco. Sube el Excel del banco (pestaña Banco) o marca cobrado sin conciliar.</div>'; return; }
+      box.innerHTML = `<div style="max-height:52vh;overflow:auto">${_ccData.slice(0,80).map((m,i)=>`
+        <div onclick="CP.Obras._ccPick(${i})" style="display:flex;justify-content:space-between;gap:10px;padding:10px 8px;border-bottom:1px solid var(--border);cursor:pointer;${m.match?'background:color-mix(in srgb,var(--green) 14%,transparent)':''}">
+          <div style="min-width:0"><div style="font-size:13px">${ceMod(String(m.concepto||'').slice(0,50))}</div><div style="font-size:11px;color:var(--text3)">${m.fecha?String(m.fecha).slice(0,10):''}${m.match?' · ✅ cuadra':''}</div></div>
+          <div style="font-weight:700;white-space:nowrap">${eur(m.importe)}</div></div>`).join('')}</div>`;
+    } catch (e) { const box = document.getElementById('cc-list'); if (box) box.innerHTML = '<div style="color:var(--red);font-size:12px;padding:12px">' + e.message + '</div>'; }
+  }
+  async function _ccPick(i) {
+    const m = _ccData[i]; if (!m) return;
+    document.getElementById('cc-picker')?.remove();
+    await certEstado(_ccObra, _ccCert, 'cobrado', { huella: m.huella, fecha: m.fecha ? String(m.fecha).slice(0,10) : '', concepto: m.concepto, importe: m.importe });
   }
   async function delCert(id, certId) {
     if (!confirm('¿Quitar esta certificación?')) return;
@@ -540,6 +572,7 @@ ${pago}
 
   // Picker: asignar a la obra una factura de proveedor ya subida (sin clasificar).
   let _fpData = [], _fpObra = {}, _fpDetalle = null, _obraData = null, _empresaCache = null;
+  let _ccObra = null, _ccCert = null, _ccData = [];
   async function abrirPickerFacturas(obraId, obraRef) {
     document.getElementById('fac-picker')?.remove();
     _fpObra = { id: obraId, ref: obraRef };
@@ -663,6 +696,6 @@ ${pago}
     } catch (err) { alert('No se pudo borrar: ' + err.message); }
   }
 
-  CP.Obras = { render, showTab, loadResumen, loadLista, openObra, saveObraChanges, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, addCert, certRapida, certEstado, delCert, reciboCert, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick, _fpBack, _fpToggleAll, _fpSum, _fpAsignar };
+  CP.Obras = { render, showTab, loadResumen, loadLista, openObra, saveObraChanges, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, addCert, certRapida, certEstado, conciliarCert, _ccPick, delCert, reciboCert, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick, _fpBack, _fpToggleAll, _fpSum, _fpAsignar };
 
 })(window.CP = window.CP || {});

@@ -268,11 +268,23 @@ async function addCertificacion(obraId, { concepto, pct, importe } = {}) {
   await db.collection('obras').updateOne({ _id: obra._id }, { $push: { certificaciones: cert }, $set: { updatedAt: new Date() } });
   return cert;
 }
-async function setCertificacion(obraId, certId, { estado, cobradoNota } = {}) {
+async function setCertificacion(obraId, certId, { estado, cobradoNota, cobradoRef } = {}) {
   const db = await getDB();
   const set = { updatedAt: new Date() };
-  if (estado === 'cobrado') { set['certificaciones.$.estado'] = 'cobrado'; set['certificaciones.$.cobradoAt'] = new Date(); if (cobradoNota != null) set['certificaciones.$.cobradoNota'] = String(cobradoNota); }
-  else { set['certificaciones.$.estado'] = 'pendiente'; set['certificaciones.$.cobradoAt'] = null; }
+  if (estado === 'cobrado') {
+    set['certificaciones.$.estado'] = 'cobrado';
+    set['certificaciones.$.cobradoAt'] = new Date();
+    if (cobradoNota != null) set['certificaciones.$.cobradoNota'] = String(cobradoNota);
+    // Conciliación: movimiento del banco que casa este cobro.
+    set['certificaciones.$.cobradoRef'] = cobradoRef ? {
+      huella: String(cobradoRef.huella || ''), fecha: cobradoRef.fecha || null,
+      concepto: String(cobradoRef.concepto || ''), importe: Number(cobradoRef.importe) || 0,
+    } : null;
+  } else {
+    set['certificaciones.$.estado'] = 'pendiente';
+    set['certificaciones.$.cobradoAt'] = null;
+    set['certificaciones.$.cobradoRef'] = null;
+  }
   await db.collection('obras').updateOne({ _id: new ObjectId(obraId), 'certificaciones.id': certId }, { $set: set });
   return { ok: true };
 }

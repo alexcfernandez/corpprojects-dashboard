@@ -178,7 +178,7 @@ function sinCostePres(p) {
   return out;
 }
 function sinCostePartidas(items) { return (items || []).map(p => { const { coste, costeManual, receta, ...r } = p; return r; }); }
-const MONEY_PREFIXES = ['/api/summary','/api/inicio','/api/invoices','/api/estimates','/api/cobros','/api/pagos','/api/families','/api/comunidades','/api/obras','/api/informes'];
+const MONEY_PREFIXES = ['/api/summary','/api/inicio','/api/invoices','/api/estimates','/api/cobros','/api/pagos','/api/families','/api/comunidades','/api/obras','/api/informes','/api/banco'];
 app.use(MONEY_PREFIXES, async (req, res, next) => {
   const token = (req.headers.authorization || '').replace('Bearer ', '');
   if (!token) return next(); // sin token → que responda el auth del endpoint (401)
@@ -1725,6 +1725,17 @@ app.put('/api/obras/:id/certificacion/:certId', requireAuth, async (req, res) =>
 app.delete('/api/obras/:id/certificacion/:certId', requireAuth, async (req, res) => {
   try { await obras.deleteCertificacion(req.params.id, req.params.certId); res.json({ ok: true }); }
   catch (err) { res.status(400).json({ error: err.message }); }
+});
+// Entradas del banco para CONCILIAR un cobro (las que casan con el importe primero).
+app.get('/api/banco/entradas', requireAuth, async (req, res) => {
+  try {
+    const importe = parseFloat(req.query.importe || 0);
+    const movs = await require('./banco').getMovimientos({ flujo: 'entrada', limit: 150 });
+    const tol = 0.5;
+    const out = (movs || []).map(m => ({ huella: m.huella, fecha: m.fechaOperacion, concepto: m.concepto, importe: m.importe, categoriaLabel: m.categoriaLabel, match: importe > 0 && Math.abs((m.importe || 0) - importe) <= tol }));
+    out.sort((a, b) => (b.match ? 1 : 0) - (a.match ? 1 : 0) || (a.fecha < b.fecha ? 1 : -1));
+    res.json({ importe, entradas: out });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/obras/sugerir-ref', requireAuth, async (req, res) => {
