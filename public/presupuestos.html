@@ -101,6 +101,14 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 /* IVA */
 .estado-bar{margin-bottom:12px}
 .est-obra{margin-top:8px;font-size:12px;color:var(--green);background:color-mix(in srgb,var(--green) 12%,transparent);border:1px solid color-mix(in srgb,var(--green) 40%,transparent);border-radius:8px;padding:7px 10px}
+.equipo-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:12px 13px;margin-bottom:12px}
+.eq-title{font-size:13px;font-weight:700;margin-bottom:9px}
+.eq-workers{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.eq-chip{background:var(--bg3);border:1px solid var(--border2);border-radius:100px;color:var(--text2);padding:6px 12px;font-size:13px;cursor:pointer;font-family:inherit}
+.eq-chip.on{background:color-mix(in srgb,var(--blue) 18%,transparent);border-color:var(--blue);color:var(--text);font-weight:600}
+.eq-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--text2)}
+.eq-row input,.eq-row select{background:var(--bg3);border:1px solid var(--border2);border-radius:8px;color:var(--text);padding:7px 9px;font-size:13px;font-family:inherit}
+.eq-mo{margin-left:auto;color:var(--amber)}.eq-mo b{color:var(--text)}
 .est-chips{display:flex;gap:6px;flex-wrap:wrap}
 .est-chip{background:var(--bg3);border:1.5px solid var(--border2);border-radius:100px;padding:8px 16px;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
 .est-fecha{font-size:12px;color:var(--text3);margin-top:6px}
@@ -175,6 +183,7 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
     <select id="d-desc-tipo" onchange="recompute()" style="width:auto"><option value="pct">%</option><option value="eur">€</option></select>
   </div>
   <div class="estado-bar" id="estado-bar"></div>
+  <div id="equipo-cont"></div>
   <div class="med-ref" id="d-medref" style="display:none"></div>
   <div id="lineas"></div>
   <div class="addrow">
@@ -341,6 +350,7 @@ async function abrirPres(id){
     if(mt){mr.style.display='block';mr.innerHTML=`📐 Medición: <b>Suelo ${fmt(mt.suelo)}</b> · <b>Paredes ${fmt(mt.paredes)}</b> · <b>Techo ${fmt(mt.techo)}</b> · <b>Pintura ${fmt((mt.paredes||0)+(mt.techo||0))}</b> m² · <b>Rodapié ${fmt(mt.rodapie)}</b> m`;}
     else mr.style.display='none';
     if(!catalogo.length){try{const c=await api('GET','/api/partidas');catalogo=c.partidas||[];}catch(e){}}
+    await loadPlantilla();renderEquipo();
     renderLineas();showPage('det');setSaveStatus('guardado');
   }catch(e){toast(e.message,'error');}
 }
@@ -396,6 +406,28 @@ function renderLineas(){
     </div>`;}).join('');
   recompute();
 }
+// ── EQUIPO Y TIEMPO ESTIMADO (mano de obra) ──
+let plantilla=[];
+async function loadPlantilla(){if(plantilla.length)return;try{const r=await fetch('/api/partes/workers',{headers:authH()});plantilla=(await r.json())||[];}catch(e){plantilla=[];}}
+function horasEstim(){const t=pres&&pres.tiempoEstimado;if(!t||!(Number(t.valor)>0))return 0;return t.unidad==='horas'?Number(t.valor):Number(t.valor)*8;}
+function computeManoObra(){if(!pres)return 0;const h=horasEstim();let c=0;(pres.equipo||[]).forEach(w=>{const p=plantilla.find(x=>String(x.id)===String(w.id));c+=h*(p?Number(p.costeHora)||0:0);});pres.costeManoObra=Math.round(c*100)/100;return pres.costeManoObra;}
+function renderEquipo(){const cont=document.getElementById('equipo-cont');if(!cont||!pres)return;
+  const t=pres.tiempoEstimado||{valor:'',unidad:'dias'};const eq=pres.equipo||[];
+  const chips=plantilla.length?plantilla.map(w=>{const on=eq.some(x=>String(x.id)===String(w.id));return `<button class="eq-chip ${on?'on':''}" onclick="toggleWorker('${w.id}','${esc(String(w.name)).replace(/'/g,"\\'")}')">${esc(w.name)}</button>`;}).join(''):'<span style="color:var(--text3);font-size:12px">Sin trabajadores dados de alta</span>';
+  const mo=computeManoObra();
+  cont.innerHTML=`<div class="equipo-box">
+    <div class="eq-title">👷 Equipo y tiempo estimado <span style="font-weight:400;color:var(--text3);font-size:11px">· solo para ti (no sale en el PDF del cliente)</span></div>
+    <div class="eq-workers">${chips}</div>
+    <div class="eq-row"><span>Tiempo estimado:</span>
+      <input id="eq-valor" type="number" inputmode="decimal" step="0.5" value="${t.valor||''}" oninput="onTiempo()" placeholder="0" style="width:72px;text-align:right">
+      <select id="eq-unidad" onchange="onTiempo()"><option value="dias" ${t.unidad!=='horas'?'selected':''}>días</option><option value="horas" ${t.unidad==='horas'?'selected':''}>horas</option></select>
+      <span class="eq-mo" style="${mo>0?'':'display:none'}">Mano de obra estimada: <b>${eur(mo)}</b></span>
+    </div>
+  </div>`;}
+function toggleWorker(id,name){if(!pres.equipo)pres.equipo=[];const i=pres.equipo.findIndex(x=>String(x.id)===String(id));if(i>=0)pres.equipo.splice(i,1);else pres.equipo.push({id:String(id),name});renderEquipo();recompute();autosave();}
+function onTiempo(){const valor=parseFloat(String(document.getElementById('eq-valor').value||'').replace(',','.'))||0;const unidad=document.getElementById('eq-unidad').value;pres.tiempoEstimado=valor>0?{valor,unidad}:null;
+  const mo=computeManoObra();const el=document.querySelector('.eq-mo');if(el){el.style.display=mo>0?'':'none';el.innerHTML='Mano de obra estimada: <b>'+eur(mo)+'</b>';}
+  recompute();autosave();}
 function moveBtns(i){const n=pres.lineas.length;
   return `<span class="l-move"><button title="Subir" onclick="moveLinea(${i},-1)" ${i<=0?'disabled':''}>↑</button><button title="Bajar" onclick="moveLinea(${i},1)" ${i>=n-1?'disabled':''}>↓</button></span>`;}
 function moveLinea(i,dir){const j=i+dir;if(j<0||j>=pres.lineas.length)return;const a=pres.lineas;[a[i],a[j]]=[a[j],a[i]];renderLineas();autosave();}
@@ -468,7 +500,7 @@ function addSeccion(){pres.lineas.push({tipo:'seccion',nombre:''});renderLineas(
 function addLibre(){pres.lineas.push({tipo:'libre',partidaId:null,nombre:'',unidad:'ud',cantidad:0,precioVenta:0,coste:0});renderLineas();autosave();const ns=document.querySelectorAll('.l-nomin');if(ns.length)ns[ns.length-1].focus();}
 function descPres(){const v=parseFloat(String(document.getElementById('d-desc-valor').value||'').replace(',','.'))||0;return v>0?{tipo:document.getElementById('d-desc-tipo').value==='eur'?'eur':'pct',valor:v}:null;}
 function recompute(){
-  const g=ivaGlobal(); let venta=0,coste=0; const filas=[],tipos=new Set();
+  const g=ivaGlobal(); let venta=0,coste=Number(pres.costeManoObra)||0; const filas=[],tipos=new Set();
   pres.lineas.forEach(l=>{const t=tipoDe(l);if(t==='seccion'||t==='nota')return;
     const v=impLinea(l);venta+=v;coste+=(l.cantidad||0)*(l.coste||0);
     const r=(l.iva==null?g:Number(l.iva));filas.push([v,r]);if(v>0)tipos.add(r);
@@ -498,7 +530,7 @@ function setSaveStatus(s){const el=document.getElementById('save-status');if(!el
 function autosave(){if(!pres)return;clearTimeout(_autosaveTimer);setSaveStatus('editando');
   _autosaveTimer=setTimeout(()=>{guardar(true,true);},1000);}
 async function guardar(silent,esAuto){if(!pres)return;
-  try{await api('PUT','/api/presupuestos/'+pres._id,{nombre:document.getElementById('d-nombre').value.trim(),clientName:document.getElementById('d-cliente').value.trim(),iva:ivaGlobal(),descuento:descPres(),lineas:pres.lineas,clientData:pres.clientData||{},condiciones:pres.condiciones||'',validezDias:pres.validezDias||30});
+  try{await api('PUT','/api/presupuestos/'+pres._id,{nombre:document.getElementById('d-nombre').value.trim(),clientName:document.getElementById('d-cliente').value.trim(),iva:ivaGlobal(),descuento:descPres(),lineas:pres.lineas,clientData:pres.clientData||{},condiciones:pres.condiciones||'',validezDias:pres.validezDias||30,equipo:pres.equipo||[],tiempoEstimado:pres.tiempoEstimado||null,costeManoObra:pres.costeManoObra||0});
     setSaveStatus('guardado');if(!silent)toast('Guardado','ok');}
   catch(e){setSaveStatus('error');if(!esAuto)toast(e.message,'error');if(silent&&!esAuto)throw e;}}
 // Auto-guardar ante cualquier edición dentro del editor.
@@ -585,6 +617,7 @@ tr.sec td{background:#f3f4f6;font-weight:700;border-top:1px solid #ccc}
 <div class="noprint" style="display:flex;justify-content:space-between;margin-bottom:12px"><button class="bar" onclick="window.close()">✕ Cerrar</button><button class="bar" onclick="window.print()">🖨️ Imprimir</button></div>
 <div class="top"><div><b>${esc(e.nombre||'')}</b><div style="color:#555;font-size:12px">Hoja de trabajo${cli?' · '+cli:''}</div></div><div class="r">Fecha: ${fecha}</div></div>
 <div class="h2">${esc(pres.nombre||'')}</div>
+${((pres.equipo&&pres.equipo.length)||pres.tiempoEstimado)?`<div style="font-size:13px;color:#333;margin:-6px 0 14px">${pres.equipo&&pres.equipo.length?'👷 '+pres.equipo.map(w=>esc(w.name)).join(', '):''}${pres.tiempoEstimado?`${pres.equipo&&pres.equipo.length?' · ':''}⏱️ Estimado: <b>${fmt(pres.tiempoEstimado.valor)} ${esc(pres.tiempoEstimado.unidad)}</b>`:''}</div>`:''}
 <table><thead><tr><th></th><th>Trabajo a realizar</th><th class="num">Cant.</th><th>Ud.</th></tr></thead>
 <tbody>${filas||'<tr><td colspan="4">Sin tareas</td></tr>'}</tbody></table>
 <div class="notas"><div class="h">Observaciones / firmas</div></div>

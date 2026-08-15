@@ -202,9 +202,19 @@ function limpiarDescuento(d) {
   if (!d || !(Number(d.valor) > 0)) return null;
   return { tipo: d.tipo === 'eur' ? 'eur' : 'pct', valor: Math.round(num(d.valor) * 100) / 100 };
 }
-function computeTotales(lineas, ivaDefault, descuento) {
+// Equipo asignado al presupuesto (quién lo hará) y tiempo estimado.
+function limpiarEquipo(e) {
+  return (Array.isArray(e) ? e : []).map(w => ({ id: String(w.id || ''), name: String(w.name || '').trim() })).filter(w => w.id || w.name);
+}
+function limpiarTiempo(t) {
+  if (!t) return null;
+  const valor = num(t.valor);
+  if (!(valor > 0)) return null;
+  return { valor, unidad: t.unidad === 'horas' ? 'horas' : 'dias' };
+}
+function computeTotales(lineas, ivaDefault, descuento, costeManoObra) {
   const g = Number.isFinite(ivaDefault) ? ivaDefault : 10;
-  let venta = 0, coste = 0;
+  let venta = 0, coste = Number(costeManoObra) || 0;   // arranca con la mano de obra estimada
   const filas = [];
   (lineas || []).forEach(l => {
     if (esSeccion(l) || esNota(l)) return;   // secciones y notas no suman
@@ -258,13 +268,13 @@ function limpiarLineas(lineas) {
 async function getPresupuestos() {
   const db = await getDB();
   const arr = await db.collection('presupuestos').find({ empresaId: EMPRESA }).sort({ updatedAt: -1 }).toArray();
-  return arr.map(p => ({ _id: p._id, nombre: p.nombre, clientName: p.clientName || '', estado: p.estado || 'borrador', creadoPor: p.by || '', obraId: p.obraId || null, nLineas: (p.lineas || []).filter(l => !esSeccion(l)).length, ...computeTotales(p.lineas, p.iva, p.descuento), updatedAt: p.updatedAt }));
+  return arr.map(p => ({ _id: p._id, nombre: p.nombre, clientName: p.clientName || '', estado: p.estado || 'borrador', creadoPor: p.by || '', obraId: p.obraId || null, nLineas: (p.lineas || []).filter(l => !esSeccion(l)).length, ...computeTotales(p.lineas, p.iva, p.descuento, p.costeManoObra), updatedAt: p.updatedAt }));
 }
 async function getPresupuesto(id) {
   const db = await getDB();
   const p = await db.collection('presupuestos').findOne({ _id: new ObjectId(id), empresaId: EMPRESA });
   if (!p) throw new Error('Presupuesto no encontrado');
-  return { ...p, iva: Number.isFinite(p.iva) ? p.iva : 10, descuento: p.descuento || null, totales: computeTotales(p.lineas, p.iva, p.descuento) };
+  return { ...p, iva: Number.isFinite(p.iva) ? p.iva : 10, descuento: p.descuento || null, totales: computeTotales(p.lineas, p.iva, p.descuento, p.costeManoObra) };
 }
 async function crearPresupuesto(data, by) {
   const db = await getDB();
@@ -283,6 +293,9 @@ async function crearPresupuesto(data, by) {
     lineas: limpiarLineas(data.lineas),
     notas: String(data.notas || '').trim(),
     condiciones: String(data.condiciones || '').trim(),
+    equipo: limpiarEquipo(data.equipo),                 // quién lo va a hacer
+    tiempoEstimado: limpiarTiempo(data.tiempoEstimado), // {valor, unidad}
+    costeManoObra: Math.round(num(data.costeManoObra) * 100) / 100, // mano de obra estimada (€)
     estado: 'borrador',
     by: by || '', createdAt: new Date(), updatedAt: new Date(),
   };
@@ -299,6 +312,9 @@ async function guardarPresupuesto(id, data) {
   if ('notas' in data) set.notas = String(data.notas || '').trim();
   if ('condiciones' in data) set.condiciones = String(data.condiciones || '').trim();
   if ('validezDias' in data && Number.isFinite(Number(data.validezDias))) set.validezDias = Number(data.validezDias);
+  if ('equipo' in data) set.equipo = limpiarEquipo(data.equipo);
+  if ('tiempoEstimado' in data) set.tiempoEstimado = limpiarTiempo(data.tiempoEstimado);
+  if ('costeManoObra' in data) set.costeManoObra = Math.round(num(data.costeManoObra) * 100) / 100;
   if ('estado' in data) set.estado = String(data.estado || 'borrador');
   if ('iva' in data && Number.isFinite(Number(data.iva))) set.iva = Number(data.iva);
   if ('descuento' in data) set.descuento = limpiarDescuento(data.descuento);
@@ -336,7 +352,7 @@ async function crearObraDesdePresupuesto(id) {
   if (!p) throw new Error('Presupuesto no encontrado');
   if (p.obraId) return { yaExistia: true, obraId: String(p.obraId), reference: p.obraRef || p.nombre };
 
-  const t = computeTotales(p.lineas, p.iva, p.descuento);
+  const t = computeTotales(p.lineas, p.iva, p.descuento, p.costeManoObra);
   const cliente = (p.clientName || '').trim() || 'Sin cliente';
   const ref = (p.nombre || p.numero || 'Obra').trim();
   const aliases = [];
@@ -351,6 +367,8 @@ async function crearObraDesdePresupuesto(id) {
     costePresupuestado: t.totalCoste,        // lo que esperábamos gastar
     presupuestoId: String(p._id),
     aliases,
+    tiempoEstimado: p.tiempoEstimado || null,   // estimado del presupuesto (para comparar vs real)
+    equipoPresup:   p.equipo || [],
     status: 'activa',
   });
   await db.collection('presupuestos').updateOne(
