@@ -244,6 +244,51 @@ async function deleteMaterial(obraId, matId) {
   return db.collection('obras').updateOne({ _id: new ObjectId(obraId) }, { $pull: { materiales: { id: matId } }, $set: { updatedAt: new Date() } });
 }
 
+// ── CERTIFICACIONES (cobros por partes de la obra) ───────────────
+// Cada certificación es una parte a cobrar: {id, concepto, pct, importe, fecha,
+// estado:'pendiente'|'cobrado', cobradoAt, cobradoNota}. El % se calcula sobre
+// el presupuesto (budgetAmount) o se pone el importe a mano.
+async function addCertificacion(obraId, { concepto, pct, importe } = {}) {
+  const db = await getDB();
+  const obra = await db.collection('obras').findOne({ _id: new ObjectId(obraId) });
+  if (!obra) throw new Error('Obra no encontrada');
+  const base = Number(obra.budgetAmount) || 0;
+  const p = parseFloat(pct || 0);
+  let imp = parseFloat(importe || 0);
+  if (!(imp > 0) && p > 0 && base > 0) imp = Math.round(base * p / 100 * 100) / 100;
+  if (!(imp > 0)) throw new Error('Indica un % (sobre el presupuesto) o un importe');
+  const cert = {
+    id: String(Date.now()) + Math.random().toString(36).slice(2, 6),
+    concepto: String(concepto || '').trim() || 'Certificación',
+    pct: p > 0 ? p : null,
+    importe: imp,
+    fecha: new Date(),
+    estado: 'pendiente', cobradoAt: null, cobradoNota: '',
+  };
+  await db.collection('obras').updateOne({ _id: obra._id }, { $push: { certificaciones: cert }, $set: { updatedAt: new Date() } });
+  return cert;
+}
+async function setCertificacion(obraId, certId, { estado, cobradoNota } = {}) {
+  const db = await getDB();
+  const set = { updatedAt: new Date() };
+  if (estado === 'cobrado') { set['certificaciones.$.estado'] = 'cobrado'; set['certificaciones.$.cobradoAt'] = new Date(); if (cobradoNota != null) set['certificaciones.$.cobradoNota'] = String(cobradoNota); }
+  else { set['certificaciones.$.estado'] = 'pendiente'; set['certificaciones.$.cobradoAt'] = null; }
+  await db.collection('obras').updateOne({ _id: new ObjectId(obraId), 'certificaciones.id': certId }, { $set: set });
+  return { ok: true };
+}
+async function deleteCertificacion(obraId, certId) {
+  const db = await getDB();
+  return db.collection('obras').updateOne({ _id: new ObjectId(obraId) }, { $pull: { certificaciones: { id: certId } }, $set: { updatedAt: new Date() } });
+}
+function resumenCertificaciones(obra) {
+  const certs = (obra && obra.certificaciones) || [];
+  const base = Number(obra && obra.budgetAmount) || 0;
+  const certificado = certs.reduce((s, c) => s + (Number(c.importe) || 0), 0);
+  const cobrado = certs.filter(c => c.estado === 'cobrado').reduce((s, c) => s + (Number(c.importe) || 0), 0);
+  const r = x => Math.round(x * 100) / 100;
+  return { certs, certificado: r(certificado), cobrado: r(cobrado), pendiente: r(certificado - cobrado), sinCertificar: r(base - certificado), pctCertificado: base > 0 ? Math.round(certificado / base * 100) : 0 };
+}
+
 // ── RENTABILIDAD ─────────────────────────────────────────────────
 // Cruza partes de trabajo con facturas de StelOrder para calcular
 // coste real vs facturado por obra
@@ -437,6 +482,7 @@ async function getRentabilidad(obraId) {
     byWorker: Object.values(byWorker),
     byDate,
     diagnostico,
+    certificaciones: resumenCertificaciones(obra),
   };
 }
 
@@ -460,6 +506,7 @@ async function getResumenGeneral() {
 module.exports = {
   ESTADOS_OBRA, CATEGORIAS_GASTO,
   createObra, getObras, getObra, updateObra, deleteObra, addMaterial, deleteMaterial,
+  addCertificacion, setCertificacion, deleteCertificacion, resumenCertificaciones,
   getRentabilidad, getResumenGeneral,
   extraerObraMarcador, getAsignacionesFacturaMap, getReglasMap, resolverFacturaObra,
   clasificarFactura, desclasificarFactura, repartirFactura, quitarReparto,

@@ -1713,6 +1713,19 @@ app.delete('/api/obras/:id/material/:matId', requireAuth, async (req, res) => {
   try { await obras.deleteMaterial(req.params.id, req.params.matId); res.json({ ok: true }); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+// ── Certificaciones (cobros por partes) ──
+app.post('/api/obras/:id/certificacion', requireAuth, async (req, res) => {
+  try { res.json(await obras.addCertificacion(req.params.id, req.body || {})); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.put('/api/obras/:id/certificacion/:certId', requireAuth, async (req, res) => {
+  try { res.json(await obras.setCertificacion(req.params.id, req.params.certId, req.body || {})); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.delete('/api/obras/:id/certificacion/:certId', requireAuth, async (req, res) => {
+  try { await obras.deleteCertificacion(req.params.id, req.params.certId); res.json({ ok: true }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 
 app.post('/api/obras/sugerir-ref', requireAuth, async (req, res) => {
   try { res.json({ nombre: await asistente.sugerirNombreObra(req.body || {}) }); }

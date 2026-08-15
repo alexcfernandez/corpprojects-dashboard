@@ -259,6 +259,8 @@
       const est  = ESTADOS[obra.status] || ESTADOS.activa;
       const diag = rent.diagnostico;
       const ok   = rent.beneficio >= 0;
+      const cert = rent.certificaciones || { certs:[], certificado:0, cobrado:0, pendiente:0, sinCertificar:0, pctCertificado:0 };
+      const ce = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
       modal.innerHTML = `
         <div class="modal-box" style="max-width:620px">
@@ -331,6 +333,33 @@
               <input type="text" id="ob-mat-concepto" class="field-input" placeholder="Concepto (ej: sacos cemento)" style="flex:1">
               <input type="number" id="ob-mat-importe" class="field-input" placeholder="€" style="width:90px" min="0">
               <button class="btn bp" onclick="CP.Obras.addMaterial('${id}')">+ Añadir</button>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-title">🧾 Certificaciones y cobros</div>
+            <div class="metrics-row" style="margin-bottom:10px">
+              <div class="mc"><div class="ml">Certificado</div><div class="mv b">${eur(cert.certificado)} <span style="font-size:11px;color:var(--text3)">${cert.pctCertificado}%</span></div></div>
+              <div class="mc"><div class="ml">Cobrado</div><div class="mv g">${eur(cert.cobrado)}</div></div>
+              <div class="mc"><div class="ml">Pendiente</div><div class="mv ${cert.pendiente>0?'a':''}">${eur(cert.pendiente)}</div></div>
+              <div class="mc"><div class="ml">Sin certificar</div><div class="mv">${eur(cert.sinCertificar)}</div></div>
+            </div>
+            ${cert.certs.length?`<table><thead><tr><th>Concepto</th><th style="text-align:right">Importe</th><th>Estado</th><th></th></tr></thead><tbody>${cert.certs.map(c=>`<tr>
+              <td><strong>${ce(c.concepto)}</strong>${c.pct?` <span style="color:var(--text3);font-size:11px">(${c.pct}%)</span>`:''}</td>
+              <td style="text-align:right">${eur(c.importe)}</td>
+              <td>${c.estado==='cobrado'?`<span style="color:var(--green)">✅ Cobrado${c.cobradoAt?' · '+new Date(c.cobradoAt).toLocaleDateString('es-ES'):''}</span>`:'<span style="color:var(--amber)">⏳ Pendiente</span>'}</td>
+              <td style="text-align:right;white-space:nowrap">${c.estado==='cobrado'?`<button class="btn bgh" style="padding:3px 8px;font-size:11px" title="Marcar pendiente" onclick="CP.Obras.certEstado('${obra._id}','${c.id}','pendiente')">↺</button>`:`<button class="btn bgh" style="padding:3px 9px;font-size:11px;color:var(--green);border-color:var(--green)" onclick="CP.Obras.certEstado('${obra._id}','${c.id}','cobrado')">Cobrado ✓</button>`} <button class="btn bgh" style="padding:3px 8px;font-size:11px;color:var(--red)" onclick="CP.Obras.delCert('${obra._id}','${c.id}')">✕</button></td></tr>`).join('')}</tbody></table>`:'<div style="font-size:12px;color:var(--text3);margin-bottom:8px">Sin certificaciones todavía. Cobra la obra por partes (ej. 40% al empezar).</div>'}
+            <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;align-items:center">
+              <input type="text" id="ob-cert-concepto" class="field-input" placeholder="Concepto (ej: 40% inicio)" style="flex:1;min-width:130px">
+              <input type="number" id="ob-cert-pct" class="field-input" placeholder="%" style="width:60px" min="0" max="100">
+              <span style="color:var(--text3);font-size:12px">o</span>
+              <input type="number" id="ob-cert-importe" class="field-input" placeholder="€" style="width:88px" min="0">
+              <button class="btn bp" onclick="CP.Obras.addCert('${obra._id}')">+ Certificar</button>
+            </div>
+            <div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap">
+              <button class="btn bgh" style="padding:4px 10px;font-size:11px" onclick="CP.Obras.certRapida('${obra._id}','40% inicio',40,0)">40% inicio</button>
+              <button class="btn bgh" style="padding:4px 10px;font-size:11px" onclick="CP.Obras.certRapida('${obra._id}','30% avance',30,0)">30% avance</button>
+              ${cert.sinCertificar>0?`<button class="btn bgh" style="padding:4px 10px;font-size:11px" onclick="CP.Obras.certRapida('${obra._id}','Resto (fin de obra)',0,${cert.sinCertificar})">Resto · ${eur(cert.sinCertificar)}</button>`:''}
             </div>
           </div>
 
@@ -437,6 +466,27 @@
     const importe  = parseFloat(document.getElementById('ob-mat-importe')?.value || 0);
     if (!importe || importe <= 0) { alert('Pon un importe válido para el material.'); return; }
     try { await api(`/api/obras/${id}/material`, { method:'POST', body: JSON.stringify({ concepto, importe }) }); openObra(id); loadResumen(); }
+    catch (err) { alert('Error: ' + err.message); }
+  }
+  async function addCert(id) {
+    const concepto = document.getElementById('ob-cert-concepto')?.value?.trim();
+    const pct = parseFloat(document.getElementById('ob-cert-pct')?.value || 0);
+    const importe = parseFloat(document.getElementById('ob-cert-importe')?.value || 0);
+    if (!(pct > 0) && !(importe > 0)) { alert('Indica un % (sobre el presupuesto) o un importe.'); return; }
+    try { await api(`/api/obras/${id}/certificacion`, { method:'POST', body: JSON.stringify({ concepto, pct, importe }) }); openObra(id); loadResumen(); }
+    catch (err) { alert('Error: ' + err.message); }
+  }
+  async function certRapida(id, concepto, pct, importe) {
+    try { await api(`/api/obras/${id}/certificacion`, { method:'POST', body: JSON.stringify({ concepto, pct: pct || 0, importe: importe || 0 }) }); openObra(id); loadResumen(); }
+    catch (err) { alert('Error: ' + err.message); }
+  }
+  async function certEstado(id, certId, estado) {
+    try { await api(`/api/obras/${id}/certificacion/${certId}`, { method:'PUT', body: JSON.stringify({ estado }) }); openObra(id); loadResumen(); }
+    catch (err) { alert('Error: ' + err.message); }
+  }
+  async function delCert(id, certId) {
+    if (!confirm('¿Quitar esta certificación?')) return;
+    try { await api(`/api/obras/${id}/certificacion/${certId}`, { method:'DELETE' }); openObra(id); loadResumen(); }
     catch (err) { alert('Error: ' + err.message); }
   }
   async function delMaterial(id, matId) {
@@ -570,6 +620,6 @@
     } catch (err) { alert('No se pudo borrar: ' + err.message); }
   }
 
-  CP.Obras = { render, showTab, loadResumen, loadLista, openObra, saveObraChanges, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick, _fpBack, _fpToggleAll, _fpSum, _fpAsignar };
+  CP.Obras = { render, showTab, loadResumen, loadLista, openObra, saveObraChanges, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, addCert, certRapida, certEstado, delCert, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick, _fpBack, _fpToggleAll, _fpSum, _fpAsignar };
 
 })(window.CP = window.CP || {});
