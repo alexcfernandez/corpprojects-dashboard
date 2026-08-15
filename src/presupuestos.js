@@ -439,6 +439,7 @@ async function crearObraDesdePresupuesto(id) {
     budgetAmount: t.baseConDescuento,        // lo que cobramos (venta con descuento)
     costePresupuestado: t.totalCoste,        // lo que esperábamos gastar
     presupuestoId: String(p._id),
+    presupuestoNumero: p.numero || null,
     aliases,
     tiempoEstimado: p.tiempoEstimado || null,   // estimado del presupuesto (para comparar vs real)
     equipoPresup:   p.equipo || [],

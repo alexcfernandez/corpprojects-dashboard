@@ -264,6 +264,14 @@
       const ce = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
       _obraData = { obra, certs: cert.certs };
 
+      // Estimado vs Real: tiempo (días) y equipo
+      const estT = obra.tiempoEstimado;
+      const estDias = (estT && estT.valor) ? (estT.unidad === 'horas' ? Math.round((estT.valor/8)*10)/10 : Number(estT.valor)) : null;
+      const realDias = Object.keys(rent.byDate || {}).length;
+      const desvDias = estDias != null ? Math.round((realDias - estDias)*10)/10 : null;
+      const equipoPrev = (obra.equipoPresup || []).map(x => x && x.name).filter(Boolean);
+      const equipoReal = (rent.byWorker || []).map(w => w && w.name).filter(Boolean);
+
       modal.innerHTML = `
         <div class="modal-box" style="max-width:620px">
           <div class="modal-header">
@@ -283,15 +291,27 @@
             Sin facturación registrada. Añade el presupuesto para ver la rentabilidad.
           </div>`}
 
-          ${rent.costePresupuestado > 0 ? `
+          ${(rent.costePresupuestado > 0 || estDias != null || equipoPrev.length || realDias) ? `
           <div class="card" style="margin-bottom:14px">
-            <div class="card-title">📐 Presupuestado vs Real (coste)</div>
+            <div class="card-title">📊 Estimado vs Real</div>
+            ${rent.costePresupuestado > 0 ? `
             <div class="metrics-row">
-              <div class="mc"><div class="ml">Coste presupuestado</div><div class="mv b">${eur(rent.costePresupuestado)}</div></div>
+              <div class="mc"><div class="ml">Coste estimado</div><div class="mv b">${eur(rent.costePresupuestado)}</div></div>
               <div class="mc"><div class="ml">Coste real (acumulado)</div><div class="mv r">${eur(rent.totalCoste)}</div></div>
-              <div class="mc"><div class="ml">Desvío</div><div class="mv ${rent.desvioCoste<=0?'g':'r'}">${rent.desvioCoste>0?'+':''}${eur(rent.desvioCoste)} (${rent.desvioCoste>0?'+':''}${(rent.desvioCoste/rent.costePresupuestado*100).toFixed(0)}%)</div></div>
-            </div>
-            <div style="font-size:11px;color:var(--text3);margin-top:8px">${rent.desvioCoste>0?'⚠️ Vas gastando más de lo presupuestado.':'✅ De momento, por debajo de lo presupuestado.'}</div>
+              <div class="mc"><div class="ml">Desvío coste</div><div class="mv ${rent.desvioCoste<=0?'g':'r'}">${rent.desvioCoste>0?'+':''}${eur(rent.desvioCoste)} (${rent.desvioCoste>0?'+':''}${(rent.desvioCoste/rent.costePresupuestado*100).toFixed(0)}%)</div></div>
+            </div>` : ''}
+            ${estDias != null ? `
+            <div class="metrics-row" style="margin-top:10px">
+              <div class="mc"><div class="ml">Días estimados</div><div class="mv b">${estDias} d</div></div>
+              <div class="mc"><div class="ml">Días trabajados</div><div class="mv r">${realDias} d</div></div>
+              <div class="mc"><div class="ml">Desvío tiempo</div><div class="mv ${desvDias<=0?'g':'r'}">${desvDias>0?'+':''}${desvDias} d</div></div>
+            </div>` : (realDias ? `<div style="font-size:12px;color:var(--text2);margin-top:8px">Días trabajados: <b>${realDias}</b> <span style="color:var(--text3)">(sin estimación de tiempo en el presupuesto)</span></div>` : '')}
+            ${(equipoPrev.length || equipoReal.length) ? `
+            <div style="margin-top:10px;font-size:12px;color:var(--text2)">
+              <div><span style="color:var(--text3)">Equipo previsto:</span> ${equipoPrev.length?equipoPrev.map(ce).join(', '):'—'}</div>
+              <div style="margin-top:2px"><span style="color:var(--text3)">Equipo real:</span> ${equipoReal.length?equipoReal.map(ce).join(', '):'—'}</div>
+            </div>` : ''}
+            ${(rent.costePresupuestado>0 || (estDias!=null)) ? `<div style="font-size:11px;color:var(--text3);margin-top:8px">${rent.costePresupuestado>0?(rent.desvioCoste>0?'⚠️ Vas gastando más de lo presupuestado.':'✅ En coste, por debajo de lo presupuestado.'):''}${(estDias!=null&&desvDias>0)?' ⚠️ Llevas más días de los estimados.':((estDias!=null&&desvDias<=0)?' ✅ En plazo de tiempo.':'')}</div>` : ''}
           </div>` : ''}
 
           <div class="metrics-row" style="margin-bottom:14px">
@@ -526,11 +546,18 @@
   // Recibo/certificación imprimible para enviar al cliente.
   async function reciboCert(certId){
     if(!_obraData){ alert('Abre la obra primero'); return; }
-    const c = (_obraData.certs||[]).find(x=>x.id===certId); if(!c){ return; }
+    const certs = _obraData.certs || [];
+    const idx = certs.findIndex(x=>x.id===certId);
+    const c = certs[idx]; if(!c){ return; }
     const e = await getEmpresaCached(); const o = _obraData.obra || {};
     const esc = s => String(s==null?'':s).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
     const eur2 = n => (Number(n)||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
     const fch = x => { try{ return new Date(x||Date.now()).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'}); }catch(_){ return ''; } };
+    // Trazabilidad: nº del presupuesto de origen y nº de recibo correlativo por obra
+    const presuNum = o.presupuestoNumero || (o.aliases||[]).find(a=>/^PRES-/i.test(a)) || '';
+    const recNum = (presuNum ? presuNum : (o.reference||'REC')) + '/C' + (idx>=0?idx+1:1);
+    const cobrado = c.estado === 'cobrado';
+    const cobradoLine = cobrado ? `<div class="m" style="color:#16a34a">✔ Cobrado el ${fch(c.cobradoAt||c.fecha)}</div>` : '';
     const empSub=[e.cif?('CIF '+e.cif):'',e.direccion,e.telefono?('Tel '+e.telefono):'',e.email].filter(Boolean).join(' · ');
     const pago = e.iban ? `<div class="box"><div class="h">Datos para el pago (transferencia)</div>
       <div class="r"><span>Titular</span><b>${esc(e.titular||e.nombre||'')}</b></div>
@@ -552,10 +579,10 @@
 </style></head><body>
 <div class="noprint" style="display:flex;justify-content:space-between;margin-bottom:12px"><button class="bar" onclick="window.close()">✕ Cerrar</button><button class="bar" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button></div>
 <div class="top"><div class="emp"><b>${esc(e.nombre||'')}</b>${empSub?`<div class="s">${esc(empSub)}</div>`:''}</div>
-  <div class="doc"><div class="n">RECIBO / CERTIFICACIÓN</div><div class="m">Fecha: ${fch(c.fecha)}</div></div></div>
+  <div class="doc"><div class="n">RECIBO / CERTIFICACIÓN</div><div class="m">Nº ${esc(recNum)}</div><div class="m">Fecha: ${fch(c.fecha)}</div>${cobradoLine}</div></div>
 <div class="parts">
   <div class="part"><div class="h">Cliente</div><b>${esc(o.clientName||'—')}</b></div>
-  <div class="part"><div class="h">Obra</div><b>${esc(o.reference||'—')}</b>${o.address?`<div style="color:#555">${esc(o.address)}</div>`:''}</div>
+  <div class="part"><div class="h">Obra</div><b>${esc(o.reference||'—')}</b>${o.address?`<div style="color:#555">${esc(o.address)}</div>`:''}${presuNum?`<div style="color:#555;font-size:12px;margin-top:2px">Presupuesto: ${esc(presuNum)}</div>`:''}</div>
 </div>
 <div class="imp"><div class="c">${esc(c.concepto||'Certificación')}${c.pct?` (${c.pct}% del presupuesto)`:''}</div><div class="v">${eur2(c.importe)}</div></div>
 ${pago}
