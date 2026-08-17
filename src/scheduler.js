@@ -349,8 +349,10 @@ function startScheduler() {
     }
   }, { timezone: 'Europe/Madrid' });
 
-  // Sondeo Google Calendar → dashboard cada 2 minutos (lo que se edita en el móvil).
-  cron.schedule('*/2 * * * *', async () => {
+  // Sondeo Google Calendar → dashboard (lo que se edita en el móvil). Antes cada
+  // 2 min; subido a 15 min por defecto para bajar coste (configurable por env).
+  const GCAL_SYNC_CRON = process.env.GCAL_SYNC_CRON || '*/15 * * * *';
+  cron.schedule(GCAL_SYNC_CRON, async () => {
     try {
       const s = await calendarSync.pullChanges();
       if (s && (s.created || s.updated || s.deleted)) {

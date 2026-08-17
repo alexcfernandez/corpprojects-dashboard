@@ -1554,13 +1554,24 @@ function startAutoRefresh(tabId){
   const refreshable=['partes','presencia','obras'];
   if(!refreshable.includes(tabId)) return;
   autoRefreshTimer=setInterval(()=>{
+    if(document.hidden) return; // no recargar si la pestaña no está a la vista (ahorra coste)
     const mod={partes:window.CP?.PartesAdmin,presencia:window.CP?.Presencia,obras:window.CP?.Obras}[tabId];
     if(!mod) return;
     if(tabId==='partes'    && mod.loadLista)    mod.loadLista();
     if(tabId==='presencia' && mod.loadCalendar) mod.loadCalendar();
     if(tabId==='obras'     && mod.loadResumen)  mod.loadResumen();
-  },60000);
+  },5*60*1000);
 }
+// Al volver a la pestaña tras tenerla oculta, un refresco puntual (máx 1/min) para
+// no quedarnos con datos viejos sin tener que refrescar en balde mientras no miras.
+let _lastVisRefresh=0;
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden||!tok) return;
+  if(Date.now()-_lastVisRefresh<60000) return;
+  _lastVisRefresh=Date.now();
+  const mod={partes:window.CP?.PartesAdmin,presencia:window.CP?.Presencia,obras:window.CP?.Obras}[activeTab];
+  if(mod){ if(mod.loadLista&&activeTab==='partes')mod.loadLista(); if(mod.loadCalendar&&activeTab==='presencia')mod.loadCalendar(); if(mod.loadResumen&&activeTab==='obras')mod.loadResumen(); }
+});
 
 // ── TEMA ──────────────────────────────────────────────────────────
 function toggleTheme(){
@@ -1595,7 +1606,7 @@ async function init() {
   }
 }
 init();
-setInterval(()=>{if(tok) loadAll();}, 15*60*1000);
+setInterval(()=>{if(tok && !document.hidden) loadAll();}, 15*60*1000);
 window.addEventListener('load',()=>{
   console.log('[CP] Config workers cargados:', window.CP_CONFIG.workers.length);
   console.log('[CP] Módulos:', Object.keys(window.CP||{}).join(', '));

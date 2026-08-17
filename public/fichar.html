@@ -203,8 +203,8 @@ async function fichar(){const btn=document.getElementById('fichar-btn');btn.disa
   catch(e){toast(e.message,'error');cargar();}
   finally{btn.disabled=false;}}
 
-// refrescar el contador cada minuto si está dentro
-setInterval(()=>{if(workerToken&&document.getElementById('page-fichar').classList.contains('active'))cargar();},60000);
+// refrescar el contador cada minuto si está dentro y la pantalla está a la vista
+setInterval(()=>{if(!document.hidden&&workerToken&&document.getElementById('page-fichar').classList.contains('active'))cargar();},60000);
 
 // ── ENLACE MÁGICO (login sin PIN) ──
 async function magicLogin(t){

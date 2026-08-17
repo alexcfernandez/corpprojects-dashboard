@@ -500,7 +500,15 @@ async function getRentabilidad(obraId) {
 }
 
 // ── RESUMEN GENERAL ───────────────────────────────────────────────
+// Es la vista más cara (recalcula la rentabilidad de TODAS las obras cruzándolas
+// con todas las facturas de proveedor). El dashboard la refresca sola, así que la
+// cacheamos 2 min: varias cargas seguidas / varios clientes reutilizan el mismo
+// cálculo en vez de rehacerlo cada vez. Abrir una obra concreta (getRentabilidad)
+// NO se cachea, así que ahí siempre se ve al momento.
 async function getResumenGeneral() {
+  return require('./cache').cached('obras:resumenGeneral', 120000, _getResumenGeneral);
+}
+async function _getResumenGeneral() {
   const db = await getDB();
   const obras = await db.collection('obras').find({}).sort({ createdAt: -1 }).toArray();
 
