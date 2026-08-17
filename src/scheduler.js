@@ -378,7 +378,8 @@ function startScheduler() {
     }
   }, { timezone: 'Europe/Madrid' });
 
-  console.log('[Scheduler] ✅ Recordatorios: 08:30 y 17:00 (según frecuencia por familia) | Resumen interno: 08:30 lun–vie | Emails: cada 15min | GCal: cada 2min | Actividad: cada 15min');
+  console.log('[Scheduler] ✅ Recordatorios: 08:30 y 17:00 (según frecuencia por familia) | Resumen interno: 08:30 lun–vie | Emails: cada 15min | GCal: cada 15min | Actividad: cada 15min');
+  console.log(`[StelOrder] 🛡️ Freno de paginación ACTIVO (tope ${process.env.STEL_MAX_PAGES || 60} páginas). Optimización de coste v2.`);
 
   // Primer poll de emails a los 2 minutos de arrancar
   setTimeout(async () => {
