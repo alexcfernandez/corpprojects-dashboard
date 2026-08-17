@@ -45,7 +45,17 @@ async function fetchAllPages(endpoint, extraParams = '') {
   const all = [];
   let start = 0;
   const limit = 500;
+  // TOPE DE SEGURIDAD: si StelOrder ignora el `start` y devuelve páginas de 500
+  // sin fin, el bucle nunca terminaría → llamadas infinitas (egress/CPU) y memoria
+  // creciendo hasta reventar. Cortamos siempre tras un máximo de páginas.
+  const MAX_PAGES = parseInt(process.env.STEL_MAX_PAGES || 60); // 60×500 = 30.000 items, muy por encima de lo real
+  let pages = 0;
+  let prevLastId = null;
   while (true) {
+    if (pages++ >= MAX_PAGES) {
+      console.error(`[StelOrder] ⛔ ${endpoint}: alcanzado el tope de ${MAX_PAGES} páginas (${all.length} items). Corto para evitar bucle infinito (¿paginación 'start' rota en la API?).`);
+      break;
+    }
     try {
       const sep = endpoint.includes('?') ? '&' : '?';
       // No añadir start=0 en la primera llamada — StelOrder no lo acepta
@@ -53,6 +63,14 @@ async function fetchAllPages(endpoint, extraParams = '') {
       const url = `${endpoint}${sep}limit=${limit}${startParam}${extraParams}`;
       const res = await client.get(url);
       const page = Array.isArray(res.data) ? res.data : [];
+      // Guarda extra: si esta página termina en el MISMO id que la anterior, la API
+      // está devolviendo lo mismo (no avanza con `start`) → cortamos ya, sin acumular.
+      const lastId = page.length ? String(page[page.length - 1].id ?? '') : null;
+      if (page.length === limit && lastId && lastId === prevLastId) {
+        console.error(`[StelOrder] ⛔ ${endpoint}: la paginación no avanza (misma página repetida, ${all.length} items). Corto.`);
+        break;
+      }
+      prevLastId = lastId;
       all.push(...page);
       if (page.length < limit) break;
       start += limit;
