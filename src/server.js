@@ -89,7 +89,15 @@ app.use(express.static(path.join(__dirname, '../public')));
 const API_MAX = parseInt(process.env.API_RATE_MAX || 4000);
 const limiter = rateLimit({
   windowMs: 15*60*1000, max: API_MAX, message: { error: 'Rate limit.' },
-  skip: (req) => { const u = req.originalUrl || ''; return u.startsWith('/api/login') || u.startsWith('/api/auth/login'); },
+  skip: (req) => {
+    const u = req.originalUrl || '';
+    if (u.startsWith('/api/login') || u.startsWith('/api/auth/login')) return true;
+    // App interna: las peticiones AUTENTICADAS (con token) no pasan por el límite
+    // global — un usuario logueado nunca debe bloquearse por el tráfico del dashboard.
+    // Cada endpoint sigue exigiendo su auth; el límite queda para tráfico anónimo/abuso.
+    if ((req.headers.authorization || '').startsWith('Bearer ')) return true;
+    return false;
+  },
 });
 app.use('/api/', limiter);
 const loginLimiter = rateLimit({ windowMs: 15*60*1000, max: parseInt(process.env.LOGIN_RATE_MAX || 60), skipSuccessfulRequests: true, message: { error: 'Demasiados intentos de acceso fallidos. Espera unos minutos y vuelve a probar.' } });

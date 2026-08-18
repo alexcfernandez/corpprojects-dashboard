@@ -705,13 +705,16 @@ async function apiCall(url, method='GET', body=null){
 async function af(url,o={}){
   const r=await fetch(`${API}${url}`,{...o,headers:{'Authorization':`Bearer ${tok}`,'Content-Type':'application/json',...(o.headers||{})}});
   if(r.status===401){doLogout();return null;}
-  return r.json();
+  // Si la respuesta no es OK (429 rate limit, 500, etc.) devolvemos null en vez del
+  // objeto de error → cada loader hace su `if(!d)return` y NO revienta la carga entera.
+  if(!r.ok){ console.warn('[CP] '+url+' → '+r.status); return null; }
+  return r.json().catch(()=>null);
 }
 
 async function loadAll(){
   const b=document.getElementById('syncBtn');b.classList.add('loading');b.textContent='⏳ Cargando...';
   try{
-    await Promise.all([loadSum(),loadPend(),loadEst(),loadFam()]);
+    await Promise.allSettled([loadSum(),loadPend(),loadEst(),loadFam()]);
     loadBInfo();
     document.getElementById('lastUpd').textContent='Actualizado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
   }finally{b.classList.remove('loading');b.textContent='🔄 Actualizar';}
