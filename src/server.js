@@ -86,7 +86,7 @@ app.use(express.static(path.join(__dirname, '../public')));
 // Límite global de /api/ por IP. Sube a 1200/15min (300 se quedaba corto con el
 // polling del dashboard) y NO cuenta el login: entrar nunca debe bloquearse por el
 // tráfico normal de la app; el login ya tiene su propio freno anti-fuerza-bruta.
-const API_MAX = parseInt(process.env.API_RATE_MAX || 1200);
+const API_MAX = parseInt(process.env.API_RATE_MAX || 4000);
 const limiter = rateLimit({
   windowMs: 15*60*1000, max: API_MAX, message: { error: 'Rate limit.' },
   skip: (req) => { const u = req.originalUrl || ''; return u.startsWith('/api/login') || u.startsWith('/api/auth/login'); },
