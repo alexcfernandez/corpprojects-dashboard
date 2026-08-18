@@ -83,9 +83,16 @@ app.use((req, res, next) => {
 });
 app.use(express.static(path.join(__dirname, '../public')));
 
-const limiter = rateLimit({ windowMs: 15*60*1000, max: 300, message: { error: 'Rate limit.' } });
+// Límite global de /api/ por IP. Sube a 1200/15min (300 se quedaba corto con el
+// polling del dashboard) y NO cuenta el login: entrar nunca debe bloquearse por el
+// tráfico normal de la app; el login ya tiene su propio freno anti-fuerza-bruta.
+const API_MAX = parseInt(process.env.API_RATE_MAX || 1200);
+const limiter = rateLimit({
+  windowMs: 15*60*1000, max: API_MAX, message: { error: 'Rate limit.' },
+  skip: (req) => { const u = req.originalUrl || ''; return u.startsWith('/api/login') || u.startsWith('/api/auth/login'); },
+});
 app.use('/api/', limiter);
-const loginLimiter = rateLimit({ windowMs: 15*60*1000, max: 60, skipSuccessfulRequests: true, message: { error: 'Demasiados intentos de acceso fallidos. Espera unos minutos y vuelve a probar.' } });
+const loginLimiter = rateLimit({ windowMs: 15*60*1000, max: parseInt(process.env.LOGIN_RATE_MAX || 60), skipSuccessfulRequests: true, message: { error: 'Demasiados intentos de acceso fallidos. Espera unos minutos y vuelve a probar.' } });
 
 function requireAuth(req, res, next) {
   const token = req.headers.authorization?.replace('Bearer ', '');
