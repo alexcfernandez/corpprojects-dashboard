@@ -164,6 +164,26 @@ async function getAllReceipts() {
   });
 }
 
+// Carga masiva de facturas ordinarias. El RECIBO no trae la fecha de EMISIÓN ni el
+// enlace al PDF (solo el vencimiento payment-term-date), así que las sacamos de aquí.
+// Cacheada. Devuelve un mapa por id → { date (emisión), pdfPath, number }.
+async function getAllOrdinaryInvoices() {
+  return cached('ordinaryInvoices', TTL.receipts, async () => {
+    const list = await fetchAllPages('/ordinaryInvoices');
+    const map = {};
+    let sample = null;
+    (list || []).forEach(o => {
+      if (!o || o.deleted) return;
+      // La emisión suele venir en `date`; dejamos alternativas por si acaso.
+      const date = o.date || o['issue-date'] || o['emission-date'] || o['creation-date'] || o['utc-creation-date'] || null;
+      map[String(o.id)] = { date, pdfPath: o['pdf-path'] || null, number: o['full-reference'] || null };
+      if (!sample) sample = { id: o.id, date, tienePdf: !!o['pdf-path'], camposFecha: Object.keys(o).filter(k => /date|fecha|pdf/i.test(k)) };
+    });
+    console.log(`[StelOrder] Facturas (ordinaryInvoices): ${Object.keys(map).length}` + (sample ? ` | muestra: ${JSON.stringify(sample)}` : ''));
+    return map;
+  });
+}
+
 // Construir facturas desde recibos agrupando por original-element-id
 function buildInvoicesFromReceipts(receipts, clientMap) {
   const invoiceMap = new Map();
@@ -200,19 +220,26 @@ function buildInvoicesFromReceipts(receipts, clientMap) {
 async function getPendingInvoices() {
   try {
     const now = new Date();
-    const [receipts, { clientMap }] = await Promise.all([getAllReceipts(), getClients()]);
+    const [receipts, { clientMap }, invMeta] = await Promise.all([
+      getAllReceipts(), getClients(), getAllOrdinaryInvoices().catch(() => ({}))
+    ]);
     const allInvoices = buildInvoicesFromReceipts(receipts, clientMap);
     const pending = [];
 
     for (const inv of allInvoices) {
       const pendingAmount = parseFloat((inv.totalAmount - inv.paidAmount).toFixed(2));
       if (pendingAmount < 0.01) continue;
-      const issueDate   = inv.date ? new Date(inv.date) : now;
-      const daysOverdue = Math.max(0, Math.floor((now - issueDate) / 86400000));
+      const meta    = invMeta[String(inv.id)] || {};
+      const emitida = meta.date || inv.date;   // fecha REAL de emisión (fallback: vencimiento)
+      const vence   = inv.date;                 // payment-term-date (vencimiento del recibo)
+      // "Días sin cobrar" = días pasados del VENCIMIENTO (0 si aún no vence).
+      const refDate = vence ? new Date(vence) : (emitida ? new Date(emitida) : now);
+      const daysOverdue = Math.max(0, Math.floor((now - refDate) / 86400000));
       pending.push({
         id: inv.id, number: inv.number, client: inv.client,
-        family: inv.family, date: inv.date,
+        family: inv.family, date: emitida, dueDate: vence,
         accountId: inv.accountId, clientEmail: inv.clientEmail,
+        pdfPath: meta.pdfPath || null,
         total: inv.totalAmount, paid: inv.paidAmount, pending: pendingAmount,
         daysOverdue, alertLevel: getAlertLevel(daysOverdue)
       });

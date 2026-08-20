@@ -172,7 +172,7 @@ function cpUpdateBanner(){
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <input type="text" class="srch" id="sPend" placeholder="Buscar cliente / nº / familia..." oninput="pp=0;rPend()">
         <select id="fFamPend" onchange="pp=0;rPend()"><option value="">Todas las familias</option></select>
-        <button class="btn bgh" onclick="exportPendCSV()" title="Descargar en Excel lo que se ve ahora (respeta familia, días y búsqueda)">⬇️ Excel</button>
+        <button class="btn bgh" onclick="exportPendExcel()" title="Descargar en Excel lo que se ve ahora (respeta familia, días y búsqueda)">⬇️ Excel</button>
         <button class="btn bp" onclick="checkAlerts()" id="alertBtn">🔔 Enviar alertas</button>
       </div>
     </div>
@@ -800,37 +800,67 @@ function rPend(){
     <td style="text-align:right;color:${i.alertLevel==='ok'?'var(--green)':'var(--red)'};font-weight:600">${eur(i.pending)}</td>
     <td style="font-weight:600;color:${i.daysOverdue>=60?'var(--red)':i.daysOverdue>=45?'#f97316':i.daysOverdue>=30?'var(--amber)':'var(--text2)'}">${i.daysOverdue}d</td>
     <td>${lB(i.alertLevel)}</td>
-    <td style="text-align:center"><button class="btn bgh" style="padding:2px 8px;font-size:11px" title="Ver / descargar la factura (PDF)" onclick="abrirFacturaPDF('${i.id}','${String(i.number||'').replace(/'/g,'')}')">📄</button></td></tr>`).join('')}</tbody>
+    <td style="text-align:center"><button class="btn bgh" style="padding:2px 8px;font-size:11px" title="Ver / descargar la factura (PDF)" onclick="abrirFacturaPDF('${i.id}','${String(i.number||'').replace(/'/g,'')}','${i.pdfPath?encodeURIComponent(i.pdfPath):''}')">📄</button></td></tr>`).join('')}</tbody>
   <tfoot><tr style="background:rgba(255,255,255,.02)"><td colspan="5" style="padding:8px 9px;font-weight:600">${tot} facturas</td>
   <td style="text-align:right;padding:8px 9px;color:var(--red);font-weight:600">${eur(list.reduce((s,i)=>s+i.pending,0))}</td><td colspan="3"></td></tr></tfoot></table>
   ${tot>(pp+1)*PS?`<button class="btn bgh" style="width:100%;margin-top:10px" onclick="pp++;rPend()">Ver más (${tot-(pp+1)*PS} restantes)</button>`:''}`;
 }
-// Nombre legible del nivel de morosidad (para el Excel).
-function nivelLabel(a){return ({ok:'Al día',warning1:'15+ días',warning2:'30+ días',urgent:'45+ días',critical:'60+ días (crítica)'})[a]||a;}
-// Descarga en CSV (abre en Excel) lo que se ve ahora, ordenado por familia y días.
-function exportPendCSV(){
+// Carga el generador de Excel (SheetJS) solo cuando hace falta.
+let _xlsxLoading=null;
+function ensureXLSX(){
+  if(window.XLSX)return Promise.resolve();
+  if(_xlsxLoading)return _xlsxLoading;
+  _xlsxLoading=new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload=()=>res(); s.onerror=()=>rej(new Error('No se pudo cargar el generador de Excel'));
+    document.head.appendChild(s);
+  });
+  return _xlsxLoading;
+}
+// Descarga un Excel (.xlsx) de lo que se ve ahora, ordenado por familia y días,
+// con importes que suman, fechas reales y enlace clicable a la factura en PDF.
+async function exportPendExcel(){
   const list=pendFiltered().slice().sort((a,b)=>(a.family||'Sin familia').localeCompare(b.family||'Sin familia')||(b.daysOverdue-a.daysOverdue));
   if(!list.length){alert('No hay facturas que exportar con los filtros actuales.');return;}
-  const sep=';';
-  const esc=v=>{v=String(v==null?'':v);return /[";\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
-  const num=n=>(Number(n)||0).toFixed(2).replace('.',',');
-  const head=['Factura','Cliente','Familia','Emitida','Total','Pendiente','Días sin cobrar','Nivel'];
-  const rows=list.map(i=>[i.number,i.client,i.family||'Sin familia',dt(i.date),num(i.total),num(i.pending),i.daysOverdue,nivelLabel(i.alertLevel)]);
-  const totalPend=list.reduce((s,i)=>s+(i.pending||0),0);
-  rows.push([]);rows.push(['','','','','TOTAL PENDIENTE',num(totalPend),'','']);
-  const csv='﻿'+[head,...rows].map(r=>r.map(esc).join(sep)).join('\r\n');
-  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
-  const url=URL.createObjectURL(blob);
+  try{ await ensureXLSX(); }catch(e){ alert(e.message+'. Revisa la conexión y reintenta.'); return; }
+  const XLSX=window.XLSX;
+  const nivelTxt={ok:'Al día',warning1:'15+ días',warning2:'30+ días',urgent:'45+ días',critical:'60+ días (crítica)'};
+  const nivelEmoji={ok:'🟢',warning1:'🟡',warning2:'🟠',urgent:'🔴',critical:'🚨'};
+  const header=['Factura','Cliente','Familia','Emitida','Total (€)','Pendiente (€)','Días sin cobrar','Nivel','Factura PDF'];
+  const aoa=[header];
+  list.forEach(i=>aoa.push([
+    i.number, i.client, i.family||'Sin familia',
+    i.date?new Date(i.date):'',
+    Number(i.total)||0, Number(i.pending)||0,
+    i.daysOverdue, (nivelEmoji[i.alertLevel]||'')+' '+(nivelTxt[i.alertLevel]||i.alertLevel),
+    i.pdfPath?'Ver factura':''
+  ]));
+  const totalPend=list.reduce((s,i)=>s+(Number(i.pending)||0),0);
+  aoa.push([]);aoa.push(['','','','','TOTAL PENDIENTE',totalPend,'','','']);
+  const ws=XLSX.utils.aoa_to_sheet(aoa,{cellDates:true});
+  ws['!cols']=[{wch:12},{wch:36},{wch:18},{wch:12},{wch:12},{wch:14},{wch:15},{wch:20},{wch:14}];
+  const R=list.length;
+  for(let r=1;r<=R;r++){
+    const dcell=ws[XLSX.utils.encode_cell({r,c:3})]; if(dcell)dcell.z='dd/mm/yyyy';
+    [4,5].forEach(c=>{const cell=ws[XLSX.utils.encode_cell({r,c})]; if(cell)cell.z='#,##0.00';});
+    const it=list[r-1];
+    if(it.pdfPath){const lc=ws[XLSX.utils.encode_cell({r,c:8})]; if(lc)lc.l={Target:it.pdfPath,Tooltip:'Abrir factura '+it.number};}
+  }
+  const tcell=ws[XLSX.utils.encode_cell({r:R+2,c:5})]; if(tcell)tcell.z='#,##0.00';
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Pendientes');
   const fam=(document.getElementById('fFamPend')?.value||'').replace(/[^a-zA-Z0-9]+/g,'-');
   const hoy=new Date().toISOString().slice(0,10);
-  const a=document.createElement('a');a.href=url;a.download=`pendientes_cobro${fam?'_'+fam:''}_${hoy}.csv`;
-  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
+  XLSX.writeFile(wb,`pendientes_cobro${fam?'_'+fam:''}_${hoy}.xlsx`);
 }
-// Abre el PDF oficial de la factura (enlace de StelOrder). Abre la ventana YA (gesto del clic)
-// y luego le pone la URL, para que el navegador no bloquee el popup.
-async function abrirFacturaPDF(id,number){
-  if(!id||id==='undefined'){alert('Esta factura no tiene ID de StelOrder, no se puede abrir el PDF.');return;}
+// Abre el PDF oficial de la factura. Si ya tenemos el enlace directo (pdfPath) lo usa;
+// si no, lo pide al servidor. Abre la ventana YA (gesto del clic) para no bloquear el popup.
+async function abrirFacturaPDF(id,number,directUrl){
   const w=window.open('','_blank');
+  const url=directUrl?decodeURIComponent(directUrl):null;
+  if(url){ if(w)w.location.href=url; else window.location.href=url; return; }
+  if(!id||id==='undefined'){ if(w)w.close(); alert('Esta factura no tiene PDF disponible.'); return; }
   try{
     const d=await af('/api/invoices/'+encodeURIComponent(id)+'/pdf');
     if(d&&d.url){ if(w)w.location.href=d.url; else window.location.href=d.url; }
