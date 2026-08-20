@@ -15,7 +15,7 @@ const { MongoClient, ObjectId } = require('mongodb');
 const {
   getSummary, getPendingInvoices, getInvoices, getClients,
   getEstimatesSummary, getFamiliesSummary, getAccountCategories, clearCache,
-  sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw, getEntityRawByRef,
+  sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw, getInvoicePdfPath, getEntityRawByRef,
   getWorkOrdersLive, diagProveedores, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA, diagLineaImpuesto, diagImpuestos
 } = require('./stelorder');
 const { sendWhatsApp, sendEmail } = require('./notifications');
@@ -685,6 +685,14 @@ app.get('/api/inicio', requireAuth, async (req, res) => {
   res.json(out);
 });
 app.get('/api/invoices/pending',   requireAuth, async (req,res) => res.json(await getPendingInvoices()));
+// Enlace al PDF oficial de una factura (campo pdf-path de StelOrder, cacheado 7 días). Devuelve {url}.
+app.get('/api/invoices/:id/pdf',   requireAuth, async (req,res) => {
+  try {
+    const url = await getInvoicePdfPath(req.params.id);
+    if (!url) return res.status(404).json({ error: 'La factura no tiene PDF disponible en StelOrder.' });
+    res.json({ url });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 app.get('/api/invoices',           requireAuth, async (req,res) => res.json(await getInvoices()));
 app.get('/api/clients',            requireAuth, async (req,res) => { const {clients} = await getClients(); res.json(clients); });
 app.get('/api/estimates',          requireAuth, async (req,res) => res.json(await getEstimatesSummary()));
