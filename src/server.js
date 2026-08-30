@@ -372,6 +372,19 @@ async function bridgeOutboxHandler(req, res) {
 }
 app.get(['/api/bridge/outbox', '/bridge/outbox'], bridgeOutboxHandler);
 
+// PRUEBA de envío proactivo (owner): manda un WhatsApp por el canal activo a un
+// número que quizá NUNCA ha escrito al puente → verifica el caso del Map vacío
+// (fallback phoneToJid). POST {to:'+34...', body:'...'}.
+app.post('/api/whatsapp/test', requireAuth, express.json({ limit: '16kb' }), async (req, res) => {
+  try {
+    const to = String((req.body && req.body.to) || '').trim();
+    const body = String((req.body && req.body.body) || 'Prueba del bot de Corp Projects ✅').trim();
+    if (!to) return res.status(400).json({ error: 'Falta el número destino (to), ej. +34692270438' });
+    const ok = await enviarWhatsApp(to, body);
+    res.json({ ok, to, canal: require('./canalWhatsapp').canalActivo() });
+  } catch (e) { console.error('[Test envío]', e.message); res.status(500).json({ error: e.message }); }
+});
+
 // Descarga una imagen de Twilio y la devuelve como {media_type, data(base64)}
 async function descargarFoto(url, type) {
   try {
