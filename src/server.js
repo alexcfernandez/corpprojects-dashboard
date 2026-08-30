@@ -37,6 +37,39 @@ if (!JWT_SECRET) {
 
 app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: false }));
+
+// ── INSTRUMENTACIÓN DE TRÁFICO ────────────────────────────────────
+// Cuenta peticiones y BYTES de respuesta por ruta (agrupando ids) para localizar
+// de dónde sale el egress. Resumen a los logs cada 30 min + endpoint /api/diag/traffic.
+const _traffic = {};
+let _trafSince = null; // se fija en el primer request (Date.now() no disponible aquí en algunos entornos, pero server.js sí)
+function _trafKey(req) {
+  let p = String(req.path || req.originalUrl || '').split('?')[0];
+  p = p.replace(/\/[0-9a-fA-F]{16,}/g, '/:hash').replace(/\/\d+/g, '/:id')
+       .replace(/\/(FAC|PRT|PDT|INC|q_|w_)[A-Za-z0-9]+/g, '/:ref');
+  return (req.method || 'GET') + ' ' + p;
+}
+app.use((req, res, next) => {
+  if (!_trafSince) _trafSince = new Date();
+  res.on('finish', () => {
+    try {
+      const len = parseInt(res.getHeader('content-length') || 0) || 0;
+      const k = _trafKey(req);
+      const t = _traffic[k] || (_traffic[k] = { n: 0, bytes: 0 });
+      t.n++; t.bytes += len;
+    } catch (e) {}
+  });
+  next();
+});
+setInterval(() => {
+  const entries = Object.entries(_traffic);
+  if (!entries.length) return;
+  const totBytes = entries.reduce((s, [, t]) => s + t.bytes, 0);
+  const totReq = entries.reduce((s, [, t]) => s + t.n, 0);
+  const top = entries.sort((a, b) => b[1].bytes - a[1].bytes).slice(0, 12)
+    .map(([k, t]) => `${k} — ${t.n}x ${(t.bytes / 1048576).toFixed(1)}MB`);
+  console.log(`[Tráfico] desde ${_trafSince ? _trafSince.toISOString() : '?'}: ${totReq} req, ~${(totBytes / 1048576).toFixed(1)}MB salida\n         TOP:\n         ${top.join('\n         ')}`);
+}, 30 * 60 * 1000);
 app.use(cors({
   origin: ['https://dashboard.corpprojects.es','http://localhost:3000',
            'https://corpprojects-dashboard-production.up.railway.app']
@@ -793,6 +826,16 @@ app.get('/api/families/list',      requireAuth, async (req,res) => { const {list
 
 // Vaciar la caché de StelOrder bajo demanda (botón "Actualizar" del dashboard)
 app.post('/api/stelorder/refresh', requireAuth, (req,res) => { clearCache(); res.json({ ok:true, message:'Datos actualizados desde StelOrder' }); });
+// De dónde sale el egress: bytes de respuesta por ruta desde el arranque.
+app.get('/api/diag/traffic', requireAuth, (req, res) => {
+  const entries = Object.entries(_traffic).sort((a, b) => b[1].bytes - a[1].bytes);
+  const totBytes = entries.reduce((s, [, t]) => s + t.bytes, 0);
+  const totReq = entries.reduce((s, [, t]) => s + t.n, 0);
+  res.json({
+    desde: _trafSince, totalReq: totReq, totalMB: +(totBytes / 1048576).toFixed(2),
+    rutas: entries.slice(0, 40).map(([k, t]) => ({ ruta: k, req: t.n, MB: +(t.bytes / 1048576).toFixed(2) })),
+  });
+});
 app.get('/api/diag-proveedores',   requireAuth, async (req,res) => res.json(await diagProveedores()));
 app.get('/api/diag/stel-write',     requireAuth, async (req,res) => {
   try { res.json(await diagEscritura({ probePost: req.query.probe === '1' || req.query.probe === 'true' })); }
