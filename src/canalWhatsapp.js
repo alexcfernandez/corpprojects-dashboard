@@ -33,6 +33,7 @@ async function encolarSalida(to, body) {
   const db = await require('./db').getDB();
   const dest = String(to || '').replace(/^whatsapp:/i, ''); // el puente usa el número tal cual (+34…)
   await db.collection(OUTBOX).insertOne({ to: dest, body: String(body || ''), ts: new Date(), status: 'pending' });
+  console.log(`[Canal] respuesta encolada para el puente → to=${dest} | "${String(body || '').slice(0, 40)}"`);
   return true;
 }
 

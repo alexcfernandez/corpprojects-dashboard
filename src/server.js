@@ -333,6 +333,12 @@ app.post('/api/bridge/inbound', express.json({ limit: '256kb' }), (req, res) => 
   const from = String(p.from || '').trim();  // SENSIBLE: decide identidad (ver nota de seguridad arriba).
   const body = String(p.body != null ? p.body : (p.text || '')).trim();
   if (!from) return;
+  // Diagnóstico: ver en los logs que el mensaje del puente LLEGA y cómo se identifica.
+  try {
+    const ac = require('./acceso');
+    const rol = ac.esOwner(from) ? 'OWNER' : (ac.esTrabajador(from) ? 'trabajador' : 'DESCONOCIDO');
+    console.log(`[Bridge] inbound from=${from} → ${rol} | texto="${body.slice(0, 50)}"`);
+  } catch (e) {}
   // Incremento 1: SOLO texto (media por el puente = incremento 2). canal:'bridge'
   // hace que la RESPUESTA salga por el puente (mismo canal de entrada).
   procesarWhatsApp(from, body, { numMedia: 0, canal: 'bridge', chatId: p.chatId, isGroup: !!p.isGroup })
