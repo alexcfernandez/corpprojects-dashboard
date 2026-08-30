@@ -61,9 +61,33 @@ async function reclamarLoteOutbox(limit = 10) {
   return lote;
 }
 
-// Envía UN mensaje por el canal elegido. Si el puente (encolar) falla y
-// fallbackTwilio (default true), reintenta por Twilio para no quedar mudo.
-async function enviarUno(to, body, { canal, fallbackTwilio = true } = {}) {
+// Trocea un mensaje largo por debajo del límite de Twilio (1600). Corta preferentemente
+// por saltos de línea; si no hay uno cerca, corta en duro. Red de seguridad para los
+// caminos que no pasan por enviarWhatsApp (p.ej. notifications.js).
+function _trocear(body, max = 1500) {
+  const s = String(body || '');
+  if (s.length <= max) return [s];
+  const partes = [];
+  let resto = s;
+  while (resto.length > max) {
+    let corte = resto.lastIndexOf('\n', max);
+    if (corte < max * 0.5) corte = max; // sin salto de línea cerca → corte en duro
+    partes.push(resto.slice(0, corte));
+    resto = resto.slice(corte).replace(/^\n/, '');
+  }
+  if (resto) partes.push(resto);
+  return partes;
+}
+
+// ¿Es un destinatario plausible? Evita el spam de "whatsapp:undefined".
+function _destinoValido(to) {
+  const s = String(to || '').trim();
+  if (!s || /(^|:)(undefined|null)$/i.test(s)) return false;
+  return /\d{6,}/.test(s); // un teléfono real tiene al menos varios dígitos
+}
+
+// Despacha UN trozo por el canal elegido (con respaldo Twilio si el puente falla).
+async function _dispatch(to, body, { canal, fallbackTwilio = true } = {}) {
   const usar = canalActivo(canal);
   try {
     return usar === 'bridge' ? await encolarSalida(to, body) : await _twilioUno(to, body);
@@ -75,6 +99,24 @@ async function enviarUno(to, body, { canal, fallbackTwilio = true } = {}) {
     }
     return false;
   }
+}
+
+// Envía UN mensaje por el canal elegido. Choke point de TODOS los envíos:
+//  (1) descarta destinatarios inválidos (no más 'whatsapp:undefined'),
+//  (2) trocea si supera el límite de Twilio (cubre a quien no pasa por enviarWhatsApp).
+async function enviarUno(to, body, opts = {}) {
+  if (!_destinoValido(to)) {
+    console.warn('[Canal] destinatario inválido, no se envía:', JSON.stringify(to));
+    return false;
+  }
+  const partes = _trocear(body, 1500);
+  let ok = true;
+  for (let i = 0; i < partes.length; i++) {
+    const prefijo = partes.length > 1 ? `(${i + 1}/${partes.length}) ` : '';
+    const r = await _dispatch(to, prefijo + partes[i], opts);
+    ok = ok && r;
+  }
+  return ok;
 }
 
 // Valida el secreto del puente en tiempo constante y sin fuga de longitud.
