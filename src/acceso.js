@@ -68,7 +68,6 @@ const TRABAJADORES_WA = {
   'jose beliard':    '+34672876051',
   'abdellah souiri': '+34642548108',
   'david taladros':  '+34637060118',
-  'javi el largo':   '+34689936384',
   'huaca javier':    '+34672861528',
 };
 
@@ -84,6 +83,27 @@ function matchTrabajador(from) {
   } catch (e) { return null; }
 }
 function esTrabajador(from) { return !!matchTrabajador(from); }
+
+// Igual que esTrabajador PERO respeta la baja del dashboard: si a ese número lo
+// dieron de BAJA (users.active=false), pierde el acceso al bot aunque su número
+// siga en la lista. Así, dar de baja en el dashboard = fuera del bot, sin tocar
+// código. Async (mira la BD); si la BD falla, mantiene el acceso de los activos
+// para no dejar mudo a nadie por un fallo puntual.
+async function esTrabajadorActivo(from) {
+  if (!esTrabajador(from)) return false;               // no está autorizado por número → no
+  try {
+    const dig = ultimos9(normalizarNumero(from));
+    if (!dig) return false;
+    const db = await getDB();
+    const inactivos = await db.collection('users').find({ active: false }).toArray();
+    for (const u of inactivos) {
+      if (u && u.whatsapp && ultimos9(String(u.whatsapp)) === dig) return false; // dado de baja → fuera
+    }
+    return true;
+  } catch (e) {
+    return true; // BD caída: no bloqueamos a los trabajadores activos
+  }
+}
 
 // ── Identidad completa (para NO-owner): número → trabajador/contacto/StelOrder → desconocido ──
 async function resolverIdentidad(from) {
@@ -307,7 +327,7 @@ module.exports = {
   // identidad
   esOwner, resolverIdentidad, normalizarNumero, ultimos9,
   // trabajadores (solo presencia)
-  esTrabajador, matchTrabajador, TRABAJADORES_WA,
+  esTrabajador, esTrabajadorActivo, matchTrabajador, TRABAJADORES_WA,
   // clasificación
   clasificarAccion,
   // PIN + confirmación de dinero

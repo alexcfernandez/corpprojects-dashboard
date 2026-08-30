@@ -434,7 +434,7 @@ async function procesarWhatsApp(from, body, media = {}) {
   // Webhook abierto SOLO al owner y a los 5 trabajadores autorizados (por número).
   // La capa de acceso decide luego el rol; aquí solo filtramos quién puede entrar.
   const acceso = require('./acceso');
-  if (!(acceso.esOwner(from) || acceso.esTrabajador(from))) {
+  if (!(acceso.esOwner(from) || await acceso.esTrabajadorActivo(from))) {
     return responder('🔒 Este asistente es privado.');
   }
 
