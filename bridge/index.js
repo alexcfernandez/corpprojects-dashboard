@@ -35,6 +35,24 @@ function phoneToJid(to) {
   const n = String(to || '').replace(/\D/g, '');
   return `${n}@s.whatsapp.net`;
 }
+// --- LID: WhatsApp puede entregar un JID @lid en vez del telefono real ---
+const chatPorTelefono = new Map(); // digitos del telefono -> JID original del chat
+function soloDigitos(x) { return String(x || '').replace(/\D/g, ''); }
+async function jidRealDelMensaje(sock, m) {
+  const k = (m && m.key) || {};
+  for (const c of [k.remoteJid, k.remoteJidAlt, k.senderPn, k.participantAlt]) {
+    if (c && String(c).endsWith('@s.whatsapp.net')) return c;
+  }
+  try {
+    const lm = sock && sock.signalRepository && sock.signalRepository.lidMapping;
+    if (lm && typeof lm.getPNForLID === 'function' && k.remoteJid) {
+      const pn = await lm.getPNForLID(k.remoteJid);
+      if (pn && String(pn).endsWith('@s.whatsapp.net')) return pn;
+    }
+  } catch (e) {}
+  return k.remoteJid || null; // si nada resuelve, dejamos el LID (no rompemos)
+}
+
 function extractText(message) {
   if (!message) return '';
   return message.conversation
@@ -60,8 +78,9 @@ async function bucleSalida(sock) {
       const mensajes = (data && data.messages) || [];
       for (const m of mensajes) {
         try {
-          await sock.sendMessage(phoneToJid(m.to), { text: String(m.body || '') });
-          console.log('[Bridge] enviado a', m.to);
+          const destino = chatPorTelefono.get(soloDigitos(m.to)) || phoneToJid(m.to);
+          await sock.sendMessage(destino, { text: String(m.body || '') });
+          console.log('[Bridge] enviado a', m.to, '->', destino);
         } catch (e) { console.error('[Bridge] fallo enviando a', m.to, ':', e.message); }
       }
     } catch (e) {
@@ -107,7 +126,9 @@ async function start() {
         if (!m.message || (m.key && m.key.fromMe)) continue;
         const jid = m.key && m.key.remoteJid;
         if (String(jid || '').endsWith('@g.us')) continue; // grupos = incremento 2
-        const from = jidToPhone(jid);
+        const jidReal = await jidRealDelMensaje(sock, m);
+        const from = jidToPhone(jidReal);
+        if (from) chatPorTelefono.set(soloDigitos(from), jid);
         const body = extractText(m.message).trim();
         if (from && body) await reenviarEntrante(from, body, { chatId: jid, isGroup: false });
       } catch (e) { console.error('[Bridge] upsert error:', e.message); }

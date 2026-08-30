@@ -16,3 +16,13 @@ npm-debug.log*
 # Sistema
 .DS_Store
 Thumbs.db
+
+# Sesion de WhatsApp (Baileys) - NUNCA subir credenciales de sesion
+auth/
+bridge/auth/
+data/auth/
+creds.json
+
+# Copias de seguridad locales del VPS
+*.bak
+*.bak.*
