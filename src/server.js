@@ -342,13 +342,29 @@ app.post('/api/bridge/inbound', express.json({ limit: '256kb' }), (req, res) => 
 // SALIDA del puente (pull): el servicio Baileys sondea aquí y recibe un lote de
 // mensajes pendientes, ya marcados 'sent' de forma atómica. Misma barrera: el
 // token (X-Bridge-Token) es la ÚNICA autenticación; sin BRIDGE_TOKEN → 401.
-app.get('/api/bridge/outbox', async (req, res) => {
+// Buzón de salida del puente WhatsApp con LONG-POLLING: en vez de responder vacío
+// al instante (lo que provocaba que el puente machacara con miles de peticiones/min
+// y disparara el egress), la petición ESPERA hasta ~25s a que haya mensajes,
+// comprobando cada 2s. Así el puente hace ~2-3 peticiones/min en vez de miles.
+// Se cubren las dos rutas (con y sin /api) por si hay una instancia vieja mal configurada.
+async function bridgeOutboxHandler(req, res) {
   const canalWa = require('./canalWhatsapp');
   if (!canalWa.tokenBridgeValido(req.get('X-Bridge-Token'))) return res.sendStatus(401);
+  const limit = Number(req.query.limit) || 10;
+  let closed = false;
+  req.on('close', () => { closed = true; });
   try {
-    res.json({ messages: await canalWa.reclamarLoteOutbox(Number(req.query.limit) || 10) });
-  } catch (e) { console.error('[Bridge] outbox:', e.message); res.status(500).json({ error: e.message }); }
-});
+    const deadline = Date.now() + 25000;
+    let messages = await canalWa.reclamarLoteOutbox(limit);
+    while ((!messages || !messages.length) && Date.now() < deadline && !closed) {
+      await new Promise(r => setTimeout(r, 2000));
+      if (closed) return;
+      messages = await canalWa.reclamarLoteOutbox(limit);
+    }
+    if (!closed) res.json({ messages: messages || [] });
+  } catch (e) { console.error('[Bridge] outbox:', e.message); if (!closed) res.status(500).json({ error: e.message }); }
+}
+app.get(['/api/bridge/outbox', '/bridge/outbox'], bridgeOutboxHandler);
 
 // Descarga una imagen de Twilio y la devuelve como {media_type, data(base64)}
 async function descargarFoto(url, type) {
