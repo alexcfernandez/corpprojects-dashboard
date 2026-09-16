@@ -3096,6 +3096,46 @@ app.get('/presupuestos', (req, res) => res.sendFile(path.join(__dirname, '../pub
 app.get('/p/:token', (req, res) => res.sendFile(path.join(__dirname, '../public/p.html')));
 app.get('/amidaments', (req, res) => res.sendFile(path.join(__dirname, '../public/amidaments.html')));
 app.get('/competencia', (req, res) => res.sendFile(path.join(__dirname, '../public/competencia.html')));
+
+// ── PDF de factura para StelOrder ─────────────────────────────────
+// StelOrder nombra el adjunto con el ULTIMO TRAMO de la URL y su API no
+// admite ningun campo de nombre. Si le pasamos la URL de Drive (.../uc?...)
+// el adjunto se llama "uc", sin extension, y no se previsualiza.
+// Esta ruta hace de puente: la URL acaba en un nombre real .pdf y el
+// contenido se sirve desde Drive. PUBLICA a proposito (la llama StelOrder,
+// no un usuario) → sin requireAuth.
+//   GET /f/<driveFileId>/<nombre>.pdf
+app.get('/f/:driveId/:nombre', async (req, res) => {
+  try {
+    const { driveId, nombre } = req.params;
+    if (!/^[A-Za-z0-9_-]{10,100}$/.test(driveId)) return res.status(400).send('id no valido');
+    if (!/\.pdf$/i.test(nombre))                  return res.status(400).send('el nombre debe acabar en .pdf');
+
+    const url = 'https://drive.google.com/uc?export=download&id=' + encodeURIComponent(driveId);
+    const r = await axios.get(url, {
+      responseType: 'arraybuffer',
+      timeout: 20000,
+      maxRedirects: 5,
+      validateStatus: s => s < 400,
+    });
+    const buf = Buffer.from(r.data);
+
+    // Drive devuelve HTML (no PDF) si el fichero no es publico o pide confirmacion.
+    if (buf.slice(0, 5).toString('latin1') !== '%PDF-') {
+      return res.status(502).send('el fichero no es un PDF accesible');
+    }
+
+    res.set('Content-Type', 'application/pdf');
+    res.set('Content-Length', String(buf.length));
+    res.set('Content-Disposition', 'inline; filename="' + nombre.replace(/"/g, '') + '"');
+    res.set('Cache-Control', 'private, max-age=300');
+    return res.send(buf);
+  } catch (err) {
+    console.error('[/f] error sirviendo PDF:', err.message);
+    return res.status(502).send('no se pudo obtener el PDF');
+  }
+});
+
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
 
 app.listen(PORT, () => {
