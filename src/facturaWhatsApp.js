@@ -39,20 +39,24 @@ async function fotosAPdf(imagenes) {
 //   obraRef: texto de la obra (p.ej. "Calle Mayor 12 - Fachada") o null.
 //   origen : 'whatsapp' | 'app-oficina'.
 // Devuelve {ok, reply}.
-async function reenviarFacturaMail({ attachments, obraRef = null, obraId = null, origen = 'whatsapp', from = null, nota = null }) {
+async function reenviarFacturaMail({ attachments, obraRef = null, obraId = null, origen = 'whatsapp', from = null, nota = null, categoria = null }) {
   const to = process.env.INVOICE_INBOX_EMAIL || 'corpprojectsholding@gmail.com';
   if (!attachments || !attachments.length) {
     return { ok: false, reply: 'No he podido leer el adjunto de la factura. Inténtalo de nuevo.' };
   }
 
   const obra = (obraRef && String(obraRef).trim()) ? String(obraRef).trim() : null;
+  // Gasto general: compra que no pertenece a ninguna obra (herramientas, gestoria...).
+  const gasto = (!obra && categoria && String(categoria).trim()) ? String(categoria).trim() : null;
   const subject = obra
     ? `Factura — obra: ${obra}`
-    : (origen === 'whatsapp' ? 'Factura (WhatsApp)' : 'Factura (oficina)');
+    : (gasto ? `Factura — gasto: ${gasto}`
+             : (origen === 'whatsapp' ? 'Factura (WhatsApp)' : 'Factura (oficina)'));
 
   const partesTexto = [
     `Factura reenviada (${origen}).`,
     obra ? `Obra: ${obra}.` : null,
+    gasto ? `Gasto: ${gasto}.` : null,
     (nota && String(nota).trim()) ? `Nota: ${String(nota).trim()}.` : null,
     `${attachments.length} adjunto(s).`,
     from ? `Origen: ${from}.` : null,
@@ -69,6 +73,7 @@ async function reenviarFacturaMail({ attachments, obraRef = null, obraId = null,
     await db.collection('facturasObra').insertOne({
       obraId:    obraId || null,
       obraRef:   obra,
+      categoria: gasto,
       origen,
       from:      from || null,
       nFiles:    attachments.length,
@@ -82,7 +87,9 @@ async function reenviarFacturaMail({ attachments, obraRef = null, obraId = null,
   const reply = ok
     ? (obra
         ? `📎 Recibida — obra: ${obra}. La subo a StelOrder.`
-        : '📎 Recibida — la mando a StelOrder. En un momento estará subida.')
+        : (gasto
+            ? `📎 Recibida — gasto general: ${gasto}. La subo a StelOrder.`
+            : '📎 Recibida — la mando a StelOrder. En un momento estará subida.'))
     : 'No he podido reenviarla ahora, inténtalo de nuevo.';
   return { ok: !!ok, reply };
 }

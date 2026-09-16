@@ -27,6 +27,15 @@
     return cargando;
   }
 
+  // Anade al vuelo un cliente recien creado en StelOrder, para que el buscador
+  // lo reconozca sin recargar la pagina.
+  window.addClienteCache = function (nombre) {
+    const n = String(nombre || '').trim();
+    if (!n) return;
+    if (!cache) cache = [];
+    if (!cache.some(c => norm(c) === norm(n))) cache.push(n);
+  };
+
   window.initClienteAutocomplete = function (input, token) {
     if (!input || input._acReady) return; input._acReady = true;
     const wrap = document.createElement('div'); wrap.className = 'ac-wrap';

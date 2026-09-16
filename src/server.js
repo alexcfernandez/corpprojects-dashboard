@@ -1857,6 +1857,24 @@ app.get('/api/facturas/obras', requireAuthOficina, async (req, res) => {
 
 // Subida de foto(s)/PDF de factura, etiquetada por obra. Reenvía al buzón de n8n
 // por el mismo camino que WhatsApp (→ StelOrder) y registra en `facturasObra`.
+// Alta de cliente en StelOrder desde la app de oficina (mismo criterio que usa n8n
+// con los proveedores: si ya existe por NIF o por nombre exacto, se REUTILIZA).
+app.post('/api/facturas/cliente-nuevo', requireAuthOficina, async (req, res) => {
+  try {
+    const nombre = String((req.body || {}).nombre || '').trim();
+    const nif    = String((req.body || {}).nif || '').trim() || null;
+    if (!nombre) return res.status(400).json({ error: 'Falta el nombre del cliente.' });
+    const r = await require('./stelorder').crearClienteStel({ nombre, nif });
+    if (r && r.duplicado && r.existente) {
+      return res.json({ ok: true, reutilizado: true, motivo: r.motivo, id: r.existente.id, nombre: r.existente.nombre });
+    }
+    res.json(r);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Categorias de gasto (para el selector de "sin obra" al subir una factura).
+app.get('/api/facturas/categorias', requireAuthOficina, (req, res) => res.json(obras.CATEGORIAS_GASTO));
+
 app.post('/api/facturas/subir', requireAuthOficina, uploadFactura.any(), async (req, res) => {
   try {
     const files = req.files || [];
@@ -1895,10 +1913,12 @@ app.post('/api/facturas/subir', requireAuthOficina, uploadFactura.any(), async (
     const obraRef = String(req.body.obraRef || '').trim() || null;
     const obraId  = String(req.body.obraId || '').trim() || null;
     const nota    = String(req.body.nota || '').trim() || null;
+    const categoria = String(req.body.categoria || '').trim().toLowerCase() || null;
     const quien   = req.oficina?.workerName || (req.oficina?.admin ? 'admin' : 'oficina');
 
     const r = await facturaWA.reenviarFacturaMail({
       attachments, obraRef, obraId, origen: 'app-oficina', from: quien, nota,
+      categoria: (categoria && obras.CATEGORIAS_GASTO.includes(categoria)) ? categoria : null,
     });
     if (!r.ok) return res.status(502).json(r);
     res.json(r);

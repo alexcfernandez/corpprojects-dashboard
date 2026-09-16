@@ -32,6 +32,13 @@ function extraerObraMarcador(text) {
   const m = String(text || '').match(/obra:\s*([^\]\n|·]+)/i);
   return m ? m[1].trim() : '';
 }
+// Marcador "[gasto: {categoria}]" que n8n pone en el titulo cuando la factura se
+// subio SIN obra: es un gasto general de la empresa (herramientas, gestoria...).
+function extraerGastoMarcador(text) {
+  const m = String(text || '').match(/gasto:\s*([^\]\n|·]+)/i);
+  const cat = m ? m[1].trim().toLowerCase() : '';
+  return CATEGORIAS_GASTO.includes(cat) ? cat : '';
+}
 async function getAsignacionesFacturaMap(dbArg) {
   const database = dbArg || await getDB();
   const arr = await database.collection('facturaObraAsignada').find({}).toArray();
@@ -67,8 +74,11 @@ function resolverFacturaObra(f, asignMap, reglaMap) {
   if (a) return a;
   const r = _normClasif(reglaMap && reglaMap.get(String(f.supplierId || '')), 'regla');
   if (r) return r;
-  const marca = extraerObraMarcador(`${f.title || ''} ${f.extraReference || ''}`);
+  const texto = `${f.title || ''} ${f.extraReference || ''}`;
+  const marca = extraerObraMarcador(texto);
   if (marca) return { tipo: 'obra', fuente: 'n8n', obraId: null, obraRef: marca, categoria: null };
+  const marcaGasto = extraerGastoMarcador(texto);
+  if (marcaGasto) return { tipo: 'general', fuente: 'n8n', obraId: null, obraRef: '', categoria: marcaGasto };
   return null;
 }
 function _validarClasif({ obraId, obraRef, categoria }) {
@@ -529,7 +539,7 @@ module.exports = {
   createObra, getObras, getObra, updateObra, deleteObra, addMaterial, deleteMaterial,
   addCertificacion, setCertificacion, deleteCertificacion, resumenCertificaciones,
   getRentabilidad, getResumenGeneral,
-  extraerObraMarcador, getAsignacionesFacturaMap, getReglasMap, resolverFacturaObra,
+  extraerObraMarcador, extraerGastoMarcador, getAsignacionesFacturaMap, getReglasMap, resolverFacturaObra,
   clasificarFactura, desclasificarFactura, repartirFactura, quitarReparto,
   setReglaProveedor, deleteReglaProveedor, getReglas,
 };

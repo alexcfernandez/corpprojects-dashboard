@@ -134,8 +134,20 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <div id="obra-nueva" style="display:none;margin-top:8px">
         <input type="text" id="obra-ref" placeholder="Referencia (ej. Calle Comerç 76 - Fachada)" style="margin-bottom:8px">
         <input type="text" id="obra-cliente" placeholder="Cliente (busca en StelOrder)" autocomplete="off">
+        <label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:14px;cursor:pointer">
+          <input type="checkbox" id="cliente-nuevo" onchange="onClienteNuevo()"> El cliente no está en StelOrder — darlo de alta
+        </label>
+        <input type="text" id="cliente-nif" placeholder="NIF/CIF del cliente (opcional)" style="margin-top:8px;display:none">
       </div>
       <div class="hint">La factura se etiqueta por obra para la rentabilidad real. Para una obra nueva, elige el cliente del buscador de StelOrder.</div>
+    </div>
+
+    <div class="field" id="gasto-field" style="display:none">
+      <label>Categoria del gasto</label>
+      <select id="gasto-cat">
+        <option value="">— Elige la categoria —</option>
+      </select>
+      <div class="hint">Compras que no son de una obra concreta (herramientas, gestoria, seguros…). Cuentan como gasto general de la empresa.</div>
     </div>
 
     <div class="field">
@@ -281,23 +293,39 @@ async function cargarObras(){
       const label=[o.reference,o.clientName].filter(Boolean).join(' — ')||'(sin nombre)';
       return `<option value="${o.id}" data-ref="${label.replace(/"/g,'&quot;')}">${label}</option>`;
     }).join('');
-    sel.innerHTML='<option value="">— Elige la obra —</option>'+opts+'<option value="__nueva__">➕ Nueva obra…</option>';
+    sel.innerHTML='<option value="">— Elige la obra —</option>'+opts+'<option value="__nueva__">➕ Nueva obra…</option>'+'<option value="__sin__">🏢 Sin obra — gasto general</option>';
   }catch(e){
     const sel=document.getElementById('obra-select');
-    sel.innerHTML='<option value="">— Elige la obra —</option><option value="__nueva__">➕ Nueva obra…</option>';
+    sel.innerHTML='<option value="">— Elige la obra —</option><option value="__nueva__">➕ Nueva obra…</option><option value="__sin__">🏢 Sin obra — gasto general</option>';
   }
   // Autocompletado de cliente de StelOrder para la obra nueva.
   if(window.initClienteAutocomplete) initClienteAutocomplete(document.getElementById('obra-cliente'), workerToken);
+  cargarCategorias();
+}
+async function cargarCategorias(){
+  const sel=document.getElementById('gasto-cat');
+  let cats=['material','combustible','herramientas','subcontrata','gestoria','seguros','suministros','alquiler','otros'];
+  try{
+    const r=await fetch('/api/facturas/categorias',{headers:{'Authorization':`Bearer ${workerToken}`}});
+    if(r.ok){ const d=await r.json(); if(Array.isArray(d)&&d.length) cats=d; }
+  }catch(e){ /* fallback a la lista de arriba */ }
+  sel.innerHTML='<option value="">— Elige la categoria —</option>'+cats.map(c=>`<option value="${c}">${c}</option>`).join('');
+}
+function onClienteNuevo(){
+  const chk=document.getElementById('cliente-nuevo').checked;
+  document.getElementById('cliente-nif').style.display = chk ? 'block' : 'none';
 }
 function onObraChange(){
   const sel=document.getElementById('obra-select');
   const nueva=document.getElementById('obra-nueva');
   const es = sel.value==='__nueva__';
   nueva.style.display = es ? 'block' : 'none';
+  document.getElementById('gasto-field').style.display = sel.value==='__sin__' ? 'block' : 'none';
   if(es) document.getElementById('obra-ref').focus();
 }
 function obraActual(){
   const sel=document.getElementById('obra-select');
+  if(sel.value==='__sin__'){ return { obraId:'', obraRef:'', sinObra:true }; }
   if(sel.value==='__nueva__'){
     const ref=document.getElementById('obra-ref').value.trim();
     const cli=document.getElementById('obra-cliente').value.trim();
@@ -374,18 +402,33 @@ async function enviar(){
   const obra=obraActual();
   const esNueva=document.getElementById('obra-select').value==='__nueva__';
   let cliOk=null;
+  const crearCliente = esNueva && document.getElementById('cliente-nuevo').checked;
   if(esNueva){
-    if(!obra.nueva || !obra.nueva.ref || !obra.nueva.cli){ showMsg('form-msg','⚠️ Para la obra nueva: referencia y cliente (de StelOrder)','warn'); return; }
-    cliOk=clienteStelValido(obra.nueva.cli);
-    if(!cliOk){ showMsg('form-msg','⚠️ Elige el cliente de la lista de StelOrder (no coincide con ninguno)','warn'); return; }
+    if(!obra.nueva || !obra.nueva.ref || !obra.nueva.cli){ showMsg('form-msg','⚠️ Para la obra nueva: referencia y cliente','warn'); return; }
+    if(crearCliente){ cliOk=obra.nueva.cli; }
+    else {
+      cliOk=clienteStelValido(obra.nueva.cli);
+      if(!cliOk){ showMsg('form-msg','⚠️ Ese cliente no está en StelOrder. Eligelo de la lista o marca \'darlo de alta\'','warn'); return; }
+    }
     obra.nueva.cli=cliOk; obra.obraRef=[obra.nueva.ref,cliOk].filter(Boolean).join(' — ');
   }
-  if(!obra.obraRef){ showMsg('form-msg','⚠️ Elige la obra','warn'); return; }
+  const categoria = obra.sinObra ? document.getElementById('gasto-cat').value : '';
+  if(obra.sinObra){
+    if(!categoria){ showMsg('form-msg','⚠️ Elige la categoria del gasto','warn'); return; }
+  } else if(!obra.obraRef){ showMsg('form-msg','⚠️ Elige la obra (o marca \'Sin obra\')','warn'); return; }
 
   const btn=document.getElementById('send-btn');
   btn.disabled=true; btn.innerHTML='<span class="spinner"></span>Subiendo…';
 
   try{
+    // Cliente nuevo en StelOrder (si ya existe por NIF o nombre, se reutiliza).
+    if(crearCliente){
+      const rc=await fetch('/api/facturas/cliente-nuevo',{method:'POST',headers:{'Authorization':`Bearer ${workerToken}`,'Content-Type':'application/json'},body:JSON.stringify({nombre:obra.nueva.cli,nif:document.getElementById('cliente-nif').value.trim()})});
+      const dc=await rc.json().catch(()=>({}));
+      if(!rc.ok || (dc.ok===false && !dc.nombre)) throw new Error(dc.error||'No se pudo crear el cliente en StelOrder');
+      if(dc.nombre){ obra.nueva.cli=dc.nombre; obra.obraRef=[obra.nueva.ref,dc.nombre].filter(Boolean).join(' — '); }
+      if(window.addClienteCache) addClienteCache(obra.nueva.cli);
+    }
     // Si es obra nueva, la creamos (queda como obra real para la rentabilidad).
     if(esNueva){
       try{
@@ -401,6 +444,7 @@ async function enviar(){
     });
     fd.append('obraId', obra.obraId);
     fd.append('obraRef', obra.obraRef);
+    fd.append('categoria', categoria);
     fd.append('nota', document.getElementById('nota').value.trim());
 
     const r=await fetch('/api/facturas/subir',{
@@ -412,7 +456,7 @@ async function enviar(){
     if(!r.ok || !data.ok) throw new Error(data.reply || data.error || 'No se pudo subir');
 
     document.getElementById('done-title').textContent='Recibida';
-    document.getElementById('done-sub').textContent = data.reply || `Obra: ${obra.obraRef}. La subo a StelOrder.`;
+    document.getElementById('done-sub').textContent = data.reply || (obra.sinObra ? `Gasto general: ${categoria}. La subo a StelOrder.` : `Obra: ${obra.obraRef}. La subo a StelOrder.`);
     showPage('done');
   }catch(err){
     showMsg('form-msg','❌ '+err.message,'error');
@@ -427,7 +471,12 @@ function nuevaFactura(){
   document.getElementById('obra-select').value='';
   document.getElementById('obra-ref').value='';
   document.getElementById('obra-cliente').value='';
+  document.getElementById('cliente-nuevo').checked=false;
+  document.getElementById('cliente-nif').value='';
+  document.getElementById('cliente-nif').style.display='none';
   document.getElementById('obra-nueva').style.display='none';
+  document.getElementById('gasto-cat').value='';
+  document.getElementById('gasto-field').style.display='none';
   document.getElementById('nota').value='';
   hideMsg('form-msg');
   showPage('form');

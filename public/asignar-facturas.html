@@ -184,7 +184,11 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
       <div class="m-nueva" id="m-nueva">
         <input type="text" id="m-ref" placeholder="Referencia (ej. Calle Comerç 76 - Fachada)">
         <input type="text" id="m-cliente" placeholder="Cliente (busca en StelOrder)" autocomplete="off">
-        <div class="hint">Elige el cliente del buscador de StelOrder para no duplicar.</div>
+        <label style="display:flex;gap:8px;align-items:center;margin-top:6px;font-size:14px;cursor:pointer">
+          <input type="checkbox" id="m-cli-nuevo" onchange="document.getElementById('m-cli-nif').style.display=this.checked?'block':'none'"> El cliente no está en StelOrder — darlo de alta
+        </label>
+        <input type="text" id="m-cli-nif" placeholder="NIF/CIF del cliente (opcional)" style="display:none;margin-top:6px">
+        <div class="hint">Elige el cliente del buscador de StelOrder para no duplicar; si no existe, marca la casilla y se crea.</div>
       </div>
     </div>
 
@@ -419,8 +423,15 @@ async function guardarModal(){
       const ref=document.getElementById('m-ref').value.trim();
       const cli=document.getElementById('m-cliente').value.trim();
       if(!ref||!cli)throw new Error('Para la obra nueva: referencia y cliente (de StelOrder)');
-      const cliOk=clienteStelValido(cli);
-      if(!cliOk)throw new Error('Elige el cliente de la lista de StelOrder (no coincide con ninguno)');
+      let cliOk=clienteStelValido(cli);
+      if(!cliOk){
+        if(!document.getElementById('m-cli-nuevo').checked)
+          throw new Error('Ese cliente no esta en StelOrder. Eligelo de la lista o marca \'darlo de alta\'');
+        const dc=await post('/api/facturas/cliente-nuevo',{nombre:cli,nif:document.getElementById('m-cli-nif').value.trim()});
+        cliOk=(dc && dc.nombre) ? dc.nombre : cli;
+        clientesStel.push(cliOk);
+        if(window.addClienteCache) addClienteCache(cliOk);
+      }
       const nueva=await post('/api/facturas/obra-nueva',{reference:ref,clientName:cliOk});
       obraId=nueva.id;obraRef=[nueva.reference,nueva.clientName].filter(Boolean).join(' — ');
       obrasCache.push({id:nueva.id,reference:nueva.reference,clientName:nueva.clientName});
