@@ -1306,6 +1306,61 @@ app.get('/api/fichaje/dia', requireAuth, async (req, res) => {
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Fichaje legal · Fase 2: correcciones y alertas ────────────────
+// TRABAJADOR: "me olvidé de fichar" → corrección PENDIENTE (no cuenta hasta aprobarse).
+app.post('/api/fichaje/correccion', express.json({ limit: '16kb' }), async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return;
+    const b = req.body || {};
+    const r = await require('./fichajeMarcas').pedirCorreccion(w.workerId, w.workerName, b);
+    require('./fichajeAvisos').avisarCorreccionNueva({ userName: w.workerName, fecha: b.fecha, hora: b.hora, tipo: b.tipo, motivo: b.motivo }); // sin esperar
+    res.json(r); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/fichaje/correcciones/mias', async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return;
+    res.json(await require('./fichajeMarcas').misCorrecciones(w.workerId)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/fichaje/mis-marcas', async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return;
+    res.json(await require('./fichajeMarcas').misMarcasDia(w.workerId, req.query.fecha)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+// OFICINA (solo Dueño/Oficina): ver alertas, revisar correcciones y corregir directamente.
+function _soloOficinaFichaje(req, res) {
+  const rol = users.normalizeRole((req.user && req.user.role) || '');
+  if (!['owner', 'oficina'].includes(rol)) { res.status(403).json({ error: 'Solo Dueño u Oficina pueden gestionar fichajes' }); return null; }
+  return (req.user && req.user.name) || 'oficina';
+}
+app.get('/api/fichaje/alertas', requireAuth, async (req, res) => {
+  try { if (!_soloOficinaFichaje(req, res)) return;
+    res.json(await require('./fichajeMarcas').alertas(req.query.fecha)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/fichaje/correcciones', requireAuth, async (req, res) => {
+  try { if (!_soloOficinaFichaje(req, res)) return;
+    res.json(await require('./fichajeMarcas').getCorrecciones({ estado: req.query.estado || 'pendiente' })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/fichaje/correcciones/:id/resolver', requireAuth, express.json({ limit: '16kb' }), async (req, res) => {
+  try { const por = _soloOficinaFichaje(req, res); if (!por) return;
+    const b = req.body || {};
+    res.json(await require('./fichajeMarcas').resolverCorreccion(req.params.id, { aprobar: !!b.aprobar, motivo: b.motivo }, por)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/fichaje/marca-admin', requireAuth, express.json({ limit: '16kb' }), async (req, res) => {
+  try { const por = _soloOficinaFichaje(req, res); if (!por) return;
+    res.json(await require('./fichajeMarcas').marcaAdmin(req.body || {}, por)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+// Prueba de los avisos sin enviar nada (?tipo=salidas|oficina).
+app.get('/api/fichaje/avisos-prueba', requireAuth, async (req, res) => {
+  try { if (!_soloOficinaFichaje(req, res)) return;
+    const fa = require('./fichajeAvisos');
+    res.json(req.query.tipo === 'salidas' ? await fa.avisarSalidasOlvidadas({ dryRun: true }) : await fa.resumenOficina({ dryRun: true, forzarHora: req.query.hora })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── MAPA GPS ── puntos del día = sellos de los partes + entradas/salidas de
 // fichaje que tengan ubicación. Datos sensibles (control de personal): solo
 // Dueño/Oficina.

@@ -41,6 +41,32 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .tramo .tt{flex:1}.tramo .td{color:var(--text2);white-space:nowrap}
 .tramo .abierto{color:var(--blue)}
 .tramo .pin{text-decoration:none;font-size:12px;opacity:.85}.tramo .pin:hover{opacity:1}
+/* Fase 2: alertas, correcciones, registro legal */
+.panel{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:12px 15px;margin:0 0 10px}
+.panel.warn{border-color:rgba(245,158,11,.45)}.panel.pend{border-color:rgba(77,156,248,.5)}
+.panel h4{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:8px;font-weight:600}
+.al{font-size:13.5px;padding:3px 0;line-height:1.45}.al b{font-weight:600}
+.al a{color:var(--blue);cursor:pointer;text-decoration:underline}
+.cx{border-top:1px solid var(--border);padding:10px 0}.cx:first-of-type{border-top:none;padding-top:2px}
+.cx .q{font-size:14px;font-variant-numeric:tabular-nums}.cx .m{font-size:12.5px;color:var(--text2);margin:3px 0 8px}
+.cx .bt{display:flex;gap:8px}
+.b1,.b2,.b3{border-radius:9px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;border:1px solid var(--border2);background:var(--bg3);color:var(--text)}
+.b1{background:var(--green);border-color:var(--green);color:#062015}.b3{color:var(--red);border-color:rgba(240,82,82,.5)}
+.b1:disabled,.b3:disabled{opacity:.5}
+.reg{margin-top:8px;padding-top:8px;border-top:1px dashed var(--border2)}
+.reg .rt{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:4px}
+.rg{display:flex;gap:8px;align-items:baseline;font-size:12.5px;padding:3px 0;font-variant-numeric:tabular-nums;color:var(--text2)}
+.rg.off{opacity:.55;text-decoration:line-through}
+.rg .o{font-size:10.5px;padding:1px 7px;border-radius:100px;background:var(--bg2);border:1px solid var(--border);text-decoration:none;display:inline-block}
+.rg .mo{color:var(--text3);font-size:11.5px;flex:1;min-width:0}
+.mini{margin-top:8px;background:none;border:1px dashed var(--border2);border-radius:9px;color:var(--text2);padding:7px 12px;font-size:12.5px;cursor:pointer;font-family:inherit}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+.ov.on{display:flex}
+.ov-box{background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:20px;width:100%;max-width:420px;max-height:92vh;overflow:auto}
+.ov-t{font-size:16px;font-weight:700}.ov-s{font-size:12.5px;color:var(--text3);margin:4px 0 6px}
+.fl{display:block;font-size:12px;color:var(--text3);margin:12px 0 5px}
+.fi{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:15px;font-family:inherit}
+.ov-btns{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
 </style>
 </head>
 <body>
@@ -57,12 +83,31 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
     <button onclick="mover(1)" id="next-btn">›</button>
     <button class="hoy" onclick="hoy()">Hoy</button>
   </div>
+  <div id="correcciones"></div>
+  <div id="alertas"></div>
   <div class="kpis">
     <div class="kpi"><div class="n" id="k-fichados">–</div><div class="l">Fichados</div></div>
     <div class="kpi"><div class="n" id="k-nofichados">–</div><div class="l">Sin fichar</div></div>
     <div class="kpi"><div class="n" id="k-horas">–</div><div class="l">Horas total</div></div>
   </div>
   <div id="lista"></div>
+</div>
+
+<!-- Oficina añade o corrige una marca (queda firmada con su nombre y motivo) -->
+<div class="ov" id="ov-marca" onclick="if(event.target===this)cerrarMarca()">
+  <div class="ov-box">
+    <div class="ov-t" id="mk-titulo">Añadir o corregir marca</div>
+    <div class="ov-s">No se borra nada: queda una marca nueva con tu nombre y el motivo.</div>
+    <label class="fl" for="mk-tipo">Qué apuntar</label>
+    <select id="mk-tipo" class="fi"><option value="entrada">Empezó la jornada</option><option value="pausa_inicio">Empezó una pausa</option><option value="pausa_fin">Volvió de la pausa</option><option value="salida">Terminó la jornada</option></select>
+    <label class="fl" for="mk-hora">Hora real</label>
+    <input type="time" id="mk-hora" class="fi">
+    <label class="fl" for="mk-corrige">¿Faltaba, o sustituye a una marca?</label>
+    <select id="mk-corrige" class="fi"></select>
+    <label class="fl" for="mk-motivo">Motivo (obligatorio)</label>
+    <textarea id="mk-motivo" class="fi" rows="2" maxlength="300" placeholder="Ej.: se le olvidó salir; confirmado por el encargado"></textarea>
+    <div class="ov-btns"><button class="b2" onclick="cerrarMarca()">Cancelar</button><button class="b1" id="mk-btn" onclick="guardarMarca()">Guardar marca</button></div>
+  </div>
 </div>
 
 <script>
@@ -96,6 +141,73 @@ async function cargar(){
     const fichajes=await rf.json(); const workers=(await rw.json())||[];
     render(fichajes,workers);
   }catch(e){el.innerHTML='<div class="empty" style="color:var(--red)">'+esc(e.message)+'</div>';}
+  cargarOficina();
+}
+
+// ── Oficina: alertas + correcciones pendientes (solo Dueño/Oficina; si no, se ocultan) ──
+const TIPO_TXT={entrada:'Entrada',pausa_inicio:'Inicio de pausa',pausa_fin:'Fin de pausa',salida:'Salida'};
+const ORIGEN_TXT={app:'app',correccion:'corrección',admin:'oficina'};
+function ddmm(f){return f?f.slice(8,10)+'/'+f.slice(5,7):'';}
+function irA(f){fecha=new Date(f+'T12:00:00');cargar();window.scrollTo({top:0,behavior:'smooth'});}
+async function cargarOficina(){
+  const ea=document.getElementById('alertas'),ec=document.getElementById('correcciones');
+  try{
+    const [ra,rc]=await Promise.all([
+      fetch('/api/fichaje/alertas?fecha='+iso(fecha),{headers:authH()}),
+      fetch('/api/fichaje/correcciones?estado=pendiente',{headers:authH()})
+    ]);
+    if(!ra.ok||!rc.ok){ea.innerHTML='';ec.innerHTML='';return;}
+    renderAlertas(await ra.json());renderCorrecciones(await rc.json());
+  }catch(e){ea.innerHTML='';ec.innerHTML='';}
+}
+function renderAlertas(a){
+  const l=[];
+  if(a.noFicho&&a.noFicho.length)l.push(`<div class="al">🔴 <b>Sin fichar${esHoy(fecha)?' (pasadas las 9:00)':''}:</b> ${a.noFicho.map(x=>esc(x.userName)).join(', ')}</div>`);
+  if(a.sigueDentro&&a.sigueDentro.length)l.push(`<div class="al">🟠 <b>${esHoy(fecha)?'Siguen con la jornada abierta (pasadas las 20:00)':'Se quedó la jornada sin cerrar'}:</b> ${a.sigueDentro.map(x=>esc(x.userName)+(x.desde?' (desde '+hora(x.desde)+')':'')).join(', ')}</div>`);
+  if(a.masDe10h&&a.masDe10h.length)l.push(`<div class="al">⏱ <b>Más de 10 horas:</b> ${a.masDe10h.map(x=>esc(x.userName)+' ('+hm(x.minutos)+')').join(', ')}</div>`);
+  const prev=(a.sinCerrarPrevios||[]).filter(x=>x.fecha!==iso(fecha));
+  if(prev.length)l.push(`<div class="al">📅 <b>Días anteriores sin cerrar:</b> ${prev.slice(0,8).map(x=>`<a onclick="irA('${esc(x.fecha)}')">${esc(x.userName)} ${ddmm(x.fecha)}</a>`).join(' · ')}</div>`);
+  document.getElementById('alertas').innerHTML=l.length?`<div class="panel warn"><h4>Alertas</h4>${l.join('')}</div>`:'';
+}
+function renderCorrecciones(cs){
+  const el=document.getElementById('correcciones');
+  if(!cs||!cs.length){el.innerHTML='';return;}
+  el.innerHTML=`<div class="panel pend"><h4>Correcciones por revisar (${cs.length})</h4>${cs.map(c=>`
+    <div class="cx" id="cx-${esc(c.id)}">
+      <div class="q"><b>${esc(c.userName)}</b> · <a style="color:var(--blue);cursor:pointer;text-decoration:underline" onclick="irA('${esc(c.fecha)}')">${ddmm(c.fecha)}</a> · ${esc(TIPO_TXT[c.tipo]||c.tipo)} a las <b>${hora(c.hora)}</b>${c.corrige?` <span style="color:var(--text3)">(sustituye a ${esc(TIPO_TXT[c.corrige.tipo]||c.corrige.tipo)} ${hora(c.corrige.hora)})</span>`:' <span style="color:var(--text3)">(marca que faltaba)</span>'}</div>
+      <div class="m">“${esc(c.motivo||'')}”</div>
+      <div class="bt"><button class="b1" onclick="resolver('${esc(c.id)}',true,this)">Aprobar</button><button class="b3" onclick="resolver('${esc(c.id)}',false,this)">Rechazar</button></div>
+    </div>`).join('')}</div>`;
+}
+async function resolver(id,aprobar,btn){
+  let motivo='';
+  if(!aprobar){motivo=(prompt('Motivo del rechazo (lo verá el trabajador):')||'').trim();if(motivo.length<3){if(motivo!=='')alert('Escribe un motivo.');return;}}
+  btn.disabled=true;
+  try{const r=await fetch('/api/fichaje/correcciones/'+encodeURIComponent(id)+'/resolver',{method:'POST',headers:{...authH(),'Content-Type':'application/json'},body:JSON.stringify({aprobar,motivo})});
+    const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');cargar();}
+  catch(e){alert(e.message);btn.disabled=false;}
+}
+// Oficina añade/corrige una marca directamente
+let _mk=null,_dia={};
+function abrirMarca(userId,name){
+  _mk={userId,name};
+  document.getElementById('mk-titulo').textContent='Marca de '+name+' · '+ddmm(iso(fecha));
+  const f=_dia[String(userId)];const st=f?f.estado:'fuera';
+  document.getElementById('mk-tipo').value=st==='fuera'&&!(f&&f.tramos&&f.tramos.length)?'entrada':st==='pausa'?'pausa_fin':'salida';
+  document.getElementById('mk-hora').value='';document.getElementById('mk-motivo').value='';
+  const sust=new Set(((f&&f.registro)||[]).filter(m=>m.estado==='valido'&&m.corrigeA).map(m=>m.corrigeA));
+  document.getElementById('mk-corrige').innerHTML='<option value="">Faltaba (no estaba fichada)</option>'+((f&&f.registro)||[]).filter(m=>m.estado==='valido'&&!sust.has(m.id)).map(m=>`<option value="${esc(m.id)}">Sustituye a: ${esc(TIPO_TXT[m.tipo]||m.tipo)} ${hora(m.hora)}</option>`).join('');
+  document.getElementById('ov-marca').classList.add('on');
+}
+function cerrarMarca(){document.getElementById('ov-marca').classList.remove('on');}
+async function guardarMarca(){
+  const b={userId:_mk.userId,fecha:iso(fecha),tipo:document.getElementById('mk-tipo').value,hora:document.getElementById('mk-hora').value,motivo:document.getElementById('mk-motivo').value.trim(),corrigeA:document.getElementById('mk-corrige').value||null};
+  if(!b.hora){alert('Pon la hora real.');return;} if(b.motivo.length<5){alert('El motivo es obligatorio.');return;}
+  const btn=document.getElementById('mk-btn');btn.disabled=true;
+  try{const r=await fetch('/api/fichaje/marca-admin',{method:'POST',headers:{...authH(),'Content-Type':'application/json'},body:JSON.stringify(b)});
+    const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');cerrarMarca();cargar();}
+  catch(e){alert(e.message);}
+  finally{btn.disabled=false;}
 }
 
 function render(fichajes,workers){
@@ -104,8 +216,9 @@ function render(fichajes,workers){
   // orden: trabajadores del roster (tech/office); los que fichan arriba
   const rows=workers.map(w=>({w,f:byId[String(w.id)]||null}));
   rows.sort((a,b)=>(a.f?0:1)-(b.f?0:1)||String(a.w.name).localeCompare(String(b.w.name)));
-  rows.forEach(({w,f})=>{
-    if(!f){nNo++;filas+=`<div class="row"><div class="nm"><b>${esc(w.name)}</b><div class="sub">no ha fichado</div></div><span class="badge b-no">Sin fichar</span></div>`;return;}
+  _dia=byId; window._ws=rows.map(r=>r.w);
+  rows.forEach(({w,f},idx)=>{
+    if(!f){nNo++;filas+=`<div class="row"><div class="nm"><b>${esc(w.name)}</b><div class="sub">no ha fichado</div></div><button class="b2" style="padding:5px 10px;font-size:12px" onclick="abrirMarca(_ws[${idx}].id,_ws[${idx}].name)">＋ marca</button><span class="badge b-no">Sin fichar</span></div>`;return;}
     nFichados++;
     const tr=f.tramos||[];
     const entrada=tr.length?hora(tr[0].entrada):'—';
@@ -113,7 +226,7 @@ function render(fichajes,workers){
     const ultSal=tr.length&&tr[tr.length-1].salida?hora(tr[tr.length-1].salida):null;
     const min=f.minutos||0; totalMin+=min;
     // aviso: tramo abierto demasiado tiempo (>14h) = probablemente olvidó cerrar
-    const largo=abierto && min>14*60;
+    const largo=(abierto && min>14*60) || !!f.sinCerrar; // día pasado que quedó abierto, o tramo eterno
     const enPausa=!!f.enPausa; // modelo nuevo: pausa tipada (no es "cerrado")
     const badge=largo?'<span class="badge b-warn">⚠ Sin cerrar</span>':abierto?'<span class="badge b-curso">En curso</span>':enPausa?'<span class="badge b-warn">⏸ En pausa</span>':'<span class="badge b-ok">Cerrado</span>';
     const pausas=tr.length>1?` · ${tr.length} tramos`:'';
@@ -122,11 +235,21 @@ function render(fichajes,workers){
     const trDet=tr.map((t,i)=>{
       const e=hora(t.entrada);
       const abiertoT=!t.salida;
-      const s=abiertoT?'en curso':hora(t.salida);
+      const olvidado=abiertoT&&!!f.sinCerrar; // día pasado: no se inventan horas
+      const s=olvidado?'sin cerrar':abiertoT?'en curso':hora(t.salida);
       const durMin=abiertoT?((Date.now()-new Date(t.entrada).getTime())/60000):((new Date(t.salida).getTime()-new Date(t.entrada).getTime())/60000);
-      return `<div class="tramo"><span class="ti">Tramo ${i+1}</span><span class="tt">${e}${pin(t.entradaLoc)} → <span class="${abiertoT?'abierto':''}">${s}</span>${abiertoT?'':pin(t.salidaLoc)}</span><span class="td">${hm(durMin)}</span></div>`;
+      return `<div class="tramo"><span class="ti">Tramo ${i+1}</span><span class="tt">${e}${pin(t.entradaLoc)} → <span class="${abiertoT?'abierto':''}" ${olvidado?'style="color:var(--amber)"':''}>${s}</span>${abiertoT?'':pin(t.salidaLoc)}</span><span class="td">${olvidado?'—':hm(durMin)}</span></div>`;
     }).join('');
-    filas+=`<div class="row clickable" onclick="toggleTr('${rid}')"><div class="nm"><b>${esc(w.name)}</b><div class="sub">Entrada ${entrada}${abierto?' · sigue dentro':enPausa?(' · en pausa desde '+ultSal):(' · salida '+ultSal)}${pausas}</div></div><div style="text-align:right"><div class="tot">${hm(min)}</div>${badge}</div><span class="chev" id="${rid}-chev">▸</span></div><div class="tramos-detail" id="${rid}" style="display:none">${trDet}</div>`;
+    // Registro legal tal cual está guardado: nada se borra; lo sustituido/rechazado sale tachado.
+    const reg=f.registro||[];
+    const sust=new Set(reg.filter(m=>m.estado==='valido'&&m.corrigeA).map(m=>m.corrigeA));
+    const hayCambios=reg.some(m=>m.origen!=='app'||m.estado!=='valido');
+    const regHtml=hayCambios?`<div class="reg"><div class="rt">Registro completo (nada se borra)</div>${reg.map(m=>{
+      const off=m.estado!=='valido'||sust.has(m.id);
+      const nota=m.estado==='pendiente'?'pendiente de aprobar':m.estado==='rechazado'?'rechazada':sust.has(m.id)?'sustituida por una corrección':'';
+      return `<div class="rg ${off?'off':''}"><span>${hora(m.hora)}</span><span>${esc(TIPO_TXT[m.tipo]||m.tipo)}</span><span class="o">${esc(ORIGEN_TXT[m.origen]||m.origen)}</span><span class="mo">${esc([nota,m.motivo?('“'+m.motivo+'”'):'',m.por&&m.origen==='admin'?('— '+m.por):''].filter(Boolean).join(' '))}</span></div>`;}).join('')}</div>`:'';
+    const addBtn=`<button class="mini" onclick="event.stopPropagation();abrirMarca(_ws[${idx}].id,_ws[${idx}].name)">＋ Añadir o corregir una marca</button>`;
+    filas+=`<div class="row clickable" onclick="toggleTr('${rid}')"><div class="nm"><b>${esc(w.name)}</b><div class="sub">Entrada ${entrada}${f.sinCerrar?' · se quedó sin cerrar':abierto?' · sigue dentro':enPausa?(' · en pausa desde '+ultSal):(' · salida '+ultSal)}${pausas}</div></div><div style="text-align:right"><div class="tot">${hm(min)}</div>${badge}</div><span class="chev" id="${rid}-chev">▸</span></div><div class="tramos-detail" id="${rid}" style="display:none">${trDet}${regHtml}${addBtn}</div>`;
   });
   document.getElementById('k-fichados').textContent=nFichados;
   document.getElementById('k-nofichados').textContent=nNo;

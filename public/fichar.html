@@ -47,6 +47,13 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .obra-lbl{display:block;font-size:12px;color:var(--text3);margin-bottom:6px;text-align:left}
 .obra-sel{width:100%;padding:13px 12px;border-radius:12px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:15px;font-family:inherit}
 .obra-chip{display:inline-block;padding:7px 14px;border-radius:100px;background:rgba(77,156,248,.12);color:var(--blue);font-size:13px;font-weight:600}
+.link-btn{display:block;width:100%;background:none;border:none;color:var(--text2);font-family:inherit;font-size:14px;text-decoration:underline;cursor:pointer;padding:16px 8px;margin-top:6px}
+textarea.obra-sel{resize:vertical;line-height:1.4}
+.corr{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:11px 14px;margin-bottom:7px;font-size:14px}
+.corr .top{display:flex;justify-content:space-between;gap:10px;font-variant-numeric:tabular-nums}
+.corr .mot{color:var(--text3);font-size:12px;margin-top:4px}
+.pill{font-size:11px;font-weight:700;padding:2px 9px;border-radius:100px;white-space:nowrap}
+.pill.pendiente{background:rgba(245,158,11,.15);color:#f59e0b}.pill.valido{background:rgba(34,196,135,.14);color:var(--green)}.pill.rechazado{background:rgba(240,82,82,.14);color:var(--red)}
 .tramos{margin-top:22px}
 .tramos h3{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:8px}
 .tramo{display:flex;justify-content:space-between;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:11px 14px;margin-bottom:7px;font-variant-numeric:tabular-nums}
@@ -109,6 +116,36 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   <div class="tramos">
     <h3>Tramos de hoy</h3>
     <div id="tramos-lista"></div>
+  </div>
+  <button class="link-btn" onclick="abrirOlvido()">¿Se te olvidó fichar? Pide una corrección</button>
+  <div class="tramos" id="corr-wrap" style="display:none">
+    <h3>Mis correcciones</h3>
+    <div id="corr-lista"></div>
+  </div>
+</div></div>
+
+<!-- ME OLVIDÉ DE FICHAR -->
+<div class="page" id="page-olvido"><div class="container">
+  <div class="card">
+    <div class="login-title">Me olvidé de fichar</div>
+    <div class="login-sub">Oficina la revisa y la aprueba. Tu registro original no se borra.</div>
+    <label class="obra-lbl" for="ol-fecha">Día</label>
+    <input type="date" id="ol-fecha" class="obra-sel" onchange="cargarMarcasOlvido()">
+    <label class="obra-lbl" for="ol-tipo" style="margin-top:14px">¿Qué quieres apuntar?</label>
+    <select id="ol-tipo" class="obra-sel">
+      <option value="entrada">Empecé la jornada</option>
+      <option value="pausa_inicio">Empecé una pausa</option>
+      <option value="pausa_fin">Volví de la pausa</option>
+      <option value="salida" selected>Terminé la jornada</option>
+    </select>
+    <label class="obra-lbl" for="ol-hora" style="margin-top:14px">Hora real</label>
+    <input type="time" id="ol-hora" class="obra-sel">
+    <label class="obra-lbl" for="ol-corrige" style="margin-top:14px">¿Es una marca que faltaba, o corrige una que pusiste mal?</label>
+    <select id="ol-corrige" class="obra-sel"><option value="">Faltaba (no fiché)</option></select>
+    <label class="obra-lbl" for="ol-motivo" style="margin-top:14px">Motivo (obligatorio)</label>
+    <textarea id="ol-motivo" class="obra-sel" rows="3" maxlength="300" placeholder="Ej.: me quedé sin batería al salir"></textarea>
+    <button class="btn" id="ol-btn" onclick="enviarOlvido()" style="margin-top:18px">Enviar a oficina</button>
+    <button class="link-btn" onclick="showPage('fichar');cargar()">← Volver</button>
   </div>
 </div></div>
 
@@ -176,7 +213,7 @@ async function aceptarConsent(){
 function logout(){workerToken=null;localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');document.getElementById('logout-btn').style.display='none';showPage('login');}
 
 // ── FICHAJE ──
-async function cargar(){try{const r=await fetch('/api/fichaje/estado',{headers:authH()});const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');render(d);}catch(e){toast(e.message,'error');}}
+async function cargar(){try{const r=await fetch('/api/fichaje/estado',{headers:authH()});const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');render(d);cargarCorrecciones();}catch(e){toast(e.message,'error');}}
 let _estado=null,_obras=null;
 const escH=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function estadoDe(d){return d?(d.estado||(d.dentro?'dentro':'fuera')):'fuera';}
@@ -240,6 +277,40 @@ async function marcar(tipo){
     toast(({entrada:'✅ Jornada empezada',pausa_inicio:'⏸ En pausa',pausa_fin:'▶ De vuelta',salida:'👋 Jornada terminada'})[d.accion]||'Hecho','ok');}
   catch(e){btn.textContent=txt;toast(e.message,'error');cargar();}
   finally{btn.disabled=false;fin.disabled=false;}}
+
+// ── ME OLVIDÉ DE FICHAR (corrección que aprueba oficina) ──
+const TIPO_TXT={entrada:'Empecé',pausa_inicio:'Pausa',pausa_fin:'Volví',salida:'Terminé'};
+const hoyISO=()=>new Date().toLocaleDateString('en-CA');
+function abrirOlvido(){
+  const f=document.getElementById('ol-fecha');f.max=hoyISO();f.value=hoyISO();
+  document.getElementById('ol-hora').value='';document.getElementById('ol-motivo').value='';
+  // Si ayer/hoy quedó abierto lo normal es que falte la salida; si está fuera, la entrada.
+  document.getElementById('ol-tipo').value=estadoDe(_estado)==='fuera'&&!(_estado&&_estado.tramos&&_estado.tramos.length)?'entrada':'salida';
+  showPage('olvido');cargarMarcasOlvido();
+}
+async function cargarMarcasOlvido(){
+  const sel=document.getElementById('ol-corrige');sel.innerHTML='<option value="">Faltaba (no fiché)</option>';
+  try{const r=await fetch('/api/fichaje/mis-marcas?fecha='+encodeURIComponent(document.getElementById('ol-fecha').value),{headers:authH()});if(!r.ok)return;
+    (await r.json()).forEach(m=>{const o=document.createElement('option');o.value=m.id;o.textContent='Corrige: '+(TIPO_TXT[m.tipo]||m.tipo)+' a las '+hora(m.hora);sel.appendChild(o);});}catch(e){}
+}
+async function enviarOlvido(){
+  const b={fecha:document.getElementById('ol-fecha').value,tipo:document.getElementById('ol-tipo').value,hora:document.getElementById('ol-hora').value,motivo:document.getElementById('ol-motivo').value.trim(),corrigeA:document.getElementById('ol-corrige').value||null};
+  if(!b.hora){toast('Pon la hora real','error');return;}
+  if(b.motivo.length<5){toast('Explica el motivo','error');return;}
+  const btn=document.getElementById('ol-btn');btn.disabled=true;
+  try{const r=await fetch('/api/fichaje/correccion',{method:'POST',headers:authH({'Content-Type':'application/json'}),body:JSON.stringify(b)});const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');
+    toast('📨 Enviada a oficina para revisar','ok');showPage('fichar');cargar();}
+  catch(e){toast(e.message,'error');}
+  finally{btn.disabled=false;}
+}
+async function cargarCorrecciones(){
+  try{const r=await fetch('/api/fichaje/correcciones/mias',{headers:authH()});if(!r.ok)return;const l=await r.json();
+    const w=document.getElementById('corr-wrap');if(!l.length){w.style.display='none';return;}
+    w.style.display='block';
+    const est={pendiente:'Pendiente',valido:'Aprobada',rechazado:'Rechazada'};
+    document.getElementById('corr-lista').innerHTML=l.slice(0,6).map(c=>`<div class="corr"><div class="top"><span>${escH(c.fecha.slice(8,10)+'/'+c.fecha.slice(5,7))} · ${escH(TIPO_TXT[c.tipo]||c.tipo)} ${hora(c.hora)}</span><span class="pill ${escH(c.estado)}">${est[c.estado]||escH(c.estado)}</span></div><div class="mot">${escH(c.motivo||'')}${c.estado==='rechazado'&&c.resolucionMotivo?' — <b>Oficina:</b> '+escH(c.resolucionMotivo):''}</div></div>`).join('');
+  }catch(e){}
+}
 
 // refrescar el contador cada minuto si está dentro y la pantalla está a la vista
 setInterval(()=>{if(!document.hidden&&workerToken&&document.getElementById('page-fichar').classList.contains('active'))cargar();},60000);

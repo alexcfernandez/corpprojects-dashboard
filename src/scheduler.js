@@ -326,6 +326,16 @@ function startScheduler() {
     .then(r => console.log(`[Presencia] aviso 17:30 → ${r.pendientes} pendientes`, JSON.stringify(r.resultado)))
     .catch(e => console.error('[Presencia] aviso:', e.message)), { timezone: 'Europe/Madrid' });
 
+  // Fichaje legal (Fase 2): 20:00 → al trabajador que sigue con la jornada abierta;
+  // 09:15 L-V → resumen a oficina (sin fichar, sin cerrar, correcciones pendientes).
+  const fichajeAvisos = require('./fichajeAvisos');
+  cron.schedule('0 20 * * *', () => fichajeAvisos.avisarSalidasOlvidadas()
+    .then(r => console.log('[Fichaje] aviso 20:00 →', JSON.stringify(r)))
+    .catch(e => console.error('[Fichaje] aviso 20:00:', e.message)), { timezone: 'Europe/Madrid' });
+  cron.schedule('15 9 * * 1-5', () => fichajeAvisos.resumenOficina()
+    .then(r => console.log('[Fichaje] resumen oficina →', JSON.stringify({ enviado: r.enviado, motivo: r.motivo })))
+    .catch(e => console.error('[Fichaje] resumen oficina:', e.message)), { timezone: 'Europe/Madrid' });
+
   // Resumen diario INTERNO (al admin) 08:30 lun–vie
   cron.schedule('30 8 * * 1-5', runDailySummary, { timezone: 'Europe/Madrid' });
 
