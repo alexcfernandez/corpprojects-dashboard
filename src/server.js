@@ -1912,6 +1912,21 @@ app.get('/api/obras/:id', requireAuth, async (req, res) => {
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Ubicación de la obra (para comparar con dónde se ficha).
+//   accion: 'auto' (recalcular desde la dirección) · 'manual' (texto = coordenadas o enlace de Google Maps)
+//           'fichajes' (mediana de donde se ha fichado la entrada) · 'quitar'
+app.post('/api/obras/:id/ubicacion', requireAuth, async (req, res) => {
+  try {
+    const geo = require('./geo'), b = req.body || {}, por = req.user?.name || '';
+    let r;
+    if (b.accion === 'manual') r = await geo.fijarUbicacionObra(req.params.id, b.texto, por);
+    else if (b.accion === 'fichajes') r = await geo.ubicarObraPorFichajes(req.params.id, por);
+    else if (b.accion === 'quitar') { await geo.quitarUbicacionObra(req.params.id); r = null; }
+    else { r = await geo.ubicarObra(req.params.id, { forzar: true }); if (!r) throw new Error('No he encontrado esa dirección en el mapa. Revísala (calle, número y población) o pega las coordenadas.'); }
+    res.json({ ok: true, geo: r });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 app.get('/api/obras/:id/rentabilidad', requireAuth, async (req, res) => {
   try { res.json(await obras.getRentabilidad(req.params.id)); }
   catch (err) { res.status(500).json({ error: err.message }); }
@@ -3299,6 +3314,8 @@ app.listen(PORT, () => {
   startScheduler();
 
   // Migración una vez (idempotente): fichajes viejos (tramos) → marcas append-only.
+  // Ubica (poco a poco, 1/seg) las obras abiertas que tienen dirección y aún no tienen coordenadas.
+  setTimeout(() => require('./geo').ubicarPendientes().catch(e => console.warn('[Geo]', e.message)), 20000);
   require('./fichajeMarcas').migrarDesdeTramos()
     .then(r => { if (r && r.migrados) console.log(`[FichajeMarcas] ✅ migrados ${r.migrados} días (${r.marcas} marcas)`); })
     .catch(e => console.error('[FichajeMarcas] migración:', e.message));

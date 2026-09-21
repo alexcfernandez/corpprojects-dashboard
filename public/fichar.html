@@ -347,6 +347,8 @@ async function marcar(tipo){
   try{
     const loc=await getGPS();
     const body={tipo,loc,opId};
+    // ¿La obra elegida cuadra con dónde está? Solo pregunta; nunca impide fichar.
+    if(tipo==='entrada'&&_obraPick&&loc){const sigue=await comprobarObra(loc);if(!sigue){btn.textContent=txt;return;}}
     if(tipo==='entrada'&&_obraPick){body.obraId=_obraPick.value||null;localStorage.setItem('cpObra',_obraPick.value||'');}
     // Si ya hay fichajes esperando en el móvil, este va detrás (hay que respetar el orden).
     if(colaMia().length||navigator.onLine===false){encolar(body,pulsado);return;}
@@ -361,6 +363,41 @@ async function marcar(tipo){
     toast(({entrada:'✅ Jornada empezada',pausa_inicio:'⏸ En pausa',pausa_fin:'▶ De vuelta',salida:'👋 Jornada terminada'})[d.accion]||'Hecho','ok');}
   catch(e){btn.textContent=txt;toast(e.message,'error');cargar();}
   finally{btn.disabled=false;fin.disabled=false;}}
+
+// ── ¿ESTÁS EN LA OBRA QUE HAS ELEGIDO? ──
+// Compara la ubicación del móvil con la de la obra (si oficina la tiene situada).
+function distM(a,b){const R=6371000,rad=x=>x*Math.PI/180,dLa=rad(b.lat-a.lat),dLo=rad(b.lng-a.lng);const h=Math.sin(dLa/2)**2+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLo/2)**2;return Math.round(2*R*Math.asin(Math.sqrt(h)));}
+function distTxt(m){return m<1000?(Math.round(m/10)*10)+' m':(m/1000).toLocaleString('es-ES',{maximumFractionDigits:1})+' km';}
+function preguntar(titulo,texto,botones){return new Promise(res=>{
+  const ov=document.createElement('div');ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:950;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML=`<div style="background:var(--bg2);border:1px solid var(--border2);border-radius:18px;padding:22px;max-width:420px;width:100%"><div style="font-size:18px;font-weight:700;margin-bottom:8px">${titulo}</div><div style="color:var(--text2);font-size:14.5px;line-height:1.55;margin-bottom:16px">${texto}</div>${botones.map((b,i)=>`<button data-i="${i}" class="${i===0?'fichar-btn entrada':'sec-btn'}" style="${i===0?'padding:15px;font-size:16px':'margin-top:10px'}">${b.txt}</button>`).join('')}</div>`;
+  ov.addEventListener('click',e=>{const b=e.target.closest('button[data-i]');if(!b)return;ov.remove();res(botones[+b.dataset.i].val);});
+  document.body.appendChild(ov);});}
+// Devuelve true si se sigue fichando (puede haber cambiado la obra del selector), false si se cancela.
+async function comprobarObra(loc){
+  const obras=(_obras&&_obras.length?_obras:lsGet('cpObras',[])).filter(o=>o.geo&&isFinite(o.geo.lat));
+  if(!obras.length)return true;
+  const dentro=o=>distM(loc,o.geo)<=(o.geo.r||300)+Math.min(loc.acc||0,500);
+  const sel=_obraPick.obra;
+  if(sel&&(!sel.geo||dentro(sel)))return true; // cuadra, o esa obra no está situada: nada que decir
+  // La abierta más cercana en la que SÍ está
+  const cerca=obras.filter(o=>o.grupo==='abierta'&&(!sel||o.id!==sel.id)&&dentro(o)).sort((a,b)=>distM(loc,a.geo)-distM(loc,b.geo))[0]||null;
+  if(!sel){
+    if(!cerca)return true;
+    const r=await preguntar('📍 ¿Estás en «'+escH(cerca.reference)+'»?','No has elegido obra, y por tu ubicación parece que estás en <b>'+escH(cerca.reference)+'</b>'+(cerca.address?' ('+escH(cerca.address)+')':'')+'.',[{txt:'Sí, fichar en esta obra',val:'cerca'},{txt:'No, fichar sin obra',val:'seguir'}]);
+    if(r==='cerca')_obraPick.set(cerca.id);
+    return true;
+  }
+  const d=distTxt(distM(loc,sel.geo));
+  if(cerca){
+    const r=await preguntar('📍 ¿Seguro que es «'+escH(sel.reference)+'»?','Estás a <b>'+d+'</b> de esa obra. Por tu ubicación parece que estás en <b>'+escH(cerca.reference)+'</b>.',[{txt:'Fichar en «'+escH(cerca.reference)+'»',val:'cerca'},{txt:'Seguir con «'+escH(sel.reference)+'»',val:'seguir'},{txt:'Cancelar',val:'no'}]);
+    if(r==='cerca')_obraPick.set(cerca.id);
+    return r!=='no';
+  }
+  const r=await preguntar('📍 Estás a '+d+' de «'+escH(sel.reference)+'»','¿Es esta la obra en la que empiezas hoy? Si estás en el almacén o de camino, ficha igual.',[{txt:'Sí, fichar en esta obra',val:'seguir'},{txt:'Elegir otra obra',val:'otra'}]);
+  if(r==='otra'){setTimeout(()=>_obraPick&&_obraPick.abrir(),50);return false;}
+  return true;
+}
 
 // ── SIN COBERTURA (Fase 4) ──
 // Si no hay red, la marca se guarda en el móvil con la hora de la pulsación y se envía

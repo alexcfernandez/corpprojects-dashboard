@@ -205,6 +205,8 @@ async function createObra(data) {
 
   const result = await db.collection('obras').insertOne(obra);
   console.log(`[Obras] Nueva obra: ${obra.reference} — ${obra.clientName || 'sin cliente'}`);
+  // Dirección → coordenadas (en segundo plano) para comparar con dónde se ficha.
+  if (obra.address) require('./geo').ubicarObra(result.insertedId).catch(() => {});
   return { id: result.insertedId, ...obra };
 }
 
@@ -241,7 +243,11 @@ async function updateObra(id, data) {
     if (ahora && (!antes || !prev?.closedAt)) set.closedAt = new Date();
     if (!ahora && antes) set.closedAt = null;
   }
-  return db.collection('obras').updateOne({ _id: new ObjectId(id) }, { $set: set });
+  const r = await db.collection('obras').updateOne({ _id: new ObjectId(id) }, { $set: set });
+  // Si cambia la dirección se recalcula la ubicación (una puesta a mano no se toca).
+  // Se espera un poco (máx. 4 s) para que la ficha ya la enseñe situada al recargar.
+  if (set.address !== undefined) await Promise.race([require('./geo').ubicarObra(id).catch(() => {}), new Promise(ok => setTimeout(ok, 4000))]);
+  return r;
 }
 
 // ── SELECTOR ÚNICO DE OBRA ───────────────────────────────────────
@@ -256,7 +262,8 @@ const DIAS_CERRADA_RECIENTE = Number(process.env.OBRA_CERRADA_DIAS) || 60;
 async function getSelector({ todas = false } = {}) {
   const db = await getDB();
   const lista = await db.collection('obras').find({ status: { $ne: 'archivada' } })
-    .project({ reference: 1, clientName: 1, address: 1, aliases: 1, status: 1, closedAt: 1, endDate: 1, updatedAt: 1, createdAt: 1 }).toArray();
+    .project({ reference: 1, clientName: 1, address: 1, aliases: 1, status: 1, closedAt: 1, endDate: 1, updatedAt: 1, createdAt: 1, geo: 1 }).toArray();
+  const radio = require('./geo').RADIO_M;
   const corte = Date.now() - DIAS_CERRADA_RECIENTE * 86400000;
   const out = [];
   for (const o of lista) {
@@ -267,6 +274,8 @@ async function getSelector({ todas = false } = {}) {
     out.push({
       id: String(o._id), reference: o.reference || '', clientName: o.clientName || '', address: o.address || '',
       aliases: Array.isArray(o.aliases) ? o.aliases.filter(Boolean) : [], status: o.status || 'activa', grupo, _cierre: cierre,
+      // dónde está (para avisar al fichar si se ha elegido otra obra por error); r = margen en metros
+      geo: (o.geo && Number.isFinite(o.geo.lat) && Number.isFinite(o.geo.lng)) ? { lat: o.geo.lat, lng: o.geo.lng, r: radio } : null,
     });
   }
   const orden = { abierta: 0, cerrada: 1, antigua: 2 };

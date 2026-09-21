@@ -169,6 +169,11 @@ async function marcar(userId, userName, tipo, { loc, obraId, opId, offline, hora
   };
   if (op) doc.opId = op;
   if (relojDudoso) doc.relojDudoso = true;
+  // ¿Ha fichado donde está la obra? Solo informativo para oficina (nunca impide fichar).
+  try {
+    const c = await require('./geo').compararConObra(doc.obraId, doc.ubicacion);
+    if (c) { doc.obraDist = c.dist; doc.obraLejos = c.lejos; }
+  } catch (e) { /* sin ubicación de la obra → no se compara */ }
   try { await db.collection(COL).insertOne(doc); }
   catch (e) { // dos reintentos a la vez de la misma pulsación → gana el primero
     if (e && e.code === 11000 && op) return { accion: tipo, duplicada: true, ...(await estadoActual(userId, fechaHoy())) };
@@ -208,11 +213,26 @@ async function getDia(fecha) {
     (porUser[m.userId] = porUser[m.userId] || { userId: m.userId, userName: m.userName, marcas: [] }).marcas.push(m);
     if (m.userName) porUser[m.userId].userName = m.userName;
   }
+  // Nombre de la obra de cada jornada (para oficina)
+  const nombres = {};
+  try {
+    const { ObjectId } = require('mongodb');
+    const ids = [...new Set(marcas.map(m => m.obraId).filter(x => x && /^[a-f0-9]{24}$/i.test(String(x))))];
+    if (ids.length) (await db.collection('obras').find({ _id: { $in: ids.map(x => new ObjectId(String(x))) } }).project({ reference: 1 }).toArray())
+      .forEach(o => { nombres[String(o._id)] = o.reference || ''; });
+  } catch (e) {}
+  // Marca (válida) más alejada de la obra elegida, si alguna quedó fuera del margen.
+  const lejosDe = ms => {
+    const l = ms.filter(m => (m.estado || 'valido') === 'valido' && m.obraLejos && m.obraDist != null).sort((a, b) => b.obraDist - a.obraDist)[0];
+    return l ? { tipo: l.tipo, hora: l.hora, dist: l.obraDist } : null;
+  };
   return Object.values(porUser)
-    .map(u => ({
-      userId: u.userId, userName: u.userName, ...reconstruir(u.marcas, f),
+    .map(u => ({ u, r: reconstruir(u.marcas, f) }))
+    .map(({ u, r }) => ({
+      userId: u.userId, userName: u.userName, ...r,
+      obraRef: r.obraId ? (nombres[String(r.obraId)] || '') : '', lejosObra: lejosDe(u.marcas),
       // Registro tal cual quedó guardado (incluye correcciones y marcas sustituidas).
-      registro: u.marcas.map(m => ({ id: String(m._id), tipo: m.tipo, hora: m.hora, origen: m.origen || 'app', estado: m.estado || 'valido', corrigeA: m.corrigeA || null, motivo: m.motivo || null, por: m.creadoPorNombre || null, offline: !!m.offline, recibidaAt: m.offline ? (m.recibidaAt || m.createdAt || null) : null, relojDudoso: !!m.relojDudoso })),
+      registro: u.marcas.map(m => ({ id: String(m._id), tipo: m.tipo, hora: m.hora, origen: m.origen || 'app', estado: m.estado || 'valido', corrigeA: m.corrigeA || null, motivo: m.motivo || null, por: m.creadoPorNombre || null, offline: !!m.offline, recibidaAt: m.offline ? (m.recibidaAt || m.createdAt || null) : null, relojDudoso: !!m.relojDudoso, obraDist: m.obraDist == null ? null : m.obraDist, obraLejos: !!m.obraLejos })),
     }))
     .sort((a, b) => String(a.userName).localeCompare(String(b.userName)));
 }
@@ -438,6 +458,8 @@ async function alertas(fecha, { forzarHora } = {}) {
     .filter(d => (esHoy ? (ahora >= '20:00' && d.estado !== 'fuera') : d.sinCerrar))
     .map(d => ({ userId: d.userId, userName: d.userName, desde: d.desde || (d.tramos[0] && d.tramos[0].entrada) || null, estado: d.estado }));
   const masDe10h = dia.filter(d => d.minutos > 600).map(d => ({ userId: d.userId, userName: d.userName, minutos: d.minutos }));
+  // Fichó lejos de la obra que eligió (¿obra equivocada?, ¿fichó desde otro sitio?)
+  const lejosDeObra = dia.filter(d => d.lejosObra).map(d => ({ userId: d.userId, userName: d.userName, obraRef: d.obraRef, ...d.lejosObra }));
 
   // Días de la última semana que se quedaron abiertos (para que no se pierdan)
   const desde = new Date(); desde.setDate(desde.getDate() - 7);
@@ -452,7 +474,7 @@ async function alertas(fecha, { forzarHora } = {}) {
     .sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
 
   const pendientes = await db.collection(COL).countDocuments({ empresaId: EMPRESA, origen: 'correccion', estado: 'pendiente' });
-  return { fecha: f, hora: ahora, noFicho, sigueDentro, masDe10h, sinCerrarPrevios, correccionesPendientes: pendientes };
+  return { fecha: f, hora: ahora, noFicho, sigueDentro, masDe10h, lejosDeObra, sinCerrarPrevios, correccionesPendientes: pendientes };
 }
 
 // ── MIGRACIÓN una vez: viejo `fichajes` (tramos) → marcas ─────────

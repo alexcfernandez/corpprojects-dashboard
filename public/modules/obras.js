@@ -310,6 +310,27 @@
               </a>`).join('') : `<div style="font-size:12px;color:var(--text3)">Todavía no hay mediciones en esta obra. Pulsa «＋ Nueva medición», o enlaza una que ya tengas desde la app de medir.</div>`}
           </div>
 
+          <div class="card" style="margin-bottom:14px">
+            <div class="card-title">📍 Ubicación <span style="font-weight:400;color:var(--text3);font-size:11px">— para comprobar que se ficha en la obra</span></div>
+            ${obra.geo && obra.geo.lat != null ? `
+              <div style="font-size:12.5px;line-height:1.5">
+                ${{auto:'Situada por la dirección',manual:'Situada a mano',fichajes:'Situada por los fichajes'}[obra.geo.fuente]||'Situada'}${obra.geo.etiqueta?`: <b>${ce(obra.geo.etiqueta)}</b>`:''}
+                · <a href="https://www.google.com/maps?q=${obra.geo.lat},${obra.geo.lng}" target="_blank" rel="noopener" style="color:var(--blue)">ver en el mapa →</a>
+              </div>
+              <div style="font-size:11px;color:var(--text3);margin-top:4px">Mira el mapa: si el punto no es la obra, corrígelo aquí abajo. Si está mal, saltarán avisos falsos de "fichó lejos".</div>`
+            : `<div style="font-size:12px;color:var(--text3)">${obra.address?'No he encontrado la dirección en el mapa (o aún se está buscando). Revisa que tenga calle, número y población, o pega las coordenadas.':'Sin dirección todavía. Ponla abajo en «Actualizar obra», o pega aquí las coordenadas.'}</div>`}
+            <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+              <input type="text" id="ob-geo-texto" class="field-input" style="flex:1;min-width:200px" placeholder="Pega el enlace de Google Maps o las coordenadas (41.9794, 2.8214)">
+              <button class="btn bp" style="padding:6px 12px;font-size:12px" onclick="CP.Obras.ubicacion('${id}','manual')">Guardar punto</button>
+            </div>
+            <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+              ${obra.address?`<button class="btn bgh" style="padding:4px 10px;font-size:11px" onclick="CP.Obras.ubicacion('${id}','auto')">🔄 Buscar otra vez por la dirección</button>`:''}
+              <button class="btn bgh" style="padding:4px 10px;font-size:11px" onclick="CP.Obras.ubicacion('${id}','fichajes')">👷 Usar donde han fichado</button>
+              ${obra.geo?`<button class="btn bgh" style="padding:4px 10px;font-size:11px" onclick="CP.Obras.ubicacion('${id}','quitar')">Quitar</button>`:''}
+            </div>
+            <div id="ob-geo-msg" style="margin-top:8px;font-size:11px;display:none"></div>
+          </div>
+
           ${(rent.costePresupuestado > 0 || estDias != null || equipoPrev.length || realDias) ? `
           <div class="card" style="margin-bottom:14px">
             <div class="card-title">📊 Estimado vs Real</div>
@@ -449,6 +470,20 @@
       document.body.appendChild(modal);
       modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
     } catch(err) { alert('Error: ' + err.message); }
+  }
+
+  // Ubicación de la obra: auto (por dirección) · manual (enlace/coordenadas) · fichajes · quitar
+  async function ubicacion(id, accion) {
+    const msg = document.getElementById('ob-geo-msg');
+    const texto = document.getElementById('ob-geo-texto')?.value?.trim() || '';
+    const say = (t, c) => { if (msg) { msg.textContent = t; msg.style.display = 'block'; msg.style.color = c; } };
+    if (accion === 'manual' && !texto) { say('⚠️ Pega el enlace de Google Maps o las coordenadas', 'var(--amber)'); return; }
+    say('Buscando…', 'var(--text3)');
+    try {
+      const r = await api(`/api/obras/${id}/ubicacion`, { method:'POST', body: JSON.stringify({ accion, texto }) });
+      if (r && r.error) throw new Error(r.error);
+      openObra(id);
+    } catch(err) { say('❌ ' + err.message, 'var(--red)'); }
   }
 
   async function saveObraChanges(id) {
@@ -761,6 +796,6 @@ ${pago}
     } catch (err) { alert('No se pudo borrar: ' + err.message); }
   }
 
-  CP.Obras = { render, showTab, loadResumen, loadLista, openObra, saveObraChanges, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, addCert, certRapida, certEstado, conciliarCert, _ccPick, delCert, reciboCert, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick, _fpBack, _fpToggleAll, _fpSum, _fpAsignar };
+  CP.Obras = { render, showTab, loadResumen, loadLista, openObra, saveObraChanges, ubicacion, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, addCert, certRapida, certEstado, conciliarCert, _ccPick, delCert, reciboCert, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick, _fpBack, _fpToggleAll, _fpSum, _fpAsignar };
 
 })(window.CP = window.CP || {});

@@ -166,6 +166,7 @@ function iso(d){return d.toLocaleDateString('en-CA');}
 function esHoy(d){return iso(d)===iso(new Date());}
 function fechaLarga(d){return d.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});}
 function authH(){return {'Authorization':`Bearer ${tok}`};}
+function distTxt(m){return m<1000?(Math.round(m/10)*10)+' m':(m/1000).toLocaleString('es-ES',{maximumFractionDigits:1})+' km';}
 
 function toggleTr(id){const d=document.getElementById(id);const c=document.getElementById(id+'-chev');if(!d)return;const open=d.style.display==='none';d.style.display=open?'block':'none';if(c)c.classList.toggle('open',open);}
 // Pin GPS: enlace al mapa con la ubicación del fichaje (si la hay)
@@ -210,6 +211,7 @@ function renderAlertas(a){
   const l=[];
   if(a.noFicho&&a.noFicho.length)l.push(`<div class="al">🔴 <b>Sin fichar${esHoy(fecha)?' (pasadas las 9:00)':''}:</b> ${a.noFicho.map(x=>esc(x.userName)).join(', ')}</div>`);
   if(a.sigueDentro&&a.sigueDentro.length)l.push(`<div class="al">🟠 <b>${esHoy(fecha)?'Siguen con la jornada abierta (pasadas las 20:00)':'Se quedó la jornada sin cerrar'}:</b> ${a.sigueDentro.map(x=>esc(x.userName)+(x.desde?' (desde '+hora(x.desde)+')':'')).join(', ')}</div>`);
+  if(a.lejosDeObra&&a.lejosDeObra.length)l.push(`<div class="al">📍 <b>Ficharon lejos de la obra elegida:</b> ${a.lejosDeObra.map(x=>esc(x.userName)+' ('+distTxt(x.dist)+' de «'+esc(x.obraRef||'la obra')+'», '+esc((TIPO_TXT[x.tipo]||x.tipo).toLowerCase())+' '+hora(x.hora)+')').join(' · ')} <span style="color:var(--text3)">— si la obra está mal situada en el mapa, corrígelo en su ficha.</span></div>`);
   if(a.masDe10h&&a.masDe10h.length)l.push(`<div class="al">⏱ <b>Más de 10 horas:</b> ${a.masDe10h.map(x=>esc(x.userName)+' ('+hm(x.minutos)+')').join(', ')}</div>`);
   const prev=(a.sinCerrarPrevios||[]).filter(x=>x.fecha!==iso(fecha));
   if(prev.length)l.push(`<div class="al">📅 <b>Días anteriores sin cerrar:</b> ${prev.slice(0,8).map(x=>`<a onclick="irA('${esc(x.fecha)}')">${esc(x.userName)} ${ddmm(x.fecha)}</a>`).join(' · ')}</div>`);
@@ -289,13 +291,14 @@ function render(fichajes,workers){
     // Registro legal tal cual está guardado: nada se borra; lo sustituido/rechazado sale tachado.
     const reg=f.registro||[];
     const sust=new Set(reg.filter(m=>m.estado==='valido'&&m.corrigeA).map(m=>m.corrigeA));
-    const hayCambios=reg.some(m=>m.origen!=='app'||m.estado!=='valido'||m.offline);
+    const hayCambios=reg.some(m=>m.origen!=='app'||m.estado!=='valido'||m.offline||m.obraLejos);
     const regHtml=hayCambios?`<div class="reg"><div class="rt">Registro completo (nada se borra)</div>${reg.map(m=>{
       const off=m.estado!=='valido'||sust.has(m.id);
       const nota=m.estado==='pendiente'?'pendiente de aprobar':m.estado==='rechazado'?'rechazada':sust.has(m.id)?'sustituida por una corrección':m.relojDudoso?'📴 sin cobertura · el reloj del móvil iba adelantado: cuenta la hora de llegada':m.offline?('📴 fichada sin cobertura · llegó a las '+hora(m.recibidaAt)):'';
-      return `<div class="rg ${off?'off':''}"><span>${hora(m.hora)}</span><span>${esc(TIPO_TXT[m.tipo]||m.tipo)}</span><span class="o">${esc(ORIGEN_TXT[m.origen]||m.origen)}</span><span class="mo">${esc([nota,m.motivo?('“'+m.motivo+'”'):'',m.por&&m.origen==='admin'?('— '+m.por):''].filter(Boolean).join(' '))}</span></div>`;}).join('')}</div>`:'';
+      const notaGeo=m.obraLejos&&m.obraDist!=null?('📍 a '+distTxt(m.obraDist)+' de la obra'):'';
+      return `<div class="rg ${off?'off':''}"><span>${hora(m.hora)}</span><span>${esc(TIPO_TXT[m.tipo]||m.tipo)}</span><span class="o">${esc(ORIGEN_TXT[m.origen]||m.origen)}</span><span class="mo">${esc([nota,notaGeo,m.motivo?('“'+m.motivo+'”'):'',m.por&&m.origen==='admin'?('— '+m.por):''].filter(Boolean).join(' '))}</span></div>`;}).join('')}</div>`:'';
     const addBtn=`<button class="mini" onclick="event.stopPropagation();abrirMarca(_ws[${idx}].id,_ws[${idx}].name)">＋ Añadir o corregir una marca</button>`;
-    filas+=`<div class="row clickable" onclick="toggleTr('${rid}')"><div class="nm"><b>${esc(w.name)}</b><div class="sub">Entrada ${entrada}${f.sinCerrar?' · se quedó sin cerrar':abierto?' · sigue dentro':enPausa?(' · en pausa desde '+ultSal):(' · salida '+ultSal)}${pausas}</div></div><div style="text-align:right"><div class="tot">${hm(min)}</div>${badge}</div><span class="chev" id="${rid}-chev">▸</span></div><div class="tramos-detail" id="${rid}" style="display:none">${trDet}${regHtml}${addBtn}</div>`;
+    filas+=`<div class="row clickable" onclick="toggleTr('${rid}')"><div class="nm"><b>${esc(w.name)}</b><div class="sub">${f.obraRef?'🏗️ '+esc(f.obraRef)+(f.lejosObra?' <span style="color:#f59e0b">· 📍 a '+distTxt(f.lejosObra.dist)+'</span>':'')+'<br>':''}Entrada ${entrada}${f.sinCerrar?' · se quedó sin cerrar':abierto?' · sigue dentro':enPausa?(' · en pausa desde '+ultSal):(' · salida '+ultSal)}${pausas}</div></div><div style="text-align:right"><div class="tot">${hm(min)}</div>${badge}</div><span class="chev" id="${rid}-chev">▸</span></div><div class="tramos-detail" id="${rid}" style="display:none">${trDet}${regHtml}${addBtn}</div>`;
   });
   document.getElementById('k-fichados').textContent=nFichados;
   document.getElementById('k-nofichados').textContent=nNo;
