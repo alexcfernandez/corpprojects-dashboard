@@ -47,6 +47,24 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .obra-lbl{display:block;font-size:12px;color:var(--text3);margin-bottom:6px;text-align:left}
 .obra-sel{width:100%;padding:13px 12px;border-radius:12px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:15px;font-family:inherit}
 .obra-chip{display:inline-block;padding:7px 14px;border-radius:100px;background:rgba(77,156,248,.12);color:var(--blue);font-size:13px;font-weight:600}
+.sec-btn{display:block;width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:14px;color:var(--text);font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;padding:15px;margin-top:18px}
+.mesbar{display:flex;align-items:center;gap:10px;margin-top:20px}
+.mesbar button{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;color:var(--text);width:44px;height:44px;font-size:20px;cursor:pointer;font-family:inherit}
+.mesbar button:disabled{opacity:.35}
+.mesbar .ml{flex:1;text-align:center;font-weight:700;font-size:17px;text-transform:capitalize}
+.mes-kpis{display:flex;gap:8px;margin:14px 0}
+.mk{flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:12px 8px;text-align:center}
+.mk .n{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}.mk .l{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
+.sem{margin-top:16px}
+.sem-h{display:flex;justify-content:space-between;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:6px;font-variant-numeric:tabular-nums}
+.dia{display:flex;align-items:center;gap:10px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 13px;margin-bottom:6px;font-variant-numeric:tabular-nums;font-size:14px}
+.dia .dd{width:54px;flex-shrink:0;color:var(--text2);text-transform:capitalize}
+.dia .hh{flex:1;color:var(--text3);font-size:13px}
+.dia .tt{font-weight:700;text-align:right}.dia .ex{display:block;font-size:11px;font-weight:600;color:#f59e0b}
+.dia.warn{border-color:rgba(245,158,11,.5)}
+.firma-box{border-radius:12px;padding:13px 15px;margin:4px 0 6px;font-size:14px;line-height:1.45;border:1px solid var(--border2);background:var(--bg2)}
+.firma-box.ok{border-color:rgba(34,196,135,.5)}.firma-box.pend{border-color:rgba(77,156,248,.55)}.firma-box.no{border-color:rgba(245,158,11,.55)}
+.firma-box .btn{margin-top:10px;padding:13px;font-size:15px}
 .link-btn{display:block;width:100%;background:none;border:none;color:var(--text2);font-family:inherit;font-size:14px;text-decoration:underline;cursor:pointer;padding:16px 8px;margin-top:6px}
 textarea.obra-sel{resize:vertical;line-height:1.4}
 .corr{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:11px 14px;margin-bottom:7px;font-size:14px}
@@ -106,6 +124,7 @@ textarea.obra-sel{resize:vertical;line-height:1.4}
 
 <!-- FICHAJE -->
 <div class="page" id="page-fichar"><div class="container">
+  <div id="firma-aviso"></div>
   <div class="card">
     <div class="estado" id="estado"></div>
     <div class="horas"><div class="n" id="horas-hoy">0:00</div><div class="u">horas de hoy</div></div>
@@ -117,10 +136,50 @@ textarea.obra-sel{resize:vertical;line-height:1.4}
     <h3>Tramos de hoy</h3>
     <div id="tramos-lista"></div>
   </div>
+  <button class="sec-btn" onclick="abrirMes()">📅 Mis horas · semana y mes</button>
   <button class="link-btn" onclick="abrirOlvido()">¿Se te olvidó fichar? Pide una corrección</button>
   <div class="tramos" id="corr-wrap" style="display:none">
     <h3>Mis correcciones</h3>
     <div id="corr-lista"></div>
+  </div>
+</div></div>
+
+<!-- MIS HORAS (semana y mes) -->
+<div class="page" id="page-mes"><div class="container">
+  <div class="mesbar">
+    <button onclick="moverMes(-1)" aria-label="Mes anterior">‹</button>
+    <div class="ml" id="mes-label"></div>
+    <button onclick="moverMes(1)" id="mes-next" aria-label="Mes siguiente">›</button>
+  </div>
+  <div class="mes-kpis">
+    <div class="mk"><div class="n" id="mes-horas">–</div><div class="l">Horas</div></div>
+    <div class="mk"><div class="n" id="mes-extra">–</div><div class="l">De más</div></div>
+    <div class="mk"><div class="n" id="mes-ndias">–</div><div class="l">Días</div></div>
+  </div>
+  <div id="mes-firma"></div>
+  <div id="mes-dias"></div>
+  <button class="link-btn" onclick="showPage('fichar');cargar()">← Volver a fichar</button>
+</div></div>
+
+<!-- FIRMAR EL RESUMEN DEL MES -->
+<div class="page" id="page-firma"><div class="container">
+  <div class="card">
+    <div class="login-title" id="fi-titulo">Resumen del mes</div>
+    <div class="login-sub" id="fi-sub"></div>
+    <div id="fi-conforme">
+      <div class="obra-lbl">Firma con el dedo:</div>
+      <canvas id="sig2" style="width:100%;height:150px;background:#fff;border-radius:10px;border:1px solid var(--border2);touch-action:none"></canvas>
+      <div style="text-align:right;margin-top:4px"><button onclick="_pad&&_pad.clear()" style="background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;font-family:inherit;text-decoration:underline">Borrar firma</button></div>
+      <button class="btn" id="fi-btn" onclick="enviarFirma(true)" style="margin-top:10px">✅ Estoy conforme · Firmar</button>
+      <button class="link-btn" onclick="verNoConforme(true)">No estoy de acuerdo con estas horas</button>
+    </div>
+    <div id="fi-noconforme" style="display:none">
+      <label class="obra-lbl" for="fi-coment">¿Con qué no estás de acuerdo? Oficina lo revisará contigo.</label>
+      <textarea id="fi-coment" class="obra-sel" rows="4" maxlength="800" placeholder="Ej.: el día 5 salí a las 18:00, no a las 17:00"></textarea>
+      <button class="btn" id="fi-btn-no" onclick="enviarFirma(false)" style="margin-top:12px;background:#f59e0b;color:#1a1200">Enviar mi desacuerdo</button>
+      <button class="link-btn" onclick="verNoConforme(false)">← Volver a firmar</button>
+    </div>
+    <button class="link-btn" onclick="showPage('mes')">Cancelar</button>
   </div>
 </div></div>
 
@@ -213,7 +272,7 @@ async function aceptarConsent(){
 function logout(){workerToken=null;localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');document.getElementById('logout-btn').style.display='none';showPage('login');}
 
 // ── FICHAJE ──
-async function cargar(){try{const r=await fetch('/api/fichaje/estado',{headers:authH()});const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');render(d);cargarCorrecciones();}catch(e){toast(e.message,'error');}}
+async function cargar(){try{const r=await fetch('/api/fichaje/estado',{headers:authH()});const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');render(d);cargarCorrecciones();avisoFirmaPendiente();}catch(e){toast(e.message,'error');}}
 let _estado=null,_obras=null;
 const escH=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function estadoDe(d){return d?(d.estado||(d.dentro?'dentro':'fuera')):'fuera';}
@@ -310,6 +369,89 @@ async function cargarCorrecciones(){
     const est={pendiente:'Pendiente',valido:'Aprobada',rechazado:'Rechazada'};
     document.getElementById('corr-lista').innerHTML=l.slice(0,6).map(c=>`<div class="corr"><div class="top"><span>${escH(c.fecha.slice(8,10)+'/'+c.fecha.slice(5,7))} · ${escH(TIPO_TXT[c.tipo]||c.tipo)} ${hora(c.hora)}</span><span class="pill ${escH(c.estado)}">${est[c.estado]||escH(c.estado)}</span></div><div class="mot">${escH(c.motivo||'')}${c.estado==='rechazado'&&c.resolucionMotivo?' — <b>Oficina:</b> '+escH(c.resolucionMotivo):''}</div></div>`).join('');
   }catch(e){}
+}
+
+// ── MIS HORAS (semana y mes) + FIRMA MENSUAL ──
+let _mes=null,_mesData=null,_pad=null;
+const mesHoy=()=>hoyISO().slice(0,7);
+function mesLabel(m){const [y,mo]=m.split('-').map(Number);return new Date(y,mo-1,1).toLocaleDateString('es-ES',{month:'long',year:'numeric'});}
+function abrirMes(){_mes=mesHoy();showPage('mes');cargarMes();}
+function moverMes(n){const [y,mo]=_mes.split('-').map(Number);const d=new Date(y,mo-1+n,1);const nm=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');if(nm>mesHoy())return;_mes=nm;cargarMes();}
+async function cargarMes(){
+  document.getElementById('mes-label').textContent=mesLabel(_mes);
+  document.getElementById('mes-next').disabled=_mes>=mesHoy();
+  document.getElementById('mes-dias').innerHTML='<div class="tramo" style="color:var(--text3);justify-content:center">Cargando…</div>';
+  document.getElementById('mes-firma').innerHTML='';
+  try{const r=await fetch('/api/fichaje/mi-mes?mes='+_mes,{headers:authH()});const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');_mesData=d;renderMes(d);}
+  catch(e){toast(e.message,'error');}
+}
+function renderMes(d){
+  document.getElementById('mes-horas').textContent=hm(d.totales.minutos);
+  document.getElementById('mes-extra').textContent=d.totales.extraMin?('+'+hm(d.totales.extraMin)):'0:00';
+  document.getElementById('mes-ndias').textContent=d.totales.dias;
+  // Semanas (la más reciente arriba), con su subtotal
+  const sem={};d.dias.forEach(x=>(sem[x.semana]=sem[x.semana]||[]).push(x));
+  const fD=f=>new Date(f+'T12:00:00');
+  const html=Object.keys(sem).sort().reverse().map(s=>{
+    const dias=sem[s].slice().reverse();const tot=dias.reduce((a,x)=>a+x.minutos,0);
+    const fin=new Date(fD(s));fin.setDate(fin.getDate()+6);
+    return `<div class="sem"><div class="sem-h"><span>Semana del ${fD(s).getDate()} al ${fin.getDate()}${fin.getMonth()!==fD(s).getMonth()?' '+fin.toLocaleDateString('es-ES',{month:'short'}):''}</span><span>${hm(tot)}</span></div>${dias.map(x=>`
+      <div class="dia ${x.sinCerrar?'warn':''}"><span class="dd">${fD(x.fecha).toLocaleDateString('es-ES',{weekday:'short'})} ${fD(x.fecha).getDate()}</span>
+      <span class="hh">${hora(x.entrada)} – ${x.sinCerrar?'<b style="color:#f59e0b">sin cerrar</b>':x.enCurso?'<span class="abierto" style="color:var(--green)">en curso</span>':hora(x.salida)}${x.pausasMin?` · pausa ${hm(x.pausasMin)}`:''}${x.correcciones?' · ✎':''}</span>
+      <span class="tt">${x.sinCerrar?'—':hm(x.minutos)}${x.extraMin?`<span class="ex">+${hm(x.extraMin)}</span>`:''}</span></div>`).join('')}</div>`;
+  }).join('');
+  document.getElementById('mes-dias').innerHTML=html||'<div class="tramo" style="color:var(--text3);justify-content:center;margin-top:16px">Sin jornadas este mes</div>';
+  // Firma del resumen
+  const f=d.firma||{},fb=document.getElementById('mes-firma');const fecha=f.fecha?new Date(f.fecha).toLocaleDateString('es-ES'):'';
+  const avisos=(d.totales.sinCerrar?`<div style="color:#f59e0b;font-size:13px;margin-top:6px">⚠ Tienes ${d.totales.sinCerrar} día(s) sin cerrar: pide la corrección antes de firmar.</div>`:'')+(d.correccionesPendientes?`<div style="color:#f59e0b;font-size:13px;margin-top:6px">⚠ Tienes ${d.correccionesPendientes} corrección(es) pendiente(s) de oficina.</div>`:'');
+  const boton=t=>`<button class="btn" onclick="abrirFirma()">${t}</button>`;
+  if(!d.dias.length){fb.innerHTML='';}
+  else if(!d.sePuedeFirmar){fb.innerHTML=`<div class="firma-box">🖊 El resumen de este mes se firma cuando acabe el mes.${avisos}</div>`;}
+  else if(f.estado==='firmado'){fb.innerHTML=`<div class="firma-box ok">✅ <b>Firmado</b> el ${fecha}. Gracias.</div>`;}
+  else if(f.estado==='no_conforme'){fb.innerHTML=`<div class="firma-box no">🟠 El ${fecha} indicaste que <b>no estás de acuerdo</b>: “${escH(f.comentario||'')}”. Oficina lo revisa contigo.${avisos}${boton('Revisar y firmar ahora')}</div>`;}
+  else if(f.estado==='cambiado'){fb.innerHTML=`<div class="firma-box pend">🔄 El resumen <b>ha cambiado</b> desde que lo firmaste (se aprobó una corrección). Revísalo y vuelve a firmar.${avisos}${boton('Revisar y firmar')}</div>`;}
+  else{fb.innerHTML=`<div class="firma-box pend">🖊 <b>Resumen pendiente de firmar.</b> Revisa tus horas de ${mesLabel(d.mes)} y fírmalo.${avisos}${boton('Revisar y firmar')}</div>`;}
+}
+// Aviso en la portada si el mes PASADO sigue sin firmar (se comprueba una vez por sesión)
+let _avisoFirmaVisto=false;
+async function avisoFirmaPendiente(){
+  if(_avisoFirmaVisto)return;_avisoFirmaVisto=true;
+  try{const h=new Date();const p=new Date(h.getFullYear(),h.getMonth()-1,1);const m=p.getFullYear()+'-'+String(p.getMonth()+1).padStart(2,'0');
+    const r=await fetch('/api/fichaje/mi-mes?mes='+m,{headers:authH()});if(!r.ok)return;const d=await r.json();
+    if(d.dias&&d.dias.length&&d.sePuedeFirmar&&['pendiente','cambiado'].includes((d.firma||{}).estado)){
+      document.getElementById('firma-aviso').innerHTML=`<button class="sec-btn" style="border-color:rgba(77,156,248,.6);margin-top:20px" onclick="_mes='${m}';showPage('mes');cargarMes()">🖊 Tienes el resumen de <b>${escH(mesLabel(m))}</b> pendiente de firmar →</button>`;}
+  }catch(e){}
+}
+// Pad de firma genérico (el canvas debe estar ya visible)
+function padFirma(cv){
+  const dpr=window.devicePixelRatio||1;cv.width=(cv.clientWidth||300)*dpr;cv.height=(cv.clientHeight||150)*dpr;
+  const c=cv.getContext('2d');c.scale(dpr,dpr);c.lineWidth=2.5;c.lineCap='round';c.lineJoin='round';c.strokeStyle='#111';
+  let on=false,last=null,ink=false;
+  const pos=e=>{const b=cv.getBoundingClientRect();const t=e.touches?e.touches[0]:e;return{x:t.clientX-b.left,y:t.clientY-b.top};};
+  const st=e=>{on=true;last=pos(e);e.preventDefault();},mv=e=>{if(!on)return;const p=pos(e);c.beginPath();c.moveTo(last.x,last.y);c.lineTo(p.x,p.y);c.stroke();last=p;ink=true;e.preventDefault();},en=()=>{on=false;};
+  if(!cv._pad){cv.addEventListener('mousedown',st);cv.addEventListener('mousemove',mv);window.addEventListener('mouseup',en);cv.addEventListener('touchstart',st,{passive:false});cv.addEventListener('touchmove',mv,{passive:false});cv.addEventListener('touchend',en);cv._pad=true;}
+  return{clear(){c.clearRect(0,0,cv.width,cv.height);ink=false;},hasInk:()=>ink,data:()=>cv.toDataURL('image/png')};
+}
+function abrirFirma(){
+  const d=_mesData;if(!d)return;
+  document.getElementById('fi-titulo').textContent='Resumen de '+mesLabel(d.mes);
+  document.getElementById('fi-sub').innerHTML=`<b>${d.totales.dias}</b> días · <b>${hm(d.totales.minutos)}</b> horas${d.totales.extraMin?` · <b>+${hm(d.totales.extraMin)}</b> de más`:''}<br>Al firmar confirmas que estas horas son correctas.`;
+  document.getElementById('fi-coment').value='';verNoConforme(false);showPage('firma');
+  // Recrear el canvas para un pad limpio (y con tamaño real, ya visible)
+  const old=document.getElementById('sig2'),cv=old.cloneNode(false);old.parentNode.replaceChild(cv,old);
+  requestAnimationFrame(()=>{_pad=padFirma(cv);});
+}
+function verNoConforme(v){document.getElementById('fi-conforme').style.display=v?'none':'block';document.getElementById('fi-noconforme').style.display=v?'block':'none';}
+async function enviarFirma(conforme){
+  const d=_mesData;if(!d)return;
+  const b={mes:d.mes,hash:d.hash,conforme};
+  if(conforme){if(!_pad||!_pad.hasInk()){toast('Firma con el dedo en el recuadro','error');return;}b.firma=_pad.data();}
+  else{b.comentario=document.getElementById('fi-coment').value.trim();if(b.comentario.length<5){toast('Explica con qué no estás de acuerdo','error');return;}}
+  const btn=document.getElementById(conforme?'fi-btn':'fi-btn-no');btn.disabled=true;
+  try{const r=await fetch('/api/fichaje/firmar',{method:'POST',headers:authH({'Content-Type':'application/json'}),body:JSON.stringify(b)});const x=await r.json();if(!r.ok)throw new Error(x.error||'Error');
+    toast(conforme?'✅ Resumen firmado':'📨 Enviado a oficina','ok');document.getElementById('firma-aviso').innerHTML='';showPage('mes');cargarMes();}
+  catch(e){toast(e.message,'error');}
+  finally{btn.disabled=false;}
 }
 
 // refrescar el contador cada minuto si está dentro y la pantalla está a la vista

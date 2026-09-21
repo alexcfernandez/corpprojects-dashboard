@@ -1353,6 +1353,39 @@ app.post('/api/fichaje/marca-admin', requireAuth, express.json({ limit: '16kb' }
     res.json(await require('./fichajeMarcas').marcaAdmin(req.body || {}, por)); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+// ── Fichaje legal · Fase 3: mis horas, firma mensual, informes y export ──
+app.get('/api/fichaje/mi-mes', async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return;
+    res.json(await require('./fichajeInformes').miMes(w.workerId, req.query.mes, w.workerName)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/fichaje/firmar', express.json({ limit: '600kb' }), async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return;
+    res.json(await require('./fichajeInformes').firmar(w.workerId, w.workerName, req.body || {}, { ip: req.ip, userAgent: req.get('user-agent') })); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/fichaje/informe', requireAuth, async (req, res) => {
+  try { if (!_soloOficinaFichaje(req, res)) return;
+    res.json(await require('./fichajeInformes').informeMes(req.query.mes)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/fichaje/informe/:userId', requireAuth, async (req, res) => {
+  try { if (!_soloOficinaFichaje(req, res)) return;
+    res.json(await require('./fichajeInformes').informeTrabajador(req.params.userId, req.query.mes)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/fichaje/no-firma', requireAuth, express.json({ limit: '16kb' }), async (req, res) => {
+  try { const por = _soloOficinaFichaje(req, res); if (!por) return;
+    const b = req.body || {};
+    res.json(await require('./fichajeInformes').anotarNoFirma(b.userId, b.mes, por)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/fichaje/export', requireAuth, async (req, res) => {
+  try { if (!_soloOficinaFichaje(req, res)) return;
+    res.json(await require('./fichajeInformes').exportInspeccion(req.query.from, req.query.to)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 // Prueba de los avisos sin enviar nada (?tipo=salidas|oficina).
 app.get('/api/fichaje/avisos-prueba', requireAuth, async (req, res) => {
   try { if (!_soloOficinaFichaje(req, res)) return;

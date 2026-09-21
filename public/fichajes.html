@@ -41,6 +41,17 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .tramo .tt{flex:1}.tramo .td{color:var(--text2);white-space:nowrap}
 .tramo .abierto{color:var(--blue)}
 .tramo .pin{text-decoration:none;font-size:12px;opacity:.85}.tramo .pin:hover{opacity:1}
+/* Fase 3: informe mensual */
+.vtabs{display:flex;gap:6px;margin-bottom:14px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:4px}
+.vtab{flex:1;background:none;border:none;border-radius:9px;color:var(--text2);padding:9px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+.vtab.on{background:var(--bg3);color:var(--text)}
+.mrow{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:13px 15px;margin-bottom:8px}
+.mrow .top{display:flex;align-items:center;gap:10px}
+.mrow .top b{flex:1;font-size:14.5px;min-width:0}
+.mrow .nums{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--text2);margin-top:6px;font-variant-numeric:tabular-nums}
+.mrow .nums b{color:var(--text);font-weight:700}
+.mrow .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.mrow .coment{font-size:12.5px;color:var(--amber);margin-top:6px}
 /* Fase 2: alertas, correcciones, registro legal */
 .panel{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:12px 15px;margin:0 0 10px}
 .panel.warn{border-color:rgba(245,158,11,.45)}.panel.pend{border-color:rgba(77,156,248,.5)}
@@ -77,6 +88,37 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   <a class="header-logout" href="/">← Dashboard</a>
 </div>
 <div class="container">
+  <div class="vtabs">
+    <button class="vtab on" id="vt-dia" onclick="verVista('dia')">Día</button>
+    <button class="vtab" id="vt-mes" onclick="verVista('mes')">Informe mensual</button>
+  </div>
+  <div id="vista-mes" style="display:none">
+    <div class="datebar">
+      <button onclick="moverMesA(-1)" aria-label="Mes anterior">‹</button>
+      <div class="d" id="m-label" style="text-transform:capitalize"></div>
+      <button onclick="moverMesA(1)" id="m-next" aria-label="Mes siguiente">›</button>
+    </div>
+    <div class="kpis">
+      <div class="kpi"><div class="n" id="m-horas">–</div><div class="l">Horas</div></div>
+      <div class="kpi"><div class="n" id="m-extra">–</div><div class="l">De más</div></div>
+      <div class="kpi"><div class="n" id="m-firmas">–</div><div class="l">Firmados</div></div>
+    </div>
+    <div class="panel">
+      <h4>Descargas</h4>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="b2" onclick="excelGestoria()">⬇️ Excel del mes (gestoría / nóminas)</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
+        <span style="font-size:12.5px;color:var(--text3)">Inspección, del</span>
+        <input type="date" id="ex-from" class="fi" style="width:auto;padding:7px 9px;font-size:13px">
+        <span style="font-size:12.5px;color:var(--text3)">al</span>
+        <input type="date" id="ex-to" class="fi" style="width:auto;padding:7px 9px;font-size:13px">
+        <button class="b2" onclick="excelInspeccion()">⬇️ Registro completo</button>
+      </div>
+    </div>
+    <div id="m-lista"></div>
+  </div>
+  <div id="vista-dia">
   <div class="datebar">
     <button onclick="mover(-1)">‹</button>
     <div class="d" id="d-label"></div>
@@ -91,6 +133,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
     <div class="kpi"><div class="n" id="k-horas">–</div><div class="l">Horas total</div></div>
   </div>
   <div id="lista"></div>
+  </div>
 </div>
 
 <!-- Oficina añade o corrige una marca (queda firmada con su nombre y motivo) -->
@@ -255,6 +298,126 @@ function render(fichajes,workers){
   document.getElementById('k-nofichados').textContent=nNo;
   document.getElementById('k-horas').textContent=hm(totalMin);
   document.getElementById('lista').innerHTML=filas||'<div class="empty">No hay trabajadores.</div>';
+}
+
+// ── INFORME MENSUAL (Fase 3) ──
+let _mesA=null,_inf=null;
+const mesHoyA=()=>iso(new Date()).slice(0,7);
+const dec=min=>Math.round((min||0)/60*100)/100;            // horas en decimal (nóminas)
+const fechaHora=ts=>ts?new Date(ts).toLocaleString('es-ES',{timeZone:'Europe/Madrid',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'}):'';
+const FIRMA_TXT={firmado:'Firmado',no_conforme:'No conforme',cambiado:'Cambió tras firmar',no_firma:'No firma',pendiente:'Sin firmar'};
+function verVista(v){
+  document.getElementById('vista-dia').style.display=v==='dia'?'block':'none';
+  document.getElementById('vista-mes').style.display=v==='mes'?'block':'none';
+  document.getElementById('vt-dia').classList.toggle('on',v==='dia');document.getElementById('vt-mes').classList.toggle('on',v==='mes');
+  if(v==='mes'){if(!_mesA)_mesA=mesHoyA();cargarMesA();}
+}
+function moverMesA(n){const [y,m]=_mesA.split('-').map(Number);const d=new Date(y,m-1+n,1);const nm=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');if(nm>mesHoyA())return;_mesA=nm;cargarMesA();}
+async function cargarMesA(){
+  const [y,m]=_mesA.split('-').map(Number);
+  document.getElementById('m-label').textContent=new Date(y,m-1,1).toLocaleDateString('es-ES',{month:'long',year:'numeric'});
+  document.getElementById('m-next').disabled=_mesA>=mesHoyA();document.getElementById('m-next').style.opacity=_mesA>=mesHoyA()?'.4':'1';
+  const el=document.getElementById('m-lista');el.innerHTML='<div class="empty">Cargando…</div>';
+  try{const r=await fetch('/api/fichaje/informe?mes='+_mesA,{headers:authH()});const d=await r.json();
+    if(r.status===403){el.innerHTML='<div class="empty">Solo Dueño u Oficina pueden ver los informes.</div>';return;}
+    if(!r.ok)throw new Error(d.error||'Error');_inf=d;
+    document.getElementById('ex-from').value=d.from;document.getElementById('ex-to').value=d.to;renderMesA(d);}
+  catch(e){el.innerHTML='<div class="empty" style="color:var(--red)">'+esc(e.message)+'</div>';}
+}
+function renderMesA(d){
+  const con=d.trabajadores.filter(t=>t.totales.dias>0);
+  document.getElementById('m-horas').textContent=hm(con.reduce((a,t)=>a+t.totales.minutos,0));
+  document.getElementById('m-extra').textContent=hm(con.reduce((a,t)=>a+t.totales.extraMin,0));
+  document.getElementById('m-firmas').textContent=con.filter(t=>t.firma.estado==='firmado').length+'/'+con.length;
+  window._mt=d.trabajadores;
+  const cls={firmado:'b-ok',no_conforme:'b-warn',cambiado:'b-warn',no_firma:'b-no',pendiente:'b-curso'};
+  document.getElementById('m-lista').innerHTML=d.trabajadores.map((t,i)=>{
+    if(!t.totales.dias)return `<div class="mrow" style="opacity:.6"><div class="top"><b>${esc(t.userName||'—')}</b><span class="badge b-no">Sin jornadas</span></div></div>`;
+    const f=t.firma||{};const fecha=f.fecha?new Date(f.fecha).toLocaleDateString('es-ES'):'';
+    const badge=d.cerrado?`<span class="badge ${cls[f.estado]||'b-curso'}">${esc(FIRMA_TXT[f.estado]||f.estado)}${fecha&&f.estado!=='pendiente'?' · '+fecha:''}</span>`:'<span class="badge b-curso">Mes en curso</span>';
+    const puedeNoFirma=d.cerrado&&['pendiente','cambiado'].includes(f.estado);
+    return `<div class="mrow"><div class="top"><b>${esc(t.userName)}</b>${badge}</div>
+      <div class="nums"><span><b>${t.totales.dias}</b> días</span><span><b>${hm(t.totales.minutos)}</b> h</span><span>de más <b>${hm(t.totales.extraMin)}</b></span><span>pausas <b>${hm(t.totales.pausasMin)}</b></span>${t.correcciones.length?`<span>✎ <b>${t.correcciones.length}</b> correc.</span>`:''}${t.totales.sinCerrar?`<span style="color:var(--amber)">⚠ <b>${t.totales.sinCerrar}</b> sin cerrar</span>`:''}</div>
+      ${f.estado==='no_conforme'&&f.comentario?`<div class="coment">“${esc(f.comentario)}”</div>`:''}
+      <div class="acts"><button class="b2" onclick="pdfTrabajador(${i})">📄 PDF para firmar</button>${puedeNoFirma?`<button class="b2" onclick="noFirma(${i})">Anotar «no firma»</button>`:''}</div></div>`;
+  }).join('')||'<div class="empty">Sin datos este mes.</div>';
+}
+async function noFirma(i){
+  const t=_mt[i];if(!confirm(`Se anotará que ${t.userName} NO firma el resumen de este mes, con la fecha de hoy.\n\nAntes de cualquier medida, consultadlo con la gestoría.\n\n¿Anotar?`))return;
+  try{const r=await fetch('/api/fichaje/no-firma',{method:'POST',headers:{...authH(),'Content-Type':'application/json'},body:JSON.stringify({userId:t.userId,mes:_mesA})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');cargarMesA();}
+  catch(e){alert(e.message);}
+}
+// Excel (SheetJS, se carga solo cuando hace falta)
+let _xl=null;
+function ensureXLSX(){if(window.XLSX)return Promise.resolve();if(_xl)return _xl;_xl=new Promise((ok,ko)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';s.onload=()=>ok();s.onerror=()=>ko(new Error('No se pudo cargar el generador de Excel'));document.head.appendChild(s);});return _xl;}
+function _hoja(aoa,anchos){const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=anchos.map(w=>({wch:w}));return ws;}
+async function excelGestoria(){
+  if(!_inf)return;try{await ensureXLSX();}catch(e){alert(e.message);return;}
+  const d=_inf,con=d.trabajadores.filter(t=>t.totales.dias>0);
+  const res=[['Trabajador','Días trabajados','Horas','Horas de más','Pausas (h)','Correcciones','Días sin cerrar','Firma del resumen','Fecha firma']];
+  con.forEach(t=>res.push([t.userName,t.totales.dias,dec(t.totales.minutos),dec(t.totales.extraMin),dec(t.totales.pausasMin),t.correcciones.filter(c=>c.estado==='valido').length,t.totales.sinCerrar,FIRMA_TXT[t.firma.estado]||t.firma.estado,t.firma.fecha?new Date(t.firma.fecha).toLocaleDateString('es-ES'):'']));
+  res.push([]);res.push(['TOTAL',con.reduce((a,t)=>a+t.totales.dias,0),dec(con.reduce((a,t)=>a+t.totales.minutos,0)),dec(con.reduce((a,t)=>a+t.totales.extraMin,0))]);
+  res.push([]);res.push([`Jornada diaria de referencia: ${dec(d.jornadaMin)} h. «Horas de más» = lo que pasa de esa jornada cada día.`]);
+  const det=[['Trabajador','Fecha','Entrada','Salida','Pausas (min)','Horas','Horas de más','Tramos','Correcciones','Observaciones']];
+  con.forEach(t=>t.dias.forEach(x=>det.push([t.userName,x.fecha.split('-').reverse().join('/'),x.entrada?hora(x.entrada):'',x.salida?hora(x.salida):'',x.pausasMin,dec(x.minutos),dec(x.extraMin),x.tramos,x.correcciones,x.sinCerrar?'JORNADA SIN CERRAR':''])));
+  const cor=[['Trabajador','Fecha','Marca','Hora','Origen','Estado','Motivo','Pedida por','Resuelta por','Resuelta el']];
+  con.forEach(t=>t.correcciones.forEach(c=>cor.push([t.userName,c.fecha.split('-').reverse().join('/'),TIPO_TXT[c.tipo]||c.tipo,hora(c.hora),ORIGEN_TXT[c.origen]||c.origen,c.estado,c.motivo||'',c.pedidaPor||'',c.resueltaPor||'',c.resueltaAt?fechaHora(c.resueltaAt):''])));
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,_hoja(res,[28,15,10,13,11,13,15,20,13]),'Resumen');
+  XLSX.utils.book_append_sheet(wb,_hoja(det,[28,12,9,9,12,9,13,8,13,22]),'Detalle por día');
+  XLSX.utils.book_append_sheet(wb,_hoja(cor,[28,12,16,8,12,11,40,20,20,20]),'Correcciones');
+  XLSX.writeFile(wb,`fichajes_${d.mes}.xlsx`);
+}
+async function excelInspeccion(){
+  const from=document.getElementById('ex-from').value,to=document.getElementById('ex-to').value;
+  try{await ensureXLSX();const r=await fetch(`/api/fichaje/export?from=${from}&to=${to}`,{headers:authH()});const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');
+    const aoa=[['Registro de jornada — '+from+' a '+to+' · generado el '+fechaHora(d.generado)],[],
+      ['Trabajador','Fecha','Marca','Hora (España)','Hora UTC','Origen','Estado','¿Cuenta?','Sustituida por corrección','Corrige la marca de las','Motivo','Creada por','Resuelta por','Resuelta el','Motivo resolución','Ubicación','Registrada el','Id']];
+    d.marcas.forEach(m=>aoa.push([m.trabajador,m.fecha.split('-').reverse().join('/'),TIPO_TXT[m.tipo]||m.tipo,fechaHora(m.hora),new Date(m.hora).toISOString(),ORIGEN_TXT[m.origen]||m.origen,m.estado,m.cuenta?'sí':'no',m.sustituidaPorCorreccion?'sí':'',m.corrigeHoraOriginal?fechaHora(m.corrigeHoraOriginal):'',m.motivo||'',m.creadoPor||'',m.resueltaPor||'',m.resueltaAt?fechaHora(m.resueltaAt):'',m.resolucionMotivo||'',m.ubicacion||'',fechaHora(m.registradaAt),m.id]));
+    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,_hoja(aoa,[26,12,16,21,25,11,11,9,12,21,38,20,18,21,28,22,21,26]),'Marcas');
+    XLSX.writeFile(wb,`registro_jornada_${from}_a_${to}.xlsx`);}
+  catch(e){alert(e.message);}
+}
+// PDF para firmar (ventana imprimible → "Guardar como PDF")
+async function pdfTrabajador(i){
+  const t=_mt[i];const w=window.open('','_blank');if(!w){alert('Permite las ventanas emergentes');return;}
+  try{
+    const [ri,re]=await Promise.all([fetch('/api/fichaje/informe/'+encodeURIComponent(t.userId)+'?mes='+_mesA,{headers:authH()}),fetch('/api/empresa',{headers:authH()}).catch(()=>null)]);
+    const d=await ri.json();if(!ri.ok)throw new Error(d.error||'Error');
+    const e=(re&&re.ok)?await re.json():{};
+    w.document.open();w.document.write(htmlInforme(d,e));w.document.close();
+  }catch(err){w.close();alert(err.message);}
+}
+function htmlInforme(d,e){
+  const [y,m]=d.mes.split('-').map(Number);const mesTxt=new Date(y,m-1,1).toLocaleDateString('es-ES',{month:'long',year:'numeric'});
+  const fD=f=>new Date(f+'T12:00:00');const f=d.firma||{};
+  const filas=d.dias.map(x=>`<tr><td>${fD(x.fecha).toLocaleDateString('es-ES',{weekday:'short'})} ${x.fecha.slice(8)}/${x.fecha.slice(5,7)}</td><td>${x.entrada?hora(x.entrada):'—'}</td><td>${x.sinCerrar?'sin cerrar':x.salida?hora(x.salida):'—'}</td><td class="r">${x.pausasMin?hm(x.pausasMin):''}</td><td class="r"><b>${x.sinCerrar?'—':hm(x.minutos)}</b></td><td class="r">${x.extraMin?'+'+hm(x.extraMin):''}</td><td>${x.correcciones?'✎':''}</td></tr>`).join('');
+  const corr=d.correcciones.filter(c=>c.estado==='valido');
+  const firmaHtml=f.estado==='firmado'&&f.imagen
+    ?`<div class="sig"><div class="h">Firma del trabajador</div><img src="${f.imagen}" alt="firma"><div class="s">Firmado en la app el ${fechaHora(f.fecha)} · conforme<br>Versión del resumen: ${esc((f.hashFirmado||'').slice(0,16))}…</div></div>`
+    :`<div class="sig"><div class="h">Firma del trabajador</div><div class="line"></div><div class="s">${f.estado==='no_conforme'?'En la app indicó NO estar conforme el '+fechaHora(f.fecha)+': “'+esc(f.comentario||'')+'”':f.estado==='no_firma'?'NO FIRMA — anotado el '+fechaHora(f.fecha):f.estado==='cambiado'?'El resumen cambió tras su firma; pendiente de volver a firmar':'Fecha:'}</div></div>`;
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Registro de jornada · ${esc(d.userName)} · ${esc(mesTxt)}</title><style>
+*{box-sizing:border-box}html,body{background:#fff}body{font-family:-apple-system,Arial,sans-serif;color:#1a1a1a;margin:0;padding:30px;font-size:12.5px;line-height:1.45}
+.top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1a1a1a;padding-bottom:12px;margin-bottom:16px}
+.emp b{font-size:16px}.emp .s{color:#555;font-size:11px;margin-top:3px;max-width:340px}.doc{text-align:right}.doc .n{font-size:15px;font-weight:800}.doc .m{color:#555;font-size:12px;text-transform:capitalize}
+.who{display:flex;gap:26px;margin-bottom:14px}.who .h{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#888}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}th{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#666;text-align:left;border-bottom:1px solid #999;padding:5px 6px}
+td{padding:4px 6px;border-bottom:1px solid #eee}.r{text-align:right}th.r{text-align:right}
+.tot{display:flex;gap:26px;margin:14px 0;padding:11px 14px;background:#f4f6f9;border-radius:8px}.tot b{font-size:15px}
+.corr{font-size:11px;color:#444;margin-top:6px}.corr li{margin-bottom:2px}
+.sigs{display:flex;gap:30px;margin-top:26px;page-break-inside:avoid}.sig{flex:1}.sig .h{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#888;margin-bottom:6px}
+.sig img{max-height:80px;max-width:240px;display:block}.sig .line{height:70px;border-bottom:1px solid #333}.sig .s{font-size:10.5px;color:#555;margin-top:5px}
+.leg{margin-top:18px;font-size:10px;color:#777}.bar{background:#4d9cf8;color:#fff;padding:8px 12px;border-radius:6px;border:none;font-size:13px;cursor:pointer;font-family:inherit}
+@media print{body{padding:0}.noprint{display:none}}</style></head><body>
+<div class="noprint" style="display:flex;justify-content:space-between;margin-bottom:12px"><button class="bar" onclick="window.close()">✕ Cerrar</button><button class="bar" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button></div>
+<div class="top"><div class="emp"><b>${esc(e.nombre||'Corp. Projects Holding, S.L.')}</b><div class="s">${esc([e.cif?'CIF '+e.cif:'',e.direccion].filter(Boolean).join(' · '))}</div></div><div class="doc"><div class="n">REGISTRO DE JORNADA</div><div class="m">${esc(mesTxt)}</div></div></div>
+<div class="who"><div><div class="h">Trabajador</div><b>${esc(d.userName)}</b></div><div><div class="h">Jornada diaria de referencia</div><b>${hm(d.jornadaMin)} h</b></div></div>
+<table><thead><tr><th>Día</th><th>Entrada</th><th>Salida</th><th class="r">Pausas</th><th class="r">Horas</th><th class="r">De más</th><th></th></tr></thead><tbody>${filas||'<tr><td colspan="7">Sin jornadas registradas</td></tr>'}</tbody></table>
+<div class="tot"><div>Días trabajados<br><b>${d.totales.dias}</b></div><div>Horas totales<br><b>${hm(d.totales.minutos)}</b></div><div>Horas de más<br><b>${hm(d.totales.extraMin)}</b></div><div>Pausas<br><b>${hm(d.totales.pausasMin)}</b></div></div>
+${corr.length?`<div class="corr"><b>✎ Correcciones del mes</b> (el registro original se conserva):<ul>${corr.map(c=>`<li>${c.fecha.slice(8)}/${c.fecha.slice(5,7)} · ${esc(TIPO_TXT[c.tipo]||c.tipo)} ${hora(c.hora)} — ${esc(ORIGEN_TXT[c.origen]||c.origen)}${c.resueltaPor?', aprobada por '+esc(c.resueltaPor):''}: “${esc(c.motivo||'')}”</li>`).join('')}</ul></div>`:''}
+<div class="sigs">${firmaHtml}<div class="sig"><div class="h">Por la empresa</div><div class="line"></div><div class="s">Fecha:</div></div></div>
+<div class="leg">Registro diario de jornada conforme al art. 34.9 del Estatuto de los Trabajadores. Horas en horario peninsular. Los registros originales no se modifican ni se eliminan; las correcciones quedan anotadas con su motivo y quién las aprobó.</div>
+</body></html>`;
 }
 
 if(!tok){document.getElementById('lista').innerHTML='<div class="empty">Abre esta página desde el dashboard (necesita sesión de admin).</div>';}
