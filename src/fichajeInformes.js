@@ -194,7 +194,7 @@ async function exportInspeccion(from, to) {
     marcas: marcas.map(m => ({
       id: String(m._id), trabajador: m.userName, trabajadorId: m.userId, fecha: m.fecha, tipo: m.tipo,
       hora: m.hora, horaDispositivo: m.horaDispositivo || null,
-      origen: m.origen || 'app', estado: m.estado || 'valido',
+      origen: m.origen || 'app', offline: !!m.offline, relojDudoso: !!m.relojDudoso, estado: m.estado || 'valido',
       cuenta: (m.estado || 'valido') === 'valido' && !sustituidas.has(String(m._id)),
       sustituidaPorCorreccion: sustituidas.has(String(m._id)),
       corrigeA: m.corrigeA || null, corrigeHoraOriginal: m.corrigeA && porId[String(m.corrigeA)] ? porId[String(m.corrigeA)].hora : null,

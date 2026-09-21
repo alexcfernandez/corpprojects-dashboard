@@ -1,5 +1,5 @@
 // Service Worker — Corp Projects Dashboard
-const CACHE = 'cp-v82';
+const CACHE = 'cp-v83';
 const STATIC = [
   '/',
   '/parte',
@@ -11,6 +11,7 @@ const STATIC = [
   '/activos',
   '/medir',
   '/catalogo',
+  '/push-client.js',
   '/tool-theme.css',
   '/manifest.json',
   '/icons/icon-192.png',
@@ -61,7 +62,8 @@ self.addEventListener('fetch', e => {
         }
         return res;
       })
-      .catch(() => caches.match(e.request))
+      // Sin red: lo guardado. Al abrir una página se ignora el ?t= / ?w= del enlace.
+      .catch(() => caches.match(e.request, { ignoreSearch: e.request.mode === 'navigate' }))
   );
 });
 

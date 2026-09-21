@@ -289,10 +289,10 @@ function render(fichajes,workers){
     // Registro legal tal cual está guardado: nada se borra; lo sustituido/rechazado sale tachado.
     const reg=f.registro||[];
     const sust=new Set(reg.filter(m=>m.estado==='valido'&&m.corrigeA).map(m=>m.corrigeA));
-    const hayCambios=reg.some(m=>m.origen!=='app'||m.estado!=='valido');
+    const hayCambios=reg.some(m=>m.origen!=='app'||m.estado!=='valido'||m.offline);
     const regHtml=hayCambios?`<div class="reg"><div class="rt">Registro completo (nada se borra)</div>${reg.map(m=>{
       const off=m.estado!=='valido'||sust.has(m.id);
-      const nota=m.estado==='pendiente'?'pendiente de aprobar':m.estado==='rechazado'?'rechazada':sust.has(m.id)?'sustituida por una corrección':'';
+      const nota=m.estado==='pendiente'?'pendiente de aprobar':m.estado==='rechazado'?'rechazada':sust.has(m.id)?'sustituida por una corrección':m.relojDudoso?'📴 sin cobertura · el reloj del móvil iba adelantado: cuenta la hora de llegada':m.offline?('📴 fichada sin cobertura · llegó a las '+hora(m.recibidaAt)):'';
       return `<div class="rg ${off?'off':''}"><span>${hora(m.hora)}</span><span>${esc(TIPO_TXT[m.tipo]||m.tipo)}</span><span class="o">${esc(ORIGEN_TXT[m.origen]||m.origen)}</span><span class="mo">${esc([nota,m.motivo?('“'+m.motivo+'”'):'',m.por&&m.origen==='admin'?('— '+m.por):''].filter(Boolean).join(' '))}</span></div>`;}).join('')}</div>`:'';
     const addBtn=`<button class="mini" onclick="event.stopPropagation();abrirMarca(_ws[${idx}].id,_ws[${idx}].name)">＋ Añadir o corregir una marca</button>`;
     filas+=`<div class="row clickable" onclick="toggleTr('${rid}')"><div class="nm"><b>${esc(w.name)}</b><div class="sub">Entrada ${entrada}${f.sinCerrar?' · se quedó sin cerrar':abierto?' · sigue dentro':enPausa?(' · en pausa desde '+ultSal):(' · salida '+ultSal)}${pausas}</div></div><div style="text-align:right"><div class="tot">${hm(min)}</div>${badge}</div><span class="chev" id="${rid}-chev">▸</span></div><div class="tramos-detail" id="${rid}" style="display:none">${trDet}${regHtml}${addBtn}</div>`;
@@ -375,9 +375,9 @@ async function excelInspeccion(){
   const from=document.getElementById('ex-from').value,to=document.getElementById('ex-to').value;
   try{await ensureXLSX();const r=await fetch(`/api/fichaje/export?from=${from}&to=${to}`,{headers:authH()});const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');
     const aoa=[['Registro de jornada — '+from+' a '+to+' · generado el '+fechaHora(d.generado)],[],
-      ['Trabajador','Fecha','Marca','Hora (España)','Hora UTC','Origen','Estado','¿Cuenta?','Sustituida por corrección','Corrige la marca de las','Motivo','Creada por','Resuelta por','Resuelta el','Motivo resolución','Ubicación','Registrada el','Id']];
-    d.marcas.forEach(m=>aoa.push([m.trabajador,m.fecha.split('-').reverse().join('/'),TIPO_TXT[m.tipo]||m.tipo,fechaHora(m.hora),new Date(m.hora).toISOString(),ORIGEN_TXT[m.origen]||m.origen,m.estado,m.cuenta?'sí':'no',m.sustituidaPorCorreccion?'sí':'',m.corrigeHoraOriginal?fechaHora(m.corrigeHoraOriginal):'',m.motivo||'',m.creadoPor||'',m.resueltaPor||'',m.resueltaAt?fechaHora(m.resueltaAt):'',m.resolucionMotivo||'',m.ubicacion||'',fechaHora(m.registradaAt),m.id]));
-    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,_hoja(aoa,[26,12,16,21,25,11,11,9,12,21,38,20,18,21,28,22,21,26]),'Marcas');
+      ['Trabajador','Fecha','Marca','Hora (España)','Hora UTC','Origen','Sin cobertura','Estado','¿Cuenta?','Sustituida por corrección','Corrige la marca de las','Motivo','Creada por','Resuelta por','Resuelta el','Motivo resolución','Ubicación','Registrada el','Id']];
+    d.marcas.forEach(m=>aoa.push([m.trabajador,m.fecha.split('-').reverse().join('/'),TIPO_TXT[m.tipo]||m.tipo,fechaHora(m.hora),new Date(m.hora).toISOString(),ORIGEN_TXT[m.origen]||m.origen,m.relojDudoso?'sí (reloj del móvil adelantado: hora del servidor)':m.offline?'sí (hora del móvil)':'',m.estado,m.cuenta?'sí':'no',m.sustituidaPorCorreccion?'sí':'',m.corrigeHoraOriginal?fechaHora(m.corrigeHoraOriginal):'',m.motivo||'',m.creadoPor||'',m.resueltaPor||'',m.resueltaAt?fechaHora(m.resueltaAt):'',m.resolucionMotivo||'',m.ubicacion||'',fechaHora(m.registradaAt),m.id]));
+    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,_hoja(aoa,[26,12,16,21,25,11,20,11,9,12,21,38,20,18,21,28,22,21,26]),'Marcas');
     XLSX.writeFile(wb,`registro_jornada_${from}_a_${to}.xlsx`);}
   catch(e){alert(e.message);}
 }

@@ -14,6 +14,9 @@ const TIPOS = ['entrada', 'pausa_inicio', 'pausa_fin', 'salida'];
 async function getDB() { return require('./db').getDB(); }
 
 // Fecha de HOY en Europe/Madrid (YYYY-MM-DD).
+// Una marca offline más vieja que esto ya no entra sola: tiene que ir por corrección.
+const OFFLINE_MAX_DIAS = Number(process.env.FICHAJE_OFFLINE_MAX_DIAS) || 7;
+
 function fechaHoy() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
 }
@@ -113,12 +116,33 @@ async function estadoActual(userId, fecha) {
 
 // ── AÑADIR UNA MARCA (append-only) ────────────────────────────────
 // Valida la transición según el estado actual. tipo ∈ TIPOS.
-async function marcar(userId, userName, tipo, { loc, obraId } = {}) {
+async function marcar(userId, userName, tipo, { loc, obraId, opId, offline, horaDispositivo } = {}) {
   if (!TIPOS.includes(tipo)) throw new Error('Tipo de marca no válido');
   const db = await getDB();
   const now = new Date();
-  const fecha = fechaHoy();
-  const est = await estadoActual(userId, fecha);
+  const op = (typeof opId === 'string' && /^[\w-]{8,64}$/.test(opId)) ? opId : null;
+
+  // IDEMPOTENCIA: el móvil reintenta la misma marca si se quedó sin cobertura a medias
+  // (la petición llegó pero la respuesta no). Misma opId ⇒ no se duplica.
+  if (op) {
+    const ya = await db.collection(COL).findOne({ empresaId: EMPRESA, userId: String(userId), opId: op });
+    if (ya) return { accion: ya.tipo, duplicada: true, ...(await estadoActual(userId, fechaHoy())) };
+  }
+
+  // OFFLINE (Fase 4): la marca se hizo sin cobertura y llega después. Cuenta la hora del
+  // MÓVIL (cuando pulsó), y queda anotado que es offline y cuándo la recibió el servidor.
+  let hora = now, hd = null, relojDudoso = false;
+  if (offline) {
+    hd = new Date(horaDispositivo);
+    if (isNaN(hd.getTime())) throw new Error('Hora del móvil no válida');
+    if (now - hd > OFFLINE_MAX_DIAS * 86400000) throw new Error(`Ese fichaje tiene más de ${OFFLINE_MAX_DIAS} días. Pide una corrección a oficina.`);
+    // Reloj del móvil adelantado: no se aceptan horas futuras → se usa la del servidor y se anota.
+    if (hd - now > 2 * 60000) relojDudoso = true; else hora = hd > now ? now : hd;
+  }
+  const fecha = fechaDe(hora);
+  // Estado en el momento de la marca (solo lo anterior a esa hora), para validar la transición.
+  const previas = (await marcasDelDia(userId, fecha)).filter(m => new Date(m.hora) <= hora);
+  const est = reconstruir(previas, fecha);
   if (!est.acciones[tipo]) {
     const nombres = { entrada: 'entrar', pausa_inicio: 'pausar', pausa_fin: 'volver de la pausa', salida: 'salir' };
     throw new Error(`Ahora mismo no puedes ${nombres[tipo] || tipo} (estás: ${est.estado}).`);
@@ -128,10 +152,12 @@ async function marcar(userId, userName, tipo, { loc, obraId } = {}) {
     userId: String(userId),
     userName: userName || '',
     tipo,
-    hora: now,                              // hora del SERVIDOR (la que cuenta) — UTC en BD
-    horaDispositivo: null,                  // se usará en offline (Fase 4)
+    hora,                                   // la que cuenta — UTC en BD (servidor; en offline, la del móvil)
+    horaDispositivo: hd,                    // solo en marcas offline
     fecha,                                  // YYYY-MM-DD Europe/Madrid
     origen: 'app',
+    offline: !!offline,
+    recibidaAt: now,                        // cuándo llegó al servidor (en offline ≠ hora)
     obraId: (tipo === 'entrada' && obraId) ? String(obraId) : (est.obraId || null),
     ubicacion: limpiarLoc(loc),
     corrigeA: null,
@@ -141,7 +167,13 @@ async function marcar(userId, userName, tipo, { loc, obraId } = {}) {
     aprobadoPor: null,
     createdAt: now,
   };
-  await db.collection(COL).insertOne(doc);
+  if (op) doc.opId = op;
+  if (relojDudoso) doc.relojDudoso = true;
+  try { await db.collection(COL).insertOne(doc); }
+  catch (e) { // dos reintentos a la vez de la misma pulsación → gana el primero
+    if (e && e.code === 11000 && op) return { accion: tipo, duplicada: true, ...(await estadoActual(userId, fechaHoy())) };
+    throw e;
+  }
 
   // Enganches con la PRESENCIA (igual que el fichaje viejo):
   //  · primera ENTRADA del día → marca presencia
@@ -160,7 +192,9 @@ async function marcar(userId, userName, tipo, { loc, obraId } = {}) {
     }
   } catch (e) { console.warn('[FichajeMarcas] horas:', e.message); }
 
-  return { accion: tipo, ...nuevo };
+  // La app pinta siempre el día de HOY (una marca offline puede ser de ayer).
+  const hoy = fechaHoy();
+  return { accion: tipo, offline: !!offline, ...(fecha === hoy ? nuevo : await estadoActual(userId, hoy)) };
 }
 
 // ── VISTA ADMIN DEL DÍA ───────────────────────────────────────────
@@ -178,7 +212,7 @@ async function getDia(fecha) {
     .map(u => ({
       userId: u.userId, userName: u.userName, ...reconstruir(u.marcas, f),
       // Registro tal cual quedó guardado (incluye correcciones y marcas sustituidas).
-      registro: u.marcas.map(m => ({ id: String(m._id), tipo: m.tipo, hora: m.hora, origen: m.origen || 'app', estado: m.estado || 'valido', corrigeA: m.corrigeA || null, motivo: m.motivo || null, por: m.creadoPorNombre || null })),
+      registro: u.marcas.map(m => ({ id: String(m._id), tipo: m.tipo, hora: m.hora, origen: m.origen || 'app', estado: m.estado || 'valido', corrigeA: m.corrigeA || null, motivo: m.motivo || null, por: m.creadoPorNombre || null, offline: !!m.offline, recibidaAt: m.offline ? (m.recibidaAt || m.createdAt || null) : null, relojDudoso: !!m.relojDudoso })),
     }))
     .sort((a, b) => String(a.userName).localeCompare(String(b.userName)));
 }

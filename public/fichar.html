@@ -126,6 +126,7 @@ textarea.obra-sel{resize:vertical;line-height:1.4}
 <div class="page" id="page-fichar"><div class="container">
   <div id="firma-aviso"></div>
   <div id="push-aviso"></div>
+  <div id="offline-aviso"></div>
   <div class="card">
     <div class="estado" id="estado"></div>
     <div class="horas"><div class="n" id="horas-hoy">0:00</div><div class="u">horas de hoy</div></div>
@@ -234,14 +235,17 @@ async function doLogin(){const sel=document.querySelector('.worker-btn.selected'
   catch(e){toast(e.message,'error');document.getElementById('pin-input').value='';}
   finally{b.disabled=false;b.innerHTML='Entrar →';}}
 async function tryRestore(){const t=localStorage.getItem('cpWT');if(!t)return false;
-  try{const r=await fetch('/api/fichaje/estado',{headers:{'Authorization':`Bearer ${t}`}});if(!r.ok)return false;workerToken=t;entrar(localStorage.getItem('cpWN')||'');return true;}catch(e){return false;}}
+  let r;try{r=await fetch('/api/fichaje/estado',{headers:{'Authorization':`Bearer ${t}`}});}
+  catch(e){ // sin cobertura: se entra igual con la sesión guardada (se fichará en el móvil)
+    _sinRed=true;workerToken=t;entrar(localStorage.getItem('cpWN')||'');return true;}
+  if(!r.ok)return false;workerToken=t;entrar(localStorage.getItem('cpWN')||'');return true;}
 function entrar(nombre){document.getElementById('header-sub').textContent=nombre||'';document.getElementById('logout-btn').style.display='block';checkConsent();}
 // Primera vez: si no ha firmado el consentimiento GPS, se le muestra. Si ya lo
 // firmó (o si falla la comprobación), va directo a fichar.
 async function checkConsent(){
   try{const r=await fetch('/api/fichaje/consent',{headers:authH()});const d=await r.json();
     if(r.ok && d.consentido){ showPage('fichar'); cargar(); return; }
-  }catch(e){}
+  }catch(e){ showPage('fichar'); cargar(); return; } // sin cobertura: a fichar directamente
   showPage('consent'); setTimeout(initSig,60);
 }
 let sigCtx=null, sigInk=false, _sigTries=0;
@@ -274,12 +278,18 @@ async function aceptarConsent(){
 function logout(){workerToken=null;localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');document.getElementById('logout-btn').style.display='none';showPage('login');}
 
 // ── FICHAJE ──
-async function cargar(){try{const r=await fetch('/api/fichaje/estado',{headers:authH()});const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');render(d);cargarCorrecciones();avisoFirmaPendiente();avisoPush();}catch(e){toast(e.message,'error');}}
+async function cargar(){
+  let r;try{r=await fetchT('/api/fichaje/estado',{headers:authH()},12000);}
+  catch(e){_sinRed=true;render(estadoLocal());renderOffline();return;} // sin cobertura
+  _sinRed=false;
+  try{const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');pintar(d);cargarCorrecciones();avisoFirmaPendiente();avisoPush();if(colaTodos().length)sincronizar();}catch(e){toast(e.message,'error');}}
 let _estado=null,_obras=null;
 const escH=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function estadoDe(d){return d?(d.estado||(d.dentro?'dentro':'fuera')):'fuera';}
 // Obras activas para elegir al empezar (mismas que el parte; sin importes).
-async function cargarObras(){if(_obras)return _obras;try{const r=await fetch('/api/campo/obras',{headers:authH()});_obras=r.ok?await r.json():[];}catch(e){_obras=[];}return _obras;}
+async function cargarObras(){if(_obras)return _obras;
+  try{const r=await fetch('/api/campo/obras',{headers:authH()});if(r.ok){_obras=await r.json();lsSet('cpObras',_obras);return _obras;}}catch(e){}
+  return lsGet('cpObras',[]);} // sin cobertura: las últimas que se vieron
 async function renderObra(est,obraId){
   const w=document.getElementById('obra-wrap');const obras=await cargarObras();
   if(est==='fuera'){
@@ -308,7 +318,7 @@ function render(d){
   document.getElementById('terminar-btn').style.display=est==='fuera'?'none':'block';
   const tr=(d.tramos||[]);
   document.getElementById('tramos-lista').innerHTML=tr.length?tr.map(t=>
-    `<div class="tramo"><span>${hora(t.entrada)} — ${t.salida?hora(t.salida):'<span class="abierto">en curso</span>'}</span><span style="color:var(--text3)">${t.salida?hm((new Date(t.salida)-new Date(t.entrada))/60000):''}</span></div>`
+    `<div class="tramo"><span>${hora(t.entrada)} — ${t.salida?hora(t.salida):'<span class="abierto">en curso</span>'}${t.pend?' <span title="Guardado en el móvil, pendiente de enviar">⏳</span>':''}</span><span style="color:var(--text3)">${t.salida?hm((new Date(t.salida)-new Date(t.entrada))/60000):''}</span></div>`
   ).join(''):'<div class="tramo" style="color:var(--text3);justify-content:center">Aún no has fichado hoy</div>';
 }
 // Coge la ubicación con un tope de tiempo; si no se puede, ficha igual (loc=null).
@@ -325,19 +335,98 @@ function accionPrincipal(){const est=estadoDe(_estado);marcar(est==='fuera'?'ent
 // Añade una marca (registro legal: no se edita ni se borra). Guarda ubicación si hay consentimiento.
 async function marcar(tipo){
   if(tipo==='salida'&&!confirm('¿Terminar la jornada de hoy?'))return;
+  // La hora que vale si no hay cobertura es la del momento de PULSAR (antes de buscar el GPS).
+  const pulsado=new Date().toISOString(),opId=nuevoOpId();
   const btn=document.getElementById('fichar-btn'),fin=document.getElementById('terminar-btn');
   btn.disabled=true;fin.disabled=true;const txt=btn.textContent;btn.textContent='📍 Ubicando…';
   try{
     const loc=await getGPS();
-    const body={tipo,loc};
+    const body={tipo,loc,opId};
     if(tipo==='entrada'){const s=document.getElementById('obra-sel');if(s){body.obraId=s.value||null;localStorage.setItem('cpObra',s.value||'');}}
-    const r=await fetch('/api/fichaje/fichar',{method:'POST',headers:authH({'Content-Type':'application/json'}),body:JSON.stringify(body)});
-    const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');
+    // Si ya hay fichajes esperando en el móvil, este va detrás (hay que respetar el orden).
+    if(colaMia().length||navigator.onLine===false){encolar(body,pulsado);return;}
+    let r;try{r=await fetchT('/api/fichaje/fichar',{method:'POST',headers:authH({'Content-Type':'application/json'}),body:JSON.stringify(body)},12000);}
+    catch(e){encolar(body,pulsado);return;} // sin cobertura (o se cortó a medias: la opId evita duplicados)
+    const d=await r.json().catch(()=>({}));
+    if(r.status===429||r.status>=500){encolar(body,pulsado);return;}
+    if(!r.ok)throw new Error(d.error||'Error');
+    _sinRed=false;
     document.getElementById('obra-wrap').innerHTML=''; // forzar re-render del bloque de obra
-    render(d);
+    pintar(d);
     toast(({entrada:'✅ Jornada empezada',pausa_inicio:'⏸ En pausa',pausa_fin:'▶ De vuelta',salida:'👋 Jornada terminada'})[d.accion]||'Hecho','ok');}
   catch(e){btn.textContent=txt;toast(e.message,'error');cargar();}
   finally{btn.disabled=false;fin.disabled=false;}}
+
+// ── SIN COBERTURA (Fase 4) ──
+// Si no hay red, la marca se guarda en el móvil con la hora de la pulsación y se envía
+// sola, en orden, cuando vuelve la cobertura. Cada pulsación lleva una opId única: aunque
+// se reintente, el servidor no la guarda dos veces.
+let _sinRed=false,_sync=false;
+function lsGet(k,def){try{const v=JSON.parse(localStorage.getItem(k));return v==null?def:v;}catch(e){return def;}}
+function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
+function miNombre(){return localStorage.getItem('cpWN')||'';}
+function colaTodos(){return lsGet('cpCola',[]);}
+function colaMia(){return colaTodos().filter(q=>q.wn===miNombre());}
+function nuevoOpId(){try{if(crypto.randomUUID)return crypto.randomUUID();}catch(e){}return 'op-'+Date.now()+'-'+Math.random().toString(36).slice(2,12);}
+function fetchT(url,opt,ms){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms||12000);return fetch(url,Object.assign({},opt,{signal:c.signal})).finally(()=>clearTimeout(t));}
+function encolar(body,pulsado){
+  const q=colaTodos();q.push({opId:body.opId,tipo:body.tipo,loc:body.loc||null,obraId:body.obraId||null,horaDispositivo:pulsado,wn:miNombre(),tk:workerToken});lsSet('cpCola',q);
+  _sinRed=true;document.getElementById('obra-wrap').innerHTML='';
+  render(estadoLocal());renderOffline();
+  toast('📴 Sin cobertura: guardado en el móvil','warn');
+  setTimeout(sincronizar,4000);
+}
+// Guarda el último estado que dio el servidor y pinta (con lo pendiente del móvil encima).
+function pintar(d){lsSet('cpEstado',Object.assign({},d,{wn:miNombre()}));render(colaMia().length?estadoLocal():d);renderOffline();}
+// Estado de HOY = último estado conocido del servidor + marcas que esperan en el móvil.
+function estadoLocal(){
+  const hoy=hoyISO();let base=lsGet('cpEstado',null);
+  if(!base||base.fecha!==hoy||base.wn!==miNombre())base={fecha:hoy,estado:'fuera',tramos:[],obraId:null};
+  const tr=(base.tramos||[]).map(t=>Object.assign({},t));let est=estadoDe(base),obraId=base.obraId||null;
+  const abierto=()=>tr.length&&!tr[tr.length-1].salida?tr[tr.length-1]:null;
+  for(const q of colaMia()){
+    if(new Date(q.horaDispositivo).toLocaleDateString('en-CA')!==hoy)continue;
+    if(q.tipo==='entrada'||q.tipo==='pausa_fin'){if(!abierto())tr.push({entrada:q.horaDispositivo,salida:null,pend:true});est='dentro';if(q.tipo==='entrada'&&q.obraId)obraId=q.obraId;}
+    else{const a=abierto();if(a){a.salida=q.horaDispositivo;a.pend=true;}est=q.tipo==='salida'?'fuera':'pausa';}
+  }
+  let min=0;tr.forEach(t=>{min+=Math.max(0,((t.salida?new Date(t.salida):new Date())-new Date(t.entrada))/60000);});
+  const a=abierto();
+  return {fecha:hoy,estado:est,dentro:est==='dentro',enPausa:est==='pausa',desde:a?a.entrada:null,minutos:Math.round(min),tramos:tr,obraId,_local:true};
+}
+function renderOffline(){
+  const el=document.getElementById('offline-aviso');if(!el)return;
+  const n=colaMia().length,fallos=lsGet('cpColaFallos',[]).filter(f=>f.wn===miNombre());let h='';
+  const caja=(borde,txt)=>`<div class="sec-btn" style="cursor:default;font-weight:500;font-size:14px;line-height:1.5;text-align:left;margin-top:20px;border-color:${borde}">${txt}</div>`;
+  if(n)h+=caja('rgba(245,158,11,.6)',`⏳ <b>${n===1?'1 fichaje guardado':n+' fichajes guardados'} en el móvil.</b> Se ${n===1?'envía solo':'envían solos'} en cuanto haya cobertura, con la hora a la que pulsaste. <button onclick="sincronizar(true)" style="display:block;margin-top:10px;background:none;border:1px solid var(--border2);border-radius:10px;color:var(--text);font:inherit;font-weight:600;padding:8px 12px;cursor:pointer">Enviar ahora</button>`);
+  else if(_sinRed||navigator.onLine===false)h+=caja('rgba(245,158,11,.6)','📴 <b>Sin cobertura.</b> Puedes fichar igual: se guarda en el móvil y se envía solo al volver la conexión.');
+  fallos.forEach((f,i)=>{h+=caja('rgba(239,68,68,.6)',`⚠️ No se pudo registrar tu «${escH(TIPO_TXT[f.tipo]||f.tipo)}» de las ${hora(f.hora)} (${escH(new Date(f.hora).toLocaleDateString('es-ES'))}): ${escH(f.error||'error')}<br>Pide una corrección con «¿Se te olvidó fichar?». <button onclick="quitarFallo('${escH(f.opId)}')" style="display:block;margin-top:10px;background:none;border:1px solid var(--border2);border-radius:10px;color:var(--text);font:inherit;font-weight:600;padding:8px 12px;cursor:pointer">Entendido</button>`);});
+  el.innerHTML=h;
+}
+function quitarFallo(opId){lsSet('cpColaFallos',lsGet('cpColaFallos',[]).filter(f=>f.opId!==opId));renderOffline();}
+// Envía lo pendiente EN ORDEN. Se para si sigue sin haber red; lo que el servidor
+// rechaza (p. ej. marca repetida) sale de la cola y se le explica al trabajador.
+async function sincronizar(manual){
+  if(_sync||!colaTodos().length)return;_sync=true;let enviados=0;
+  try{
+    for(;;){
+      const q=colaTodos();if(!q.length)break;const it=q[0];let r;
+      try{r=await fetchT('/api/fichaje/fichar',{method:'POST',headers:{'Authorization':'Bearer '+it.tk,'Content-Type':'application/json'},body:JSON.stringify({tipo:it.tipo,loc:it.loc,obraId:it.obraId,opId:it.opId,offline:true,horaDispositivo:it.horaDispositivo})},15000);}
+      catch(e){_sinRed=true;if(manual)toast('Sigue sin haber cobertura','warn');break;}
+      _sinRed=false;
+      if(r.status===401&&it.wn===miNombre()&&workerToken&&workerToken!==it.tk){it.tk=workerToken;lsSet('cpCola',q);continue;} // sesión renovada
+      if(r.status===401||r.status===429||r.status>=500)break; // se reintenta más tarde
+      const d=await r.json().catch(()=>({}));
+      lsSet('cpCola',colaTodos().filter(x=>x.opId!==it.opId));
+      if(r.ok)enviados++;
+      else{const f=lsGet('cpColaFallos',[]);f.push({opId:it.opId,wn:it.wn,tipo:it.tipo,hora:it.horaDispositivo,error:d.error||'No se pudo registrar'});lsSet('cpColaFallos',f.slice(-10));}
+    }
+  }finally{_sync=false;}
+  renderOffline();
+  if(enviados){toast(enviados===1?'✅ Fichaje enviado':'✅ '+enviados+' fichajes enviados','ok');if(workerToken)cargar();}
+}
+window.addEventListener('online',()=>{_sinRed=false;sincronizar();});
+window.addEventListener('offline',()=>{_sinRed=true;renderOffline();});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)sincronizar();});
 
 // ── ME OLVIDÉ DE FICHAR (corrección que aprueba oficina) ──
 const TIPO_TXT={entrada:'Empecé',pausa_inicio:'Pausa',pausa_fin:'Volví',salida:'Terminé'};
@@ -475,7 +564,7 @@ async function enviarFirma(conforme){
 }
 
 // refrescar el contador cada minuto si está dentro y la pantalla está a la vista
-setInterval(()=>{if(!document.hidden&&workerToken&&document.getElementById('page-fichar').classList.contains('active'))cargar();},60000);
+setInterval(()=>{if(document.hidden)return;if(colaTodos().length)sincronizar();if(workerToken&&document.getElementById('page-fichar').classList.contains('active'))cargar();},60000);
 
 // ── ENLACE MÁGICO (login sin PIN) ──
 async function magicLogin(t){
@@ -502,7 +591,8 @@ function mostrarBienvenida(nombre){const ov=document.createElement('div');ov.sty
 (async function(){await loadWorkers();
   const t=new URLSearchParams(location.search).get('t');
   if(t){const ok=await magicLogin(t);if(ok)return;}
-  const ok=await tryRestore();if(!ok)showPage('login');})();
+  const ok=await tryRestore();if(!ok)showPage('login');
+  sincronizar();})();
 </script>
 </body>
 </html>

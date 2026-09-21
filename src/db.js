@@ -120,6 +120,8 @@ async function ensureIndexes(db) {
     // Fichaje LEGAL append-only (una marca por doc; NO único).
     ['fichajeMarcas',          { empresaId: 1, userId: 1, fecha: 1, hora: 1 }],
     ['fichajeMarcas',          { empresaId: 1, fecha: 1 }],
+    // Idempotencia del fichaje offline: la misma pulsación (opId) no entra dos veces.
+    ['fichajeMarcas',          { empresaId: 1, userId: 1, opId: 1 }, { unique: true, partialFilterExpression: { opId: { $type: 'string' } } }],
     ['fichajeFirmas',          { empresaId: 1, mes: 1, userId: 1, createdAt: -1 }],
     ['pushSubs',               { endpoint: 1 }, { unique: true }],
     ['pushSubs',               { empresaId: 1, kind: 1, userId: 1 }],

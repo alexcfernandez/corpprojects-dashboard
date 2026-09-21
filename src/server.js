@@ -1274,7 +1274,7 @@ app.post('/api/fichaje/fichar', async (req, res) => {
     // Sin consentimiento GPS firmado NO se guarda la ubicación (RGPD).
     const consentido = await users.userHasGpsConsent(w.workerId);
     const loc = consentido ? b.loc : null;
-    res.json(await require('./fichajeMarcas').marcar(w.workerId, w.workerName, b.tipo || 'entrada', { loc, obraId: b.obraId })); }
+    res.json(await require('./fichajeMarcas').marcar(w.workerId, w.workerName, b.tipo || 'entrada', { loc, obraId: b.obraId, opId: b.opId, offline: b.offline === true, horaDispositivo: b.horaDispositivo })); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 // Consentimiento GPS del trabajador (leer estado / firmar).
