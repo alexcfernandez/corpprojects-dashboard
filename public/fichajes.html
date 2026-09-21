@@ -114,7 +114,8 @@ function render(fichajes,workers){
     const min=f.minutos||0; totalMin+=min;
     // aviso: tramo abierto demasiado tiempo (>14h) = probablemente olvidó cerrar
     const largo=abierto && min>14*60;
-    const badge=largo?'<span class="badge b-warn">⚠ Sin cerrar</span>':abierto?'<span class="badge b-curso">En curso</span>':'<span class="badge b-ok">Cerrado</span>';
+    const enPausa=!!f.enPausa; // modelo nuevo: pausa tipada (no es "cerrado")
+    const badge=largo?'<span class="badge b-warn">⚠ Sin cerrar</span>':abierto?'<span class="badge b-curso">En curso</span>':enPausa?'<span class="badge b-warn">⏸ En pausa</span>':'<span class="badge b-ok">Cerrado</span>';
     const pausas=tr.length>1?` · ${tr.length} tramos`:'';
     const rid='fj'+String(w.id).replace(/[^a-zA-Z0-9]/g,'');
     // Detalle de tramos (entrada → salida + duración de cada uno)
@@ -125,7 +126,7 @@ function render(fichajes,workers){
       const durMin=abiertoT?((Date.now()-new Date(t.entrada).getTime())/60000):((new Date(t.salida).getTime()-new Date(t.entrada).getTime())/60000);
       return `<div class="tramo"><span class="ti">Tramo ${i+1}</span><span class="tt">${e}${pin(t.entradaLoc)} → <span class="${abiertoT?'abierto':''}">${s}</span>${abiertoT?'':pin(t.salidaLoc)}</span><span class="td">${hm(durMin)}</span></div>`;
     }).join('');
-    filas+=`<div class="row clickable" onclick="toggleTr('${rid}')"><div class="nm"><b>${esc(w.name)}</b><div class="sub">Entrada ${entrada}${abierto?' · sigue dentro':(' · salida '+ultSal)}${pausas}</div></div><div style="text-align:right"><div class="tot">${hm(min)}</div>${badge}</div><span class="chev" id="${rid}-chev">▸</span></div><div class="tramos-detail" id="${rid}" style="display:none">${trDet}</div>`;
+    filas+=`<div class="row clickable" onclick="toggleTr('${rid}')"><div class="nm"><b>${esc(w.name)}</b><div class="sub">Entrada ${entrada}${abierto?' · sigue dentro':enPausa?(' · en pausa desde '+ultSal):(' · salida '+ultSal)}${pausas}</div></div><div style="text-align:right"><div class="tot">${hm(min)}</div>${badge}</div><span class="chev" id="${rid}-chev">▸</span></div><div class="tramos-detail" id="${rid}" style="display:none">${trDet}</div>`;
   });
   document.getElementById('k-fichados').textContent=nFichados;
   document.getElementById('k-nofichados').textContent=nNo;

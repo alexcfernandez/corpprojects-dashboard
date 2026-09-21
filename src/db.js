@@ -117,6 +117,9 @@ async function ensureIndexes(db) {
     ['presupuestos',           { empresaId: 1, updatedAt: -1 }],
     ['fichajes',               { empresaId: 1, fecha: -1 }],
     ['fichajes',               { empresaId: 1, userId: 1, fecha: -1 }, { unique: true }],
+    // Fichaje LEGAL append-only (una marca por doc; NO único).
+    ['fichajeMarcas',          { empresaId: 1, userId: 1, fecha: 1, hora: 1 }],
+    ['fichajeMarcas',          { empresaId: 1, fecha: 1 }],
   ];
 
   for (const [coll, keys, opts] of indexes) {

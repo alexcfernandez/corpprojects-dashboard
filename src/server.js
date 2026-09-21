@@ -1263,15 +1263,18 @@ async function _worker(req, res) {
 }
 app.get('/api/fichaje/estado', async (req, res) => {
   try { const w = await _worker(req, res); if (!w) return;
-    res.json(await require('./fichajes').estadoActual(w.workerId)); }
+    res.json(await require('./fichajeMarcas').estadoActual(w.workerId)); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
+// Fichaje LEGAL append-only. body: { tipo: entrada|pausa_inicio|pausa_fin|salida, loc, obraId }.
+// (tipo por defecto 'entrada' por compatibilidad con clientes viejos que no lo mandan.)
 app.post('/api/fichaje/fichar', async (req, res) => {
   try { const w = await _worker(req, res); if (!w) return;
+    const b = req.body || {};
     // Sin consentimiento GPS firmado NO se guarda la ubicación (RGPD).
     const consentido = await users.userHasGpsConsent(w.workerId);
-    const loc = consentido ? (req.body || {}).loc : null;
-    res.json(await require('./fichajes').fichar(w.workerId, w.workerName, loc)); }
+    const loc = consentido ? b.loc : null;
+    res.json(await require('./fichajeMarcas').marcar(w.workerId, w.workerName, b.tipo || 'entrada', { loc, obraId: b.obraId })); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 // Consentimiento GPS del trabajador (leer estado / firmar).
@@ -1295,11 +1298,11 @@ app.get('/api/campo/obras', async (req, res) => {
 });
 app.get('/api/fichaje/mios', async (req, res) => {
   try { const w = await _worker(req, res); if (!w) return;
-    res.json(await require('./fichajes').getFichajesTrabajador(w.workerId, req.query.from, req.query.to)); }
+    res.json(await require('./fichajeMarcas').getMarcasTrabajador(w.workerId, req.query.from, req.query.to)); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 app.get('/api/fichaje/dia', requireAuth, async (req, res) => {
-  try { res.json(await require('./fichajes').getFichajesDia(req.query.fecha)); }
+  try { res.json(await require('./fichajeMarcas').getDia(req.query.fecha)); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1326,7 +1329,7 @@ app.get('/api/gps/dia', requireAuth, async (req, res) => {
       }
     }
     // Fichajes con GPS de ese día (entrada/salida de cada tramo)
-    const fichs = await require('./fichajes').getFichajesDia(fecha);
+    const fichs = await require('./fichajeMarcas').getDia(fecha);
     for (const f of (fichs || [])) {
       addW(f.userId, f.userName);
       for (const t of (f.tramos || [])) {
@@ -3168,6 +3171,11 @@ app.listen(PORT, () => {
   console.log(`📧 Email: ${process.env.EMAIL_USER ? '✅' : '⚠️'}`);
   console.log(`💬 WhatsApp: ${process.env.TWILIO_ACCOUNT_SID ? '✅' : '⚠️ Pendiente'}\n`);
   startScheduler();
+
+  // Migración una vez (idempotente): fichajes viejos (tramos) → marcas append-only.
+  require('./fichajeMarcas').migrarDesdeTramos()
+    .then(r => { if (r && r.migrados) console.log(`[FichajeMarcas] ✅ migrados ${r.migrados} días (${r.marcas} marcas)`); })
+    .catch(e => console.error('[FichajeMarcas] migración:', e.message));
 
   // Health-check de los modelos IA (§1): un ping mínimo a cada modelo configurado.
   // Un modelo caducado/no disponible se ve AQUÍ en el deploy, no cuando escribe un cliente.
