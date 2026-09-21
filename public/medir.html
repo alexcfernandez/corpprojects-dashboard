@@ -189,7 +189,7 @@ function renderLista(){
 function volverLista(){medId=null;cargar();showPage('list');}
 
 // ── OBRAS (la medición cuelga de una obra; se puede enlazar antes o después) ──
-async function cargarObras(){try{obras=await api('GET','/api/facturas/obras');}catch(e){obras=[];}}
+async function cargarObras(){try{obras=await api('GET','/api/oficina/obras');}catch(e){obras=[];}}
 function nombreObra(id){const o=obras.find(x=>x.id===id);return o?o.reference:'';}
 // Enlaces desde la ficha de la obra:  /medir?id=<medición>   ·   /medir?obra=<obra> (nueva medición dentro de esa obra)
 async function abrirDesdeEnlace(){const q=new URLSearchParams(location.search);const id=q.get('id'),ob=q.get('obra');
@@ -222,11 +222,11 @@ function botonCrearObra(){document.getElementById('d-crear-obra').style.display=
 async function crearObraDesdeMed(){
   const nombre=document.getElementById('d-nombre').value.trim(),cli=document.getElementById('d-cliente').value.trim();
   if(!nombre){toast('Ponle antes un nombre a la medición','warn');return;}
-  if(!confirm('Se creará la obra «'+nombre+'»'+(cli?' de '+cli:'')+' y esta medición quedará dentro. ¿Seguimos?'))return;
+  if(!confirm('Se creará la obra «'+nombre+'»'+(cli?' de '+cli:'')+' EN ESTUDIO (aún sin aceptar) y esta medición quedará dentro. ¿Seguimos?'))return;
   const b=document.getElementById('d-crear-obra');b.disabled=true;
-  try{const r=await api('POST','/api/facturas/obra-nueva',{reference:nombre,clientName:cli,address:nombre});
+  try{const r=await api('POST','/api/oficina/obra-nueva',{reference:nombre,clientName:cli,address:nombre,status:'estudio'});
     await api('PUT','/api/mediciones/'+medId,{obraId:r.id});
-    await cargarObras();pickDet.setObras(obras);pickDet.set(r.id);botonCrearObra();toast('🏗️ Obra creada con la medición dentro','ok');}
+    await cargarObras();pickDet.setObras(obras);pickDet.set(r.id);botonCrearObra();toast('🔍 Obra en estudio creada, con la medición dentro','ok');}
   catch(e){toast(e.message,'error');}finally{b.disabled=false;}}
 function renderEstancias(estancias){
   document.getElementById('estancias').innerHTML=estancias.map(e=>estanciaHTML(e)).join('');

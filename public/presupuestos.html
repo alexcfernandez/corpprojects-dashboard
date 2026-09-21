@@ -178,6 +178,7 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
   <div class="d-lab" style="margin-top:10px">Cliente</div>
   <input type="text" id="d-cliente" autocomplete="off" placeholder="Nombre del cliente" style="margin-bottom:4px">
   <div class="estado-bar" id="estado-bar"></div>
+  <div style="margin:10px 0 4px"><label class="fld">Obra de la que cuelga</label><div id="d-obra"></div></div>
   <div id="enviar-cont"></div>
   <div id="equipo-cont"></div>
   <div class="med-ref" id="d-medref" style="display:none"></div>
@@ -222,6 +223,7 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
   <div style="font-weight:700;font-size:17px;margin-bottom:14px">Nuevo presupuesto</div>
   <div class="field"><label class="fld">Nombre</label><input type="text" id="n-nombre" placeholder="Ej. Reforma piso C/ Comerç 76"></div>
   <div class="field"><label class="fld">Cliente (opcional)</label><input type="text" id="n-cliente" autocomplete="off" placeholder="Busca en StelOrder"></div>
+  <div class="field"><label class="fld">Obra de la que cuelga (opcional)</label><div id="n-obra"></div></div>
   <div class="field"><label class="fld">Medición (opcional — para cantidades automáticas)</label><select id="n-medicion"><option value="">— Sin medición —</option></select></div>
   <div class="row2"><button class="btn sec" onclick="cerrar('ov-nuevo')">Cancelar</button><button class="btn" onclick="crearNuevo()">Crear</button></div>
 </div></div>
@@ -257,9 +259,10 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 </div></div>
 
 <script src="/cliente-autocomplete.js"></script>
+<script src="/obra-picker.js"></script>
 <script>
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
-let workerToken=null, esAdmin=false, todosWorkers=[], lista=[], pres=null, catalogo=[], mediciones=[], empresa=null;
+let workerToken=null, esAdmin=false, todosWorkers=[], lista=[], pres=null, catalogo=[], mediciones=[], empresa=null, obras=[], pickNuevo=null, pickDet=null;
 // ¿Puede ver dinero (coste/margen/lista de compra)? Solo Dueño/Oficina. El
 // Encargado hace presupuestos pero solo ve el precio de venta. (El servidor ya
 // no le manda el coste; esto solo limpia la interfaz.)
@@ -284,7 +287,7 @@ async function enterApp(token,info,persist){
   document.getElementById('header-sub').textContent=info.workerName||'';
   const lb=document.getElementById('logout-btn');lb.textContent=esAdmin?'← Dashboard':'Salir';lb.style.display='block';
   if(window.initClienteAutocomplete){initClienteAutocomplete(document.getElementById('d-cliente'),workerToken);initClienteAutocomplete(document.getElementById('n-cliente'),workerToken);}
-  showPage('list');await cargar();}
+  showPage('list');await cargarObras();await cargar();await abrirDesdeEnlace();}
 async function tryRestore(){const admin=localStorage.getItem('cp_token'),worker=localStorage.getItem('cpWT');
   for(const [t,isA] of [[admin,true],[worker,false]]){if(!t)continue;try{const r=await fetch('/api/oficina/whoami',{headers:{'Authorization':`Bearer ${t}`}});if(!r.ok)continue;const d=await r.json();await enterApp(t,{workerName:d.name,admin:d.admin,role:d.role},!isA);return true;}catch(e){}}
   localStorage.removeItem('cpWT');return false;}
@@ -307,7 +310,7 @@ function renderEstadoBar(){
   else if(cur==='aceptado'&&pres.aceptadoAt)f='✅ Aceptado el '+new Date(pres.aceptadoAt).toLocaleDateString('es-ES');
   else if(cur==='rechazado'&&pres.rechazadoAt)f='❌ Rechazado el '+new Date(pres.rechazadoAt).toLocaleDateString('es-ES');
   const modNota=pres.modificadoTrasAceptarAt?`<div style="font-size:11px;color:var(--amber);margin-top:5px">⚠️ Modificado tras aceptación${pres.modificadoTrasAceptarAt?' · '+new Date(pres.modificadoTrasAceptarAt).toLocaleDateString('es-ES'):''} (extra añadido)</div>`:'';
-  const obra=pres.obraId?`<div class="est-obra">🏗️ Obra creada${pres.obraRef?' · '+esc(pres.obraRef):''} — <a href="/?obra=${encodeURIComponent(pres.obraId)}" style="color:inherit;font-weight:600;text-decoration:underline">ver ficha de la obra →</a><div style="font-size:11px;color:var(--text3);margin-top:3px">Si acordáis un extra, añádelo aquí abajo y se actualiza solo en la obra.</div>${modNota}</div>`:'';
+  const obra=pres.obraId?`<div class="est-obra">${(obras.find(o=>o.id===pres.obraId)||{}).status==='estudio'?'🔍 Obra en estudio — al ACEPTARSE este presupuesto pasará sola a «En curso»':'🏗️ En la obra'}${pres.obraRef?' · '+esc(pres.obraRef):''} — <a href="/?obra=${encodeURIComponent(pres.obraId)}" style="color:inherit;font-weight:600;text-decoration:underline">ver ficha de la obra →</a><div style="font-size:11px;color:var(--text3);margin-top:3px">Si acordáis un extra, añádelo aquí abajo y se actualiza solo en la obra.</div>${modNota}</div>`:'';
   document.getElementById('estado-bar').innerHTML=`<div class="est-chips">${chips}</div>${f?`<div class="est-fecha">${f}</div>`:''}${obra}`;
 }
 async function onEstado(e){if(!pres)return;
@@ -315,7 +318,9 @@ async function onEstado(e){if(!pres)return;
     if(e==='enviado')pres.enviadoAt=now;if(e==='aceptado')pres.aceptadoAt=now;if(e==='rechazado')pres.rechazadoAt=now;
     if(res&&res.obra&&res.obra.obraId){pres.obraId=res.obra.obraId;pres.obraRef=res.obra.reference;}
     renderEstadoBar();
-    if(res&&res.obra&&res.obra.creada)toast('🏗️ Obra creada: '+(res.obra.reference||''),'ok');
+    if(res&&res.obra&&(res.obra.creada||res.obra.activada)){await cargarObras();if(pickDet){pickDet.setObras(obras);pickDet.set(pres.obraId);}renderEstadoBar();}
+    if(res&&res.obra&&res.obra.activada)toast('🏗️ Aceptado: «'+(res.obra.reference||'la obra')+'» pasa a En curso','ok');
+    else if(res&&res.obra&&res.obra.creada)toast('🏗️ Obra creada: '+(res.obra.reference||''),'ok');
     else toast('Estado: '+ESTADO_INFO[e][0],'ok');}
   catch(err){toast(err.message,'error');}}
 function renderLista(){
@@ -326,23 +331,39 @@ function renderLista(){
     ${p.clientName?`<div class="card-cli">${esc(p.clientName)}</div>`:''}
     <div class="card-tot">${p.nLineas} partida(s) · <b style="color:var(--green)">${eur(p.totalVenta)}</b>${p.margen?` · margen ${p.margen}%`:''}</div>
     ${p.creadoPor?`<div class="card-por">👤 Creado por ${esc(p.creadoPor)}</div>`:''}
-    ${p.obraId?`<div class="card-por" style="color:var(--green)">🏗️ Obra creada</div>`:''}
+    ${p.obraId?`<div class="card-por" style="color:var(--green)">🏗️ ${esc(nombreObra(p.obraId)||'En una obra')}</div>`:''}
   </div>`).join('');
 }
 function volver(){pres=null;cargar();showPage('list');}
 
+// ── OBRAS (el presupuesto cuelga de una obra: la carpeta) ──
+async function cargarObras(){try{obras=await api('GET','/api/oficina/obras');}catch(e){obras=[];}}
+function nombreObra(id){const o=obras.find(x=>x.id===id);return o?o.reference:'';}
+// Desde la ficha de la obra:  /presupuestos?id=<presupuesto>  ·  /presupuestos?obra=<obra> (nuevo dentro de esa obra)
+async function abrirDesdeEnlace(){const q=new URLSearchParams(location.search);const id=q.get('id'),ob=q.get('obra');
+  if(id||ob)history.replaceState(null,'',location.pathname);
+  if(id){await abrirPres(id);return;}
+  if(ob&&obras.some(o=>o.id===ob))nuevo(ob);}
+
 // ── NUEVO ──
-async function nuevo(){
-  document.getElementById('n-nombre').value='';document.getElementById('n-cliente').value='';
+async function nuevo(obraId){
+  const o=obras.find(x=>x.id===obraId);
+  document.getElementById('n-nombre').value=o?o.reference:'';document.getElementById('n-cliente').value=o?(o.clientName||''):'';
   try{mediciones=await api('GET','/api/mediciones');}catch(e){mediciones=[];}
-  document.getElementById('n-medicion').innerHTML='<option value="">— Sin medición —</option>'+mediciones.map(m=>`<option value="${m._id}">${esc(m.nombre)} (suelo ${fmt(m.totales.suelo)} m²)</option>`).join('');
+  const pintaMeds=oid=>{const propias=mediciones.filter(m=>oid&&m.obraId===oid),resto=mediciones.filter(m=>!(oid&&m.obraId===oid));const op=m=>`<option value="${m._id}">${esc(m.nombre)} (suelo ${fmt(m.totales.suelo)} m²)</option>`;
+    document.getElementById('n-medicion').innerHTML='<option value="">— Sin medición —</option>'+(propias.length?`<optgroup label="De esta obra">${propias.map(op).join('')}</optgroup><optgroup label="Otras">${resto.map(op).join('')}</optgroup>`:resto.map(op).join(''));
+    if(propias.length===1)document.getElementById('n-medicion').value=propias[0]._id;};
+  pintaMeds(o?o.id:'');
+  pickNuevo=CPObra.crear(document.getElementById('n-obra'),{obras,value:o?o.id:'',vacio:'— Sin obra todavía —',placeholder:'Elegir obra…',titulo:'¿De qué obra es el presupuesto?',
+    onChange:ob=>{pintaMeds(ob?ob.id:'');if(!ob)return;const n=document.getElementById('n-nombre'),c=document.getElementById('n-cliente');if(!n.value.trim())n.value=ob.reference||'';if(!c.value.trim())c.value=ob.clientName||'';}});
   abrir('ov-nuevo');
 }
 async function crearNuevo(){
   const nombre=document.getElementById('n-nombre').value.trim();if(!nombre){toast('Ponle un nombre','warn');return;}
   const medId=document.getElementById('n-medicion').value;
   const med=mediciones.find(m=>String(m._id)===String(medId));
-  try{const r=await api('POST','/api/presupuestos',{nombre,clientName:document.getElementById('n-cliente').value.trim(),medicionId:medId||null,medicionTotales:med?med.totales:null});cerrar('ov-nuevo');await abrirPres(r.id);}catch(e){toast(e.message,'error');}
+  const ob=pickNuevo?pickNuevo.obra:null;
+  try{const r=await api('POST','/api/presupuestos',{nombre,clientName:document.getElementById('n-cliente').value.trim(),medicionId:medId||null,medicionTotales:med?med.totales:null,obraId:ob?ob.id:null,obraRef:ob?ob.reference:null});cerrar('ov-nuevo');await abrirPres(r.id);}catch(e){toast(e.message,'error');}
 }
 
 // ── DETALLE ──
@@ -353,6 +374,9 @@ async function abrirPres(id){
     document.getElementById('d-desc-valor').value=(pres.descuento&&pres.descuento.valor)?pres.descuento.valor:'';
     document.getElementById('d-desc-tipo').value=(pres.descuento&&pres.descuento.tipo==='eur')?'eur':'pct';
     renderEstadoBar();
+    // Colgarlo de una obra (o cambiarlo) se guarda al momento
+    pickDet=CPObra.crear(document.getElementById('d-obra'),{obras,value:pres.obraId||'',vacio:'— Sin obra todavía —',placeholder:'Elegir obra…',titulo:'¿De qué obra es el presupuesto?',
+      onChange:async ob=>{try{await api('PUT','/api/presupuestos/'+pres._id,{obraId:ob?ob.id:null,obraRef:ob?ob.reference:null});pres.obraId=ob?ob.id:null;pres.obraRef=ob?ob.reference:null;renderEstadoBar();toast(ob?'Presupuesto guardado en «'+ob.reference+'»':'Presupuesto sin obra','ok');}catch(e){toast(e.message,'error');}}});
     document.getElementById('det-del').style.display='block';
     document.getElementById('det-compra').style.display=VE_DINERO?'block':'none';
     document.getElementById('t-costewrap').style.display=VE_DINERO?'':'none';

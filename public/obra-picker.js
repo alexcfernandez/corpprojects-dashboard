@@ -31,7 +31,7 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   // minúsculas, sin acentos ni signos: "Can Pedretes" = "can pedretés" = "CAN-PEDRETES"
   const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9ñç]+/g, ' ').trim();
-  const ESTADO_TXT = { pausada: 'pausada', terminada: 'terminada', facturada: 'facturada' };
+  const ESTADO_TXT = { estudio: 'en estudio', pausada: 'pausada', terminada: 'terminada', facturada: 'facturada' };
 
   function buscar(obras, texto) {
     const toks = norm(texto).split(' ').filter(Boolean);
@@ -47,7 +47,7 @@
       // primero las que casan por el principio del nombre
       res.push({ o, mote, peso: (campos[0].startsWith(toks[0]) ? 0 : enNombre ? 1 : 2) });
     }
-    const g = { abierta: 0, cerrada: 1, antigua: 2 };
+    const g = { abierta: 0, estudio: 1, cerrada: 2, antigua: 3 };
     return res.sort((a, b) => (g[a.o.grupo] - g[b.o.grupo]) || (a.peso - b.peso));
   }
 
@@ -81,7 +81,7 @@
       function pintar() {
         const r = buscar(obras, q.value); let h = '', g = null;
         if (vacio !== null && !norm(q.value)) h += `<button type="button" class="cpo-it ${!valor ? 'sel' : ''}" data-id=""><div class="n" style="font-weight:500">${esc(vacio)}</div></button>`;
-        const TIT = { abierta: 'Obras abiertas', cerrada: 'Cerradas hace poco', antigua: 'Cerradas hace tiempo' };
+        const TIT = { abierta: 'Obras abiertas', estudio: 'En estudio (aún sin aceptar)', cerrada: 'Cerradas hace poco', antigua: 'Cerradas hace tiempo' };
         for (const { o, mote } of r) {
           if (o.grupo !== g) { g = o.grupo; h += `<div class="cpo-g">${TIT[g] || ''}</div>`; }
           const sub = [o.address, o.clientName].filter(Boolean).map(esc).join(' · ');

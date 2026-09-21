@@ -7,7 +7,12 @@ async function getDB() {
   return require('./db').getDB();
 }
 
+// 'estudio' = aún NO aceptada (visita, medición, presupuestos en marcha): solo la ven Dueño y
+// Oficina, no sale al fichar ni en el parte ni en los resúmenes. 'descartada' = no salió.
+const ESTADOS_PREVIOS = ['estudio', 'descartada'];
 const ESTADOS_OBRA = {
+  estudio:    { label: 'En estudio',  color: '#38bdf8', emoji: '🔍' },
+  descartada: { label: 'Descartada',  color: '#8a8f98', emoji: '🚫' },
   activa:     { label: 'En curso',    color: '#22c487', emoji: '🏗️' },
   pausada:    { label: 'Pausada',     color: '#f59e0b', emoji: '⏸️' },
   terminada:  { label: 'Terminada',   color: '#4d9cf8', emoji: '✅' },
@@ -210,10 +215,13 @@ async function createObra(data) {
   return { id: result.insertedId, ...obra };
 }
 
-async function getObras({ clientName, status, search } = {}) {
+async function getObras({ clientName, status, search, verEstudio = true } = {}) {
   const db = await getDB();
   const query = {};
   if (status)     query.status = status;
+  // Las obras en estudio / descartadas van en su propia pestaña (y solo para Dueño/Oficina).
+  else            query.status = { $nin: ESTADOS_PREVIOS };
+  if (status && ESTADOS_PREVIOS.includes(status) && !verEstudio) return [];
   if (clientName) query.clientName = { $regex: clientName, $options: 'i' };
   if (search)     query.$or = [
     { reference:   { $regex: search, $options: 'i' } },
@@ -250,6 +258,28 @@ async function updateObra(id, data) {
   return r;
 }
 
+// ── OBRAS EN ESTUDIO (solo Dueño/Oficina) ────────────────────────
+// La obra aún no aceptada, con lo que ya cuelga de ella: mediciones y presupuestos.
+async function getEnEstudio({ descartadas = false } = {}) {
+  const db = await getDB();
+  const lista = await db.collection('obras').find({ status: { $in: descartadas ? ESTADOS_PREVIOS : ['estudio'] } }).sort({ updatedAt: -1 }).toArray();
+  if (!lista.length) return [];
+  const ids = lista.map(o => String(o._id));
+  const [meds, pres] = await Promise.all([
+    db.collection('mediciones').find({ obraId: { $in: ids } }).project({ obraId: 1 }).toArray(),
+    require('./presupuestos').getDeObras(ids),
+  ]);
+  return lista.map(o => {
+    const id = String(o._id);
+    return {
+      id, reference: o.reference || '', clientName: o.clientName || '', address: o.address || '', status: o.status,
+      createdAt: o.createdAt, updatedAt: o.updatedAt, notes: o.notes || o.description || '',
+      nMediciones: meds.filter(m => m.obraId === id).length,
+      presupuestos: pres.filter(p => p.obraId === id),
+    };
+  });
+}
+
 // ── SELECTOR ÚNICO DE OBRA ───────────────────────────────────────
 // La misma lista para TODAS las pantallas que eligen obra (fichar, parte, compras,
 // mediciones…). Sin importes: la ven también los trabajadores. Se busca por nombre,
@@ -259,7 +289,7 @@ async function updateObra(id, data) {
 //   · antigua  → cerrada hace más tiempo (solo con `todas`, y el selector la enseña al buscar)
 const ESTADOS_CERRADA = ['terminada', 'facturada'];
 const DIAS_CERRADA_RECIENTE = Number(process.env.OBRA_CERRADA_DIAS) || 60;
-async function getSelector({ todas = false } = {}) {
+async function getSelector({ todas = false, conEstudio = false } = {}) {
   const db = await getDB();
   const lista = await db.collection('obras').find({ status: { $ne: 'archivada' } })
     .project({ reference: 1, clientName: 1, address: 1, aliases: 1, status: 1, closedAt: 1, endDate: 1, updatedAt: 1, createdAt: 1, geo: 1 }).toArray();
@@ -267,9 +297,10 @@ async function getSelector({ todas = false } = {}) {
   const corte = Date.now() - DIAS_CERRADA_RECIENTE * 86400000;
   const out = [];
   for (const o of lista) {
+    if (o.status === 'descartada' || (o.status === 'estudio' && !conEstudio)) continue;
     const cerrada = ESTADOS_CERRADA.includes(o.status);
     const cierre = cerrada ? new Date(o.closedAt || o.endDate || o.updatedAt || o.createdAt || 0).getTime() : null;
-    const grupo = !cerrada ? 'abierta' : (cierre >= corte ? 'cerrada' : 'antigua');
+    const grupo = o.status === 'estudio' ? 'estudio' : !cerrada ? 'abierta' : (cierre >= corte ? 'cerrada' : 'antigua');
     if (grupo === 'antigua' && !todas) continue;
     out.push({
       id: String(o._id), reference: o.reference || '', clientName: o.clientName || '', address: o.address || '',
@@ -278,9 +309,9 @@ async function getSelector({ todas = false } = {}) {
       geo: (o.geo && Number.isFinite(o.geo.lat) && Number.isFinite(o.geo.lng)) ? { lat: o.geo.lat, lng: o.geo.lng, r: radio } : null,
     });
   }
-  const orden = { abierta: 0, cerrada: 1, antigua: 2 };
+  const orden = { abierta: 0, estudio: 1, cerrada: 2, antigua: 3 };
   out.sort((a, b) => (orden[a.grupo] - orden[b.grupo]) ||
-    (a.grupo === 'abierta' ? a.reference.localeCompare(b.reference, 'es', { sensitivity: 'base' }) : (b._cierre - a._cierre)));
+    (a.grupo === 'abierta' || a.grupo === 'estudio' ? a.reference.localeCompare(b.reference, 'es', { sensitivity: 'base' }) : (b._cierre - a._cierre)));
   return out.map(({ _cierre, ...o }) => o);
 }
 
@@ -570,7 +601,8 @@ async function getResumenGeneral() {
 }
 async function _getResumenGeneral() {
   const db = await getDB();
-  const obras = await db.collection('obras').find({}).sort({ createdAt: -1 }).toArray();
+  // Las obras en estudio/descartadas no tienen rentabilidad que mirar todavía.
+  const obras = await db.collection('obras').find({ status: { $nin: ESTADOS_PREVIOS } }).sort({ createdAt: -1 }).toArray();
 
   const resumen = await Promise.all(obras.map(async obra => {
     try {
@@ -586,7 +618,7 @@ async function _getResumenGeneral() {
 
 module.exports = {
   ESTADOS_OBRA, CATEGORIAS_GASTO,
-  createObra, getObras, getObra, updateObra, deleteObra, getSelector, addMaterial, deleteMaterial,
+  ESTADOS_PREVIOS, createObra, getObras, getObra, updateObra, deleteObra, getSelector, getEnEstudio, addMaterial, deleteMaterial,
   addCertificacion, setCertificacion, deleteCertificacion, resumenCertificaciones,
   getRentabilidad, getResumenGeneral,
   extraerObraMarcador, extraerGastoMarcador, getAsignacionesFacturaMap, getReglasMap, resolverFacturaObra,

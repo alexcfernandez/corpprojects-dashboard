@@ -4,6 +4,7 @@
 
   // ── Todo desde config central ─────────────────────────────────
   const ESTADOS = window.CP_CONFIG.estadosObras;
+  const PREVIOS = ['estudio','descartada'];   // aún no aceptadas: pestaña propia, solo Dueño/Oficina
 
   const eur = v => new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0);
   const ceMod = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -24,6 +25,7 @@
       <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:20px;overflow-x:auto">
         <button class="btab active" onclick="CP.Obras.showTab('resumen',this)">📊 Rentabilidad</button>
         <button class="btab" onclick="CP.Obras.showTab('lista',this)">🏗️ Obras</button>
+        <button class="btab" id="ob-btab-estudio" onclick="CP.Obras.showTab('estudio',this)">🔍 En estudio <span id="ob-estudio-n" style="font-weight:400;color:var(--text3)"></span></button>
         <button class="btab" onclick="CP.Obras.showTab('nueva',this)">➕ Nueva obra</button>
       </div>
 
@@ -48,11 +50,24 @@
             <span class="field-label">Estado</span>
             <select id="ob-status-filter" onchange="CP.Obras.loadLista()">
               <option value="">Todas</option>
-              ${Object.entries(ESTADOS).map(([k,v])=>`<option value="${k}">${v.emoji} ${v.label}</option>`).join('')}
+              ${Object.entries(ESTADOS).filter(([k])=>!PREVIOS.includes(k)).map(([k,v])=>`<option value="${k}">${v.emoji} ${v.label}</option>`).join('')}
             </select>
           </div>
         </div>
         <div id="ob-lista">Cargando...</div>
+      </div>
+
+      <div id="ob-tab-estudio" class="p-tab" style="display:none">
+        <div class="alert ain" style="margin-bottom:14px">
+          <div>🔍</div>
+          <div><strong>Obras en estudio</strong> — visitas, mediciones y presupuestos de obras que el cliente <b>aún no ha aceptado</b>. Solo las veis Dueño y Oficina: no salen al fichar, ni en el parte, ni en la rentabilidad. Cuando se acepta un presupuesto, la obra pasa sola a «En curso».</div>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+          <input type="text" id="ob-estudio-nombre" class="field-input" style="flex:1;min-width:220px" placeholder="Nombre de la obra nueva (ej. Piso C/ Migdia 40)" onkeydown="if(event.key==='Enter')CP.Obras.nuevaEstudio()">
+          <button class="btn bp" onclick="CP.Obras.nuevaEstudio()">＋ Nueva en estudio</button>
+          <label style="font-size:12px;color:var(--text3);display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="ob-estudio-desc" onchange="CP.Obras.loadEstudio()"> ver descartadas</label>
+        </div>
+        <div id="ob-estudio-lista">Cargando...</div>
       </div>
 
       <div id="ob-tab-nueva" class="p-tab" style="display:none">
@@ -69,6 +84,68 @@
       </div>`;
 
     loadResumen();
+    // La pestaña «En estudio» solo existe para Dueño/Oficina (el servidor responde 403 al resto).
+    api('/api/obras/estudio').then(d => {
+      const b = document.getElementById('ob-btab-estudio'); if (!b) return;
+      if (!Array.isArray(d)) { b.style.display = 'none'; return; }
+      const n = document.getElementById('ob-estudio-n'); if (n) n.textContent = d.length ? `(${d.length})` : '';
+    }).catch(() => {});
+  }
+
+  // ── EN ESTUDIO ──────────────────────────────────────────────────
+  const PRES_TXT = { borrador:['Borrador','var(--text3)'], enviado:['Enviado','var(--blue)'], aceptado:['Aceptado','var(--green)'], rechazado:['Rechazado','var(--red)'] };
+  function haceDias(d) { const n = Math.floor((Date.now() - new Date(d).getTime()) / 86400000); return n <= 0 ? 'hoy' : n === 1 ? 'ayer' : `hace ${n} días`; }
+  async function loadEstudio() {
+    const el = document.getElementById('ob-estudio-lista'); if (!el) return;
+    const desc = document.getElementById('ob-estudio-desc')?.checked;
+    try {
+      const data = await api('/api/obras/estudio' + (desc ? '?descartadas=1' : ''));
+      if (!Array.isArray(data)) throw new Error(data?.error || 'Sin acceso');
+      const n = document.getElementById('ob-estudio-n'); if (n) { const k = data.filter(o => o.status === 'estudio').length; n.textContent = k ? `(${k})` : ''; }
+      if (!data.length) { el.innerHTML = '<div class="empty"><div class="ei">🔍</div><div class="et">No hay obras en estudio</div><div class="es">Crea una arriba, o desde la app de medir con «Crear la obra con esta medición».</div></div>'; return; }
+      const btn = 'padding:5px 10px;font-size:11px;text-decoration:none';
+      el.innerHTML = data.map(o => {
+        const desc = o.status === 'descartada';
+        const pres = (o.presupuestos || []).map(p => { const t = PRES_TXT[p.estado] || PRES_TXT.borrador;
+          return `<a href="/presupuestos?id=${ceMod(p.id)}" target="_blank" style="display:flex;gap:8px;align-items:center;text-decoration:none;color:inherit;padding:6px 0;border-top:1px solid var(--border);font-size:12px">
+            <span style="color:var(--text3);min-width:74px">${ceMod(p.numero || '—')}</span><span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ceMod(p.nombre)}</span>
+            <span style="color:${t[1]};border:1px solid ${t[1]};border-radius:20px;padding:0 7px;font-size:10.5px">${t[0]}</span><b>${eur(p.base)}</b></a>`; }).join('');
+        return `<div class="card" style="margin-bottom:12px;${desc ? 'opacity:.6' : ''}">
+          <div style="display:flex;gap:10px;align-items:flex-start">
+            <div style="flex:1;min-width:0;cursor:pointer" onclick="CP.Obras.openObra('${o.id}')">
+              <div style="font-size:14px;font-weight:600">${desc ? '🚫' : '🔍'} ${ceMod(o.reference)}</div>
+              <div style="font-size:11px;color:var(--text3);margin-top:2px">${[o.clientName, o.address].filter(Boolean).map(ceMod).join(' · ') || 'Sin cliente ni dirección todavía'} · creada ${haceDias(o.createdAt)}</div>
+            </div>
+            <div style="font-size:11px;color:var(--text3);white-space:nowrap">📐 ${o.nMediciones} · 📄 ${(o.presupuestos || []).length}</div>
+          </div>
+          ${pres ? `<div style="margin-top:8px">${pres}</div>` : ''}
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+            <button class="btn bgh" style="${btn}" onclick="CP.Obras.openObra('${o.id}')">Abrir ficha</button>
+            <a class="btn bgh" style="${btn}" href="/medir?obra=${ceMod(o.id)}" target="_blank">＋ Medición</a>
+            <a class="btn bgh" style="${btn}" href="/presupuestos?obra=${ceMod(o.id)}" target="_blank">＋ Presupuesto</a>
+            <span style="flex:1"></span>
+            ${desc ? `<button class="btn bgh" style="${btn}" onclick="CP.Obras.estadoEstudio('${o.id}','estudio')">↩︎ Recuperar</button>`
+                   : `<button class="btn bp" style="${btn}" onclick="CP.Obras.estadoEstudio('${o.id}','activa')">✅ Aceptada → En curso</button>
+                      <button class="btn bgh" style="${btn}" onclick="CP.Obras.estadoEstudio('${o.id}','descartada')">🚫 Descartar</button>`}
+          </div>
+        </div>`; }).join('');
+    } catch (err) { el.innerHTML = `<div class="empty"><div class="et">❌ ${ceMod(err.message)}</div></div>`; }
+  }
+  async function nuevaEstudio() {
+    const inp = document.getElementById('ob-estudio-nombre'); const reference = inp?.value?.trim();
+    if (!reference) { inp?.focus(); return; }
+    const r = await api('/api/obras', { method:'POST', body: JSON.stringify({ reference, status:'estudio' }) });
+    if (r && r.error) { alert(r.error); return; }
+    inp.value = ''; await loadEstudio();
+    if (r && r.obra && r.obra.id) openObra(String(r.obra.id)); // para completar cliente, dirección y motes
+  }
+  async function estadoEstudio(id, status) {
+    const txt = { activa:'¿Pasar esta obra a «En curso»? A partir de ahora saldrá al fichar, en el parte y en la rentabilidad.', descartada:'¿Descartar esta obra? No se borra nada: queda guardada en «ver descartadas».', estudio:'¿Recuperar esta obra a «En estudio»?' }[status];
+    if (!confirm(txt)) return;
+    const body = { status }; if (status === 'activa') body.startDate = new Date().toLocaleDateString('en-CA'); // fecha local, no UTC
+    const r = await api(`/api/obras/${id}`, { method:'PUT', body: JSON.stringify(body) });
+    if (r && r.error) { alert(r.error); return; }
+    loadEstudio(); if (status === 'activa') loadResumen();
   }
 
   function renderForm(obra={}) {
@@ -127,6 +204,7 @@
     if (btn) btn.classList.add('active');
     if (id === 'resumen') loadResumen();
     if (id === 'lista')   loadLista();
+    if (id === 'estudio') loadEstudio();
     if (id === 'nueva')   loadClientSuggestions();
   }
 
@@ -253,11 +331,13 @@
 
   async function openObra(id) {
     try {
-      const [obra, rent, medsRaw] = await Promise.all([
+      const [obra, rent, medsRaw, presRaw] = await Promise.all([
         api(`/api/obras/${id}`),
         api(`/api/obras/${id}/rentabilidad`),
-        api(`/api/mediciones?obraId=${encodeURIComponent(id)}`).catch(() => [])
+        api(`/api/mediciones?obraId=${encodeURIComponent(id)}`).catch(() => []),
+        api(`/api/obras/${id}/presupuestos`).catch(() => [])
       ]);
+      const presObra = Array.isArray(presRaw) ? presRaw : [];
       const meds = Array.isArray(medsRaw) ? medsRaw : [];
       const m2 = n => (Math.round((Number(n)||0)*100)/100).toLocaleString('es-ES',{maximumFractionDigits:2});
 
@@ -308,6 +388,17 @@
                 <div style="font-size:13px;font-weight:600">${ce(m.nombre)} <span style="color:var(--text3);font-weight:400">→ abrir</span></div>
                 <div style="font-size:11px;color:var(--text3);margin-top:2px">${m.nEstancias} estancia(s) · Suelo ${m2(m.totales?.suelo)} m² · Paredes ${m2(m.totales?.paredes)} m² · Rodapié ${m2(m.totales?.rodapie)} m</div>
               </a>`).join('') : `<div style="font-size:12px;color:var(--text3)">Todavía no hay mediciones en esta obra. Pulsa «＋ Nueva medición», o enlaza una que ya tengas desde la app de medir.</div>`}
+          </div>
+
+          <div class="card" style="margin-bottom:14px">
+            <div class="card-title" style="display:flex;align-items:center;gap:8px">📄 Presupuestos <span style="font-weight:400;color:var(--text3);font-size:11px">${presObra.length?`(${presObra.length})`:''}</span>
+              <a class="btn bgh" style="margin-left:auto;padding:4px 10px;font-size:11px;text-decoration:none" href="/presupuestos?obra=${ce(id)}" target="_blank">＋ Nuevo presupuesto</a></div>
+            ${presObra.length ? presObra.map(p=>{ const t = PRES_TXT[p.estado] || PRES_TXT.borrador; return `
+              <a href="/presupuestos?id=${ce(p.id)}" target="_blank" style="display:flex;gap:8px;align-items:center;text-decoration:none;color:inherit;padding:8px 0;border-top:1px solid var(--border);font-size:12.5px">
+                <span style="color:var(--text3);min-width:78px">${ce(p.numero||'—')}</span><span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ce(p.nombre)}</span>
+                <span style="color:${t[1]};border:1px solid ${t[1]};border-radius:20px;padding:0 7px;font-size:10.5px">${t[0]}</span><b>${eur(p.base)}</b></a>`; }).join('')
+              + `<div style="font-size:11px;color:var(--text3);margin-top:6px;border-top:1px solid var(--border);padding-top:6px">${presObra.some(p=>p.estado==='aceptado') ? `El presupuesto de la obra es la suma de los <b>aceptados</b> (el inicial y las ampliaciones): <b>${eur(presObra.filter(p=>p.estado==='aceptado').reduce((a,p)=>a+p.base,0))}</b> sin IVA.` : 'Aún no hay ninguno aceptado: como estimación cuenta el último que no esté rechazado.'}</div>`
+            : `<div style="font-size:12px;color:var(--text3)">Todavía no hay presupuestos en esta obra. Pulsa «＋ Nuevo presupuesto», o cuelga uno que ya tengas desde la app de presupuestos.</div>`}
           </div>
 
           <div class="card" style="margin-bottom:14px">
@@ -796,6 +887,6 @@ ${pago}
     } catch (err) { alert('No se pudo borrar: ' + err.message); }
   }
 
-  CP.Obras = { render, showTab, loadResumen, loadLista, openObra, saveObraChanges, ubicacion, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, addCert, certRapida, certEstado, conciliarCert, _ccPick, delCert, reciboCert, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick, _fpBack, _fpToggleAll, _fpSum, _fpAsignar };
+  CP.Obras = { render, showTab, loadResumen, loadLista, loadEstudio, nuevaEstudio, estadoEstudio, openObra, saveObraChanges, ubicacion, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, addCert, certRapida, certEstado, conciliarCert, _ccPick, delCert, reciboCert, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick, _fpBack, _fpToggleAll, _fpSum, _fpAsignar };
 
 })(window.CP = window.CP || {});

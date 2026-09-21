@@ -79,6 +79,9 @@ window.CP_CONFIG = {
     pausada:   { label: 'Pausada',    emoji: '⏸️', color: '#f59e0b' },
     terminada: { label: 'Terminada',  emoji: '✅', color: '#4d9cf8' },
     facturada: { label: 'Facturada',  emoji: '💰', color: '#a78bfa' },
+    // Aún NO aceptadas: van en la pestaña «En estudio» (solo Dueño y Oficina)
+    estudio:   { label: 'En estudio', emoji: '🔍', color: '#38bdf8' },
+    descartada:{ label: 'Descartada', emoji: '🚫', color: '#8a8f98' },
   },
 
   // ── Estados de expedientes ────────────────────────────────────

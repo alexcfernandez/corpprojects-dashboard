@@ -273,6 +273,18 @@ async function getPresupuestos() {
   const arr = await db.collection('presupuestos').find({ empresaId: EMPRESA }).sort({ updatedAt: -1 }).toArray();
   return arr.map(p => ({ _id: p._id, nombre: p.nombre, clientName: p.clientName || '', estado: p.estado || 'borrador', creadoPor: p.by || '', obraId: p.obraId || null, nLineas: (p.lineas || []).filter(l => !esSeccion(l)).length, ...computeTotales(p.lineas, p.iva, p.descuento, p.costeManoObra), updatedAt: p.updatedAt }));
 }
+// Presupuestos que cuelgan de una o varias OBRAS (la obra es la carpeta).
+async function getDeObras(obraIds) {
+  const ids = (Array.isArray(obraIds) ? obraIds : [obraIds]).map(String).filter(Boolean);
+  if (!ids.length) return [];
+  const db = await getDB();
+  const arr = await db.collection('presupuestos').find({ empresaId: EMPRESA, obraId: { $in: ids } }).sort({ createdAt: 1 }).toArray();
+  return arr.map(p => {
+    const t = computeTotales(p.lineas, p.iva, p.descuento, p.costeManoObra);
+    return { id: String(p._id), obraId: String(p.obraId), numero: p.numero || '', nombre: p.nombre || '', estado: p.estado || 'borrador',
+      base: t.baseConDescuento || 0, total: t.totalConIva || 0, coste: t.totalCoste || 0, enviadoAt: p.enviadoAt || null, aceptadoAt: p.aceptadoAt || null, updatedAt: p.updatedAt };
+  });
+}
 async function getPresupuesto(id) {
   const db = await getDB();
   const p = await db.collection('presupuestos').findOne({ _id: new ObjectId(id), empresaId: EMPRESA });
@@ -290,6 +302,8 @@ async function crearPresupuesto(data, by) {
     clientData: limpiarCliente(data.clientData),
     medicionId: data.medicionId ? String(data.medicionId) : null,
     medicionTotales: data.medicionTotales || null,
+    obraId: data.obraId ? String(data.obraId) : null,        // la obra (carpeta) de la que cuelga
+    obraRef: data.obraId ? String(data.obraRef || '').trim() : null,
     iva: Number.isFinite(Number(data.iva)) ? Number(data.iva) : 10,
     descuento: limpiarDescuento(data.descuento),
     validezDias: Number.isFinite(Number(data.validezDias)) ? Number(data.validezDias) : 30,
@@ -303,6 +317,7 @@ async function crearPresupuesto(data, by) {
     by: by || '', createdAt: new Date(), updatedAt: new Date(),
   };
   const r = await db.collection('presupuestos').insertOne(doc);
+  if (doc.obraId) { try { await syncObra(doc.obraId); } catch (e) {} }
   return { ok: true, id: String(r.insertedId) };
 }
 async function guardarPresupuesto(id, data) {
@@ -323,35 +338,59 @@ async function guardarPresupuesto(id, data) {
   if ('descuento' in data) set.descuento = limpiarDescuento(data.descuento);
   if ('medicionId' in data) set.medicionId = data.medicionId ? String(data.medicionId) : null;
   if ('medicionTotales' in data) set.medicionTotales = data.medicionTotales || null;
+  // Colgarlo de una obra (o cambiarlo de obra)
+  let obraAntes = null;
+  if ('obraId' in data) {
+    const prev = await db.collection('presupuestos').findOne({ _id: new ObjectId(id), empresaId: EMPRESA }, { projection: { obraId: 1 } });
+    obraAntes = prev && prev.obraId ? String(prev.obraId) : null;
+    set.obraId = data.obraId ? String(data.obraId) : null;
+    set.obraRef = data.obraId ? String(data.obraRef || '').trim() : null;
+  }
   await db.collection('presupuestos').updateOne({ _id: new ObjectId(id), empresaId: EMPRESA }, { $set: set });
   // Si ya tiene OBRA (presupuesto aceptado), propaga los importes: así un EXTRA
   // acordado con el cliente y añadido aquí se refleja en la obra y sus %.
   let obraSync = null;
   try { obraSync = await syncObraSiExiste(id); } catch (e) { console.warn('[Presupuesto→Obra sync]', e.message); }
+  if (obraAntes && obraAntes !== set.obraId) { try { await syncObra(obraAntes); } catch (e) {} } // la obra de la que salió
+  // Un presupuesto YA aceptado que se cuelga de una obra en estudio → la obra pasa a en curso.
+  if (set.obraId) { try { await crearObraDesdePresupuesto(id); } catch (e) {} }
   return { ok: true, obraSync };
 }
 // Actualiza los importes de la obra desde el presupuesto (para reflejar extras).
+// Importes de la obra = lo presupuestado en su carpeta:
+//   · si hay presupuestos ACEPTADOS → su suma (el inicial + ampliaciones/extras)
+//   · si aún no hay ninguno aceptado → el último presupuesto vivo (estimación de la obra en estudio)
+// Sin presupuestos no se toca nada (el importe pudo ponerse a mano en la ficha).
+async function syncObra(obraId) {
+  const db = await getDB();
+  const pres = (await getDeObras([obraId])).filter(p => p.estado !== 'rechazado');
+  if (!pres.length) return null;
+  const acept = pres.filter(p => p.estado === 'aceptado');
+  const cuentan = acept.length ? acept : [pres.slice().sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))[0]];
+  const r2 = n => Math.round(n * 100) / 100;
+  const budgetAmount = r2(cuentan.reduce((a, p) => a + p.base, 0)), costePresupuestado = r2(cuentan.reduce((a, p) => a + p.coste, 0));
+  const obra = await db.collection('obras').findOne({ _id: new ObjectId(String(obraId)) }, { projection: { budgetAmount: 1 } });
+  if (!obra) return null;
+  const cambio = Math.abs(budgetAmount - (Number(obra.budgetAmount) || 0)) > 0.005;
+  await db.collection('obras').updateOne({ _id: obra._id }, { $set: { budgetAmount, costePresupuestado, updatedAt: new Date() } });
+  return { obraId: String(obraId), budgetAmount, cambio };
+}
 async function syncObraSiExiste(id) {
   const db = await getDB();
-  const p = await db.collection('presupuestos').findOne({ _id: new ObjectId(id), empresaId: EMPRESA });
+  const p = await db.collection('presupuestos').findOne({ _id: new ObjectId(id), empresaId: EMPRESA }, { projection: { obraId: 1, estado: 1 } });
   if (!p || !p.obraId) return null;
-  const t = computeTotales(p.lineas, p.iva, p.descuento, p.costeManoObra);
-  const obra = await db.collection('obras').findOne({ _id: new ObjectId(p.obraId) });
-  const antes = obra ? (Number(obra.budgetAmount) || 0) : 0;
-  const cambio = Math.abs((t.baseConDescuento || 0) - antes) > 0.005; // ¿cambió el importe?
-  await db.collection('obras').updateOne(
-    { _id: new ObjectId(p.obraId) },
-    { $set: { budgetAmount: t.baseConDescuento, costePresupuestado: t.totalCoste, updatedAt: new Date() } }
-  );
+  const r = await syncObra(p.obraId);
+  if (!r) return null;
   // Si ya estaba aceptado y el importe cambia → marca de "modificado tras aceptación".
-  if (cambio && p.estado === 'aceptado') {
-    await db.collection('presupuestos').updateOne({ _id: p._id }, { $set: { modificadoTrasAceptarAt: new Date() } });
-  }
-  return { obraId: String(p.obraId), budgetAmount: t.baseConDescuento, cambio: cambio && p.estado === 'aceptado' };
+  const cambio = r.cambio && p.estado === 'aceptado';
+  if (cambio) await db.collection('presupuestos').updateOne({ _id: p._id }, { $set: { modificadoTrasAceptarAt: new Date() } });
+  return { obraId: String(p.obraId), budgetAmount: r.budgetAmount, cambio };
 }
 async function eliminarPresupuesto(id) {
   const db = await getDB();
+  const p = await db.collection('presupuestos').findOne({ _id: new ObjectId(id), empresaId: EMPRESA }, { projection: { obraId: 1 } });
   await db.collection('presupuestos').deleteOne({ _id: new ObjectId(id), empresaId: EMPRESA });
+  if (p && p.obraId) { try { await syncObra(p.obraId); } catch (e) {} }
   return { ok: true };
 }
 // Estados del presupuesto: borrador → enviado → aceptado/rechazado.
@@ -423,7 +462,25 @@ async function crearObraDesdePresupuesto(id) {
   const db = await getDB();
   const p = await db.collection('presupuestos').findOne({ _id: new ObjectId(id), empresaId: EMPRESA });
   if (!p) throw new Error('Presupuesto no encontrado');
-  if (p.obraId) return { yaExistia: true, obraId: String(p.obraId), reference: p.obraRef || p.nombre };
+  // Ya cuelga de una obra: si estaba EN ESTUDIO, al aceptarse pasa a EN CURSO.
+  if (p.obraId) {
+    const obra = await db.collection('obras').findOne({ _id: new ObjectId(String(p.obraId)) });
+    if (obra) {
+      let activada = false;
+      if (p.estado === 'aceptado' && ['estudio', 'descartada'].includes(obra.status)) {
+        const set = { status: 'activa', startDate: new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' }), closedAt: null, updatedAt: new Date() };
+        if (!obra.presupuestoId) { set.presupuestoId = String(p._id); set.presupuestoNumero = p.numero || null; }
+        if (!obra.tiempoEstimado && p.tiempoEstimado) set.tiempoEstimado = p.tiempoEstimado;
+        if (!(obra.equipoPresup || []).length && (p.equipo || []).length) set.equipoPresup = p.equipo;
+        if (!obra.clientName && p.clientName) set.clientName = p.clientName;
+        if (p.numero && !(obra.aliases || []).includes(p.numero)) set.aliases = [...(obra.aliases || []), p.numero];
+        await db.collection('obras').updateOne({ _id: obra._id }, { $set: set });
+        activada = true;
+      }
+      try { await syncObra(p.obraId); } catch (e) {}
+      return { yaExistia: true, activada, obraId: String(p.obraId), reference: obra.reference || p.obraRef || p.nombre };
+    }
+  }
 
   const t = computeTotales(p.lineas, p.iva, p.descuento, p.costeManoObra);
   const cliente = (p.clientName || '').trim() || 'Sin cliente';
@@ -516,6 +573,6 @@ module.exports = {
   getPartidas, crearPartida, editarPartida, eliminarPartida,
   getMateriales, crearMaterial, editarMaterial, eliminarMaterial,
   getPresupuestos, getPresupuesto, crearPresupuesto, guardarPresupuesto, eliminarPresupuesto,
-  ESTADOS, setEstado, crearObraDesdePresupuesto,
+  ESTADOS, setEstado, crearObraDesdePresupuesto, getDeObras, syncObra,
   ensurePublicToken, getPublico, responder,
 };

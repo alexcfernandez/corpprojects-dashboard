@@ -1892,7 +1892,7 @@ const presupuestos = require('./presupuestos');
 app.get('/api/obras', requireAuth, async (req, res) => {
   try {
     const { clientName, status, search } = req.query;
-    res.json(await obras.getObras({ clientName, status, search }));
+    res.json(await obras.getObras({ clientName, status, search, verEstudio: users.canSeeMoney(req.user?.role || 'owner') }));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1903,12 +1903,29 @@ app.get('/api/obras/resumen', requireAuth, async (req, res) => {
 
 // Lista para el selector único de obra (antes de /:id para que no lo capture).
 app.get('/api/obras/selector', requireAuth, async (req, res) => {
-  try { res.json(await obras.getSelector({ todas: req.query.todas === '1' })); }
+  try { res.json(await obras.getSelector({ todas: req.query.todas === '1', conEstudio: users.canSeeMoney(req.user?.role || 'owner') })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Obras EN ESTUDIO (aún no aceptadas) con sus mediciones y presupuestos: solo Dueño y Oficina.
+app.get('/api/obras/estudio', requireAuth, async (req, res) => {
+  if (!users.canSeeMoney(req.user?.role || 'owner')) return res.status(403).json({ error: 'Solo Dueño y Oficina ven las obras en estudio' });
+  try { res.json(await obras.getEnEstudio({ descartadas: req.query.descartadas === '1' })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+// Presupuestos que cuelgan de la obra (importes → solo Dueño y Oficina).
+app.get('/api/obras/:id/presupuestos', requireAuth, async (req, res) => {
+  if (!users.canSeeMoney(req.user?.role || 'owner')) return res.json([]);
+  try { res.json(await presupuestos.getDeObras([req.params.id])); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/api/obras/:id', requireAuth, async (req, res) => {
-  try { res.json(await obras.getObra(req.params.id)); }
+  try {
+    const o = await obras.getObra(req.params.id);
+    if (o && obras.ESTADOS_PREVIOS.includes(o.status) && !users.canSeeMoney(req.user?.role || 'owner')) return res.status(403).json({ error: 'Obra en estudio: solo Dueño y Oficina' });
+    res.json(o);
+  }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1995,7 +2012,7 @@ app.post('/api/obras/sugerir-ref', requireAuth, async (req, res) => {
 app.get('/api/facturas/obras', requireAuthOficina, async (req, res) => {
   try {
     // Selector único (todas: a una obra ya cerrada le pueden seguir llegando facturas).
-    res.json(await obras.getSelector({ todas: true }));
+    res.json(await obras.getSelector({ todas: true, conEstudio: users.canSeeMoney(req.oficina?.role) }));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -2368,6 +2385,23 @@ app.delete('/api/presupuestos/:id', requireAuthOficina, async (req, res) => {
 });
 
 // ── MEDICIONES (medidor por estancias · motor de presupuestos F1) ──
+// Selector de obra para las apps de oficina (Mediciones, Presupuestos). Va FUERA de /api/facturas
+// porque ese prefijo está cerrado a los técnicos, que sí miden. En estudio: solo Dueño/Oficina.
+app.get('/api/oficina/obras', requireAuthOficina, async (req, res) => {
+  // Aquí SÍ salen las obras en estudio para todo el que mide (solo nombre y dirección, sin importes):
+  // la medición de la visita tiene que poder colgarse de una obra que aún no está aceptada.
+  try { res.json(await obras.getSelector({ todas: true, conEstudio: true })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+// Crear una obra (vacía / en estudio) desde esas apps.
+app.post('/api/oficina/obra-nueva', requireAuthOficina, async (req, res) => {
+  try {
+    const { reference, clientName, address, aliases, status } = req.body || {};
+    const st = status === 'estudio' ? 'estudio' : 'activa';
+    const obra = await obras.createObra({ reference, clientName, address, aliases, status: st });
+    res.json({ ok: true, id: String(obra.id), reference: obra.reference, clientName: obra.clientName, status: st });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/mediciones', requireAuthOficina, async (req, res) => {
   try { res.json(await mediciones.getMediciones({ obraId: req.query.obraId })); }
   catch (err) { res.status(500).json({ error: err.message }); }
