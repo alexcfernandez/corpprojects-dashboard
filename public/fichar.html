@@ -211,6 +211,7 @@ textarea.obra-sel{resize:vertical;line-height:1.4}
 </div></div>
 
 <script src="/push-client.js"></script>
+<script src="/obra-picker.js"></script>
 <script>
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
 let workerToken=null, todosWorkers=[], preW=new URLSearchParams(location.search).get('w');
@@ -290,13 +291,17 @@ function estadoDe(d){return d?(d.estado||(d.dentro?'dentro':'fuera')):'fuera';}
 async function cargarObras(){if(_obras)return _obras;
   try{const r=await fetch('/api/campo/obras',{headers:authH()});if(r.ok){_obras=await r.json();lsSet('cpObras',_obras);return _obras;}}catch(e){}
   return lsGet('cpObras',[]);} // sin cobertura: las últimas que se vieron
+let _obraPick=null;
 async function renderObra(est,obraId){
   const w=document.getElementById('obra-wrap');const obras=await cargarObras();
   if(est==='fuera'){
-    if(document.getElementById('obra-sel'))return; // no pisar lo que esté eligiendo
+    if(_obraPick&&w.firstChild){_obraPick.setObras(obras);return;} // no pisar lo que esté eligiendo
     const last=localStorage.getItem('cpObra')||'';
-    w.innerHTML=`<label class="obra-lbl" for="obra-sel">¿En qué obra estás hoy?</label><select id="obra-sel" class="obra-sel"><option value="">— Sin obra / otra —</option>${obras.map(o=>`<option value="${escH(o.id)}" ${o.id===last?'selected':''}>${escH(o.reference)}${o.address?' · '+escH(o.address):''}</option>`).join('')}</select>`;
+    w.innerHTML='<label class="obra-lbl">¿En qué obra estás hoy?</label><div id="obra-pick"></div>';
+    // Selector único: busca por nombre, calle o mote. Solo se propone la última si sigue ABIERTA.
+    _obraPick=CPObra.crear(document.getElementById('obra-pick'),{obras,value:obras.some(o=>o.id===last&&o.grupo==='abierta')?last:'',vacio:'— Sin obra / otra —',placeholder:'Elegir obra…',titulo:'¿En qué obra estás hoy?'});
   }else{
+    _obraPick=null;
     const o=obras.find(x=>x.id===obraId);
     w.innerHTML=o?`<div class="obra-chip">🏗️ ${escH(o.reference)}</div>`:'';
   }
@@ -342,7 +347,7 @@ async function marcar(tipo){
   try{
     const loc=await getGPS();
     const body={tipo,loc,opId};
-    if(tipo==='entrada'){const s=document.getElementById('obra-sel');if(s){body.obraId=s.value||null;localStorage.setItem('cpObra',s.value||'');}}
+    if(tipo==='entrada'&&_obraPick){body.obraId=_obraPick.value||null;localStorage.setItem('cpObra',_obraPick.value||'');}
     // Si ya hay fichajes esperando en el móvil, este va detrás (hay que respetar el orden).
     if(colaMia().length||navigator.onLine===false){encolar(body,pulsado);return;}
     let r;try{r=await fetchT('/api/fichaje/fichar',{method:'POST',headers:authH({'Content-Type':'application/json'}),body:JSON.stringify(body)},12000);}
@@ -351,7 +356,7 @@ async function marcar(tipo){
     if(r.status===429||r.status>=500){encolar(body,pulsado);return;}
     if(!r.ok)throw new Error(d.error||'Error');
     _sinRed=false;
-    document.getElementById('obra-wrap').innerHTML=''; // forzar re-render del bloque de obra
+    document.getElementById('obra-wrap').innerHTML='';_obraPick=null; // forzar re-render del bloque de obra
     pintar(d);
     toast(({entrada:'✅ Jornada empezada',pausa_inicio:'⏸ En pausa',pausa_fin:'▶ De vuelta',salida:'👋 Jornada terminada'})[d.accion]||'Hecho','ok');}
   catch(e){btn.textContent=txt;toast(e.message,'error');cargar();}
@@ -371,7 +376,7 @@ function nuevoOpId(){try{if(crypto.randomUUID)return crypto.randomUUID();}catch(
 function fetchT(url,opt,ms){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms||12000);return fetch(url,Object.assign({},opt,{signal:c.signal})).finally(()=>clearTimeout(t));}
 function encolar(body,pulsado){
   const q=colaTodos();q.push({opId:body.opId,tipo:body.tipo,loc:body.loc||null,obraId:body.obraId||null,horaDispositivo:pulsado,wn:miNombre(),tk:workerToken});lsSet('cpCola',q);
-  _sinRed=true;document.getElementById('obra-wrap').innerHTML='';
+  _sinRed=true;document.getElementById('obra-wrap').innerHTML='';_obraPick=null;
   render(estadoLocal());renderOffline();
   toast('📴 Sin cobertura: guardado en el móvil','warn');
   setTimeout(sincronizar,4000);

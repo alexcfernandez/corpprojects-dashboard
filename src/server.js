@@ -1292,8 +1292,8 @@ app.post('/api/fichaje/consent', async (req, res) => {
 // Obras ACTIVAS para el operario (elegir en el parte). Mínimo: sin importes.
 app.get('/api/campo/obras', async (req, res) => {
   try { const w = await _worker(req, res); if (!w) return;
-    const obras = await require('./obras').getObras({ status: 'activa' });
-    res.json(obras.map(o => ({ id: String(o._id), reference: o.reference, clientName: o.clientName, address: o.address || '' })));
+    // Selector único: abiertas + cerradas hace poco, con dirección y motes. Sin importes.
+    res.json(await require('./obras').getSelector());
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 app.get('/api/fichaje/mios', async (req, res) => {
@@ -1901,6 +1901,12 @@ app.get('/api/obras/resumen', requireAuth, async (req, res) => {
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Lista para el selector único de obra (antes de /:id para que no lo capture).
+app.get('/api/obras/selector', requireAuth, async (req, res) => {
+  try { res.json(await obras.getSelector({ todas: req.query.todas === '1' })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/obras/:id', requireAuth, async (req, res) => {
   try { res.json(await obras.getObra(req.params.id)); }
   catch (err) { res.status(500).json({ error: err.message }); }
@@ -1973,10 +1979,8 @@ app.post('/api/obras/sugerir-ref', requireAuth, async (req, res) => {
 // Lista de obras para el desplegable. Auth de oficina (token trabajador o admin).
 app.get('/api/facturas/obras', requireAuthOficina, async (req, res) => {
   try {
-    const lista = await obras.getObras({});
-    res.json(lista
-      .filter(o => o.status !== 'archivada')
-      .map(o => ({ id: String(o._id), reference: o.reference || '', clientName: o.clientName || '', status: o.status || 'activa' })));
+    // Selector único (todas: a una obra ya cerrada le pueden seguir llegando facturas).
+    res.json(await obras.getSelector({ todas: true }));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -2128,8 +2132,8 @@ app.delete('/api/facturas/proveedor/:id', requireAuthOficina, async (req, res) =
 // Crear una obra al vuelo desde la oficina (referencia + cliente) para poder asignar.
 app.post('/api/facturas/obra-nueva', requireAuthOficina, async (req, res) => {
   try {
-    const { reference, clientName } = req.body || {};
-    const obra = await obras.createObra({ reference, clientName });
+    const { reference, clientName, address, aliases } = req.body || {};
+    const obra = await obras.createObra({ reference, clientName, address, aliases });
     res.json({ ok: true, id: String(obra.id), reference: obra.reference, clientName: obra.clientName });
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
@@ -2350,7 +2354,7 @@ app.delete('/api/presupuestos/:id', requireAuthOficina, async (req, res) => {
 
 // ── MEDICIONES (medidor por estancias · motor de presupuestos F1) ──
 app.get('/api/mediciones', requireAuthOficina, async (req, res) => {
-  try { res.json(await mediciones.getMediciones()); }
+  try { res.json(await mediciones.getMediciones({ obraId: req.query.obraId })); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 app.get('/api/mediciones/:id', requireAuthOficina, async (req, res) => {

@@ -199,11 +199,12 @@ async function createObra(data) {
     updatedAt:    new Date(),
   };
 
-  if (!obra.clientName) throw new Error('El cliente es obligatorio');
-  if (!obra.reference)  throw new Error('La referencia de obra es obligatoria');
+  // La obra es la CARPETA de todo lo demás: puede nacer vacía, solo con su nombre.
+  // Cliente, dirección, presupuesto, mediciones… se le van colgando después.
+  if (!obra.reference)  throw new Error('Ponle un nombre a la obra');
 
   const result = await db.collection('obras').insertOne(obra);
-  console.log(`[Obras] Nueva obra: ${obra.reference} — ${obra.clientName}`);
+  console.log(`[Obras] Nueva obra: ${obra.reference} — ${obra.clientName || 'sin cliente'}`);
   return { id: result.insertedId, ...obra };
 }
 
@@ -216,6 +217,7 @@ async function getObras({ clientName, status, search } = {}) {
     { reference:   { $regex: search, $options: 'i' } },
     { clientName:  { $regex: search, $options: 'i' } },
     { address:     { $regex: search, $options: 'i' } },
+    { aliases:     { $regex: search, $options: 'i' } },   // motes
   ];
   return db.collection('obras').find(query).sort({ createdAt: -1 }).toArray();
 }
@@ -231,7 +233,46 @@ async function updateObra(id, data) {
   const set = { updatedAt: new Date() };
   allowed.forEach(k => { if (data[k] !== undefined) set[k] = data[k]; });
   if (Array.isArray(set.aliases)) set.aliases = set.aliases.map(s => String(s || '').trim()).filter(Boolean);
+  if (set.reference !== undefined && !String(set.reference || '').trim()) throw new Error('Ponle un nombre a la obra');
+  // Fecha de cierre: la usa el selector para enseñar las "cerradas hace poco".
+  if (set.status !== undefined) {
+    const prev = await db.collection('obras').findOne({ _id: new ObjectId(id) }, { projection: { status: 1, closedAt: 1 } });
+    const antes = ESTADOS_CERRADA.includes(prev?.status), ahora = ESTADOS_CERRADA.includes(set.status);
+    if (ahora && (!antes || !prev?.closedAt)) set.closedAt = new Date();
+    if (!ahora && antes) set.closedAt = null;
+  }
   return db.collection('obras').updateOne({ _id: new ObjectId(id) }, { $set: set });
+}
+
+// ── SELECTOR ÚNICO DE OBRA ───────────────────────────────────────
+// La misma lista para TODAS las pantallas que eligen obra (fichar, parte, compras,
+// mediciones…). Sin importes: la ven también los trabajadores. Se busca por nombre,
+// dirección y motes (aliases). Grupos:
+//   · abierta  → en curso o pausada (arriba)
+//   · cerrada  → terminada/facturada hace poco (abajo; aún llegan albaranes y horas)
+//   · antigua  → cerrada hace más tiempo (solo con `todas`, y el selector la enseña al buscar)
+const ESTADOS_CERRADA = ['terminada', 'facturada'];
+const DIAS_CERRADA_RECIENTE = Number(process.env.OBRA_CERRADA_DIAS) || 60;
+async function getSelector({ todas = false } = {}) {
+  const db = await getDB();
+  const lista = await db.collection('obras').find({ status: { $ne: 'archivada' } })
+    .project({ reference: 1, clientName: 1, address: 1, aliases: 1, status: 1, closedAt: 1, endDate: 1, updatedAt: 1, createdAt: 1 }).toArray();
+  const corte = Date.now() - DIAS_CERRADA_RECIENTE * 86400000;
+  const out = [];
+  for (const o of lista) {
+    const cerrada = ESTADOS_CERRADA.includes(o.status);
+    const cierre = cerrada ? new Date(o.closedAt || o.endDate || o.updatedAt || o.createdAt || 0).getTime() : null;
+    const grupo = !cerrada ? 'abierta' : (cierre >= corte ? 'cerrada' : 'antigua');
+    if (grupo === 'antigua' && !todas) continue;
+    out.push({
+      id: String(o._id), reference: o.reference || '', clientName: o.clientName || '', address: o.address || '',
+      aliases: Array.isArray(o.aliases) ? o.aliases.filter(Boolean) : [], status: o.status || 'activa', grupo, _cierre: cierre,
+    });
+  }
+  const orden = { abierta: 0, cerrada: 1, antigua: 2 };
+  out.sort((a, b) => (orden[a.grupo] - orden[b.grupo]) ||
+    (a.grupo === 'abierta' ? a.reference.localeCompare(b.reference, 'es', { sensitivity: 'base' }) : (b._cierre - a._cierre)));
+  return out.map(({ _cierre, ...o }) => o);
 }
 
 // Borrar una obra (p. ej. una duplicada). No toca partes/presencia/facturas;
@@ -536,7 +577,7 @@ async function _getResumenGeneral() {
 
 module.exports = {
   ESTADOS_OBRA, CATEGORIAS_GASTO,
-  createObra, getObras, getObra, updateObra, deleteObra, addMaterial, deleteMaterial,
+  createObra, getObras, getObra, updateObra, deleteObra, getSelector, addMaterial, deleteMaterial,
   addCertificacion, setCertificacion, deleteCertificacion, resumenCertificaciones,
   getRentabilidad, getResumenGeneral,
   extraerObraMarcador, extraerGastoMarcador, getAsignacionesFacturaMap, getReglasMap, resolverFacturaObra,

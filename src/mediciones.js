@@ -33,11 +33,13 @@ function conCalculos(m) {
   return { ...m, estancias, totales: calcTotales(m.estancias || []) };
 }
 
-async function getMediciones() {
+async function getMediciones({ obraId } = {}) {
   const db = await getDB();
-  const arr = await db.collection('mediciones').find({ empresaId: EMPRESA }).sort({ updatedAt: -1 }).toArray();
+  const q = { empresaId: EMPRESA };
+  if (obraId) q.obraId = String(obraId);   // las mediciones de UNA obra (la ficha de la obra)
+  const arr = await db.collection('mediciones').find(q).sort({ updatedAt: -1 }).toArray();
   return arr.map(m => ({
-    _id: m._id, nombre: m.nombre, clientName: m.clientName || '',
+    _id: m._id, nombre: m.nombre, clientName: m.clientName || '', obraId: m.obraId || null,
     nEstancias: (m.estancias || []).length, totales: calcTotales(m.estancias || []),
     updatedAt: m.updatedAt,
   }));

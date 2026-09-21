@@ -108,8 +108,11 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 <div class="page" id="page-det"><div class="container">
   <div class="toolbar"><button class="tool-btn" onclick="volverLista()">← Mediciones</button><button class="tool-btn danger" onclick="eliminarMed()" id="det-del" style="display:none">Eliminar</button></div>
   <div class="det-head"><input type="text" id="d-nombre" placeholder="Dirección / nombre del piso"></div>
-  <input type="text" id="d-cliente" autocomplete="off" placeholder="Cliente (busca en StelOrder)" style="margin-bottom:4px">
-  <div class="quick" id="quick"></div>
+  <input type="text" id="d-cliente" autocomplete="off" placeholder="Cliente (busca en StelOrder)" style="margin-bottom:10px">
+  <label class="fld">Obra a la que pertenece</label>
+  <div id="d-obra"></div>
+  <button class="btn sec" id="d-crear-obra" onclick="crearObraDesdeMed()" style="margin-top:8px;display:none">🏗️ Crear la obra con esta medición</button>
+  <div class="quick" id="quick" style="margin-top:12px"></div>
   <div id="estancias"></div>
   <button class="btn sec" onclick="addEst('Otra')" style="margin-top:6px">+ Añadir estancia</button>
 </div></div>
@@ -131,13 +134,15 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
   <div style="font-weight:700;font-size:17px;margin-bottom:14px">Nueva medición</div>
   <div class="field"><label class="fld">Dirección / nombre</label><input type="text" id="n-nombre" placeholder="Ej. C/ Comerç 76, 3º 2ª"></div>
   <div class="field"><label class="fld">Cliente (opcional)</label><input type="text" id="n-cliente" autocomplete="off" placeholder="Busca en StelOrder"></div>
+  <div class="field"><label class="fld">Obra (opcional)</label><div id="n-obra"></div></div>
   <div class="row2"><button class="btn sec" onclick="cerrar('ov-nueva')">Cancelar</button><button class="btn" onclick="crearNueva()">Crear y medir</button></div>
 </div></div>
 
 <script src="/cliente-autocomplete.js"></script>
+<script src="/obra-picker.js"></script>
 <script>
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
-let workerToken=null, esAdmin=false, todosWorkers=[], lista=[], medId=null;
+let workerToken=null, esAdmin=false, todosWorkers=[], lista=[], medId=null, obras=[], pickDet=null, pickNueva=null;
 const TIPOS=['Sala','Cocina','Habitación','Baño','Pasillo','Recibidor','Terraza','Otra'];
 function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('page-'+id).classList.add('active');document.getElementById('totbar').style.display=id==='det'?'block':'none';}
 let _tt=null;function toast(t,ty){const e=document.getElementById('toast');e.textContent=t;e.className='show '+(ty||'ok');clearTimeout(_tt);_tt=setTimeout(()=>e.className='',3200);}
@@ -158,7 +163,7 @@ async function enterApp(token,info,persist){workerToken=token;esAdmin=!!info.adm
   const lb=document.getElementById('logout-btn');lb.textContent=esAdmin?'← Dashboard':'Salir';lb.style.display='block';
   document.getElementById('quick').innerHTML=TIPOS.map(t=>`<button onclick="addEst('${t}')">+ ${t}</button>`).join('');
   if(window.initClienteAutocomplete){initClienteAutocomplete(document.getElementById('d-cliente'),workerToken);initClienteAutocomplete(document.getElementById('n-cliente'),workerToken);}
-  showPage('list');await cargar();}
+  showPage('list');await cargarObras();await cargar();await abrirDesdeEnlace();}
 async function tryRestore(){const admin=localStorage.getItem('cp_token'),worker=localStorage.getItem('cpWT');
   for(const [t,isA] of [[admin,true],[worker,false]]){if(!t)continue;try{const r=await fetch('/api/oficina/whoami',{headers:{'Authorization':`Bearer ${t}`}});if(!r.ok)continue;const d=await r.json();await enterApp(t,{workerName:d.name,admin:d.admin},!isA);return true;}catch(e){}}
   localStorage.removeItem('cpWT');return false;}
@@ -177,23 +182,52 @@ function renderLista(){
   document.getElementById('lista').innerHTML=lista.map(m=>`<div class="card" onclick="abrirMed('${m._id}')">
     <div class="card-top"><div class="card-nm">${esc(m.nombre)}</div></div>
     ${m.clientName?`<div class="card-cli">${esc(m.clientName)}</div>`:''}
+    ${nombreObra(m.obraId)?`<div class="card-cli">🏗️ ${esc(nombreObra(m.obraId))}</div>`:''}
     <div class="card-tot">${m.nEstancias} estancia(s) · Suelo ${fmt(m.totales.suelo)} m² · Paredes ${fmt(m.totales.paredes)} m² · Rodapié ${fmt(m.totales.rodapie)} m</div>
   </div>`).join('');
 }
 function volverLista(){medId=null;cargar();showPage('list');}
 
+// ── OBRAS (la medición cuelga de una obra; se puede enlazar antes o después) ──
+async function cargarObras(){try{obras=await api('GET','/api/facturas/obras');}catch(e){obras=[];}}
+function nombreObra(id){const o=obras.find(x=>x.id===id);return o?o.reference:'';}
+// Enlaces desde la ficha de la obra:  /medir?id=<medición>   ·   /medir?obra=<obra> (nueva medición dentro de esa obra)
+async function abrirDesdeEnlace(){const q=new URLSearchParams(location.search);const id=q.get('id'),ob=q.get('obra');
+  if(id||ob)history.replaceState(null,'',location.pathname);
+  if(id){await abrirMed(id);return;}
+  if(ob&&obras.some(o=>o.id===ob))nueva(ob);}
+
 // ── NUEVA ──
-function nueva(){document.getElementById('n-nombre').value='';document.getElementById('n-cliente').value='';abrir('ov-nueva');}
+function nueva(obraId){const o=obras.find(x=>x.id===obraId);
+  document.getElementById('n-nombre').value=o?(o.address||o.reference||''):'';document.getElementById('n-cliente').value=o?(o.clientName||''):'';
+  pickNueva=CPObra.crear(document.getElementById('n-obra'),{obras,value:o?o.id:'',vacio:'— Sin obra todavía —',placeholder:'Elegir obra…',titulo:'¿De qué obra es la medición?',
+    onChange:ob=>{if(!ob)return;const n=document.getElementById('n-nombre'),c=document.getElementById('n-cliente');if(!n.value.trim())n.value=ob.address||ob.reference||'';if(!c.value.trim())c.value=ob.clientName||'';}});
+  abrir('ov-nueva');}
 async function crearNueva(){const nombre=document.getElementById('n-nombre').value.trim();if(!nombre){toast('Ponle un nombre (la dirección)','warn');return;}
-  try{const r=await api('POST','/api/mediciones',{nombre,clientName:document.getElementById('n-cliente').value.trim(),estancias:[]});cerrar('ov-nueva');await abrirMed(r.id);}catch(e){toast(e.message,'error');}}
+  try{const r=await api('POST','/api/mediciones',{nombre,clientName:document.getElementById('n-cliente').value.trim(),obraId:pickNueva?pickNueva.value||null:null,estancias:[]});cerrar('ov-nueva');await abrirMed(r.id);}catch(e){toast(e.message,'error');}}
 
 // ── DETALLE / MEDIR ──
 async function abrirMed(id){
   try{const m=await api('GET','/api/mediciones/'+id);medId=id;
     document.getElementById('d-nombre').value=m.nombre||'';document.getElementById('d-cliente').value=m.clientName||'';
     document.getElementById('det-del').style.display='block';
+    // Cambiar de obra se guarda al momento (no depende del botón Guardar)
+    pickDet=CPObra.crear(document.getElementById('d-obra'),{obras,value:m.obraId||'',vacio:'— Sin obra todavía —',placeholder:'Elegir obra…',titulo:'¿De qué obra es la medición?',
+      onChange:async ob=>{try{await api('PUT','/api/mediciones/'+medId,{obraId:ob?ob.id:null});toast(ob?'Medición guardada en «'+ob.reference+'»':'Medición sin obra','ok');}catch(e){toast(e.message,'error');}botonCrearObra();}});
+    botonCrearObra();
     renderEstancias(m.estancias||[]);showPage('det');
   }catch(e){toast(e.message,'error');}}
+function botonCrearObra(){document.getElementById('d-crear-obra').style.display=(pickDet&&!pickDet.value)?'block':'none';}
+// Empezó por la medición (visita al piso) y aún no hay obra: se crea con estos mismos datos.
+async function crearObraDesdeMed(){
+  const nombre=document.getElementById('d-nombre').value.trim(),cli=document.getElementById('d-cliente').value.trim();
+  if(!nombre){toast('Ponle antes un nombre a la medición','warn');return;}
+  if(!confirm('Se creará la obra «'+nombre+'»'+(cli?' de '+cli:'')+' y esta medición quedará dentro. ¿Seguimos?'))return;
+  const b=document.getElementById('d-crear-obra');b.disabled=true;
+  try{const r=await api('POST','/api/facturas/obra-nueva',{reference:nombre,clientName:cli,address:nombre});
+    await api('PUT','/api/mediciones/'+medId,{obraId:r.id});
+    await cargarObras();pickDet.setObras(obras);pickDet.set(r.id);botonCrearObra();toast('🏗️ Obra creada con la medición dentro','ok');}
+  catch(e){toast(e.message,'error');}finally{b.disabled=false;}}
 function renderEstancias(estancias){
   document.getElementById('estancias').innerHTML=estancias.map(e=>estanciaHTML(e)).join('');
   recompute();

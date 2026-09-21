@@ -62,6 +62,7 @@
           <div id="ob-form-msg" style="margin-top:10px;font-size:12px;display:none"></div>
           <div style="display:flex;gap:8px;margin-top:16px">
             <button class="btn bp" id="ob-submit-btn" onclick="CP.Obras.submitObra()">💾 Crear obra</button>
+            <span style="font-size:11px;color:var(--text3);align-self:center">Puede nacer vacía: el resto se le va colgando.</span>
             <button class="btn bgh" onclick="CP.Obras.resetForm()">Limpiar</button>
           </div>
         </div>
@@ -74,7 +75,7 @@
     return `
       <div class="field-grid-2" style="margin-bottom:12px">
         <div>
-          <span class="field-label">Cliente *</span>
+          <span class="field-label">Cliente <span style="font-weight:400;text-transform:none;font-size:10px">(se puede poner después)</span></span>
           <input type="text" id="ob-client" value="${obra.clientName||''}" list="ob-clients-list" placeholder="Buscar cliente..." autocomplete="off" class="field-input">
           <datalist id="ob-clients-list"></datalist>
         </div>
@@ -86,7 +87,7 @@
         </div>
       </div>
       <div class="field-row">
-        <span class="field-label">Referencia de obra * <span style="font-weight:400;text-transform:none;font-size:10px">(nombre interno)</span></span>
+        <span class="field-label">Nombre de la obra * <span style="font-weight:400;text-transform:none;font-size:10px">(como la llamáis vosotros)</span></span>
         <div style="display:flex;gap:6px">
           <input type="text" id="ob-reference" value="${obra.reference||''}" placeholder="Ej: Pedrosa – fachada" class="field-input" style="flex:1">
           <button type="button" class="btn bgh" style="white-space:nowrap" onclick="CP.Obras.sugerirRef()">💡 Sugerir</button>
@@ -96,6 +97,11 @@
       <div class="field-row">
         <span class="field-label">Dirección</span>
         <input type="text" id="ob-address" value="${obra.address||''}" placeholder="Calle, número, población" class="field-input">
+      </div>
+      <div class="field-row">
+        <span class="field-label">Motes <span style="font-weight:400;text-transform:none;font-size:10px">(otros nombres por los que la conocéis)</span></span>
+        <input type="text" id="ob-aliases" value="${(obra.aliases||[]).join(', ')}" placeholder="Ej: can pedretes, aura y lluís, carrer gerani 24" class="field-input">
+        <div style="font-size:10px;color:var(--text3);margin-top:3px">Separa por comas. La obra saldrá al buscar por cualquiera de ellos (al fichar, en el parte, en las compras…).</div>
       </div>
       <div class="field-grid-2" style="margin-bottom:12px">
         <div>
@@ -247,10 +253,13 @@
 
   async function openObra(id) {
     try {
-      const [obra, rent] = await Promise.all([
+      const [obra, rent, medsRaw] = await Promise.all([
         api(`/api/obras/${id}`),
-        api(`/api/obras/${id}/rentabilidad`)
+        api(`/api/obras/${id}/rentabilidad`),
+        api(`/api/mediciones?obraId=${encodeURIComponent(id)}`).catch(() => [])
       ]);
+      const meds = Array.isArray(medsRaw) ? medsRaw : [];
+      const m2 = n => (Math.round((Number(n)||0)*100)/100).toLocaleString('es-ES',{maximumFractionDigits:2});
 
       document.getElementById('ob-modal')?.remove();
       const modal = document.createElement('div');
@@ -290,6 +299,16 @@
           <div style="padding:10px;background:var(--bg3);border-radius:var(--rs);margin-bottom:14px;font-size:12px;color:var(--text3)">
             Sin facturación registrada. Añade el presupuesto para ver la rentabilidad.
           </div>`}
+
+          <div class="card" style="margin-bottom:14px">
+            <div class="card-title" style="display:flex;align-items:center;gap:8px">📐 Mediciones <span style="font-weight:400;color:var(--text3);font-size:11px">${meds.length?`(${meds.length})`:''}</span>
+              <a class="btn bgh" style="margin-left:auto;padding:4px 10px;font-size:11px;text-decoration:none" href="/medir?obra=${ce(id)}" target="_blank">＋ Nueva medición</a></div>
+            ${meds.length ? meds.map(m=>`
+              <a href="/medir?id=${ce(m._id)}" target="_blank" style="display:block;text-decoration:none;color:inherit;padding:9px 0;border-top:1px solid var(--border)">
+                <div style="font-size:13px;font-weight:600">${ce(m.nombre)} <span style="color:var(--text3);font-weight:400">→ abrir</span></div>
+                <div style="font-size:11px;color:var(--text3);margin-top:2px">${m.nEstancias} estancia(s) · Suelo ${m2(m.totales?.suelo)} m² · Paredes ${m2(m.totales?.paredes)} m² · Rodapié ${m2(m.totales?.rodapie)} m</div>
+              </a>`).join('') : `<div style="font-size:12px;color:var(--text3)">Todavía no hay mediciones en esta obra. Pulsa «＋ Nueva medición», o enlaza una que ya tengas desde la app de medir.</div>`}
+          </div>
 
           ${(rent.costePresupuestado > 0 || estDias != null || equipoPrev.length || realDias) ? `
           <div class="card" style="margin-bottom:14px">
@@ -399,10 +418,24 @@
                 <input type="number" id="ob-edit-budget" value="${obra.budgetAmount||''}" min="0" class="field-input">
               </div>
             </div>
+            <div class="field-grid-2" style="margin-bottom:10px">
+              <div>
+                <span class="field-label">Nombre de la obra</span>
+                <input type="text" id="ob-edit-reference" value="${ce(obra.reference||'')}" class="field-input">
+              </div>
+              <div>
+                <span class="field-label">Cliente</span>
+                <input type="text" id="ob-edit-client" value="${ce(obra.clientName||'')}" class="field-input" placeholder="Se puede poner después">
+              </div>
+            </div>
             <div style="margin-bottom:10px">
-              <span class="field-label">Otros nombres que cuentan (partes / presencia)</span>
-              <input type="text" id="ob-edit-aliases" value="${(obra.aliases||[]).join(', ')}" class="field-input" placeholder="Ej: calle comerç, comerç 76">
-              <div style="font-size:11px;color:var(--text3);margin-top:4px">Separa por comas. Añade aquí cómo se llamó la obra en los partes o la presencia, para que sus horas cuenten en esta obra.</div>
+              <span class="field-label">Dirección</span>
+              <input type="text" id="ob-edit-address" value="${ce(obra.address||'')}" class="field-input" placeholder="Calle, número, población">
+            </div>
+            <div style="margin-bottom:10px">
+              <span class="field-label">Motes · otros nombres de la obra</span>
+              <input type="text" id="ob-edit-aliases" value="${ce((obra.aliases||[]).join(', '))}" class="field-input" placeholder="Ej: can pedretes, aura y lluís, carrer gerani 24">
+              <div style="font-size:11px;color:var(--text3);margin-top:4px">Separa por comas. Sirven para dos cosas: la obra sale al buscar por cualquiera de ellos (fichar, parte, compras…), y las horas de partes o presencia apuntadas con ese nombre cuentan en esta obra.</div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <button class="btn bp" onclick="CP.Obras.saveObraChanges('${id}')">💾 Guardar</button>
@@ -422,9 +455,13 @@
     const status       = document.getElementById('ob-edit-status')?.value;
     const budgetAmount = parseFloat(document.getElementById('ob-edit-budget')?.value || 0);
     const aliases      = (document.getElementById('ob-edit-aliases')?.value || '').split(',').map(s=>s.trim()).filter(Boolean);
+    const reference    = document.getElementById('ob-edit-reference')?.value?.trim();
+    const clientName   = document.getElementById('ob-edit-client')?.value?.trim() || '';
+    const address      = document.getElementById('ob-edit-address')?.value?.trim() || '';
     const msg = document.getElementById('ob-modal-msg');
+    if (!reference) { if (msg) { msg.textContent='⚠️ Ponle un nombre a la obra'; msg.style.display='block'; msg.style.color='var(--amber)'; } return; }
     try {
-      await api(`/api/obras/${id}`, { method:'PUT', body: JSON.stringify({ status, budgetAmount, aliases }) });
+      await api(`/api/obras/${id}`, { method:'PUT', body: JSON.stringify({ status, budgetAmount, aliases, reference, clientName, address }) });
       openObra(id); // recargar la ficha para ver la rentabilidad recalculada
       if (msg) { msg.textContent='✅ Guardado'; msg.style.display='block'; msg.style.color='var(--green)'; setTimeout(()=>msg.style.display='none',2000); }
       loadResumen();
@@ -442,10 +479,11 @@
       startDate:    document.getElementById('ob-start')?.value,
       budgetAmount: parseFloat(document.getElementById('ob-budget')?.value || 0),
       description:  document.getElementById('ob-desc')?.value?.trim(),
+      aliases:      (document.getElementById('ob-aliases')?.value || '').split(',').map(s=>s.trim()).filter(Boolean),
     };
     const msg = document.getElementById('ob-form-msg');
-    if (!data.clientName || !data.reference) {
-      if (msg) { msg.textContent='⚠️ Cliente y referencia son obligatorios'; msg.style.display='block'; msg.style.color='var(--amber)'; }
+    if (!data.reference) {
+      if (msg) { msg.textContent='⚠️ Ponle un nombre a la obra'; msg.style.display='block'; msg.style.color='var(--amber)'; }
       return;
     }
     try {
@@ -460,7 +498,7 @@
   }
 
   function resetForm() {
-    ['ob-client','ob-reference','ob-address','ob-budget','ob-desc'].forEach(id => {
+    ['ob-client','ob-reference','ob-address','ob-aliases','ob-budget','ob-desc'].forEach(id => {
       const e = document.getElementById(id); if(e) e.value='';
     });
     const s = document.getElementById('ob-start');

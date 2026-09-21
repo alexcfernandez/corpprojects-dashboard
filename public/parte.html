@@ -111,6 +111,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 <meta name="apple-mobile-web-app-title" content="Corp Projects">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
 <script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}</script>
+<script src="/obra-picker.js"></script>
 </head>
 <body>
 
@@ -196,9 +197,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
       <div class="field" id="f-obra-field" style="display:none">
         <label>Obra</label>
-        <select id="f-obra" onchange="onObraChange()" style="width:100%;background:var(--bg3,#1a1e27);border:1px solid var(--border2,rgba(255,255,255,.15));border-radius:10px;padding:12px;color:var(--text,#f0f2f7);font-size:16px;font-family:inherit">
-          <option value="">— Sin obra / escribir cliente —</option>
-        </select>
+        <div id="f-obra-pick"></div>
       </div>
 
       <div class="field">
@@ -424,24 +423,21 @@ async function enterApp(token, info) {
 }
 
 // ── OBRAS (elegir la obra a la que va el parte) ──
-let obraSel = null; // {id, ref, clientName}
+let obraSel = null, obraPick = null; // obraSel = {id, ref, clientName}
 async function loadObras(){
   try{
     const r = await fetch('/api/campo/obras', { headers:{'Authorization':`Bearer ${workerToken}`} });
     if(!r.ok) return;
     const obras = await r.json();
     if(!Array.isArray(obras) || !obras.length) return;
-    const sel = document.getElementById('f-obra');
-    sel.innerHTML = '<option value="">— Sin obra / escribir cliente —</option>' +
-      obras.map(o=>`<option value="${o.id}" data-cli="${(o.clientName||'').replace(/"/g,'&quot;')}">${(o.reference||o.clientName||'Obra').replace(/</g,'&lt;')}</option>`).join('');
+    // Selector único de obra: se busca por nombre, calle o mote.
+    obraPick = CPObra.crear(document.getElementById('f-obra-pick'), { obras, vacio:'— Sin obra / escribir cliente —', placeholder:'Elegir obra…', titulo:'¿De qué obra es el parte?', onChange:onObraChange });
     document.getElementById('f-obra-field').style.display='';
   }catch(e){}
 }
-function onObraChange(){
-  const sel = document.getElementById('f-obra');
-  const opt = sel.options[sel.selectedIndex];
-  if(!sel.value){ obraSel=null; return; }
-  obraSel = { id: sel.value, ref: opt.textContent, clientName: opt.getAttribute('data-cli')||'' };
+function onObraChange(o){
+  if(!o){ obraSel=null; return; }
+  obraSel = { id: o.id, ref: o.reference || o.clientName || 'Obra', clientName: o.clientName || '' };
   // Rellena el cliente con el de la obra (para que también cuadre por nombre).
   const cli = document.getElementById('f-client');
   if(obraSel.clientName){ cli.value = obraSel.clientName; buscarExpediente(); }
@@ -1029,6 +1025,7 @@ function resetForm() {
     const e=document.getElementById(id); if(e) e.value='';
   });
   document.getElementById('f-horas').value = '';
+  obraSel = null; if (obraPick) obraPick.set('');
   document.getElementById('f-mat-rows').innerHTML = '';
   photoStore.work=[]; photoStore.albaran=[];
   ['f-fotos-preview','f-albaranes-preview'].forEach(id => { const e=document.getElementById(id); if(e) e.innerHTML=''; });
