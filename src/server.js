@@ -1345,7 +1345,9 @@ app.get('/api/fichaje/correcciones', requireAuth, async (req, res) => {
 app.post('/api/fichaje/correcciones/:id/resolver', requireAuth, express.json({ limit: '16kb' }), async (req, res) => {
   try { const por = _soloOficinaFichaje(req, res); if (!por) return;
     const b = req.body || {};
-    res.json(await require('./fichajeMarcas').resolverCorreccion(req.params.id, { aprobar: !!b.aprobar, motivo: b.motivo }, por)); }
+    const r = await require('./fichajeMarcas').resolverCorreccion(req.params.id, { aprobar: !!b.aprobar, motivo: b.motivo }, por);
+    require('./fichajeAvisos').avisarCorreccionResuelta({ userId: r.userId, fecha: r.fecha, estado: r.estado }).catch(() => {}); // push, sin esperar
+    res.json(r); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.post('/api/fichaje/marca-admin', requireAuth, express.json({ limit: '16kb' }), async (req, res) => {
@@ -1386,10 +1388,42 @@ app.get('/api/fichaje/export', requireAuth, async (req, res) => {
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 
-// Prueba de los avisos sin enviar nada (?tipo=salidas|oficina).
+// ── NOTIFICACIONES PUSH de la PWA ─────────────────────────────────
+// Quién llama: un trabajador (token w_) o un admin (JWT del dashboard).
+async function _quienPush(req) {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return null;
+  try { const w = await require('./partes').verifyWorkerToken(token); if (w) return { kind: 'worker', userId: w.workerId, name: w.workerName, role: w.workerRole || 'tecnico' }; } catch (e) {}
+  try { const u = jwt.verify(token, JWT_SECRET); return { kind: 'admin', userId: u.uid || u.user || 'admin', name: u.name || 'Admin', role: u.role || 'owner' }; } catch (e) {}
+  return null;
+}
+app.get('/api/push/key', async (req, res) => {
+  try { res.json({ publicKey: await require('./push').publicKey() }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/push/subscribe', async (req, res) => {
+  try { const q = await _quienPush(req); if (!q) return res.status(401).json({ error: 'No autorizado' });
+    res.json(await require('./push').subscribe(q, (req.body || {}).subscription, req.get('user-agent'))); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/push/unsubscribe', async (req, res) => {
+  try { const q = await _quienPush(req); if (!q) return res.status(401).json({ error: 'No autorizado' });
+    res.json(await require('./push').unsubscribe((req.body || {}).endpoint)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+// Aviso de prueba a ESTE dispositivo (para comprobar que llega).
+app.post('/api/push/test', async (req, res) => {
+  try { const q = await _quienPush(req); if (!q) return res.status(401).json({ error: 'No autorizado' });
+    const n = await require('./push').sendToEndpoint((req.body || {}).endpoint, { title: 'Avisos activados ✅', body: 'Así te llegarán los recordatorios de Corp Projects.', url: q.kind === 'worker' ? '/fichar' : '/fichajes', tag: 'prueba' });
+    res.json({ ok: n > 0 }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// Prueba de los avisos sin enviar nada (?tipo=salidas|oficina|entrada&paso=1..3).
 app.get('/api/fichaje/avisos-prueba', requireAuth, async (req, res) => {
   try { if (!_soloOficinaFichaje(req, res)) return;
     const fa = require('./fichajeAvisos');
+    if (req.query.tipo === 'entrada') return res.json({ escalera: fa.cronsEscalera(), ...(await fa.recordatorioEntrada(Number(req.query.paso) || 1, { dryRun: true })) });
     res.json(req.query.tipo === 'salidas' ? await fa.avisarSalidasOlvidadas({ dryRun: true }) : await fa.resumenOficina({ dryRun: true, forzarHora: req.query.hora })); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });

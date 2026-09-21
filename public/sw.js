@@ -1,5 +1,5 @@
 // Service Worker — Corp Projects Dashboard
-const CACHE = 'cp-v81';
+const CACHE = 'cp-v82';
 const STATIC = [
   '/',
   '/parte',
@@ -63,4 +63,32 @@ self.addEventListener('fetch', e => {
       })
       .catch(() => caches.match(e.request))
   );
+});
+
+// ── Notificaciones push (avisos de fichaje) ──────────────────────
+// El servidor manda { title, body, url, tag }. Se muestra aunque la app esté cerrada.
+self.addEventListener('push', e => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (err) { d = { body: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'Corp Projects', {
+    body: d.body || '',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    tag: d.tag || undefined,        // mismo tag = sustituye al aviso anterior (no se apilan)
+    renotify: !!d.tag,
+    data: { url: d.url || '/' },
+  }));
+});
+
+// Al tocar el aviso: si la app ya está abierta se enfoca y va a la pantalla; si no, se abre.
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || '/';
+  e.waitUntil((async () => {
+    const abiertas = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of abiertas) {
+      if ('focus' in c) { try { if ('navigate' in c) await c.navigate(url); } catch (err) {} return c.focus(); }
+    }
+    return self.clients.openWindow(url);
+  })());
 });

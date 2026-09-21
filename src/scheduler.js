@@ -332,6 +332,17 @@ function startScheduler() {
   cron.schedule('0 20 * * *', () => fichajeAvisos.avisarSalidasOlvidadas()
     .then(r => console.log('[Fichaje] aviso 20:00 →', JSON.stringify(r)))
     .catch(e => console.error('[Fichaje] aviso 20:00:', e.message)), { timezone: 'Europe/Madrid' });
+  // Escalera de la mañana para quien no ha fichado: +10 y +30 min push, +60 min WhatsApp.
+  for (const e of fichajeAvisos.cronsEscalera()) {
+    cron.schedule(e.cron, () => fichajeAvisos.recordatorioEntrada(e.paso)
+      .then(r => console.log(`[Fichaje] recordatorio entrada paso ${e.paso} →`, JSON.stringify(r)))
+      .catch(err => console.error(`[Fichaje] recordatorio paso ${e.paso}:`, err.message)), { timezone: 'Europe/Madrid' });
+  }
+  console.log('[Fichaje] Escalera de avisos (L-V):', fichajeAvisos.cronsEscalera().map(e => `${e.hora} paso ${e.paso}`).join(' · '), '| 09:15 resumen oficina | 20:00 jornada abierta');
+  // Día 2 de cada mes, 10:00: push a quien no ha firmado el resumen del mes pasado.
+  cron.schedule('0 10 2 * *', () => fichajeAvisos.recordarFirmaMensual()
+    .then(r => console.log('[Fichaje] recordatorio firma mensual →', JSON.stringify(r)))
+    .catch(err => console.error('[Fichaje] firma mensual:', err.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('15 9 * * 1-5', () => fichajeAvisos.resumenOficina()
     .then(r => console.log('[Fichaje] resumen oficina →', JSON.stringify({ enviado: r.enviado, motivo: r.motivo })))
     .catch(e => console.error('[Fichaje] resumen oficina:', e.message)), { timezone: 'Europe/Madrid' });

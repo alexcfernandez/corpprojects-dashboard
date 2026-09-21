@@ -363,6 +363,28 @@ function _esLaborable(fecha) {
   return dow >= 1 && dow <= 5;
 }
 
+// Quién de la plantilla NO ha fichado ese día y DEBERÍA: solo laborables (y no festivos
+// de FICHAJE_FESTIVOS=AAAA-MM-DD,...), y nunca quien en presencia esté de vacaciones,
+// baja, falta o libre. Devuelve también cuánta gente sí ha fichado (para detectar un
+// festivo no configurado: si no ha fichado NADIE, lo más probable es que no se trabaje).
+async function sinFichar(fecha, pre = {}) {
+  const f = fecha || fechaHoy();
+  const festivos = String(process.env.FICHAJE_FESTIVOS || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (!_esLaborable(f) || festivos.includes(f)) return { fecha: f, laborable: false, faltan: [], fichados: 0, plantilla: 0 };
+  const db = await getDB();
+  const [dia, plantilla] = await Promise.all([pre.dia || getDia(f), pre.plantilla || trabajadoresQueFichan()]);
+  const conMarcas = new Set(dia.map(d => String(d.userId)));
+  const pres = await db.collection('attendance').find({ date: f }).toArray();
+  const ausente = {}; pres.forEach(p => { if (p.estado && !['obra', 'oficina'].includes(p.estado)) ausente[String(p.workerId)] = p.estado; });
+  const esperados = plantilla.filter(w => !ausente[w.id]);
+  return {
+    fecha: f, laborable: true,
+    faltan: esperados.filter(w => !conMarcas.has(w.id)),
+    fichados: esperados.filter(w => conMarcas.has(w.id)).length,
+    plantilla: esperados.length,
+  };
+}
+
 // Alertas de un día: no fichó (a partir de las 9:00, laborables, y solo quien NO está
 // de vacaciones/baja/etc. en presencia) · sigue dentro (desde las 20:00, o día pasado
 // sin cerrar) · días de más de 10 h. Más los días sin cerrar de la última semana.
@@ -375,10 +397,8 @@ async function alertas(fecha, { forzarHora } = {}) {
   const porId = {}; dia.forEach(d => { porId[String(d.userId)] = d; });
 
   let noFicho = [];
-  if (_esLaborable(f) && (!esHoy || ahora >= '09:00')) {
-    const pres = await db.collection('attendance').find({ date: f }).toArray();
-    const ausente = {}; pres.forEach(p => { if (p.estado && !['obra', 'oficina'].includes(p.estado)) ausente[String(p.workerId)] = p.estado; });
-    noFicho = plantilla.filter(w => !porId[w.id] && !ausente[w.id]).map(w => ({ userId: w.id, userName: w.name }));
+  if (!esHoy || ahora >= '09:00') {
+    noFicho = (await sinFichar(f, { dia, plantilla })).faltan.map(w => ({ userId: w.id, userName: w.name }));
   }
   const sigueDentro = dia
     .filter(d => (esHoy ? (ahora >= '20:00' && d.estado !== 'fuera') : d.sinCerrar))
@@ -445,6 +465,6 @@ module.exports = {
   fechaHoy, TIPOS, reconstruir, madridAUTC,
   marcar, estadoActual, getDia, getMarcasTrabajador, misMarcasDia,
   pedirCorreccion, marcaAdmin, resolverCorreccion, getCorrecciones, misCorrecciones,
-  alertas, trabajadoresQueFichan,
+  alertas, sinFichar, trabajadoresQueFichan,
   migrarDesdeTramos,
 };

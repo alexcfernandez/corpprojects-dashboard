@@ -125,6 +125,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
     <button onclick="mover(1)" id="next-btn">›</button>
     <button class="hoy" onclick="hoy()">Hoy</button>
   </div>
+  <div id="push-aviso"></div>
   <div id="correcciones"></div>
   <div id="alertas"></div>
   <div class="kpis">
@@ -153,7 +154,9 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   </div>
 </div>
 
+<script src="/push-client.js"></script>
 <script>
+if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
 const tok=localStorage.getItem('cp_token');
 let fecha=new Date();
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -420,8 +423,24 @@ ${corr.length?`<div class="corr"><b>✎ Correcciones del mes</b> (el registro or
 </body></html>`;
 }
 
+// ── AVISOS (notificaciones push) a oficina en este dispositivo ──
+async function avisoPush(){
+  const el=document.getElementById('push-aviso');if(!el||!window.CPPush)return;
+  const st=await CPPush.estado();
+  if(st==='activo'){el.innerHTML='';CPPush.resync(tok);return;}
+  if(st==='no-soportado'){el.innerHTML='';return;}
+  if(st==='ios-instalar'){el.innerHTML='<div class="panel pend"><h4>Avisos de fichaje</h4>En iPhone: abre el dashboard en Safari → compartir → «Añadir a pantalla de inicio», y activa los avisos desde el icono nuevo.</div>';return;}
+  if(st==='denegado'){el.innerHTML='<div class="panel warn"><h4>Avisos de fichaje</h4>Los avisos están bloqueados en este dispositivo. Actívalos en los ajustes del navegador o del teléfono.</div>';return;}
+  el.innerHTML='<div class="panel pend"><h4>Avisos de fichaje</h4>Recibe aquí quién no ha fichado, las salidas olvidadas y las correcciones nuevas. <button id="push-btn" onclick="activarPush()" style="margin-left:8px;background:var(--accent,#4d9cf8);color:#fff;border:none;border-radius:8px;padding:7px 12px;font:inherit;font-weight:600;cursor:pointer">🔔 Activar en este dispositivo</button></div>';
+}
+async function activarPush(){
+  const b=document.getElementById('push-btn');if(b)b.disabled=true;
+  try{await CPPush.activar(tok);}catch(e){alert(e.message);}
+  avisoPush();
+}
+
 if(!tok){document.getElementById('lista').innerHTML='<div class="empty">Abre esta página desde el dashboard (necesita sesión de admin).</div>';}
-else cargar();
+else{cargar();avisoPush();}
 </script>
 </body>
 </html>
