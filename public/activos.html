@@ -133,6 +133,7 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
     <select id="f-tipo" onchange="onTipo()"><option value="llave">🔑 Llave</option><option value="herramienta">🛠️ Herramienta</option><option value="ropa">👕 Ropa de trabajo</option></select>
   </div>
   <div class="field"><label class="fld">Código (etiqueta)</label><input type="text" id="f-codigo" placeholder="auto"><div class="mini">Es lo único que va impreso en la llave.</div></div>
+  <div class="field" id="f-cant-wrap" style="display:none"><label class="fld">Cuántas unidades</label><input type="number" id="f-cant" min="1" value="1"><div class="mini">Se crean tantas como pongas, con códigos seguidos (p. ej. 4 pantalones de la talla L).</div></div>
   <!-- LLAVE -->
   <div id="campos-llave">
     <div class="field"><label class="fld">Cliente (StelOrder)</label><input type="text" id="f-cliente" autocomplete="off" placeholder="Busca el cliente"></div>
@@ -171,6 +172,7 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 <div class="overlay" id="ov-dar"><div class="modal">
   <div class="m-head"><div class="m-cod">Entregar</div></div>
   <div class="mini" id="dar-cod" style="margin-bottom:12px"></div>
+  <div class="field" id="d-cant-wrap" style="display:none"><label class="fld">¿Cuántas?</label><input type="number" id="d-cant" min="1" value="1"><div class="mini" id="d-cant-hint"></div></div>
   <div class="field"><label class="fld">¿A quién?</label>
     <select id="d-tipo" onchange="onDarTipo()"><option value="operario">Operario</option><option value="cliente">Cliente / otro</option></select>
   </div>
@@ -208,7 +210,7 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 <script src="/cliente-autocomplete.js"></script>
 <script>
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
-let workerToken=null, esAdmin=false, todosWorkers=[], activosCache=[], filtro='llave', fichaId=null, formId=null, darId=null, devId=null, fotoData='', fotoDar='', fotoDev='';
+let workerToken=null, esAdmin=false, todosWorkers=[], activosCache=[], filtro='llave', fichaId=null, formId=null, darId=null, darIds=null, devId=null, fotoData='', fotoDar='', fotoDev='';
 let clientesFam={}; // nombre normalizado -> familia
 const normTxt=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
 function fillFamilia(){const cli=document.getElementById('f-cliente').value;const fam=clientesFam[normTxt(cli)];if(fam!==undefined&&fam)document.getElementById('f-familia').value=fam;}
@@ -268,7 +270,12 @@ function render(){
   let list=activosCache.filter(a=>a.tipo===filtro);
   if(q)list=list.filter(a=>[a.codigo,a.nombre,a.clientName,a.direccion,a.holderName].some(x=>String(x||'').toLowerCase().includes(q)));
   if(!list.length){cont.innerHTML='<div class="empty">Nada aquí. Pulsa «+ Nuevo».</div>';return;}
-  cont.innerHTML=list.map(a=>{
+  // Ropa/herramientas iguales que están EN OFICINA: agrupadas, para repartir varias de golpe.
+  let grupos='';
+  if(filtro!=='llave'&&!q){const g={};list.filter(a=>a.estado==='oficina').forEach(a=>{const k=(a.nombre||'').toLowerCase().trim()+'|'+(a.talla||'').toLowerCase().trim();(g[k]=g[k]||{nombre:a.nombre,talla:a.talla,ids:[]}).ids.push(a._id);});
+    const gs=Object.values(g).filter(x=>x.ids.length>1);
+    if(gs.length)grupos=`<div class="card" style="margin-bottom:10px"><div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">En oficina para repartir</div>${gs.map(x=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)"><div style="flex:1"><b>${esc(x.nombre)}</b>${x.talla?' · talla '+esc(x.talla):''} <span style="color:var(--text3)">×${x.ids.length}</span></div><button class="btn" style="padding:7px 12px;font-size:13px" onclick='darVarias(${JSON.stringify(x.ids)},${JSON.stringify(x.nombre+(x.talla?" "+x.talla:""))})'>Entregar varias</button></div>`).join('')}</div>`;}
+  cont.innerHTML=grupos+list.map(a=>{
     const sub=a.tipo==='llave'?[a.clientName,a.family].filter(Boolean).join(' · '):[a.nombre,a.talla?'talla '+a.talla:''].filter(Boolean).join(' · ');
     return `<div class="card" onclick="ficha('${a._id}')">
     <div class="card-top"><div class="card-cod">${ICONO[a.tipo]||'🛠️'} ${esc(a.codigo)}</div></div>
@@ -308,17 +315,24 @@ async function perdida(id){if(!confirm('¿Marcar como PERDIDA?'))return;try{awai
 async function eliminar(id){if(!confirm('¿Eliminar este activo y su historial? No se puede deshacer.'))return;try{await api('DELETE','/api/activos/'+id);cerrar('ov-ficha');await cargar();toast('Eliminado','ok');}catch(e){toast(e.message,'error');}}
 
 // ── DAR ──
-function dar(id){darId=id;document.getElementById('d-tipo').value='operario';onDarTipo();document.getElementById('d-nombre').value='';document.getElementById('d-nota').value='';
+function dar(id){darId=id;darIds=null;document.getElementById('d-cant-wrap').style.display='none';document.getElementById('d-tipo').value='operario';onDarTipo();document.getElementById('d-nombre').value='';document.getElementById('d-nota').value='';
   fotoDar='';document.getElementById('dar-foto-prev').style.display='none';
   const a=activosCache.find(x=>x._id===id);document.getElementById('dar-cod').textContent=a?`${a.codigo} · ${a.nombre||a.clientName||''}`:'';cerrar('ov-ficha');abrir('ov-dar');}
+function darVarias(ids,titulo){darId=null;darIds=ids;document.getElementById('d-tipo').value='operario';onDarTipo();document.getElementById('d-nombre').value='';document.getElementById('d-nota').value='';fotoDar='';document.getElementById('dar-foto-prev').style.display='none';
+  const w=document.getElementById('d-cant-wrap');w.style.display='block';const c=document.getElementById('d-cant');c.value='1';c.max=ids.length;document.getElementById('d-cant-hint').textContent='Hay '+ids.length+' en oficina.';
+  document.getElementById('dar-cod').textContent=titulo+' · ×'+ids.length+' en oficina';abrir('ov-dar');}
 function onDarTipo(){const op=document.getElementById('d-tipo').value==='operario';document.getElementById('d-operario-wrap').style.display=op?'block':'none';document.getElementById('d-nombre-wrap').style.display=op?'none':'block';}
 async function confirmarDar(){const tipo=document.getElementById('d-tipo').value;let holderId=null,holderName='';
   if(tipo==='operario'){const s=document.getElementById('d-operario');holderId=s.value;holderName=s.options[s.selectedIndex]?.textContent||'';}
   else{holderName=document.getElementById('d-nombre').value.trim();if(!holderName){toast('Escribe a quién','warn');return;}}
-  try{await api('POST','/api/activos/'+darId+'/dar',{holderType:tipo,holderId,holderName,nota:document.getElementById('d-nota').value.trim(),foto:fotoDar});cerrar('ov-dar');await cargar();toast('Entregada a '+holderName,'ok');}catch(e){toast(e.message,'error');}}
+  const nota=document.getElementById('d-nota').value.trim();const b=document.getElementById('dar-save');b.disabled=true;
+  try{
+    if(darIds){const n=Math.min(darIds.length,Math.max(1,parseInt(document.getElementById('d-cant').value)||1));for(const id of darIds.slice(0,n))await api('POST','/api/activos/'+id+'/dar',{holderType:tipo,holderId,holderName,nota,foto:fotoDar});cerrar('ov-dar');await cargar();toast(n+' entregadas a '+holderName,'ok');}
+    else{await api('POST','/api/activos/'+darId+'/dar',{holderType:tipo,holderId,holderName,nota,foto:fotoDar});cerrar('ov-dar');await cargar();toast('Entregada a '+holderName,'ok');}
+  }catch(e){toast(e.message,'error');}finally{b.disabled=false;}}
 
 // ── FORM (nuevo / editar) ──
-function onTipo(){const t=document.getElementById('f-tipo').value;document.getElementById('campos-llave').style.display=t==='llave'?'block':'none';document.getElementById('campos-herr').style.display=t!=='llave'?'block':'none';document.getElementById('f-serie-wrap').style.display=t==='ropa'?'none':'';document.getElementById('f-talla-wrap').style.display=t==='ropa'?'':'none';document.getElementById('f-nombre').placeholder=t==='ropa'?'Ej. Pantalón de trabajo, chaleco reflectante':'Ej. Taladro Bosch GBH 2-28';if(!formId)prefillCodigo(t);}
+function onTipo(){const t=document.getElementById('f-tipo').value;document.getElementById('campos-llave').style.display=t==='llave'?'block':'none';document.getElementById('campos-herr').style.display=t!=='llave'?'block':'none';document.getElementById('f-serie-wrap').style.display=t==='ropa'?'none':'';document.getElementById('f-talla-wrap').style.display=t==='ropa'?'':'none';document.getElementById('f-nombre').placeholder=t==='ropa'?'Ej. Pantalón de trabajo, chaleco reflectante':'Ej. Taladro Bosch GBH 2-28';document.getElementById('f-cant-wrap').style.display=(t!=='llave'&&!formId)?'block':'none';if(!formId)prefillCodigo(t);}
 async function prefillCodigo(t){try{const r=await api('GET','/api/activos/siguiente-codigo?tipo='+t);document.getElementById('f-codigo').value=r.codigo||'';document.getElementById('f-codigo').placeholder=r.codigo||'auto';}catch(e){}}
 function limpiarForm(){['f-codigo','f-cliente','f-familia','f-direccion','f-nombre','f-marca','f-modelo','f-serie','f-talla','f-valor','f-notas','f-fentrega'].forEach(i=>{const e=document.getElementById(i);if(e)e.value='';});document.getElementById('f-copias').value='1';fotoData='';document.getElementById('f-foto-prev').style.display='none';document.getElementById('f-foto-input').value='';}
 function nuevo(){formId=null;document.getElementById('form-title').textContent='Nuevo activo';document.getElementById('f-tipo-wrap').style.display='block';document.getElementById('f-tipo').value=['herramienta','ropa'].includes(filtro)?filtro:'llave';limpiarForm();onTipo();abrir('ov-form');}
@@ -333,7 +347,7 @@ async function guardarForm(){const tipo=document.getElementById('f-tipo').value;
   if(tipo==='llave'){body.clientName=document.getElementById('f-cliente').value.trim();body.family=document.getElementById('f-familia').value.trim();body.direccion=document.getElementById('f-direccion').value.trim();body.copias=document.getElementById('f-copias').value;body.fechaEntrega=document.getElementById('f-fentrega').value||null;body.nombre=body.clientName?('Llave '+body.clientName):'';}
   else{body.nombre=document.getElementById('f-nombre').value.trim();body.marca=document.getElementById('f-marca').value.trim();body.modelo=document.getElementById('f-modelo').value.trim();body.numeroSerie=document.getElementById('f-serie').value.trim();body.talla=document.getElementById('f-talla').value.trim();body.valor=document.getElementById('f-valor').value||0;}
   const b=document.getElementById('form-save');b.disabled=true;b.innerHTML='<span class="spinner"></span>…';
-  try{if(formId)await api('PUT','/api/activos/'+formId,body);else await api('POST','/api/activos',body);cerrar('ov-form');await cargar();toast('Guardado','ok');}catch(e){toast(e.message,'error');}finally{b.disabled=false;b.innerHTML='Guardar';}}
+  try{if(formId)await api('PUT','/api/activos/'+formId,body);else{const n=(tipo!=='llave')?Math.min(50,Math.max(1,parseInt(document.getElementById('f-cant').value)||1)):1;for(let i=0;i<n;i++)await api('POST','/api/activos',i===0?body:{...body,codigo:''});if(n>1)toast(n+' unidades creadas','ok');}cerrar('ov-form');await cargar();if(!formId)document.getElementById('f-cant').value='1';toast('Guardado','ok');}catch(e){toast(e.message,'error');}finally{b.disabled=false;b.innerHTML='Guardar';}}
 
 // Foto: comprime a ~1000px JPEG y devuelve dataURL.
 function comprimir(file,cb){const img=new Image();const url=URL.createObjectURL(file);

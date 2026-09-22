@@ -109,7 +109,17 @@ async function pedirRecogida(id, { nota, por } = {}) {
   if (!s || !s.recogida) throw new Error('Esta salida no lleva recogida');
   if (s.recogida.estado === 'recogida') throw new Error('Ya está recogida');
   await db.collection(SAL).updateOne({ _id: s._id }, { $set: { 'recogida.estado': 'pedida', 'recogida.pedidaAt': new Date(), 'recogida.pedidaPor': por || '', 'recogida.pedidaNota': String(nota || '').trim().slice(0, 200) || null } });
-  return { ok: true };
+  // Aviso al camión por WhatsApp si hay número en RECOGIDAS_WHATSAPP_TO (varios separados por comas).
+  let avisado = false;
+  const to = String(process.env.RECOGIDAS_WHATSAPP_TO || '').split(',').map(x => x.trim()).filter(Boolean);
+  if (to.length) {
+    let dir = '';
+    try { const o = await db.collection('obras').findOne({ _id: new ObjectId(String(s.obraId)) }, { projection: { address: 1 } }); dir = (o && o.address) || ''; } catch (e) {}
+    const texto = `Hola, somos Corp Projects. Recogida de ${s.recogida.pendientes} × ${s.nombre} en ${s.obraRef || 'obra'}${dir ? ' (' + dir + ')' : ''}.${nota ? ' ' + String(nota).trim().replace(/([^.!?])$/, '$1.') : ''} Gracias.`;
+    for (const t of to) { try { await require('./notifications').sendWhatsAppTo(t, texto); avisado = true; } catch (e) { console.warn('[Almacén] aviso camión:', e.message); } }
+    if (avisado) await db.collection(SAL).updateOne({ _id: s._id }, { $set: { 'recogida.avisoCamionAt': new Date() } });
+  }
+  return { ok: true, avisado };
 }
 async function marcarRecogida(id, { cantidad, por } = {}) {
   const db = await getDB();

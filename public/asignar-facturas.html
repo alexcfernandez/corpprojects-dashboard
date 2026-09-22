@@ -353,13 +353,6 @@ function render(){
 function facturaDe(id){return facturas.find(x=>String(x.id)===String(id));}
 
 // ── MODAL ────────────────────────────────────────────────────────────────────
-function optsObra(sel){
-  const opts=obrasCache.map(o=>{
-    const label=[o.reference,o.clientName].filter(Boolean).join(' — ')||'(sin nombre)';
-    return `<option value="${esc(o.id)}" data-ref="${esc(label)}" ${sel===o.id?'selected':''}>${esc(label)}</option>`;
-  }).join('');
-  return `<option value="">— Sin obra —</option>${opts}<option value="__nueva__">➕ Nueva obra…</option>`;
-}
 function optsCat(sel){
   return `<option value="">— Sin categoría —</option>`+categorias.map(c=>`<option value="${esc(c)}" ${sel===c?'selected':''}>${esc(catLabel(c))}</option>`).join('');
 }

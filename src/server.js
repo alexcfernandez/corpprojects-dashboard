@@ -142,7 +142,7 @@ function requireAuth(req, res, next) {
   catch { return res.status(401).json({ error: 'Token inválido' }); }
 }
 
-// Acceso ligero para la oficina (subir-factura.html): acepta el token de
+// Acceso ligero para la oficina (compras, mediciones, presupuestos…): acepta el token de
 // trabajador (w_..., mismo login por PIN que parte.html) O el JWT de admin.
 // Así la persona de oficina entra con su PIN sin darle un panel de admin.
 async function requireAuthOficina(req, res, next) {
@@ -2192,7 +2192,7 @@ app.post('/api/obras/sugerir-ref', requireAuth, async (req, res) => {
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 
-// ── Subida de facturas por obra (app de oficina, subir-factura.html) ──────────
+// ── Subida de facturas por obra (camino antiguo; la app nueva es /compra) ──────────
 // Lista de obras para el desplegable. Auth de oficina (token trabajador o admin).
 app.get('/api/facturas/obras', requireAuthOficina, async (req, res) => {
   try {
@@ -3475,7 +3475,7 @@ app.get('/compra', (req, res) => res.sendFile(path.join(__dirname, '../public/co
 app.get('/compras', (req, res) => res.sendFile(path.join(__dirname, '../public/compras.html')));
 app.get('/almacen', (req, res) => res.sendFile(path.join(__dirname, '../public/almacen.html')));
 app.get('/gps', (req, res) => res.sendFile(path.join(__dirname, '../public/gps.html')));
-app.get('/subir-factura', (req, res) => res.redirect(302, '/compra'));   // 4.4: sustituida por Compras por foto
+app.get('/subir-factura', (req, res) => res.redirect(302, '/compra'));   // pantalla retirada: sustituida por Compras por foto
 app.get('/asignar-facturas', (req, res) => res.sendFile(path.join(__dirname, '../public/asignar-facturas.html')));
 app.get('/activos', (req, res) => res.sendFile(path.join(__dirname, '../public/activos.html')));
 app.get('/medir', (req, res) => res.sendFile(path.join(__dirname, '../public/medir.html')));

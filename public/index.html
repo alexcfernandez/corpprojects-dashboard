@@ -675,7 +675,7 @@ const CP_ROLE_CAPS={
 const CP_ROLE_LABEL={owner:'Dueño',oficina:'Oficina',encargado:'Encargado',tecnico:'Técnico'};
 // Qué capacidad exige cada pestaña / enlace. Lo no listado es visible para todos.
 const CP_TAB_CAP={informes:'facturas',facturas:'facturas',pendientes:'facturas',cobros:'facturas',banco:'facturas',pagos:'facturas',obras:'facturas',comunidades:'facturas',alertas:'facturas',presupuestos:'presupuestos',familias:'clientes',emails:'clientes',usuarios:'usuarios',actividad:'registro'};
-const CP_TOOL_CAP={'/compras':'facturas','/subir-factura':'facturas','/compra':'facturas','/asignar-facturas':'facturas','/catalogo':'facturas','/presupuestos':'presupuestos','/competencia':'facturas','/gps':'facturas'};
+const CP_TOOL_CAP={'/compras':'facturas','/compra':'facturas','/asignar-facturas':'facturas','/catalogo':'facturas','/presupuestos':'presupuestos','/competencia':'facturas','/gps':'facturas'};
 function cpUser(){ try{ return JSON.parse(localStorage.getItem('cp_user')||'{}'); }catch(e){ return {}; } }
 function cpRole(){ return cpUser().role || 'owner'; }  // sin cuenta (clave general) = Dueño
 function cpCan(cap){ return (CP_ROLE_CAPS[cpRole()]||CP_ROLE_CAPS.owner).includes(cap); }
