@@ -368,6 +368,22 @@ async function reabrir(id) {
   return getCompra(id);
 }
 
+// ── COMPRAS DE UNA OBRA (para su ficha y su rentabilidad) ────────
+// Revisadas, con obra única o reparto. `importe` = lo que carga a ESTA obra (base sin IVA;
+// si no hay base, el total; en reparto, la parte asignada). Albaranes sin importe → 0.
+async function deObra(obraId) {
+  const id = String(obraId);
+  const db = await getDB();
+  const arr = await db.collection(COL).find({ empresaId: EMPRESA, estado: 'revisada', $or: [{ obraId: id }, { 'reparto.obraId': id }] })
+    .project({ lineas: 0 }).sort({ fecha: -1, createdAt: -1 }).toArray();
+  return arr.map(c => {
+    const parte = (c.reparto || []).find(p => p.obraId === id);
+    const importe = parte ? (Number(parte.importe) || 0) : (c.base != null ? c.base : (c.total != null ? c.total : 0));
+    return { id: String(c._id), tipo: c.tipo, proveedor: c.proveedor, proveedorNorm: c.proveedorNorm, numero: c.numero, fecha: c.fecha || (c.createdAt && c.createdAt.toISOString().slice(0, 10)), importe: Math.round(importe * 100) / 100,
+      sinImporte: !parte && c.base == null && c.total == null, reparto: !!parte, albaranesRef: c.albaranesRef || [], enviadaStel: !!(c.enviadaStel && c.enviadaStel.ok), origen: c.origen || 'app', por: c.subidaPor && c.subidaPor.name, nLineas: c.nLineas };
+  });
+}
+
 // ── PRECIOS POR TIENDA ───────────────────────────────────────────
 // Qué nos ha costado un material en cada proveedor, según las compras CONFIRMADAS
 // (albaranes incluidos si traen precio). Lo usa el bot ("cuánto nos costó…") y /compras.
@@ -406,4 +422,4 @@ async function resumenPendientes({ dryRun = false } = {}) {
   return { pendientes: pend.length, enviado: ok > 0 };
 }
 
-module.exports = { TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };
+module.exports = { TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };

@@ -19,7 +19,7 @@ async function getDB() { return require('./db').getDB(); }
 const oid = id => { try { return new ObjectId(String(id)); } catch (e) { throw new Error('No encontrado'); } };
 // Clave de agrupación: sin acentos, sin palabras vacías y SIN espacios, para que
 // «Big bag 1 m3», «BIG BAG 1M3» y «big-bag de 1m3» sean el mismo artículo.
-const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9ñç]+/g, ' ').replace(/\b(de|del|la|el|los|las|con|y|para|un|una)\b/g, '').replace(/\s+/g, '').trim();
+const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\b(sin|con)\s+recogida\b/g, '').replace(/[^a-z0-9ñç]+/g, ' ').replace(/\b(de|del|la|el|los|las|con|y|para|un|una)\b/g, '').replace(/\s+/g, '').trim();
 const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
 const r4 = n => Math.round((Number(n) || 0) * 10000) / 10000;
 

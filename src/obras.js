@@ -397,6 +397,7 @@ function resumenCertificaciones(obra) {
 // Cruza partes de trabajo con facturas de StelOrder para calcular
 // coste real vs facturado por obra
 
+const miIdC = o => String(o._id);
 async function getRentabilidad(obraId) {
   const db = await getDB();
   const obra = await db.collection('obras').findOne({ _id: new ObjectId(obraId) });
@@ -525,7 +526,34 @@ async function getRentabilidad(obraId) {
     }
   } catch (e) { /* si StelOrder falla, la rentabilidad sigue con personal + material */ }
 
-  const totalCoste = totalCostePersonal + totalMateriales + totalProveedores;
+  // 2e. COMPRAS POR FOTO de esta obra (Paso 4). Sin contar dos veces:
+  //   · factura/ticket que YA está en StelOrder (mismo proveedor y nº) → no suma (ya sumó arriba)
+  //   · albarán que una factura ya agrupa (albaranesRef) → no suma (sumará la factura)
+  //   · devolución → resta
+  let totalCompras = 0; const compras = [];
+  try {
+    const lista = await require('./compras').deObra(miIdC(obra));
+    const nn = v => String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '').replace(/^0+/, '');
+    // Nº de albarán: se compara por sus DÍGITOS («ALB-4490» = «4490»); si no tiene, por el texto.
+    const nd = v => { const d = (String(v || '').match(/\d+/g) || []).join(''); return d ? d.replace(/^0+/, '') : nn(v); };
+    const enStel = new Set(proveedores.map(p => norm(p.supplier).split(' ')[0] + '|' + nn(p.number)));
+    const albAgrupados = new Set(lista.filter(c => c.tipo === 'factura').flatMap(c => c.albaranesRef.map(a => (c.proveedorNorm || '').split(' ')[0] + '|' + nd(a))));
+    for (const c of lista) {
+      const prov1 = (c.proveedorNorm || norm(c.proveedor)).split(' ')[0];
+      let cuenta = true, motivo = null;
+      if ((c.tipo === 'factura' || c.tipo === 'ticket') && c.numero && enStel.has(prov1 + '|' + nn(c.numero))) { cuenta = false; motivo = 'ya contada en StelOrder'; }
+      else if (c.tipo === 'albaran' && c.numero && albAgrupados.has(prov1 + '|' + nd(c.numero))) { cuenta = false; motivo = 'agrupado en una factura'; }
+      else if (c.sinImporte) { cuenta = false; motivo = 'sin importe'; }
+      if (cuenta) totalCompras += c.importe;
+      compras.push({ ...c, cuenta, motivo });
+    }
+  } catch (e) { /* sin módulo de compras → 0 */ }
+  totalCompras = Math.round(totalCompras * 100) / 100;
+  // 2f. Material sacado del ALMACÉN para esta obra (unidades × precio medio) + sacas por recoger.
+  let almacen = { importe: 0, salidas: [], sacasPendientes: 0 };
+  try { almacen = await require('./almacen').resumenObra(miIdC(obra)); } catch (e) {}
+
+  const totalCoste = totalCostePersonal + totalMateriales + totalProveedores + totalCompras + (almacen.importe || 0);
   const facturado  = obra.invoicedAmount || obra.budgetAmount || 0;
   const beneficio  = facturado - totalCoste;
   const margen     = facturado > 0 ? (beneficio / facturado * 100) : 0;
@@ -577,6 +605,8 @@ async function getRentabilidad(obraId) {
     totalMateriales,
     totalProveedores,
     proveedores,
+    totalCompras, compras,                     // compras por foto (Paso 4), con `cuenta`/`motivo`
+    almacen,                                  // material del almacén sacado para la obra
     totalCoste,
     costePresupuestado,                       // lo que esperábamos gastar (del presupuesto)
     desvioCoste: Math.round((totalCoste - costePresupuestado) * 100) / 100, // real − presupuestado (+ = de más)

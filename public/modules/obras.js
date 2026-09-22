@@ -450,6 +450,8 @@
             <div class="mc"><div class="ml">Coste personal</div><div class="mv r">${eur(rent.totalCostePersonal)}</div></div>
             <div class="mc"><div class="ml">Materiales</div><div class="mv r">${eur(rent.totalMateriales)}</div></div>
             <div class="mc"><div class="ml">Proveedores</div><div class="mv r">${eur(rent.totalProveedores||0)}</div></div>
+            ${(rent.totalCompras||(rent.compras||[]).length)?`<div class="mc"><div class="ml">Compras (fotos)</div><div class="mv r">${eur(rent.totalCompras||0)}</div></div>`:''}
+            ${(rent.almacen&&(rent.almacen.importe||rent.almacen.salidas?.length))?`<div class="mc"><div class="ml">Almacén</div><div class="mv r">${eur(rent.almacen.importe||0)}</div></div>`:''}
             <div class="mc"><div class="ml">Beneficio</div><div class="mv ${ok?'g':'r'}">${eur(rent.beneficio)}</div></div>
             <div class="mc"><div class="ml">Horas totales</div><div class="mv b">${(rent.totalHoras||0).toFixed(0)} h</div></div>
             <div class="mc"><div class="ml">Partes</div><div class="mv b">${rent.partes}</div></div>
@@ -468,6 +470,17 @@
               </tr>`).join('')}</tbody>
             </table>
           </div>` : ''}
+
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-title" style="display:flex;align-items:center;gap:8px">📸 Compras por foto <span style="font-weight:400;color:var(--text3);font-size:11px">${(rent.compras||[]).length?`(${rent.compras.length}) · suman ${eur(rent.totalCompras||0)}`:''}</span><a class="btn bgh" style="margin-left:auto;padding:4px 10px;font-size:11px;text-decoration:none" href="/compras" target="_blank">Ver cola</a></div>
+            ${(rent.compras&&rent.compras.length)?`<table><thead><tr><th>Documento</th><th style="text-align:right">Importe</th><th></th></tr></thead><tbody>${rent.compras.map(c=>{const T={albaran:'Albarán',factura:'Factura',ticket:'Ticket',devolucion:'Devolución',otro:'Doc.'};return `<tr style="${c.cuenta?'':'opacity:.6'}">
+              <td><strong>${ce(c.proveedor||'—')}</strong> <span style="color:var(--text3)">${T[c.tipo]||c.tipo}${c.numero?' '+ce(c.numero):''}</span><div style="font-size:11px;color:var(--text3)">${c.fecha?ce(String(c.fecha).split('-').reverse().join('/')):''}${c.reparto?' · parte repartida':''}${c.origen==='email'?' · 📧':''}${c.enviadaStel?' · → StelOrder':''}${c.motivo?' · <span style="color:var(--amber)">no suma: '+ce(c.motivo)+'</span>':''}</div></td>
+              <td style="text-align:right;color:var(--red)">${c.sinImporte?'—':eur(c.importe)}</td>
+              <td style="text-align:right"><a href="/compras?id=${ce(c.id)}" target="_blank" style="color:var(--blue);font-size:11px">abrir</a></td></tr>`;}).join('')}</tbody></table>
+              <div style="font-size:11px;color:var(--text3);margin-top:6px">Suman los albaranes con precio, tickets y facturas subidas por foto (sin IVA). No se cuenta dos veces: una factura que ya está en StelOrder, o un albarán que una factura agrupa, sale atenuado.</div>`
+            :'<div style="font-size:12px;color:var(--text3)">Ninguna compra por foto asignada a esta obra todavía. Se suben desde la app (📸 Compra) y se confirman en la cola.</div>'}
+            ${rent.almacen&&(rent.almacen.salidas||[]).length?`<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px"><div style="font-size:12px;font-weight:600;margin-bottom:6px">📦 Del almacén · ${eur(rent.almacen.importe||0)}${rent.almacen.sacasPendientes?` · <span style="color:var(--amber)">♻️ ${rent.almacen.sacasPendientes} por recoger</span>`:''} <a href="/almacen" target="_blank" style="color:var(--blue);font-weight:400;font-size:11px">ver almacén</a></div>${rent.almacen.salidas.slice(0,12).map(s=>`<div style="font-size:12px;display:flex;gap:8px;padding:3px 0"><span style="flex:1">${s.cantidad} ${ce(s.unidad||'ud')} × ${ce(s.nombre)}${s.recogida&&s.recogida.pendientes>0?' <span style="color:var(--amber)">♻️ '+s.recogida.pendientes+' por recoger</span>':''}</span><span style="color:var(--text3)">${new Date(s.fecha).toLocaleDateString('es-ES')}${s.por?' · '+ce(s.por):''}</span><span style="color:var(--red)">${eur(s.importe)}</span></div>`).join('')}</div>`:''}
+          </div>
 
           <div class="card" style="margin-bottom:12px">
             <div class="card-title">🧾 Facturas de proveedor</div>
