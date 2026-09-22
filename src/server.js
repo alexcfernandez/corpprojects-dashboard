@@ -1292,8 +1292,8 @@ app.post('/api/fichaje/consent', async (req, res) => {
 // Obras ACTIVAS para el operario (elegir en el parte). Mínimo: sin importes.
 app.get('/api/campo/obras', async (req, res) => {
   try { const w = await _worker(req, res); if (!w) return;
-    // Selector único: abiertas + cerradas hace poco, con dirección y motes. Sin importes.
-    res.json(await require('./obras').getSelector());
+    // Selector único: abiertas + cerradas (las antiguas solo salen al buscar), con dirección y motes. Sin importes.
+    res.json(await require('./obras').getSelector({ todas: true }));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 app.get('/api/fichaje/mios', async (req, res) => {
@@ -1539,6 +1539,12 @@ app.get('/api/compras-sin-facturar', async (req, res) => {
 });
 app.get('/api/compras-prueba/sin-facturar', async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').avisoAlbaranesSinFactura({ dryRun: true, diasMin: Number(req.query.dias) || 35 })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Resumen por proveedor (compras confirmadas): nº de documentos, total, albaranes sin factura, último.
+app.get('/api/compras-proveedores', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').resumenProveedores({ desde: req.query.desde, hasta: req.query.hasta })); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -2554,7 +2560,8 @@ app.post('/api/oficina/obra-nueva', requireAuthOficina, async (req, res) => {
     const { reference, clientName, address, aliases, status } = req.body || {};
     const st = status === 'estudio' ? 'estudio' : 'activa';
     const obra = await obras.createObra({ reference, clientName, address, aliases, status: st });
-    res.json({ ok: true, id: String(obra.id), reference: obra.reference, clientName: obra.clientName, status: st });
+    // Forma del selector, para que la pantalla pueda añadirla a la lista sin recargar
+    res.json({ ok: true, id: String(obra.id), reference: obra.reference, clientName: obra.clientName || '', address: obra.address || '', aliases: obra.aliases || [], status: st, grupo: st === 'estudio' ? 'estudio' : 'abierta' });
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.get('/api/mediciones', requireAuthOficina, async (req, res) => {
@@ -3444,7 +3451,7 @@ app.get('/compra', (req, res) => res.sendFile(path.join(__dirname, '../public/co
 app.get('/compras', (req, res) => res.sendFile(path.join(__dirname, '../public/compras.html')));
 app.get('/almacen', (req, res) => res.sendFile(path.join(__dirname, '../public/almacen.html')));
 app.get('/gps', (req, res) => res.sendFile(path.join(__dirname, '../public/gps.html')));
-app.get('/subir-factura', (req, res) => res.sendFile(path.join(__dirname, '../public/subir-factura.html')));
+app.get('/subir-factura', (req, res) => res.redirect(302, '/compra'));   // 4.4: sustituida por Compras por foto
 app.get('/asignar-facturas', (req, res) => res.sendFile(path.join(__dirname, '../public/asignar-facturas.html')));
 app.get('/activos', (req, res) => res.sendFile(path.join(__dirname, '../public/activos.html')));
 app.get('/medir', (req, res) => res.sendFile(path.join(__dirname, '../public/medir.html')));

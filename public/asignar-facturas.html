@@ -180,16 +180,8 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 
     <div class="m-sec">
       <label class="fld">Obra</label>
-      <select id="m-obra" onchange="onModalObra()"></select>
-      <div class="m-nueva" id="m-nueva">
-        <input type="text" id="m-ref" placeholder="Referencia (ej. Calle Comerç 76 - Fachada)">
-        <input type="text" id="m-cliente" placeholder="Cliente (busca en StelOrder)" autocomplete="off">
-        <label style="display:flex;gap:8px;align-items:center;margin-top:6px;font-size:14px;cursor:pointer">
-          <input type="checkbox" id="m-cli-nuevo" onchange="document.getElementById('m-cli-nif').style.display=this.checked?'block':'none'"> El cliente no está en StelOrder — darlo de alta
-        </label>
-        <input type="text" id="m-cli-nif" placeholder="NIF/CIF del cliente (opcional)" style="display:none;margin-top:6px">
-        <div class="hint">Elige el cliente del buscador de StelOrder para no duplicar; si no existe, marca la casilla y se crea.</div>
-      </div>
+      <div id="m-obra-pick"></div>
+      <div class="hint">Busca por nombre, calle o mote. Si la obra no existe, créala desde el propio selector.</div>
     </div>
 
     <div class="m-sec">
@@ -211,6 +203,7 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
 </div>
 
 <script src="/cliente-autocomplete.js"></script>
+<script src="/obra-picker.js"></script>
 <script>
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
 
@@ -253,7 +246,7 @@ async function enterApp(token,info,persist){
   document.getElementById('logout-btn').textContent=esAdmin?'← Dashboard':'Salir';
   document.getElementById('logout-btn').style.display='block';
   showPage('list');
-  if(window.initClienteAutocomplete) initClienteAutocomplete(document.getElementById('m-cliente'), workerToken);
+  if(window.initClienteAutocomplete&&document.getElementById('m-cliente')) initClienteAutocomplete(document.getElementById('m-cliente'), workerToken);
   await cargarObras();
   await cargarClientes();
   await cargar();
@@ -379,12 +372,9 @@ function abrirModal(id){
   document.getElementById('m-total').textContent=eur(f.total);
   document.getElementById('m-meta').textContent=`${f.number||''}${f.date?' · '+String(f.date).slice(0,10):''}`;
   document.getElementById('m-supname').textContent=f.supplier||'este proveedor';
-  document.getElementById('m-obra').innerHTML=optsObra(esManual&&c.obraId?c.obraId:'');
+  mPick=CPObra.crear(document.getElementById('m-obra-pick'),{obras:obrasCache,value:(esManual&&c.obraId)?c.obraId:'',vacio:'— Sin obra (gasto general) —',placeholder:'Elegir obra…',titulo:'¿De qué obra es esta factura?',crear:async(n,d)=>{const o=await post('/api/oficina/obra-nueva',{reference:n,address:d||'',status:'activa'});obrasCache=[o,...obrasCache];return o;}});
   document.getElementById('m-cat').innerHTML=optsCat(esManual&&c.categoria?c.categoria:'');
-  document.getElementById('m-ref').value='';
-  document.getElementById('m-cliente').value='';
   document.getElementById('m-regla').checked=false;
-  document.getElementById('m-nueva').classList.remove('show');
   document.getElementById('m-quitar').style.display=esManual?'':'none';
   document.getElementById('overlay').classList.add('show');
   cargarLineas(id);
@@ -405,39 +395,15 @@ async function cargarLineas(id){
   }catch(e){box.innerHTML='<div style="font-size:12px;color:var(--text3)">No se pudo cargar el detalle.</div>';}
 }
 function cerrarModal(){document.getElementById('overlay').classList.remove('show');modalId=null;}
-function onModalObra(){
-  const sel=document.getElementById('m-obra');
-  const nueva=sel.value==='__nueva__';
-  document.getElementById('m-nueva').classList.toggle('show',nueva);
-  if(nueva)document.getElementById('m-ref').focus();
-}
+let mPick=null;
 async function guardarModal(){
   const id=modalId;const f=facturaDe(id);if(!f)return;
-  const selObra=document.getElementById('m-obra');
   const cat=document.getElementById('m-cat').value||'';
   const conRegla=document.getElementById('m-regla').checked;
   let obraId='',obraRef='';
   const btn=document.getElementById('m-guardar');btn.disabled=true;btn.innerHTML='<span class="spinner"></span>Guardando…';
   try{
-    if(selObra.value==='__nueva__'){
-      const ref=document.getElementById('m-ref').value.trim();
-      const cli=document.getElementById('m-cliente').value.trim();
-      if(!ref||!cli)throw new Error('Para la obra nueva: referencia y cliente (de StelOrder)');
-      let cliOk=clienteStelValido(cli);
-      if(!cliOk){
-        if(!document.getElementById('m-cli-nuevo').checked)
-          throw new Error('Ese cliente no esta en StelOrder. Eligelo de la lista o marca \'darlo de alta\'');
-        const dc=await post('/api/facturas/cliente-nuevo',{nombre:cli,nif:document.getElementById('m-cli-nif').value.trim()});
-        cliOk=(dc && dc.nombre) ? dc.nombre : cli;
-        clientesStel.push(cliOk);
-        if(window.addClienteCache) addClienteCache(cliOk);
-      }
-      const nueva=await post('/api/facturas/obra-nueva',{reference:ref,clientName:cliOk});
-      obraId=nueva.id;obraRef=[nueva.reference,nueva.clientName].filter(Boolean).join(' — ');
-      obrasCache.push({id:nueva.id,reference:nueva.reference,clientName:nueva.clientName});
-    }else if(selObra.value){
-      obraId=selObra.value;obraRef=selObra.options[selObra.selectedIndex].getAttribute('data-ref')||'';
-    }
+    if(mPick&&mPick.value){obraId=mPick.value;const o=mPick.obra;obraRef=o?[o.reference,o.clientName].filter(Boolean).join(' — '):'';}
     if(!obraId && !cat)throw new Error('Elige una obra o una categoría de gasto');
     await post(`/api/facturas/proveedor/${encodeURIComponent(id)}/clasificar`,{obraId,obraRef,categoria:cat});
     let extra='';

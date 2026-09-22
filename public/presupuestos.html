@@ -339,6 +339,7 @@ function volver(){pres=null;cargar();showPage('list');}
 // ── OBRAS (el presupuesto cuelga de una obra: la carpeta) ──
 async function cargarObras(){try{obras=await api('GET','/api/oficina/obras');}catch(e){obras=[];}}
 function nombreObra(id){const o=obras.find(x=>x.id===id);return o?o.reference:'';}
+async function crearObraSel(n,d){const o=await api('POST','/api/oficina/obra-nueva',{reference:n,address:d||'',status:'estudio'});obras=[o,...obras];toast('🔍 Obra en estudio creada: '+o.reference,'ok');return o;}
 // Desde la ficha de la obra:  /presupuestos?id=<presupuesto>  ·  /presupuestos?obra=<obra> (nuevo dentro de esa obra)
 async function abrirDesdeEnlace(){const q=new URLSearchParams(location.search);const id=q.get('id'),ob=q.get('obra');
   if(id||ob)history.replaceState(null,'',location.pathname);
@@ -354,7 +355,7 @@ async function nuevo(obraId){
     document.getElementById('n-medicion').innerHTML='<option value="">— Sin medición —</option>'+(propias.length?`<optgroup label="De esta obra">${propias.map(op).join('')}</optgroup><optgroup label="Otras">${resto.map(op).join('')}</optgroup>`:resto.map(op).join(''));
     if(propias.length===1)document.getElementById('n-medicion').value=propias[0]._id;};
   pintaMeds(o?o.id:'');
-  pickNuevo=CPObra.crear(document.getElementById('n-obra'),{obras,value:o?o.id:'',vacio:'— Sin obra todavía —',placeholder:'Elegir obra…',titulo:'¿De qué obra es el presupuesto?',
+  pickNuevo=CPObra.crear(document.getElementById('n-obra'),{obras,value:o?o.id:'',vacio:'— Sin obra todavía —',placeholder:'Elegir obra…',titulo:'¿De qué obra es el presupuesto?',crear:crearObraSel,
     onChange:ob=>{pintaMeds(ob?ob.id:'');if(!ob)return;const n=document.getElementById('n-nombre'),c=document.getElementById('n-cliente');if(!n.value.trim())n.value=ob.reference||'';if(!c.value.trim())c.value=ob.clientName||'';}});
   abrir('ov-nuevo');
 }
@@ -375,7 +376,7 @@ async function abrirPres(id){
     document.getElementById('d-desc-tipo').value=(pres.descuento&&pres.descuento.tipo==='eur')?'eur':'pct';
     renderEstadoBar();
     // Colgarlo de una obra (o cambiarlo) se guarda al momento
-    pickDet=CPObra.crear(document.getElementById('d-obra'),{obras,value:pres.obraId||'',vacio:'— Sin obra todavía —',placeholder:'Elegir obra…',titulo:'¿De qué obra es el presupuesto?',
+    pickDet=CPObra.crear(document.getElementById('d-obra'),{obras,value:pres.obraId||'',vacio:'— Sin obra todavía —',placeholder:'Elegir obra…',titulo:'¿De qué obra es el presupuesto?',crear:crearObraSel,
       onChange:async ob=>{try{await api('PUT','/api/presupuestos/'+pres._id,{obraId:ob?ob.id:null,obraRef:ob?ob.reference:null});pres.obraId=ob?ob.id:null;pres.obraRef=ob?ob.reference:null;renderEstadoBar();toast(ob?'Presupuesto guardado en «'+ob.reference+'»':'Presupuesto sin obra','ok');}catch(e){toast(e.message,'error');}}});
     document.getElementById('det-del').style.display='block';
     document.getElementById('det-compra').style.display=VE_DINERO?'block':'none';

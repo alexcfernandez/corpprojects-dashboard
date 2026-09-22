@@ -464,6 +464,27 @@ async function avisoAlbaranesSinFactura({ dryRun = false, diasMin = 35 } = {}) {
   return { pendientes: n, enviado: ok > 0 };
 }
 
+// ── RESUMEN POR PROVEEDOR (4.4) ─────────────────────────────────
+async function resumenProveedores({ desde, hasta } = {}) {
+  const db = await getDB();
+  const q = { empresaId: EMPRESA, estado: 'revisada' };
+  if (desde || hasta) { q.fecha = {}; if (desde) q.fecha.$gte = desde; if (hasta) q.fecha.$lte = hasta; }
+  const arr = await db.collection(COL).find(q).project({ lineas: 0 }).toArray();
+  const out = {};
+  for (const c of arr) {
+    const k = c.proveedorNorm || 'sinproveedor';
+    const p = (out[k] = out[k] || { proveedor: c.proveedor || 'Sin proveedor', razonSocial: null, nif: null, n: 0, facturas: 0, albaranes: 0, tickets: 0, devoluciones: 0, total: 0, albaranesSinFactura: 0, ultimo: null });
+    if (c.razonSocial) p.razonSocial = c.razonSocial; if (c.nif) p.nif = c.nif;
+    p.n++; p[{ factura: 'facturas', albaran: 'albaranes', ticket: 'tickets', devolucion: 'devoluciones' }[c.tipo] || 'n'] += (c.tipo in { factura: 1, albaran: 1, ticket: 1, devolucion: 1 }) ? 1 : 0;
+    // Total sin contar dos veces: factura casada no suma (suman sus albaranes); albarán no casado suma si tiene importe
+    const imp = c.base != null ? c.base : (c.total != null ? c.total : 0);
+    if (!(c.tipo === 'factura' && c.casado && c.casado.n > 0)) p.total += imp;
+    if (c.tipo === 'albaran' && !c.facturaId) p.albaranesSinFactura++;
+    const fe = c.fecha || (c.createdAt && c.createdAt.toISOString().slice(0, 10)); if (fe && (!p.ultimo || fe > p.ultimo)) p.ultimo = fe;
+  }
+  return Object.values(out).map(p => ({ ...p, total: Math.round(p.total * 100) / 100 })).sort((a, b) => b.total - a.total);
+}
+
 // ── PRECIOS POR TIENDA ───────────────────────────────────────────
 // Qué nos ha costado un material en cada proveedor, según las compras CONFIRMADAS
 // (albaranes incluidos si traen precio). Lo usa el bot ("cuánto nos costó…") y /compras.
@@ -502,4 +523,4 @@ async function resumenPendientes({ dryRun = false } = {}) {
   return { pendientes: pend.length, enviado: ok > 0 };
 }
 
-module.exports = { TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, propuestaCasar, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };
+module.exports = { TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };

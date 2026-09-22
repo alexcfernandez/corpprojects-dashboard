@@ -140,7 +140,8 @@ function logout(){if(esAdmin){location.href='/';return;}workerToken=null;localSt
 async function cargarObras(){
   try{const r=await fetch('/api/campo/obras',{headers:authH()});_obras=r.ok?await r.json():[];}catch(e){_obras=[];}
   const last=localStorage.getItem('cpObra')||'';
-  pick=CPObra.crear(document.getElementById('obra-pick'),{obras:_obras,value:_obras.some(o=>o.id===last&&o.grupo==='abierta')?last:'',vacio:'— No lo sé / que lo mire oficina —',placeholder:'Elegir obra…',titulo:'¿Para qué obra es la compra?'});
+  pick=CPObra.crear(document.getElementById('obra-pick'),{obras:_obras,value:_obras.some(o=>o.id===last&&o.grupo==='abierta')?last:'',vacio:'— No lo sé / que lo mire oficina —',placeholder:'Elegir obra…',titulo:'¿Para qué obra es la compra?',
+    crear:esAdmin?async(n,d)=>{const r=await fetch('/api/oficina/obra-nueva',{method:'POST',headers:authH({'Content-Type':'application/json'}),body:JSON.stringify({reference:n,address:d||'',status:'activa'})});const o=await r.json();if(!r.ok)throw new Error(o.error||'No se pudo crear');_obras=[o,..._obras];return o;}:undefined});
 }
 // Destino de la compra. Herramientas y ropa se apuntan a un trabajador (por defecto, el que sube).
 const NOTA_DEST={varias:'Oficina repartirá el importe entre las obras.',herramientas:'Oficina la revisa y las herramientas quedan a nombre de quien las recibe (en Llaves y herramientas).',ropa:'Cada prenda queda en Llaves y herramientas (pestaña Ropa). Si es para tener en la oficina e ir repartiendo, deja «Nadie todavía».',general:'Gasolina, gestoría, seguros… oficina le pone la categoría.',almacen:'Material para tener (big bags, sacos, tornillería…). Entra en el almacén y luego se va sacando por obras.'};

@@ -191,6 +191,7 @@ function volverLista(){medId=null;cargar();showPage('list');}
 // ── OBRAS (la medición cuelga de una obra; se puede enlazar antes o después) ──
 async function cargarObras(){try{obras=await api('GET','/api/oficina/obras');}catch(e){obras=[];}}
 function nombreObra(id){const o=obras.find(x=>x.id===id);return o?o.reference:'';}
+async function crearObraSel(n,d){const o=await api('POST','/api/oficina/obra-nueva',{reference:n,address:d||'',status:'estudio'});obras=[o,...obras];toast('🔍 Obra en estudio creada: '+o.reference,'ok');return o;}
 // Enlaces desde la ficha de la obra:  /medir?id=<medición>   ·   /medir?obra=<obra> (nueva medición dentro de esa obra)
 async function abrirDesdeEnlace(){const q=new URLSearchParams(location.search);const id=q.get('id'),ob=q.get('obra');
   if(id||ob)history.replaceState(null,'',location.pathname);
@@ -200,7 +201,7 @@ async function abrirDesdeEnlace(){const q=new URLSearchParams(location.search);c
 // ── NUEVA ──
 function nueva(obraId){const o=obras.find(x=>x.id===obraId);
   document.getElementById('n-nombre').value=o?(o.address||o.reference||''):'';document.getElementById('n-cliente').value=o?(o.clientName||''):'';
-  pickNueva=CPObra.crear(document.getElementById('n-obra'),{obras,value:o?o.id:'',vacio:'— Sin obra todavía —',placeholder:'Elegir obra…',titulo:'¿De qué obra es la medición?',
+  pickNueva=CPObra.crear(document.getElementById('n-obra'),{obras,value:o?o.id:'',vacio:'— Sin obra todavía —',placeholder:'Elegir obra…',titulo:'¿De qué obra es la medición?',crear:crearObraSel,
     onChange:ob=>{if(!ob)return;const n=document.getElementById('n-nombre'),c=document.getElementById('n-cliente');if(!n.value.trim())n.value=ob.address||ob.reference||'';if(!c.value.trim())c.value=ob.clientName||'';}});
   abrir('ov-nueva');}
 async function crearNueva(){const nombre=document.getElementById('n-nombre').value.trim();if(!nombre){toast('Ponle un nombre (la dirección)','warn');return;}
@@ -212,7 +213,7 @@ async function abrirMed(id){
     document.getElementById('d-nombre').value=m.nombre||'';document.getElementById('d-cliente').value=m.clientName||'';
     document.getElementById('det-del').style.display='block';
     // Cambiar de obra se guarda al momento (no depende del botón Guardar)
-    pickDet=CPObra.crear(document.getElementById('d-obra'),{obras,value:m.obraId||'',vacio:'— Sin obra todavía —',placeholder:'Elegir obra…',titulo:'¿De qué obra es la medición?',
+    pickDet=CPObra.crear(document.getElementById('d-obra'),{obras,value:m.obraId||'',vacio:'— Sin obra todavía —',placeholder:'Elegir obra…',titulo:'¿De qué obra es la medición?',crear:crearObraSel,
       onChange:async ob=>{try{await api('PUT','/api/mediciones/'+medId,{obraId:ob?ob.id:null});toast(ob?'Medición guardada en «'+ob.reference+'»':'Medición sin obra','ok');}catch(e){toast(e.message,'error');}botonCrearObra();}});
     botonCrearObra();
     renderEstancias(m.estancias||[]);showPage('det');

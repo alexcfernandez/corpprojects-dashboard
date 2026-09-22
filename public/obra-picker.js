@@ -25,7 +25,9 @@
 .cpo-it:hover,.cpo-it:focus{background:var(--bg2,#1c1f26);outline:none}.cpo-it.sel{background:var(--bg2,#1c1f26);box-shadow:inset 3px 0 0 var(--green,#22c487)}
 .cpo-it .n{font-weight:600;font-size:15px}.cpo-it .s{font-size:12.5px;color:var(--text3,#8a8f98);margin-top:3px;line-height:1.4}
 .cpo-it .m{font-size:12px;color:var(--text2,#b5bac4);margin-top:3px}.cpo-it .tag{display:inline-block;font-size:10.5px;border:1px solid var(--border2,var(--border,#333));border-radius:20px;padding:1px 7px;margin-left:6px;color:var(--text3,#8a8f98);font-weight:500;vertical-align:1px}
-.cpo-nada{color:var(--text3,#8a8f98);text-align:center;padding:30px 16px;font-size:14px;line-height:1.5}`;
+.cpo-nada{color:var(--text3,#8a8f98);text-align:center;padding:30px 16px;font-size:14px;line-height:1.5}
+.cpo-mas{display:block;width:100%;background:none;border:1px dashed var(--border2,#444);border-radius:12px;color:var(--text2,#b5bac4);font:inherit;font-size:13px;padding:11px;margin:10px 0 4px;cursor:pointer}
+.cpo-crear{display:block;width:100%;text-align:left;background:rgba(34,196,135,.1);border:1px solid rgba(34,196,135,.45);border-radius:12px;color:var(--text,#fff);font:inherit;font-size:14.5px;font-weight:600;padding:12px;margin:8px 0 4px;cursor:pointer}`;
   let cssOk = false;
   function css() { if (cssOk) return; cssOk = true; const s = document.createElement('style'); s.textContent = CSS; document.head.appendChild(s); }
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -33,9 +35,9 @@
   const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9ñç]+/g, ' ').trim();
   const ESTADO_TXT = { estudio: 'en estudio', pausada: 'pausada', terminada: 'terminada', facturada: 'facturada' };
 
-  function buscar(obras, texto) {
+  function buscar(obras, texto, verAntiguas) {
     const toks = norm(texto).split(' ').filter(Boolean);
-    if (!toks.length) return obras.filter(o => o.grupo !== 'antigua').map(o => ({ o, mote: null }));
+    if (!toks.length) return obras.filter(o => verAntiguas || o.grupo !== 'antigua').map(o => ({ o, mote: null }));
     const res = [];
     for (const o of obras) {
       const campos = [o.reference, o.address, o.clientName, ...(o.aliases || [])].map(norm);
@@ -71,6 +73,7 @@
       if (typeof opt.onChange === 'function') opt.onChange(actual());
     }
     function abrir() {
+      let verAntiguas = false;
       const ov = document.createElement('div'); ov.className = 'cpo-ov';
       ov.innerHTML = `<div class="cpo-hoja" role="dialog" aria-label="Elegir obra"><div class="cpo-cab"><b>${esc(opt.titulo || '¿Qué obra?')}</b><button type="button" class="cpo-x" aria-label="Cerrar">×</button></div>
         <input class="cpo-q" type="search" placeholder="Busca por nombre, calle o mote…" autocomplete="off" autocorrect="off" spellcheck="false">
@@ -79,7 +82,7 @@
       const cerrar = () => { ov.remove(); document.removeEventListener('keydown', tecla); btn.focus(); };
       const tecla = e => { if (e.key === 'Escape') cerrar(); };
       function pintar() {
-        const r = buscar(obras, q.value); let h = '', g = null;
+        const r = buscar(obras, q.value, verAntiguas); let h = '', g = null;
         if (vacio !== null && !norm(q.value)) h += `<button type="button" class="cpo-it ${!valor ? 'sel' : ''}" data-id=""><div class="n" style="font-weight:500">${esc(vacio)}</div></button>`;
         const TIT = { abierta: 'Obras abiertas', estudio: 'En estudio (aún sin aceptar)', cerrada: 'Cerradas hace poco', antigua: 'Cerradas hace tiempo' };
         for (const { o, mote } of r) {
@@ -88,11 +91,28 @@
           h += `<button type="button" class="cpo-it ${o.id === valor ? 'sel' : ''}" data-id="${esc(o.id)}"><div class="n">${esc(o.reference)}${ESTADO_TXT[o.status] ? `<span class="tag">${ESTADO_TXT[o.status]}</span>` : ''}</div>${sub ? `<div class="s">${sub}</div>` : ''}${mote ? `<div class="m">también: «${esc(mote)}»</div>` : ''}</button>`;
         }
         if (!r.length) h += `<div class="cpo-nada">${obras.length ? 'No hay ninguna obra que se llame así.<br>Prueba con la calle o con el nombre del cliente.' : 'Todavía no hay obras.'}</div>`;
+        // Cerradas hace tiempo: escondidas hasta que se pide verlas (o al buscar, que salen solas)
+        const nAnt = obras.filter(o => o.grupo === 'antigua').length;
+        if (nAnt && !verAntiguas && !norm(q.value)) h += `<button type="button" class="cpo-mas" data-mas="1">Ver también las cerradas hace tiempo (${nAnt})</button>`;
+        // Crear una obra aquí mismo (solo si la pantalla lo permite: oficina)
+        if (typeof opt.crear === 'function') { const t = q.value.trim(); h += `<button type="button" class="cpo-crear" data-crear="1">＋ Crear la obra${t ? ' «' + esc(t) + '»' : ' nueva…'}</button>`; }
         lista.innerHTML = h; lista.scrollTop = 0;
       }
       q.addEventListener('input', pintar);
       q.addEventListener('keydown', e => { if (e.key === 'Enter') { const p = lista.querySelector('.cpo-it[data-id]:not([data-id=""])'); if (p && norm(q.value)) { elegir(p.dataset.id); cerrar(); } } });
-      lista.addEventListener('click', e => { const it = e.target.closest('.cpo-it'); if (!it) return; elegir(it.dataset.id); cerrar(); });
+      lista.addEventListener('click', async e => {
+        const mas = e.target.closest('[data-mas]'); if (mas) { verAntiguas = true; pintar(); return; }
+        const cr = e.target.closest('[data-crear]');
+        if (cr) {
+          let nombre = q.value.trim();
+          if (!nombre) { nombre = (window.prompt('Nombre de la obra nueva (como la llamáis vosotros):') || '').trim(); if (!nombre) return; }
+          const dir = (window.prompt('Dirección de la obra (calle, número y población). Puedes dejarlo vacío y ponerla luego:', '') || '').trim();
+          cr.disabled = true; cr.textContent = 'Creando…';
+          try { const o = await opt.crear(nombre, dir); if (o && o.id) { obras = [{ ...o, aliases: o.aliases || [], grupo: o.grupo || 'abierta', status: o.status || 'activa' }, ...obras.filter(x => x.id !== o.id)]; elegir(o.id); cerrar(); } }
+          catch (err) { alert(err.message || 'No se pudo crear la obra'); cr.disabled = false; pintar(); }
+          return;
+        }
+        const it = e.target.closest('.cpo-it'); if (!it) return; elegir(it.dataset.id); cerrar(); });
       ov.addEventListener('click', e => { if (e.target === ov) cerrar(); });
       ov.querySelector('.cpo-x').addEventListener('click', cerrar);
       document.addEventListener('keydown', tecla);
