@@ -293,7 +293,8 @@ async function revisar(id, por, { enviarStel = true, herramientas = null } = {})
   // HERRAMIENTAS y ROPA: cada línea marcada se da de alta en Llaves y herramientas. Si hay un
   // trabajador, se le ENTREGA (queda en su historial); si no, se queda en OFICINA para
   // repartirla más adelante desde Llaves y herramientas.
-  if ((dest === 'herramientas' || dest === 'ropa') && Array.isArray(herramientas) && herramientas.length) {
+  // Si ya se dieron de alta (se reabrió y se vuelve a confirmar), no se duplican.
+  if ((dest === 'herramientas' || dest === 'ropa') && Array.isArray(herramientas) && herramientas.length && !(c.activosCreados || []).length) {
     const act = require('./activos'); const creadas = [];
     // Una unidad por cada cantidad de la línea ("4 × pantalón" → 4 prendas), tope 30 por línea.
     let total = 0;

@@ -109,6 +109,7 @@ async function abrir(id){
   if(ia.aviso)avisos.push(`<div class="aviso">🤖 ${esc(ia.aviso)}</div>`);
   if(c.duplicadoInfo)avisos.push(`<div class="aviso">⚠️ <b>Posible duplicado:</b> ya hay un documento de este proveedor con el mismo número, subido el ${fh(c.duplicadoInfo.createdAt)} por ${esc(c.duplicadoInfo.por||'?')} (${esc(c.duplicadoInfo.estado)}${c.duplicadoInfo.obraRef?', '+esc(c.duplicadoInfo.obraRef):''}). <a href="#" onclick="abrir('${c.duplicadoInfo.id}');return false" style="color:var(--blue)">Verlo</a> · si es el mismo, descarta este.</div>`);
   if(c.obraPista&&!c.obraId&&!(c.reparto||[]).length)avisos.push(`<div class="aviso">📍 En el documento pone: «${esc(c.obraPista)}». ¿Es alguna obra?</div>`);
+  if(rev&&c.estado==='revisada'&&['herramientas','ropa'].includes(c.destino)&&!(c.activosCreados||[]).length)avisos.push(`<div class="aviso">${c.destino==='ropa'?'👕':'🔧'} Esta compra se confirmó <b>sin dar de alta</b> las ${c.destino==='ropa'?'prendas':'herramientas'} en Llaves y herramientas. Pulsa <b>Reabrir</b>, marca las líneas (cantidad y talla) y vuelve a <b>Confirmar</b>: no se reenvía a StelOrder.</div>`);
   if(c.enviadaStel)avisos.push(`<div class="aviso ${c.enviadaStel.ok?'ok':'err'}">${c.enviadaStel.ok?'📤 Enviada a StelOrder el '+fh(c.enviadaStel.at):'❌ No se pudo enviar a StelOrder: '+esc(c.enviadaStel.detalle||'')}</div>`);
   v.innerHTML=`<button class="btn g" onclick="volver()" style="margin-bottom:12px">← Volver a la cola</button>
   <div class="det">
