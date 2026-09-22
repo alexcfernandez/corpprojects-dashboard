@@ -39,8 +39,10 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .foto.add{display:flex;align-items:center;justify-content:center;flex-direction:column;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;border-style:dashed;border-color:var(--border2)}
 .foto.add span{font-size:26px}
 textarea{width:100%;padding:12px;border-radius:12px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:15px;font-family:inherit;resize:vertical}
-.chk{display:flex;gap:10px;align-items:center;font-size:14px;color:var(--text2);margin:12px 0 4px;cursor:pointer}
-.chk input{width:20px;height:20px}
+.dest{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.dbtn{background:var(--bg3);border:1px solid var(--border2);border-radius:20px;padding:8px 12px;color:var(--text2);font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit}
+.dbtn.on{color:var(--blue);border-color:var(--blue);background:rgba(77,156,248,.14)}
+.sel{width:100%;padding:13px 12px;border-radius:12px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:15px;font-family:inherit}
 .mia{padding:12px 0;border-top:1px solid var(--border)}.mia:first-child{border-top:none}
 .mia .t{font-weight:600;font-size:15px}.mia .s{font-size:12.5px;color:var(--text3);margin-top:3px;line-height:1.4}
 .est{display:inline-block;font-size:10.5px;border-radius:20px;padding:1px 8px;margin-left:6px;font-weight:600;vertical-align:1px}
@@ -62,9 +64,10 @@ textarea{width:100%;padding:12px;border-radius:12px;border:1px solid var(--borde
   <button class="header-logout" id="logout-btn" onclick="logout()" style="display:none">Salir</button>
 </div>
 <div id="toast"></div>
+<div id="cargando" style="text-align:center;padding:60px 0;color:var(--text3)"><span class="spinner"></span></div>
 
 <!-- LOGIN -->
-<div class="page active" id="page-login"><div class="container"><div class="card">
+<div class="page" id="page-login"><div class="container"><div class="card">
   <div class="login-title">📸 Subir una compra</div><div class="login-sub">Elige tu nombre e introduce el PIN</div>
   <div class="worker-grid" id="worker-selector"></div>
   <input type="tel" inputmode="numeric" id="pin-input" class="pin-input" placeholder="••••" maxlength="6" onkeydown="if(event.key==='Enter')doLogin()">
@@ -86,9 +89,14 @@ textarea{width:100%;padding:12px;border-radius:12px;border:1px solid var(--borde
     </div>
   </div>
   <div class="card">
-    <span class="lbl">¿Para qué obra es?</span>
-    <div id="obra-pick"></div>
-    <label class="chk"><input type="checkbox" id="varias" onchange="onVarias()"> Es para varias obras (oficina lo reparte)</label>
+    <span class="lbl">¿Para qué es?</span>
+    <div class="dest" id="dest">
+      <button class="dbtn on" data-d="obra" onclick="setDest('obra')">🏗️ Una obra</button><button class="dbtn" data-d="varias" onclick="setDest('varias')">🏗️🏗️ Varias obras</button>
+      <button class="dbtn" data-d="herramientas" onclick="setDest('herramientas')">🔧 Herramientas</button><button class="dbtn" data-d="ropa" onclick="setDest('ropa')">👕 Ropa de trabajo</button><button class="dbtn" data-d="general" onclick="setDest('general')">🏢 Otro gasto</button>
+    </div>
+    <div id="dest-obra"><div id="obra-pick"></div></div>
+    <div id="dest-quien" style="display:none"><span class="lbl" style="margin-top:10px" id="quien-lbl">¿Para quién?</span><select id="quien" class="sel"></select></div>
+    <div id="dest-nota" style="font-size:13px;color:var(--text2);line-height:1.45;margin-top:8px;display:none"></div>
     <span class="lbl" style="margin-top:12px">Nota (opcional)</span>
     <textarea id="nota" rows="2" maxlength="300" placeholder="Ej.: lo del baño de arriba · devolución de 3 sacos"></textarea>
   </div>
@@ -105,7 +113,7 @@ textarea{width:100%;padding:12px;border-radius:12px;border:1px solid var(--borde
 <script src="/obra-picker.js"></script>
 <script>
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
-let workerToken=null, esAdmin=false, todosWorkers=[], fotos=[], pick=null, _obras=[];
+let workerToken=null, esAdmin=false, todosWorkers=[], fotos=[], pick=null, _obras=[], dest='obra';
 function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('page-'+id).classList.add('active');window.scrollTo(0,0);}
 let _tt=null;function toast(t,ty){const e=document.getElementById('toast');e.textContent=t;e.className='show '+(ty||'ok');clearTimeout(_tt);_tt=setTimeout(()=>e.className='',3000);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -124,7 +132,7 @@ async function tryRestore(){
   for(const [t,adm] of [[localStorage.getItem('cp_token'),true],[localStorage.getItem('cpWT'),false]]){if(!t)continue;
     try{const r=await fetch('/api/compras/mias',{headers:{'Authorization':'Bearer '+t}});if(!r.ok)continue;workerToken=t;esAdmin=adm;entrar(adm?'Oficina':(localStorage.getItem('cpWN')||''));return true;}catch(e){}}
   return false;}
-function entrar(nombre){document.getElementById('header-sub').textContent=nombre||'';const lb=document.getElementById('logout-btn');lb.textContent=esAdmin?'← Dashboard':'Salir';lb.style.display='block';showPage('nueva');cargarObras();}
+function entrar(nombre){cargarQuien();document.getElementById('cargando').style.display='none';document.getElementById('header-sub').textContent=nombre||'';const lb=document.getElementById('logout-btn');lb.textContent=esAdmin?'← Dashboard':'Salir';lb.style.display='block';showPage('nueva');cargarObras();}
 function logout(){if(esAdmin){location.href='/';return;}workerToken=null;localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');document.getElementById('logout-btn').style.display='none';showPage('login');}
 
 // ── OBRA ──
@@ -133,7 +141,15 @@ async function cargarObras(){
   const last=localStorage.getItem('cpObra')||'';
   pick=CPObra.crear(document.getElementById('obra-pick'),{obras:_obras,value:_obras.some(o=>o.id===last&&o.grupo==='abierta')?last:'',vacio:'— No lo sé / que lo mire oficina —',placeholder:'Elegir obra…',titulo:'¿Para qué obra es la compra?'});
 }
-function onVarias(){const v=document.getElementById('varias').checked;document.getElementById('obra-pick').style.opacity=v?'.45':'1';document.getElementById('obra-pick').style.pointerEvents=v?'none':'';}
+// Destino de la compra. Herramientas y ropa se apuntan a un trabajador (por defecto, el que sube).
+const NOTA_DEST={varias:'Oficina repartirá el importe entre las obras.',herramientas:'Oficina la revisa y las herramientas quedan a nombre de quien las recibe (en Llaves y herramientas).',ropa:'Queda apuntado a quién se le entrega.',general:'Gasolina, gestoría, seguros… oficina le pone la categoría.'};
+function setDest(d){dest=d;document.querySelectorAll('.dbtn').forEach(b=>b.classList.toggle('on',b.dataset.d===d));
+  document.getElementById('dest-obra').style.display=d==='obra'?'':'none';
+  const q=document.getElementById('dest-quien');q.style.display=(d==='herramientas'||d==='ropa')?'':'none';
+  document.getElementById('quien-lbl').textContent=d==='herramientas'?'¿Quién se queda las herramientas?':'¿Para quién es la ropa?';
+  const n=document.getElementById('dest-nota');n.textContent=NOTA_DEST[d]||'';n.style.display=NOTA_DEST[d]?'':'none';}
+function cargarQuien(){const s=document.getElementById('quien');const yo=esAdmin?null:localStorage.getItem('cpWN');
+  s.innerHTML=todosWorkers.map(w=>`<option value="${esc(w.id)}" ${w.name===yo?'selected':''}>${esc(w.name)}</option>`).join('');}
 
 // ── FOTOS: se comprimen en el móvil (máx. 1600 px, JPEG 0.72 ≈ 200-300 KB) ──
 function comprimir(file){return new Promise(res=>{
@@ -155,31 +171,32 @@ async function enviar(){
   const b=document.getElementById('enviar-btn');b.disabled=true;b.innerHTML='<span class="spinner"></span> Leyendo el documento…';
   try{
     const fd=new FormData();fotos.forEach((f,i)=>fd.append('fotos',f.blob,f.name||('foto'+i+'.jpg')));
-    const varias=document.getElementById('varias').checked;
-    if(!varias&&pick&&pick.value){fd.append('obraId',pick.value);localStorage.setItem('cpObra',pick.value);}
-    fd.append('varias',varias?'1':'0');fd.append('nota',document.getElementById('nota').value.trim());
+    fd.append('destino',dest);
+    if(dest==='obra'&&pick&&pick.value){fd.append('obraId',pick.value);localStorage.setItem('cpObra',pick.value);}
+    if(dest==='herramientas'||dest==='ropa'){const q=document.getElementById('quien');fd.append('paraWorkerId',q.value);fd.append('paraWorkerName',q.options[q.selectedIndex]?.textContent||'');}
+    fd.append('nota',document.getElementById('nota').value.trim());
     const c=new AbortController();const t=setTimeout(()=>c.abort(),90000);
     const r=await fetch('/api/compras',{method:'POST',headers:authH(),body:fd,signal:c.signal}).finally(()=>clearTimeout(t));
     const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'No se pudo enviar');
     mostrarResultado(d);
-    fotos.forEach(f=>f.url&&URL.revokeObjectURL(f.url));fotos=[];renderFotos();document.getElementById('nota').value='';document.getElementById('varias').checked=false;onVarias();
+    fotos.forEach(f=>f.url&&URL.revokeObjectURL(f.url));fotos=[];renderFotos();document.getElementById('nota').value='';setDest('obra');
   }catch(e){toast(e.name==='AbortError'?'Ha tardado demasiado. Comprueba la cobertura y vuelve a enviar.':e.message,'error');}
   finally{b.disabled=false;b.textContent='Enviar a oficina';}}
 // Lo que se le confirma: qué se ha entendido, sin importes.
 function mostrarResultado(d){
   const mal=!d.leida||['borroso','cortado','no_es_documento'].includes(d.calidad);
   const que=d.leida&&d.calidad!=='no_es_documento'?`${esc(d.tipoTxt)}${d.proveedor?' de <b>'+esc(d.proveedor)+'</b>':''}${d.numero?' · nº '+esc(d.numero):''}${d.fecha?' · '+esc(d.fecha.split('-').reverse().join('/')):''}${d.nLineas?' · '+d.nLineas+' línea'+(d.nLineas===1?'':'s'):''}`:'';
-  document.getElementById('resultado').innerHTML=`<div class="res ${mal?'warn':''}"><div class="h">${mal?'⚠️':'✅'} ${esc(d.mensaje)}</div>${que?`<div class="d">${que}${d.obraRef?' → 🏗️ '+esc(d.obraRef):d.varias?' → varias obras':''}</div>`:''}${mal?'<button class="sec-btn" onclick="document.getElementById(\'resultado\').innerHTML=\'\';document.getElementById(\'cam\').click()">📷 Repetir la foto</button>':''}</div>`;
+  document.getElementById('resultado').innerHTML=`<div class="res ${mal?'warn':''}"><div class="h">${mal?'⚠️':'✅'} ${esc(d.mensaje)}</div>${que?`<div class="d">${que}${d.obraRef?' → 🏗️ '+esc(d.obraRef):d.destino&&d.destino!=='obra'?' → '+esc(d.destinoTxt)+(d.paraWorker?' para '+esc(d.paraWorker.name):''):''}</div>`:''}${mal?'<button class="sec-btn" onclick="document.getElementById(\'resultado\').innerHTML=\'\';document.getElementById(\'cam\').click()">📷 Repetir la foto</button>':''}</div>`;
   window.scrollTo(0,0);}
 
 // ── MIS COMPRAS ──
 async function abrirMias(){showPage('mias');const el=document.getElementById('mias-lista');el.innerHTML='<div style="text-align:center"><span class="spinner"></span></div>';
   try{const r=await fetch('/api/compras/mias',{headers:authH()});const l=await r.json();if(!r.ok)throw new Error(l.error||'Error');
     const E={por_revisar:'por revisar',revisada:'revisada',descartada:'descartada'};
-    el.innerHTML=l.length?l.map(c=>`<div class="mia"><div class="t">${esc(c.tipoTxt)}${c.proveedor?' · '+esc(c.proveedor):''}<span class="est ${esc(c.estado)}">${E[c.estado]||c.estado}</span></div><div class="s">${c.numero?'nº '+esc(c.numero)+' · ':''}${new Date(c.createdAt).toLocaleDateString('es-ES',{day:'numeric',month:'short'})} ${new Date(c.createdAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})} · ${c.obraRef?'🏗️ '+esc(c.obraRef):c.varias?'varias obras':'sin obra'}${c.nLineas?' · '+c.nLineas+' líneas':''}${!c.leida?' · la IA no pudo leerla':''}</div></div>`).join(''):'<div style="color:var(--text3);text-align:center;padding:20px">Todavía no has enviado ninguna compra.</div>';
+    el.innerHTML=l.length?l.map(c=>`<div class="mia"><div class="t">${esc(c.tipoTxt)}${c.proveedor?' · '+esc(c.proveedor):''}<span class="est ${esc(c.estado)}">${E[c.estado]||c.estado}</span></div><div class="s">${c.numero?'nº '+esc(c.numero)+' · ':''}${new Date(c.createdAt).toLocaleDateString('es-ES',{day:'numeric',month:'short'})} ${new Date(c.createdAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})} · ${c.obraRef?'🏗️ '+esc(c.obraRef):c.destino&&c.destino!=='obra'?esc(c.destinoTxt)+(c.paraWorker?' · '+esc(c.paraWorker.name):''):'sin obra'}${c.nLineas?' · '+c.nLineas+' líneas':''}${!c.leida?' · la IA no pudo leerla':''}</div></div>`).join(''):'<div style="color:var(--text3);text-align:center;padding:20px">Todavía no has enviado ninguna compra.</div>';
   }catch(e){el.innerHTML='<div style="color:var(--red)">'+esc(e.message)+'</div>';}}
 
-(async function(){await loadWorkers();const ok=await tryRestore();if(!ok)showPage('login');})();
+(async function(){await loadWorkers();const ok=await tryRestore();if(!ok){document.getElementById('cargando').style.display='none';showPage('login');}})();
 </script>
 </body>
 </html>

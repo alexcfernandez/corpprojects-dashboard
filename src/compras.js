@@ -24,6 +24,12 @@ const EMPRESA = process.env.EMPRESA_ID || 'corp';
 const COL = 'compras', FOTOS = 'comprasFotos';
 const TIPOS = ['albaran', 'factura', 'ticket', 'devolucion', 'otro'];
 const TIPO_TXT = { albaran: 'Albarán', factura: 'Factura', ticket: 'Ticket', devolucion: 'Devolución', otro: 'Documento' };
+// Para qué es la compra: una obra · varias obras (oficina reparte) · herramientas para un
+// trabajador (al confirmar se dan de alta en Llaves y herramientas y se le entregan) ·
+// ropa de trabajo para un trabajador · otro gasto general (con categoría).
+const DESTINOS = ['obra', 'varias', 'herramientas', 'ropa', 'general'];
+const DESTINO_TXT = { obra: 'Obra', varias: 'Varias obras', herramientas: 'Herramientas', ropa: 'Ropa de trabajo', general: 'Gasto general' };
+function limpiarWorker(w) { if (!w || !w.id) return null; return { id: String(w.id), name: String(w.name || '').trim().slice(0, 80) }; }
 
 async function getDB() { return require('./db').getDB(); }
 const oid = id => { try { return new ObjectId(String(id)); } catch (e) { throw new Error('Compra no encontrada'); } };
@@ -112,7 +118,7 @@ async function buscarDuplicado(db, doc) {
 
 // ── ALTA (trabajador u oficina) ──────────────────────────────────
 // fotos: [{data: Buffer, mimetype}]. Devuelve lo que se le confirma al que la sube.
-async function crear({ fotos, obraId, varias, nota, subidaPor }) {
+async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaPor }) {
   if (!fotos || !fotos.length) throw new Error('Haz al menos una foto del documento');
   const db = await getDB();
   let obraRef = null;
@@ -120,11 +126,15 @@ async function crear({ fotos, obraId, varias, nota, subidaPor }) {
     try { const o = await db.collection('obras').findOne({ _id: new ObjectId(String(obraId)) }, { projection: { reference: 1 } }); obraRef = o ? o.reference : null; if (!o) obraId = null; }
     catch (e) { obraId = null; }
   }
+  let dest = DESTINOS.includes(destino) ? destino : (varias ? 'varias' : 'obra');
+  const pw = (dest === 'herramientas' || dest === 'ropa') ? limpiarWorker(paraWorker) : null;
+  if (dest !== 'obra') obraId = null;
+  if (dest === 'varias') varias = true; else varias = false;
   const now = new Date();
   const doc = {
-    empresaId: EMPRESA, estado: 'por_revisar', tipo: 'otro',
+    empresaId: EMPRESA, estado: 'por_revisar', tipo: 'otro', destino: dest, paraWorker: pw,
     proveedor: null, proveedorNorm: null, nif: null, numero: null, fecha: null, base: null, iva: null, total: null, lineas: [], albaranesRef: [], obraPista: null,
-    obraId: obraId ? String(obraId) : null, obraRef, varias: !!varias, reparto: [], categoria: null,
+    obraId: obraId ? String(obraId) : null, obraRef: obraId ? obraRef : null, varias: !!varias, reparto: [], categoria: dest === 'herramientas' ? 'herramientas' : dest === 'ropa' ? 'ropa' : null,
     nota: String(nota || '').trim().slice(0, 300) || null, subidaPor: subidaPor || null, nFotos: fotos.length,
     ia: { ok: false }, duplicadoDe: null, revisadaPor: null, revisadaAt: null, enviadaStel: null, createdAt: now, updatedAt: now,
   };
@@ -148,13 +158,13 @@ async function crear({ fotos, obraId, varias, nota, subidaPor }) {
   try {
     const quien = (subidaPor && subidaPor.name) || 'Alguien';
     const que = doc.ia.ok ? `${TIPO_TXT[doc.tipo]}${doc.proveedor ? ' de ' + doc.proveedor : ''}${doc.numero ? ' nº ' + doc.numero : ''}` : 'un documento (la IA no pudo leerlo)';
-    await require('./push').sendToOficina({ title: `📸 Compra de ${quien}`, body: `${que}${obraRef ? ' · ' + obraRef : varias ? ' · para varias obras' : ''}. Por revisar.`, url: '/compras', tag: 'compra-nueva' });
+    await require('./push').sendToOficina({ title: `📸 Compra de ${quien}`, body: `${que}${doc.obraRef ? ' · ' + doc.obraRef : dest === 'varias' ? ' · para varias obras' : dest === 'herramientas' || dest === 'ropa' ? ' · ' + DESTINO_TXT[dest].toLowerCase() + (pw ? ' para ' + pw.name : '') : dest === 'general' ? ' · gasto general' : ''}. Por revisar.`, url: '/compras', tag: 'compra-nueva' });
   } catch (e) {}
   return { ok: true, id: String(doc._id), ...resumenParaTrabajador(doc) };
 }
 // Lo que ve quien la sube: tipo, proveedor, número, nº de líneas y calidad. SIN importes.
 function resumenParaTrabajador(c) {
-  const r = { id: String(c._id), estado: c.estado, tipo: c.tipo, tipoTxt: TIPO_TXT[c.tipo] || 'Documento', proveedor: c.proveedor, numero: c.numero, fecha: c.fecha, nLineas: (c.lineas || []).length, obraRef: c.obraRef, varias: !!c.varias, nFotos: c.nFotos, createdAt: c.createdAt, leida: !!(c.ia && c.ia.ok), calidad: c.ia && c.ia.calidad || null, duplicado: !!c.duplicadoDe };
+  const r = { id: String(c._id), estado: c.estado, tipo: c.tipo, tipoTxt: TIPO_TXT[c.tipo] || 'Documento', proveedor: c.proveedor, numero: c.numero, fecha: c.fecha, nLineas: (c.lineas || []).length, obraRef: c.obraRef, varias: !!c.varias, destino: c.destino || (c.varias ? 'varias' : 'obra'), destinoTxt: DESTINO_TXT[c.destino] || (c.varias ? 'Varias obras' : 'Obra'), paraWorker: c.paraWorker || null, nFotos: c.nFotos, createdAt: c.createdAt, leida: !!(c.ia && c.ia.ok), calidad: c.ia && c.ia.calidad || null, duplicado: !!c.duplicadoDe };
   // Mensaje para la pantalla del móvil
   if (!r.leida) r.mensaje = 'Guardada. La IA no ha podido leerla ahora; oficina la revisará a mano.';
   else if (r.calidad === 'no_es_documento') r.mensaje = 'No parece un albarán ni una factura. Si lo es, repite la foto más de cerca.';
@@ -217,6 +227,18 @@ async function editar(id, data, por) {
   if ('albaranesRef' in data) set.albaranesRef = (Array.isArray(data.albaranesRef) ? data.albaranesRef : String(data.albaranesRef || '').split(/[,\s;]+/)).map(x => String(x).trim()).filter(Boolean).slice(0, 60);
   if ('nota' in data) set.nota = String(data.nota || '').trim().slice(0, 300) || null;
   if ('categoria' in data) set.categoria = data.categoria ? String(data.categoria).trim().toLowerCase() : null;
+  if ('destino' in data) { if (!DESTINOS.includes(data.destino)) throw new Error('Destino no válido'); set.destino = data.destino; }
+  if ('paraWorker' in data) set.paraWorker = limpiarWorker(data.paraWorker);
+  let destFinal = set.destino || c.destino || (c.varias ? 'varias' : 'obra');
+  // Sin destino explícito: categoría y sin obra ⇒ gasto general; reparto de varias ⇒ varias
+  if (!('destino' in data)) {
+    if (Array.isArray(data.reparto) && data.reparto.length > 1) destFinal = 'varias';
+    else if (destFinal === 'obra' && data.categoria && !data.obraId) destFinal = 'general';
+    if (destFinal !== (c.destino || 'obra')) set.destino = destFinal;
+  }
+  if (destFinal === 'herramientas' && !('categoria' in data)) set.categoria = 'herramientas';
+  if (destFinal === 'ropa' && !('categoria' in data)) set.categoria = 'ropa';
+  if (destFinal !== 'herramientas' && destFinal !== 'ropa') set.paraWorker = null;
   // Obra única, o reparto entre varias (importes por obra; la suma no tiene por qué cuadrar al céntimo)
   if ('obraId' in data || 'reparto' in data) {
     const rep = Array.isArray(data.reparto) ? data.reparto : [];
@@ -256,14 +278,32 @@ async function releer(id) {
 }
 // CONFIRMAR: pasa a revisada. Las FACTURAS y TICKETS se mandan a StelOrder (n8n) en este
 // momento, con la obra ya correcta. Los albaranes y devoluciones se quedan en el dashboard.
-async function revisar(id, por, { enviarStel = true } = {}) {
+async function revisar(id, por, { enviarStel = true, herramientas = null } = {}) {
   const db = await getDB();
   const c = await db.collection(COL).findOne({ _id: oid(id), empresaId: EMPRESA });
   if (!c) throw new Error('Compra no encontrada');
   if (c.estado === 'revisada') return getCompra(id);
   if (!c.proveedor) throw new Error('Pon el proveedor antes de confirmar');
-  if (!c.obraId && !(c.reparto || []).length && !c.categoria) throw new Error('Indica la obra (o el reparto entre obras), o márcala como gasto general con su categoría');
+  const dest = c.destino || ((c.reparto || []).length > 1 || c.varias ? 'varias' : (c.categoria && !c.obraId) ? 'general' : 'obra');
+  if (dest === 'obra' && !c.obraId) throw new Error('Elige la obra (o cambia el destino: varias obras, herramientas, ropa o gasto general)');
+  if (dest === 'varias' && !(c.reparto || []).length) throw new Error('Reparte el importe entre las obras');
+  if ((dest === 'herramientas' || dest === 'ropa') && !(c.paraWorker && c.paraWorker.id)) throw new Error('Indica para quién es');
+  if (dest === 'general' && !c.categoria) throw new Error('Pon la categoría del gasto general');
   const set = { estado: 'revisada', revisadaPor: por || '', revisadaAt: new Date(), updatedAt: new Date() };
+  // HERRAMIENTAS: cada línea marcada se da de alta en Llaves y herramientas y se ENTREGA al
+  // trabajador, así queda en su historial (y se sabe qué se le ha dado si un día se va).
+  if (dest === 'herramientas' && Array.isArray(herramientas) && herramientas.length) {
+    const act = require('./activos'); const creadas = [];
+    for (const h of herramientas.slice(0, 40)) {
+      const nombre = String(h.nombre || '').trim(); if (!nombre) continue;
+      try {
+        const r = await act.crearActivo({ tipo: 'herramienta', nombre, marca: h.marca || '', modelo: h.modelo || '', valor: Math.abs(Number(h.valor) || 0), fechaCompra: c.fecha || new Date().toISOString().slice(0, 10), notas: `Compra ${c.proveedor || ''}${c.numero ? ' nº ' + c.numero : ''} (foto en Compras)` }, por);
+        await act.darActivo(r.id, { holderType: 'operario', holderId: c.paraWorker.id, holderName: c.paraWorker.name, nota: 'Entregada al comprarla' }, por);
+        creadas.push({ id: r.id, codigo: r.codigo, nombre });
+      } catch (e) { console.warn('[Compras] alta herramienta:', e.message); }
+    }
+    set.activosCreados = creadas;
+  }
   if (enviarStel && (c.tipo === 'factura' || c.tipo === 'ticket') && !(c.enviadaStel && c.enviadaStel.ok)) {
     try {
       const fw = require('./facturaWhatsApp');
@@ -275,15 +315,15 @@ async function revisar(id, por, { enviarStel = true } = {}) {
         const pdf = await fw.fotosAPdf(imgs.map(f => ({ data: Buffer.from(f.data.buffer || f.data).toString('base64'), media_type: f.mimetype })));
         if (pdf) attachments.push({ filename: `${c.tipo}-${(c.proveedor || 'proveedor').replace(/[^\w-]+/g, '_')}-${(c.numero || id).replace(/[^\w-]+/g, '_')}.pdf`, content: pdf, contentType: 'application/pdf' });
       }
-      const obraRef = c.obraRef || ((c.reparto || []).length ? c.reparto.map(p => p.obraRef).join(' + ') : null);
-      const r = await fw.reenviarFacturaMail({ attachments, obraRef, obraId: c.obraId || null, origen: 'compras', from: por || 'oficina', nota: [c.proveedor, c.numero ? 'nº ' + c.numero : null, c.total != null ? c.total + ' €' : null].filter(Boolean).join(' · '), categoria: (!obraRef && c.categoria) ? c.categoria : null });
+      const obraRef = dest === 'obra' ? c.obraRef : dest === 'varias' ? (c.reparto || []).map(p => p.obraRef).join(' + ') : null;
+      const r = await fw.reenviarFacturaMail({ attachments, obraRef, obraId: c.obraId || null, origen: 'compras', from: por || 'oficina', nota: [c.proveedor, c.numero ? 'nº ' + c.numero : null, c.total != null ? c.total + ' €' : null, c.paraWorker ? DESTINO_TXT[dest] + ' para ' + c.paraWorker.name : null].filter(Boolean).join(' · '), categoria: !obraRef ? (c.categoria || (dest === 'herramientas' ? 'herramientas' : dest === 'ropa' ? 'ropa' : null)) : null });
       set.enviadaStel = { ok: !!r.ok, at: new Date(), detalle: r.reply || null };
     } catch (e) { set.enviadaStel = { ok: false, at: new Date(), detalle: e.message }; }
   }
   await db.collection(COL).updateOne({ _id: c._id }, { $set: set });
   // Cierra el aviso al trabajador con lo que ha pasado (push, sin importes)
   try {
-    if (c.subidaPor && c.subidaPor.kind === 'worker') await require('./push').sendToWorker(c.subidaPor.userId, { title: '✅ Compra revisada', body: `${TIPO_TXT[c.tipo]}${c.proveedor ? ' de ' + c.proveedor : ''} — ${set.obraRef || c.obraRef || 'gasto general'}.`.replace(' — gasto general', ' — gasto general'), url: '/compra', tag: 'compra-revisada' });
+    if (c.subidaPor && c.subidaPor.kind === 'worker') await require('./push').sendToWorker(c.subidaPor.userId, { title: '✅ Compra revisada', body: `${TIPO_TXT[c.tipo]}${c.proveedor ? ' de ' + c.proveedor : ''} — ${c.obraRef || DESTINO_TXT[dest]}${(set.activosCreados || []).length ? ' · ' + set.activosCreados.length + ' herramienta(s) a tu nombre' : ''}.`, url: '/compra', tag: 'compra-revisada' });
   } catch (e) {}
   return getCompra(id);
 }
@@ -308,7 +348,7 @@ async function resumenPendientes({ dryRun = false } = {}) {
   const db = await getDB();
   const pend = await db.collection(COL).find({ empresaId: EMPRESA, estado: 'por_revisar' }).sort({ createdAt: 1 }).toArray();
   if (!pend.length) return { pendientes: 0, enviado: false };
-  const lineas = pend.slice(0, 12).map(c => `• ${TIPO_TXT[c.tipo]}${c.proveedor ? ' ' + c.proveedor : ''}${c.numero ? ' nº ' + c.numero : ''} — ${c.obraRef || (c.varias ? 'varias obras' : 'sin obra')} (${(c.subidaPor && c.subidaPor.name) || '?'})`);
+  const lineas = pend.slice(0, 12).map(c => `• ${TIPO_TXT[c.tipo]}${c.proveedor ? ' ' + c.proveedor : ''}${c.numero ? ' nº ' + c.numero : ''} — ${c.obraRef || (c.destino && c.destino !== 'obra' ? DESTINO_TXT[c.destino] : null) || (c.varias ? 'varias obras' : 'sin obra')}${c.paraWorker ? ' para ' + c.paraWorker.name : ''} (${(c.subidaPor && c.subidaPor.name) || '?'})`);
   const texto = `🧾 *Compras por revisar: ${pend.length}*\n${lineas.join('\n')}${pend.length > 12 ? `\n… y ${pend.length - 12} más` : ''}\n\nRevísalas en https://dashboard.corpprojects.es/compras`;
   if (dryRun) return { pendientes: pend.length, texto };
   const to = String(process.env.FICHAJE_AVISOS_TO || process.env.WHATSAPP_TO || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -318,4 +358,4 @@ async function resumenPendientes({ dryRun = false } = {}) {
   return { pendientes: pend.length, enviado: ok > 0 };
 }
 
-module.exports = { TIPOS, TIPO_TXT, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };
+module.exports = { TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };

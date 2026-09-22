@@ -1406,7 +1406,7 @@ app.post('/api/compras', uploadCompra.any(), async (req, res) => {
     const q = await _quienPush(req); if (!q) return res.status(401).json({ error: 'No autorizado' });
     const fotos = (req.files || []).filter(f => /^image\//.test(f.mimetype || '') || /pdf/i.test(f.mimetype || '')).map(f => ({ data: f.buffer, mimetype: f.mimetype }));
     const b = req.body || {};
-    res.json(await require('./compras').crear({ fotos, obraId: b.obraId || null, varias: b.varias === '1' || b.varias === 'true', nota: b.nota, subidaPor: { kind: q.kind, userId: String(q.userId), name: q.name } }));
+    res.json(await require('./compras').crear({ fotos, obraId: b.obraId || null, varias: b.varias === '1' || b.varias === 'true', destino: b.destino || null, paraWorker: b.paraWorkerId ? { id: b.paraWorkerId, name: b.paraWorkerName || '' } : null, nota: b.nota, subidaPor: { kind: q.kind, userId: String(q.userId), name: q.name } }));
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.get('/api/compras/mias', async (req, res) => {
@@ -1447,8 +1447,8 @@ app.post('/api/compras/:id/releer', async (req, res) => {
 });
 app.post('/api/compras/:id/revisar', async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' });
-    const r = await require('./compras').revisar(req.params.id, q.name, { enviarStel: (req.body || {}).enviarStel !== false });
-    activity.registrar({ actor: q.name, actorRole: q.role, kind: 'modificado', entidad: 'Compra', ref: [r.proveedor, r.numero].filter(Boolean).join(' '), detalle: `Revisada (${r.tipo}) → ${r.obraRef || 'reparto/gasto general'}` });
+    const r = await require('./compras').revisar(req.params.id, q.name, { enviarStel: (req.body || {}).enviarStel !== false, herramientas: (req.body || {}).herramientas || null });
+    activity.registrar({ actor: q.name, actorRole: q.role, kind: 'modificado', entidad: 'Compra', ref: [r.proveedor, r.numero].filter(Boolean).join(' '), detalle: `Revisada (${r.tipo}) → ${r.obraRef || r.destino || 'gasto general'}${(r.activosCreados || []).length ? ' · ' + r.activosCreados.length + ' herramienta(s) dadas de alta' : ''}` });
     res.json(r); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });

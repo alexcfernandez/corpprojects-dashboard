@@ -31,7 +31,7 @@ const ESTADOS_OBRA = {
 // proveedor > (3) marcador "[obra: {ref}]" de n8n > (4) sin clasificar. Las reglas
 // se aplican en LECTURA: clasifican al vuelo todas las facturas de ese proveedor,
 // sin escribir cientos de registros, y cambiarlas actualiza pasado y futuro.
-const CATEGORIAS_GASTO = ['material', 'combustible', 'herramientas', 'subcontrata', 'gestoria', 'seguros', 'suministros', 'alquiler', 'otros'];
+const CATEGORIAS_GASTO = ['material', 'combustible', 'herramientas', 'ropa', 'subcontrata', 'gestoria', 'seguros', 'suministros', 'alquiler', 'otros'];
 
 function extraerObraMarcador(text) {
   const m = String(text || '').match(/obra:\s*([^\]\n|·]+)/i);
