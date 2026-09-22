@@ -289,15 +289,15 @@ async function revisar(id, por, { enviarStel = true, herramientas = null } = {})
   if (dest === 'varias' && !(c.reparto || []).length) throw new Error('Reparte el importe entre las obras');
   if (dest === 'general' && !c.categoria) throw new Error('Pon la categoría del gasto general');
   const set = { estado: 'revisada', revisadaPor: por || '', revisadaAt: new Date(), updatedAt: new Date() };
-  // HERRAMIENTAS: cada línea marcada se da de alta en Llaves y herramientas. Si hay un
+  // HERRAMIENTAS y ROPA: cada línea marcada se da de alta en Llaves y herramientas. Si hay un
   // trabajador, se le ENTREGA (queda en su historial); si no, se queda en OFICINA para
   // repartirla más adelante desde Llaves y herramientas.
-  if (dest === 'herramientas' && Array.isArray(herramientas) && herramientas.length) {
+  if ((dest === 'herramientas' || dest === 'ropa') && Array.isArray(herramientas) && herramientas.length) {
     const act = require('./activos'); const creadas = [];
     for (const h of herramientas.slice(0, 40)) {
       const nombre = String(h.nombre || '').trim(); if (!nombre) continue;
       try {
-        const r = await act.crearActivo({ tipo: 'herramienta', nombre, marca: h.marca || '', modelo: h.modelo || '', valor: Math.abs(Number(h.valor) || 0), fechaCompra: c.fecha || new Date().toISOString().slice(0, 10), notas: `Compra ${c.proveedor || ''}${c.numero ? ' nº ' + c.numero : ''} (foto en Compras)` }, por);
+        const r = await act.crearActivo({ tipo: dest === 'ropa' ? 'ropa' : 'herramienta', nombre, talla: h.talla || '', marca: h.marca || '', modelo: h.modelo || '', valor: Math.abs(Number(h.valor) || 0), fechaCompra: c.fecha || new Date().toISOString().slice(0, 10), notas: `Compra ${c.proveedor || ''}${c.numero ? ' nº ' + c.numero : ''} (foto en Compras)` }, por);
         if (c.paraWorker && c.paraWorker.id) await act.darActivo(r.id, { holderType: 'operario', holderId: c.paraWorker.id, holderName: c.paraWorker.name, nota: 'Entregada al comprarla' }, por);
         creadas.push({ id: r.id, codigo: r.codigo, nombre });
       } catch (e) { console.warn('[Compras] alta herramienta:', e.message); }
@@ -323,7 +323,7 @@ async function revisar(id, por, { enviarStel = true, herramientas = null } = {})
   await db.collection(COL).updateOne({ _id: c._id }, { $set: set });
   // Cierra el aviso al trabajador con lo que ha pasado (push, sin importes)
   try {
-    if (c.subidaPor && c.subidaPor.kind === 'worker') await require('./push').sendToWorker(c.subidaPor.userId, { title: '✅ Compra revisada', body: `${TIPO_TXT[c.tipo]}${c.proveedor ? ' de ' + c.proveedor : ''} — ${c.obraRef || DESTINO_TXT[dest]}${(set.activosCreados || []).length ? ' · ' + set.activosCreados.length + ' herramienta(s) a tu nombre' : ''}.`, url: '/compra', tag: 'compra-revisada' });
+    if (c.subidaPor && c.subidaPor.kind === 'worker') await require('./push').sendToWorker(c.subidaPor.userId, { title: '✅ Compra revisada', body: `${TIPO_TXT[c.tipo]}${c.proveedor ? ' de ' + c.proveedor : ''} — ${c.obraRef || DESTINO_TXT[dest]}${(set.activosCreados || []).length ? ' · ' + set.activosCreados.length + (dest === 'ropa' ? ' prenda(s)' : ' herramienta(s)') + ' a tu nombre' : ''}.`, url: '/compra', tag: 'compra-revisada' });
   } catch (e) {}
   return getCompra(id);
 }

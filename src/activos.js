@@ -8,14 +8,15 @@ const { ObjectId } = require('mongodb');
 
 async function getDB() { return require('./db').getDB(); }
 
-const TIPOS = ['llave', 'herramienta'];
-const PREFIJO = { llave: 'L', herramienta: 'H' };
+// 'ropa' = ropa de trabajo (se compra para tener en oficina e ir repartiendo; se reparte como una herramienta).
+const TIPOS = ['llave', 'herramienta', 'ropa'];
+const PREFIJO = { llave: 'L', herramienta: 'H', ropa: 'R' };
 const ESTADOS = ['oficina', 'operario', 'cliente', 'perdida'];
 
 // Campos que se pueden editar por tipo (más los comunes).
 const CAMPOS_COMUNES = ['nombre', 'obraId', 'obraRef', 'foto', 'notas'];
 const CAMPOS_LLAVE   = ['clientName', 'family', 'direccion', 'copias', 'fechaEntrega'];
-const CAMPOS_HERR    = ['marca', 'modelo', 'numeroSerie', 'valor', 'fechaCompra'];
+const CAMPOS_HERR    = ['marca', 'modelo', 'numeroSerie', 'valor', 'fechaCompra', 'talla'];
 
 // Siguiente código libre para un tipo: prefijo + número correlativo (L-001…).
 async function siguienteCodigo(db, tipo) {
@@ -67,7 +68,7 @@ async function crearActivo(data, by) {
   const tipo = TIPOS.includes(data.tipo) ? data.tipo : null;
   if (!tipo) throw new Error('Tipo no válido (llave o herramienta)');
   if (tipo === 'llave' && !data.clientName) throw new Error('La llave necesita el cliente');
-  if (tipo === 'herramienta' && !String(data.nombre || '').trim()) throw new Error('La herramienta necesita un nombre');
+  if (tipo !== 'llave' && !String(data.nombre || '').trim()) throw new Error(tipo === 'ropa' ? 'La prenda necesita un nombre' : 'La herramienta necesita un nombre');
 
   const codigo = (data.codigo && String(data.codigo).trim()) || await siguienteCodigo(db, tipo);
   const dup = await db.collection('activos').findOne({ codigo });
@@ -84,6 +85,7 @@ async function crearActivo(data, by) {
     marca:       String(data.marca || '').trim(),
     modelo:      String(data.modelo || '').trim(),
     numeroSerie: String(data.numeroSerie || '').trim(),
+    talla:       String(data.talla || '').trim(),
     valor:       Number(data.valor) || 0,
     fechaCompra: data.fechaCompra || null,
     obraId:      data.obraId ? String(data.obraId) : null,
