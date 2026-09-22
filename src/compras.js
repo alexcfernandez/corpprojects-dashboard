@@ -380,8 +380,88 @@ async function deObra(obraId) {
     const parte = (c.reparto || []).find(p => p.obraId === id);
     const importe = parte ? (Number(parte.importe) || 0) : (c.base != null ? c.base : (c.total != null ? c.total : 0));
     return { id: String(c._id), tipo: c.tipo, proveedor: c.proveedor, proveedorNorm: c.proveedorNorm, numero: c.numero, fecha: c.fecha || (c.createdAt && c.createdAt.toISOString().slice(0, 10)), importe: Math.round(importe * 100) / 100,
-      sinImporte: !parte && c.base == null && c.total == null, reparto: !!parte, albaranesRef: c.albaranesRef || [], enviadaStel: !!(c.enviadaStel && c.enviadaStel.ok), origen: c.origen || 'app', por: c.subidaPor && c.subidaPor.name, nLineas: c.nLineas };
+      sinImporte: !parte && c.base == null && c.total == null, reparto: !!parte, albaranesRef: c.albaranesRef || [], facturaId: c.facturaId || null, facturaNumero: c.facturaNumero || null, casado: c.casado ? { n: c.casado.n, suma: c.casado.suma, diferencia: c.casado.diferencia } : null, enviadaStel: !!(c.enviadaStel && c.enviadaStel.ok), origen: c.origen || 'app', por: c.subidaPor && c.subidaPor.name, nLineas: c.nLineas };
   });
+}
+
+// ── CASAR FACTURA MENSUAL CON SUS ALBARANES (4.3) ─────────────────
+// Saltoki y otros facturan a mes vencido: la factura agrupa albaranes ya subidos. Al casarlos,
+// en la rentabilidad cuentan los ALBARANES (cada uno en su obra) y la factura no vuelve a sumar.
+const nd = v => { const d = (String(v || '').match(/\d+/g) || []).join(''); return d ? d.replace(/^0+/, '') : String(v || '').toLowerCase().replace(/[^a-z0-9]/g, ''); };
+const prov1 = c => String(c.proveedorNorm || norm(c.proveedor) || '').split(' ')[0];
+async function propuestaCasar(facturaId) {
+  const db = await getDB();
+  const f = await db.collection(COL).findOne({ _id: oid(facturaId), empresaId: EMPRESA });
+  if (!f) throw new Error('Compra no encontrada');
+  if (f.tipo !== 'factura') throw new Error('Solo se casan facturas');
+  const p1 = prov1(f); if (!p1) throw new Error('La factura no tiene proveedor');
+  const ref = new Set((f.albaranesRef || []).map(nd).filter(Boolean));
+  const ffecha = f.fecha || (f.createdAt && f.createdAt.toISOString().slice(0, 10)) || new Date().toISOString().slice(0, 10);
+  const desde = new Date(new Date(ffecha).getTime() - 75 * 86400000).toISOString().slice(0, 10), hasta = new Date(new Date(ffecha).getTime() + 5 * 86400000).toISOString().slice(0, 10);
+  const cand = await db.collection(COL).find({ empresaId: EMPRESA, tipo: 'albaran', estado: { $ne: 'descartada' }, _id: { $ne: f._id } }).project({ lineas: 0 }).sort({ fecha: 1 }).toArray();
+  const albaranes = cand.filter(a => prov1(a) === p1 && (!a.facturaId || String(a.facturaId) === String(f._id))).map(a => {
+    const fe = a.fecha || (a.createdAt && a.createdAt.toISOString().slice(0, 10)) || '';
+    const refEnFactura = !!(a.numero && ref.has(nd(a.numero)));
+    const enVentana = fe >= desde && fe <= hasta;
+    const importe = a.base != null ? a.base : (a.total != null ? a.total : null);
+    return { id: String(a._id), numero: a.numero, fecha: fe, importe, sinImporte: importe == null, obraRef: a.obraRef || ((a.reparto || []).length ? a.reparto.map(p => p.obraRef).join(' + ') : null), estado: a.estado, yaCasado: !!a.facturaId, refEnFactura, enVentana, sugerido: !!a.facturaId || refEnFactura || (ref.size === 0 && enVentana) };
+  });
+  const sug = albaranes.filter(a => a.sugerido);
+  const suma = Math.round(sug.reduce((x, a) => x + (a.importe || 0), 0) * 100) / 100;
+  const base = f.base != null ? f.base : f.total;
+  return { factura: { id: String(f._id), numero: f.numero, proveedor: f.proveedor, fecha: ffecha, base: f.base, total: f.total, albaranesRef: f.albaranesRef || [], casado: f.casado || null },
+    ventana: { desde, hasta }, albaranes, sumaSugeridos: suma, diferencia: base != null ? Math.round((base - suma) * 100) / 100 : null, sinImporteSugeridos: sug.filter(a => a.sinImporte).length,
+    noEncontrados: [...ref].filter(r => !albaranes.some(a => a.numero && nd(a.numero) === r)) };
+}
+async function casar(facturaId, albaranIds, por) {
+  const db = await getDB();
+  const f = await db.collection(COL).findOne({ _id: oid(facturaId), empresaId: EMPRESA });
+  if (!f || f.tipo !== 'factura') throw new Error('Solo se casan facturas');
+  const ids = (Array.isArray(albaranIds) ? albaranIds : []).map(String).filter(Boolean);
+  // Se sueltan los que ya estaban y no vienen; se enganchan los nuevos.
+  await db.collection(COL).updateMany({ empresaId: EMPRESA, facturaId: String(f._id), _id: { $nin: ids.map(oid) } }, { $set: { facturaId: null, facturaNumero: null, casadaAt: null, updatedAt: new Date() } });
+  const albs = ids.length ? await db.collection(COL).find({ empresaId: EMPRESA, _id: { $in: ids.map(oid) }, tipo: 'albaran', estado: { $ne: 'descartada' } }).project({ lineas: 0 }).toArray() : [];
+  const otroProv = albs.filter(a => prov1(a) !== prov1(f));
+  if (otroProv.length) throw new Error(`Hay albaranes de otro proveedor (${otroProv.map(a => a.numero || a.proveedor).join(', ')})`);
+  const ocupados = albs.filter(a => a.facturaId && String(a.facturaId) !== String(f._id));
+  if (ocupados.length) throw new Error(`Ya casados con otra factura: ${ocupados.map(a => a.numero).join(', ')}`);
+  const now = new Date();
+  if (albs.length) await db.collection(COL).updateMany({ _id: { $in: albs.map(a => a._id) } }, { $set: { facturaId: String(f._id), facturaNumero: f.numero || null, casadaAt: now, casadaPor: por || '', updatedAt: now } });
+  const suma = Math.round(albs.reduce((x, a) => x + (a.base != null ? a.base : (a.total || 0)), 0) * 100) / 100;
+  const base = f.base != null ? f.base : f.total;
+  const casado = albs.length ? { n: albs.length, suma, diferencia: base != null ? Math.round((base - suma) * 100) / 100 : null, at: now, por: por || '', albaranes: albs.map(a => ({ id: String(a._id), numero: a.numero, importe: a.base != null ? a.base : a.total, obraRef: a.obraRef || null })) } : null;
+  await db.collection(COL).updateOne({ _id: f._id }, { $set: { casado, updatedAt: now } });
+  return getCompra(facturaId);
+}
+async function descasar(facturaId) { return casar(facturaId, [], ''); }
+// Albaranes confirmados que ninguna factura ha recogido todavía, por proveedor y antigüedad.
+async function albaranesSinFactura({ diasMin = 0 } = {}) {
+  const db = await getDB();
+  const arr = await db.collection(COL).find({ empresaId: EMPRESA, tipo: 'albaran', estado: 'revisada', facturaId: { $in: [null] } }).project({ lineas: 0 }).sort({ fecha: 1 }).toArray();
+  const hoy = Date.now(); const out = {};
+  for (const a of arr) {
+    const fe = a.fecha || (a.createdAt && a.createdAt.toISOString().slice(0, 10)); const dias = fe ? Math.floor((hoy - new Date(fe).getTime()) / 86400000) : 0;
+    if (dias < diasMin) continue;
+    const k = a.proveedorNorm || 'sin proveedor';
+    (out[k] = out[k] || { proveedor: a.proveedor || 'Sin proveedor', n: 0, importe: 0, sinImporte: 0, masAntiguo: null, albaranes: [] });
+    const imp = a.base != null ? a.base : a.total;
+    out[k].n++; if (imp != null) out[k].importe += imp; else out[k].sinImporte++;
+    out[k].masAntiguo = out[k].masAntiguo == null ? dias : Math.max(out[k].masAntiguo, dias);
+    out[k].albaranes.push({ id: String(a._id), numero: a.numero, fecha: fe, dias, importe: imp, obraRef: a.obraRef || ((a.reparto || []).length ? a.reparto.map(p => p.obraRef).join(' + ') : null) });
+  }
+  return Object.values(out).map(p => ({ ...p, importe: Math.round(p.importe * 100) / 100 })).sort((a, b) => b.masAntiguo - a.masAntiguo);
+}
+// Día 1 de cada mes: albaranes de más de 35 días sin factura → oficina (push + WhatsApp).
+async function avisoAlbaranesSinFactura({ dryRun = false, diasMin = 35 } = {}) {
+  const lista = await albaranesSinFactura({ diasMin });
+  if (!lista.length) return { pendientes: 0, enviado: false };
+  const n = lista.reduce((a, p) => a + p.n, 0);
+  const texto = `📄 *Albaranes sin factura (${n})* — más de ${diasMin} días:\n` + lista.slice(0, 10).map(p => `• ${p.proveedor}: ${p.n} ${p.n === 1 ? 'albarán' : 'albaranes'}${p.importe ? ' · ' + p.importe.toFixed(2) + ' €' : ''} · el más antiguo hace ${p.masAntiguo} días`).join('\n') + `\n\nReclama la factura o cásalos en https://dashboard.corpprojects.es/compras`;
+  if (dryRun) return { pendientes: n, texto, lista };
+  const to = String(process.env.FICHAJE_AVISOS_TO || process.env.WHATSAPP_TO || '').split(',').map(s => s.trim()).filter(Boolean);
+  let ok = 0; for (const t of to) { try { await require('./notifications').sendWhatsAppTo(t, texto); ok++; } catch (e) {} }
+  try { await require('./push').sendToOficina({ title: `📄 ${n} albaranes sin factura`, body: lista.slice(0, 3).map(p => `${p.proveedor} (${p.n})`).join(' · '), url: '/compras', tag: 'albaranes-sin-factura' }); } catch (e) {}
+  return { pendientes: n, enviado: ok > 0 };
 }
 
 // ── PRECIOS POR TIENDA ───────────────────────────────────────────
@@ -422,4 +502,4 @@ async function resumenPendientes({ dryRun = false } = {}) {
   return { pendientes: pend.length, enviado: ok > 0 };
 }
 
-module.exports = { TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };
+module.exports = { TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, propuestaCasar, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };

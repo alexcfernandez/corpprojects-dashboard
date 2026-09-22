@@ -537,18 +537,25 @@ async function getRentabilidad(obraId) {
     // Nº de albarán: se compara por sus DÍGITOS («ALB-4490» = «4490»); si no tiene, por el texto.
     const nd = v => { const d = (String(v || '').match(/\d+/g) || []).join(''); return d ? d.replace(/^0+/, '') : nn(v); };
     const enStel = new Set(proveedores.map(p => norm(p.supplier).split(' ')[0] + '|' + nn(p.number)));
-    const albAgrupados = new Set(lista.filter(c => c.tipo === 'factura').flatMap(c => c.albaranesRef.map(a => (c.proveedorNorm || '').split(' ')[0] + '|' + nd(a))));
+    const albAgrupados = new Set(lista.filter(c => c.tipo === 'factura' && !(c.casado && c.casado.n > 0)).flatMap(c => c.albaranesRef.map(a => (c.proveedorNorm || '').split(' ')[0] + '|' + nd(a))));
     for (const c of lista) {
       const prov1 = (c.proveedorNorm || norm(c.proveedor)).split(' ')[0];
       let cuenta = true, motivo = null;
-      if ((c.tipo === 'factura' || c.tipo === 'ticket') && c.numero && enStel.has(prov1 + '|' + nn(c.numero))) { cuenta = false; motivo = 'ya contada en StelOrder'; }
+      const casada = c.tipo === 'factura' && c.casado && c.casado.n > 0;
+      if (casada) {
+        cuenta = false; motivo = `desglosada en ${c.casado.n} albaranes`;
+        // Su gemela de StelOrder (si está asignada a la obra) tampoco debe sumar: cuentan los albaranes.
+        if (c.numero) { const k = prov1 + '|' + nn(c.numero); const i = proveedores.findIndex(p => norm(p.supplier).split(' ')[0] + '|' + nn(p.number) === k); if (i >= 0 && !proveedores[i].desglosada) { totalProveedores -= proveedores[i].total; proveedores[i] = { ...proveedores[i], desglosada: true, nota: 'desglosada en albaranes' }; } }
+      }
+      else if (c.tipo === 'albaran' && c.facturaId) { cuenta = !c.sinImporte; motivo = cuenta ? null : 'sin importe'; }   // casado formalmente: cuenta él
+      else if ((c.tipo === 'factura' || c.tipo === 'ticket') && c.numero && enStel.has(prov1 + '|' + nn(c.numero))) { cuenta = false; motivo = 'ya contada en StelOrder'; }
       else if (c.tipo === 'albaran' && c.numero && albAgrupados.has(prov1 + '|' + nd(c.numero))) { cuenta = false; motivo = 'agrupado en una factura'; }
       else if (c.sinImporte) { cuenta = false; motivo = 'sin importe'; }
       if (cuenta) totalCompras += c.importe;
       compras.push({ ...c, cuenta, motivo });
     }
   } catch (e) { /* sin módulo de compras → 0 */ }
-  totalCompras = Math.round(totalCompras * 100) / 100;
+  totalCompras = Math.round(totalCompras * 100) / 100; totalProveedores = Math.round(totalProveedores * 100) / 100;
   // 2f. Material sacado del ALMACÉN para esta obra (unidades × precio medio) + sacas por recoger.
   let almacen = { importe: 0, salidas: [], sacasPendientes: 0 };
   try { almacen = await require('./almacen').resumenObra(miIdC(obra)); } catch (e) {}

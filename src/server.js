@@ -1520,6 +1520,28 @@ app.post('/api/almacen/salidas/:id/recogida', async (req, res) => {
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 
+// Casar factura mensual con sus albaranes (4.3)
+app.get('/api/compras/:id/casar', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').propuestaCasar(req.params.id)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/compras/:id/casar', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').casar(req.params.id, (req.body || {}).albaranes || [], q.name)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/compras/:id/descasar', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').descasar(req.params.id)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/compras-sin-facturar', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').albaranesSinFactura({ diasMin: Number(req.query.dias) || 0 })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/compras-prueba/sin-facturar', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').avisoAlbaranesSinFactura({ dryRun: true, diasMin: Number(req.query.dias) || 35 })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/compras-prueba/resumen', async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').resumenPendientes({ dryRun: true })); }
   catch (err) { res.status(500).json({ error: err.message }); }

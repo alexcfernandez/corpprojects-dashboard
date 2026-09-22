@@ -347,6 +347,8 @@ function startScheduler() {
     .then(r => console.log('[Fichaje] resumen oficina →', JSON.stringify({ enviado: r.enviado, motivo: r.motivo })))
     .catch(e => console.error('[Fichaje] resumen oficina:', e.message)), { timezone: 'Europe/Madrid' });
   // Compras por foto: si a las 18:00 quedan compras sin revisar, WhatsApp + push a oficina.
+  // Día 1 a las 9:30: albaranes de más de 35 días que ninguna factura ha recogido.
+  cron.schedule('30 9 1 * *', () => require('./compras').avisoAlbaranesSinFactura().catch(e => console.warn('[Compras] sin factura:', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('0 18 * * 1-5', () => require('./compras').resumenPendientes().catch(e => console.warn('[Compras] resumen:', e.message)), { timezone: 'Europe/Madrid' });
 
   // Resumen diario INTERNO (al admin) 08:30 lun–vie
