@@ -1301,6 +1301,30 @@ app.get('/api/fichaje/mios', async (req, res) => {
     res.json(await require('./fichajeMarcas').getMarcasTrabajador(w.workerId, req.query.from, req.query.to)); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
+// Portada del dashboard: quién está hoy en obra ahora mismo (fichaje + presencia).
+app.get('/api/fichaje/hoy', requireAuth, async (req, res) => {
+  try {
+    const fm = require('./fichajeMarcas'); const hoy = fm.fechaHoy();
+    const dia = await fm.getDia(hoy); const sf = await fm.sinFichar(hoy, { dia });
+    res.json({ fecha: hoy, laborable: sf.laborable, plantilla: sf.plantilla,
+      trabajadores: dia.map(d => ({ userId: d.userId, userName: d.userName, estado: d.estado, obraRef: d.obraRef || '', obraId: d.obraId || null, minutos: d.minutos, desde: d.desde, sinCerrar: !!d.sinCerrar, lejos: !!d.lejosObra })),
+      sinFichar: sf.faltan, ausentes: sf.ausentes || [] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+// Menú de la app del trabajador: qué botones le tocan (el parte solo si lo tiene asignado).
+app.get('/api/campo/menu', async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return;
+    const rol = users.normalizeRole(w.workerRole || 'tecnico');
+    let tieneParte = ['owner', 'oficina', 'encargado'].includes(rol);
+    if (!tieneParte) {
+      try { const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' }); tieneParte = ((await require('./expedientes').getAsignacionesWorker(w.workerId, hoy)) || []).length > 0; } catch (e) {}
+    }
+    if (!tieneParte) {
+      try { const list = await getWorkOrdersLive(); await require('./asignaciones').attachAssignments(list); tieneParte = list.some(p => String(p.assignedUserId || '') === String(w.workerId) && p.workStatus !== 'done' && p.workStatus !== 'invoiced'); } catch (e) {}
+    }
+    res.json({ workerId: w.workerId, name: w.workerName, rol, tieneParte, puedeCrearObra: ['owner', 'oficina'].includes(rol) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 app.get('/api/fichaje/dia', requireAuth, async (req, res) => {
   try { res.json(await require('./fichajeMarcas').getDia(req.query.fecha)); }
   catch (err) { res.status(500).json({ error: err.message }); }

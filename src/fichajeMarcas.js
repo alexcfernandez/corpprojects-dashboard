@@ -424,7 +424,7 @@ function _esLaborable(fecha) {
 async function sinFichar(fecha, pre = {}) {
   const f = fecha || fechaHoy();
   const festivos = String(process.env.FICHAJE_FESTIVOS || '').split(',').map(s => s.trim()).filter(Boolean);
-  if (!_esLaborable(f) || festivos.includes(f)) return { fecha: f, laborable: false, faltan: [], fichados: 0, plantilla: 0 };
+  if (!_esLaborable(f) || festivos.includes(f)) return { fecha: f, laborable: false, faltan: [], fichados: 0, plantilla: 0, ausentes: [] };
   const db = await getDB();
   const [dia, plantilla] = await Promise.all([pre.dia || getDia(f), pre.plantilla || trabajadoresQueFichan()]);
   const conMarcas = new Set(dia.map(d => String(d.userId)));
@@ -436,6 +436,7 @@ async function sinFichar(fecha, pre = {}) {
     faltan: esperados.filter(w => !conMarcas.has(w.id)),
     fichados: esperados.filter(w => conMarcas.has(w.id)).length,
     plantilla: esperados.length,
+    ausentes: plantilla.filter(w => ausente[w.id]).map(w => ({ id: w.id, name: w.name, estado: ausente[w.id] })),
   };
 }
 

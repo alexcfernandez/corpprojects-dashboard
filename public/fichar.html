@@ -140,6 +140,7 @@ textarea.obra-sel{resize:vertical;line-height:1.4}
   </div>
   <button class="sec-btn" onclick="location.href='/compra'" style="border-color:rgba(34,196,135,.5)">📸 Subir una compra (albarán, factura, ticket)</button>
   <button class="sec-btn" onclick="location.href='/almacen'">📦 Almacén · sacar material / recogidas</button>
+  <button class="sec-btn" id="btn-parte" onclick="location.href='/parte'" style="display:none;border-color:rgba(77,156,248,.5)">📋 Parte de trabajo</button>
   <button class="sec-btn" onclick="abrirMes()">📅 Mis horas · semana y mes</button>
   <button class="link-btn" onclick="abrirOlvido()">¿Se te olvidó fichar? Pide una corrección</button>
   <div class="tramos" id="corr-wrap" style="display:none">
@@ -285,7 +286,7 @@ async function cargar(){
   let r;try{r=await fetchT('/api/fichaje/estado',{headers:authH()},12000);}
   catch(e){_sinRed=true;render(estadoLocal());renderOffline();return;} // sin cobertura
   _sinRed=false;
-  try{const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');pintar(d);cargarCorrecciones();avisoFirmaPendiente();avisoPush();if(colaTodos().length)sincronizar();}catch(e){toast(e.message,'error');}}
+  try{const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');pintar(d);cargarCorrecciones();avisoFirmaPendiente();avisoPush();menuTrabajador();if(colaTodos().length)sincronizar();}catch(e){toast(e.message,'error');}}
 let _estado=null,_obras=null;
 const escH=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function estadoDe(d){return d?(d.estado||(d.dentro?'dentro':'fuera')):'fuera';}
@@ -557,6 +558,13 @@ async function avisoFirmaPendiente(){
       document.getElementById('firma-aviso').innerHTML=`<button class="sec-btn" style="border-color:rgba(77,156,248,.6);margin-top:20px" onclick="_mes='${m}';showPage('mes');cargarMes()">🖊 Tienes el resumen de <b>${escH(mesLabel(m))}</b> pendiente de firmar →</button>`;}
   }catch(e){}
 }
+// ── MENÚ: el parte solo se enseña a quien lo tiene asignado (o es encargado/oficina) ──
+let _menuVisto=false;
+async function menuTrabajador(){if(_menuVisto)return;_menuVisto=true;
+  try{const r=await fetch('/api/campo/menu',{headers:authH()});if(!r.ok)return;const m=await r.json();
+    const b=document.getElementById('btn-parte');if(!b)return;b.style.display=m.tieneParte?'':'none';
+    b.textContent=['owner','oficina','encargado'].includes(m.rol)?'📋 Parte de trabajo':'📋 Parte de trabajo · tienes trabajo asignado hoy';
+  }catch(e){}}
 // ── AVISOS (notificaciones push) ──
 // Si aún no están activados en este móvil, se ofrece un botón. En iPhone solo
 // funcionan con la app añadida a la pantalla de inicio, así que se explica cómo.
