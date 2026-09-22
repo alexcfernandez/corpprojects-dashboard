@@ -142,14 +142,16 @@ async function cargarObras(){
   pick=CPObra.crear(document.getElementById('obra-pick'),{obras:_obras,value:_obras.some(o=>o.id===last&&o.grupo==='abierta')?last:'',vacio:'— No lo sé / que lo mire oficina —',placeholder:'Elegir obra…',titulo:'¿Para qué obra es la compra?'});
 }
 // Destino de la compra. Herramientas y ropa se apuntan a un trabajador (por defecto, el que sube).
-const NOTA_DEST={varias:'Oficina repartirá el importe entre las obras.',herramientas:'Oficina la revisa y las herramientas quedan a nombre de quien las recibe (en Llaves y herramientas).',ropa:'Queda apuntado a quién se le entrega.',general:'Gasolina, gestoría, seguros… oficina le pone la categoría.'};
+const NOTA_DEST={varias:'Oficina repartirá el importe entre las obras.',herramientas:'Oficina la revisa y las herramientas quedan a nombre de quien las recibe (en Llaves y herramientas).',ropa:'Si es para tener en la oficina e ir repartiendo, deja «Nadie todavía».',general:'Gasolina, gestoría, seguros… oficina le pone la categoría.'};
 function setDest(d){dest=d;document.querySelectorAll('.dbtn').forEach(b=>b.classList.toggle('on',b.dataset.d===d));
   document.getElementById('dest-obra').style.display=d==='obra'?'':'none';
   const q=document.getElementById('dest-quien');q.style.display=(d==='herramientas'||d==='ropa')?'':'none';
   document.getElementById('quien-lbl').textContent=d==='herramientas'?'¿Quién se queda las herramientas?':'¿Para quién es la ropa?';
+  // Herramientas: por defecto quien la sube. Ropa: por defecto nadie (se compra para tener e ir repartiendo).
+  const qs=document.getElementById('quien');if(d==='herramientas'){const o=[...qs.options].find(o=>o.dataset.n===qs._yo);qs.value=o?o.value:'';}else qs.value='';
   const n=document.getElementById('dest-nota');n.textContent=NOTA_DEST[d]||'';n.style.display=NOTA_DEST[d]?'':'none';}
 function cargarQuien(){const s=document.getElementById('quien');const yo=esAdmin?null:localStorage.getItem('cpWN');
-  s.innerHTML=todosWorkers.map(w=>`<option value="${esc(w.id)}" ${w.name===yo?'selected':''}>${esc(w.name)}</option>`).join('');}
+  s.innerHTML='<option value="">— Nadie todavía (queda en oficina) —</option>'+todosWorkers.map(w=>`<option value="${esc(w.id)}" data-n="${esc(w.name)}">${esc(w.name)}</option>`).join('');s._yo=yo;}
 
 // ── FOTOS: se comprimen en el móvil (máx. 1600 px, JPEG 0.72 ≈ 200-300 KB) ──
 function comprimir(file){return new Promise(res=>{
@@ -173,7 +175,7 @@ async function enviar(){
     const fd=new FormData();fotos.forEach((f,i)=>fd.append('fotos',f.blob,f.name||('foto'+i+'.jpg')));
     fd.append('destino',dest);
     if(dest==='obra'&&pick&&pick.value){fd.append('obraId',pick.value);localStorage.setItem('cpObra',pick.value);}
-    if(dest==='herramientas'||dest==='ropa'){const q=document.getElementById('quien');fd.append('paraWorkerId',q.value);fd.append('paraWorkerName',q.options[q.selectedIndex]?.textContent||'');}
+    if((dest==='herramientas'||dest==='ropa')&&document.getElementById('quien').value){const q=document.getElementById('quien');fd.append('paraWorkerId',q.value);fd.append('paraWorkerName',q.options[q.selectedIndex]?.dataset.n||'');}
     fd.append('nota',document.getElementById('nota').value.trim());
     const c=new AbortController();const t=setTimeout(()=>c.abort(),90000);
     const r=await fetch('/api/compras',{method:'POST',headers:authH(),body:fd,signal:c.signal}).finally(()=>clearTimeout(t));
@@ -186,7 +188,7 @@ async function enviar(){
 function mostrarResultado(d){
   const mal=!d.leida||['borroso','cortado','no_es_documento'].includes(d.calidad);
   const que=d.leida&&d.calidad!=='no_es_documento'?`${esc(d.tipoTxt)}${d.proveedor?' de <b>'+esc(d.proveedor)+'</b>':''}${d.numero?' · nº '+esc(d.numero):''}${d.fecha?' · '+esc(d.fecha.split('-').reverse().join('/')):''}${d.nLineas?' · '+d.nLineas+' línea'+(d.nLineas===1?'':'s'):''}`:'';
-  document.getElementById('resultado').innerHTML=`<div class="res ${mal?'warn':''}"><div class="h">${mal?'⚠️':'✅'} ${esc(d.mensaje)}</div>${que?`<div class="d">${que}${d.obraRef?' → 🏗️ '+esc(d.obraRef):d.destino&&d.destino!=='obra'?' → '+esc(d.destinoTxt)+(d.paraWorker?' para '+esc(d.paraWorker.name):''):''}</div>`:''}${mal?'<button class="sec-btn" onclick="document.getElementById(\'resultado\').innerHTML=\'\';document.getElementById(\'cam\').click()">📷 Repetir la foto</button>':''}</div>`;
+  document.getElementById('resultado').innerHTML=`<div class="res ${mal?'warn':''}"><div class="h">${mal?'⚠️':'✅'} ${esc(d.mensaje)}</div>${que?`<div class="d">${que}${d.obraRef?' → 🏗️ '+esc(d.obraRef):d.destino&&d.destino!=='obra'?' → '+esc(d.destinoTxt)+(d.paraWorker?' para '+esc(d.paraWorker.name):' (en oficina)'):''}</div>`:''}${mal?'<button class="sec-btn" onclick="document.getElementById(\'resultado\').innerHTML=\'\';document.getElementById(\'cam\').click()">📷 Repetir la foto</button>':''}</div>`;
   window.scrollTo(0,0);}
 
 // ── MIS COMPRAS ──

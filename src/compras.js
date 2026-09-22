@@ -158,7 +158,7 @@ async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaP
   try {
     const quien = (subidaPor && subidaPor.name) || 'Alguien';
     const que = doc.ia.ok ? `${TIPO_TXT[doc.tipo]}${doc.proveedor ? ' de ' + doc.proveedor : ''}${doc.numero ? ' nº ' + doc.numero : ''}` : 'un documento (la IA no pudo leerlo)';
-    await require('./push').sendToOficina({ title: `📸 Compra de ${quien}`, body: `${que}${doc.obraRef ? ' · ' + doc.obraRef : dest === 'varias' ? ' · para varias obras' : dest === 'herramientas' || dest === 'ropa' ? ' · ' + DESTINO_TXT[dest].toLowerCase() + (pw ? ' para ' + pw.name : '') : dest === 'general' ? ' · gasto general' : ''}. Por revisar.`, url: '/compras', tag: 'compra-nueva' });
+    await require('./push').sendToOficina({ title: `📸 Compra de ${quien}`, body: `${que}${doc.obraRef ? ' · ' + doc.obraRef : dest === 'varias' ? ' · para varias obras' : dest === 'herramientas' || dest === 'ropa' ? ' · ' + DESTINO_TXT[dest].toLowerCase() + (pw ? ' para ' + pw.name : ' (queda en oficina)') : dest === 'general' ? ' · gasto general' : ''}. Por revisar.`, url: '/compras', tag: 'compra-nueva' });
   } catch (e) {}
   return { ok: true, id: String(doc._id), ...resumenParaTrabajador(doc) };
 }
@@ -287,18 +287,18 @@ async function revisar(id, por, { enviarStel = true, herramientas = null } = {})
   const dest = c.destino || ((c.reparto || []).length > 1 || c.varias ? 'varias' : (c.categoria && !c.obraId) ? 'general' : 'obra');
   if (dest === 'obra' && !c.obraId) throw new Error('Elige la obra (o cambia el destino: varias obras, herramientas, ropa o gasto general)');
   if (dest === 'varias' && !(c.reparto || []).length) throw new Error('Reparte el importe entre las obras');
-  if ((dest === 'herramientas' || dest === 'ropa') && !(c.paraWorker && c.paraWorker.id)) throw new Error('Indica para quién es');
   if (dest === 'general' && !c.categoria) throw new Error('Pon la categoría del gasto general');
   const set = { estado: 'revisada', revisadaPor: por || '', revisadaAt: new Date(), updatedAt: new Date() };
-  // HERRAMIENTAS: cada línea marcada se da de alta en Llaves y herramientas y se ENTREGA al
-  // trabajador, así queda en su historial (y se sabe qué se le ha dado si un día se va).
+  // HERRAMIENTAS: cada línea marcada se da de alta en Llaves y herramientas. Si hay un
+  // trabajador, se le ENTREGA (queda en su historial); si no, se queda en OFICINA para
+  // repartirla más adelante desde Llaves y herramientas.
   if (dest === 'herramientas' && Array.isArray(herramientas) && herramientas.length) {
     const act = require('./activos'); const creadas = [];
     for (const h of herramientas.slice(0, 40)) {
       const nombre = String(h.nombre || '').trim(); if (!nombre) continue;
       try {
         const r = await act.crearActivo({ tipo: 'herramienta', nombre, marca: h.marca || '', modelo: h.modelo || '', valor: Math.abs(Number(h.valor) || 0), fechaCompra: c.fecha || new Date().toISOString().slice(0, 10), notas: `Compra ${c.proveedor || ''}${c.numero ? ' nº ' + c.numero : ''} (foto en Compras)` }, por);
-        await act.darActivo(r.id, { holderType: 'operario', holderId: c.paraWorker.id, holderName: c.paraWorker.name, nota: 'Entregada al comprarla' }, por);
+        if (c.paraWorker && c.paraWorker.id) await act.darActivo(r.id, { holderType: 'operario', holderId: c.paraWorker.id, holderName: c.paraWorker.name, nota: 'Entregada al comprarla' }, por);
         creadas.push({ id: r.id, codigo: r.codigo, nombre });
       } catch (e) { console.warn('[Compras] alta herramienta:', e.message); }
     }
@@ -316,7 +316,7 @@ async function revisar(id, por, { enviarStel = true, herramientas = null } = {})
         if (pdf) attachments.push({ filename: `${c.tipo}-${(c.proveedor || 'proveedor').replace(/[^\w-]+/g, '_')}-${(c.numero || id).replace(/[^\w-]+/g, '_')}.pdf`, content: pdf, contentType: 'application/pdf' });
       }
       const obraRef = dest === 'obra' ? c.obraRef : dest === 'varias' ? (c.reparto || []).map(p => p.obraRef).join(' + ') : null;
-      const r = await fw.reenviarFacturaMail({ attachments, obraRef, obraId: c.obraId || null, origen: 'compras', from: por || 'oficina', nota: [c.proveedor, c.numero ? 'nº ' + c.numero : null, c.total != null ? c.total + ' €' : null, c.paraWorker ? DESTINO_TXT[dest] + ' para ' + c.paraWorker.name : null].filter(Boolean).join(' · '), categoria: !obraRef ? (c.categoria || (dest === 'herramientas' ? 'herramientas' : dest === 'ropa' ? 'ropa' : null)) : null });
+      const r = await fw.reenviarFacturaMail({ attachments, obraRef, obraId: c.obraId || null, origen: 'compras', from: por || 'oficina', nota: [c.proveedor, c.numero ? 'nº ' + c.numero : null, c.total != null ? c.total + ' €' : null, (dest === 'herramientas' || dest === 'ropa') ? DESTINO_TXT[dest] + (c.paraWorker ? ' para ' + c.paraWorker.name : ' (stock en oficina)') : null].filter(Boolean).join(' · '), categoria: !obraRef ? (c.categoria || (dest === 'herramientas' ? 'herramientas' : dest === 'ropa' ? 'ropa' : null)) : null });
       set.enviadaStel = { ok: !!r.ok, at: new Date(), detalle: r.reply || null };
     } catch (e) { set.enviadaStel = { ok: false, at: new Date(), detalle: e.message }; }
   }
