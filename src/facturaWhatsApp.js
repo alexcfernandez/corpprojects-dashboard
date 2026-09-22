@@ -131,12 +131,9 @@ async function reenviarFactura({ from, pdf, fotos, descargarArchivo, descargarFo
   // reenviado a n8n → StelOrder aquí arriba, al confirmarla NO se vuelve a enviar.
   try {
     const fotosC = [];
-    for (const a of attachments) if (/pdf/i.test(a.contentType || '') && a.filename !== 'factura-fotos.pdf') fotosC.push({ data: a.content, mimetype: 'application/pdf' });
-    for (const f of (fotos || [])) { /* las imágenes originales, mejor que el PDF montado */ }
-    if (!fotosC.length || attachments.some(a => a.filename === 'factura-fotos.pdf')) {
-      // volver a bajar las fotos originales (jpg/png) para la IA
-      for (const f of (fotos || [])) { const img = await descargarFoto(f.url, f.type); if (img && img.data) fotosC.push({ data: Buffer.from(img.data, 'base64'), mimetype: img.media_type || 'image/jpeg' }); }
-    }
+    // El PDF solo si venía como PDF; las fotos, las originales (la IA las lee mejor que el PDF montado).
+    if (pdf && pdf.url) { const a = attachments.find(x => x.filename === 'factura.pdf' && /pdf/i.test(x.contentType || '')); if (a) fotosC.push({ data: a.content, mimetype: 'application/pdf' }); }
+    for (const f of (fotos || [])) { const img = await descargarFoto(f.url, f.type); if (img && img.data) fotosC.push({ data: Buffer.from(img.data, 'base64'), mimetype: img.media_type || 'image/jpeg' }); }
     if (fotosC.length) {
       const c = await require('./compras').crear({ fotos: fotosC, destino: 'obra', origen: 'whatsapp', nota: 'Enviada por WhatsApp', subidaPor: { kind: 'whatsapp', userId: String(from || 'wa'), name: 'WhatsApp ' + String(from || '') } });
       if (r && r.reply) r.reply += `\n🧾 También está en la cola de compras${c.proveedor ? ' (' + c.tipoTxt + ' de ' + c.proveedor + ')' : ''}: oficina le pone la obra.`;
