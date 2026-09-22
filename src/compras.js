@@ -42,10 +42,10 @@ const PROMPT = `Eres el administrativo de una empresa de reformas en Girona. Te 
 {
  "calidad": "legible" | "borroso" | "cortado" | "no_es_documento",
  "tipo": "albaran" | "factura" | "ticket" | "devolucion" | "otro",
- "proveedor": "nombre comercial del proveedor (Saltoki, Leroy Merlin, BigMat…)", "nif": "CIF/NIF del proveedor o null",
+ "proveedor": "nombre comercial del proveedor (Saltoki, Leroy Merlin, Obramat…)", "razonSocial": "razón social completa tal cual aparece (p. ej. Obramat S.L.U.) o null", "nif": "CIF/NIF del proveedor o null",
  "numero": "número del documento tal cual aparece, o null", "fecha": "YYYY-MM-DD o null",
  "base": número o null, "iva": número o null, "total": número o null,
- "lineas": [{"descripcion": "texto de la línea", "cantidad": número o null, "unidad": "ud|m|m2|kg|saco|caja|…", "precio": número o null, "importe": número o null}],
+ "lineas": [{"descripcion": "texto de la línea", "cantidad": número o null, "unidad": "ud|m|m2|kg|saco|caja|…", "precio": número o null, "importe": número o null, "talla": "talla si es ropa (M, L, 42…) o null"}],
  "albaranesRef": ["números de albarán que cite una FACTURA (si es una factura que agrupa albaranes), si no []"],
  "obraPista": "texto del documento que parezca referirse a una obra o dirección de entrega, o null",
  "confianza": 0-1,
@@ -94,11 +94,11 @@ function aplicarLectura(doc, d) {
   const neg = tipo === 'devolucion' ? (v => v == null ? null : -Math.abs(v)) : (v => v);
   const lineas = (Array.isArray(d.lineas) ? d.lineas : []).slice(0, 80).map(l => ({
     descripcion: String(l.descripcion || '').trim().slice(0, 200), cantidad: num(l.cantidad), unidad: String(l.unidad || '').trim().slice(0, 12) || null,
-    precio: num(l.precio), importe: neg(num(l.importe)),
+    precio: num(l.precio), importe: neg(num(l.importe)), talla: String(l.talla || '').trim().slice(0, 12) || null,
   })).filter(l => l.descripcion);
   Object.assign(doc, {
     tipo, proveedor: String(d.proveedor || '').trim().slice(0, 120) || null, proveedorNorm: norm(d.proveedor) || null,
-    nif: String(d.nif || '').trim().slice(0, 20) || null, numero: String(d.numero || '').trim().slice(0, 60) || null,
+    razonSocial: String(d.razonSocial || '').trim().slice(0, 160) || null, nif: String(d.nif || '').trim().slice(0, 20) || null, numero: String(d.numero || '').trim().slice(0, 60) || null,
     fecha: /^\d{4}-\d{2}-\d{2}$/.test(String(d.fecha || '')) ? d.fecha : null,
     base: neg(num(d.base)), iva: neg(num(d.iva)), total: neg(num(d.total)), lineas,
     albaranesRef: (Array.isArray(d.albaranesRef) ? d.albaranesRef : []).map(x => String(x).trim()).filter(Boolean).slice(0, 60),
@@ -220,10 +220,11 @@ async function editar(id, data, por) {
   if ('tipo' in data) { if (!TIPOS.includes(data.tipo)) throw new Error('Tipo no válido'); set.tipo = data.tipo; }
   if ('proveedor' in data) { set.proveedor = String(data.proveedor || '').trim().slice(0, 120) || null; set.proveedorNorm = norm(data.proveedor) || null; }
   if ('nif' in data) set.nif = String(data.nif || '').trim().slice(0, 20) || null;
+  if ('razonSocial' in data) set.razonSocial = String(data.razonSocial || '').trim().slice(0, 160) || null;
   if ('numero' in data) set.numero = String(data.numero || '').trim().slice(0, 60) || null;
   if ('fecha' in data) set.fecha = /^\d{4}-\d{2}-\d{2}$/.test(String(data.fecha || '')) ? data.fecha : null;
   for (const k of ['base', 'iva', 'total']) if (k in data) set[k] = n2(data[k]);
-  if ('lineas' in data && Array.isArray(data.lineas)) set.lineas = data.lineas.slice(0, 120).map(l => ({ descripcion: String(l.descripcion || '').trim().slice(0, 200), cantidad: n2(l.cantidad), unidad: String(l.unidad || '').trim().slice(0, 12) || null, precio: n2(l.precio), importe: n2(l.importe) })).filter(l => l.descripcion);
+  if ('lineas' in data && Array.isArray(data.lineas)) set.lineas = data.lineas.slice(0, 120).map(l => ({ descripcion: String(l.descripcion || '').trim().slice(0, 200), cantidad: n2(l.cantidad), unidad: String(l.unidad || '').trim().slice(0, 12) || null, precio: n2(l.precio), importe: n2(l.importe), talla: String(l.talla || '').trim().slice(0, 12) || null })).filter(l => l.descripcion);
   if ('albaranesRef' in data) set.albaranesRef = (Array.isArray(data.albaranesRef) ? data.albaranesRef : String(data.albaranesRef || '').split(/[,\s;]+/)).map(x => String(x).trim()).filter(Boolean).slice(0, 60);
   if ('nota' in data) set.nota = String(data.nota || '').trim().slice(0, 300) || null;
   if ('categoria' in data) set.categoria = data.categoria ? String(data.categoria).trim().toLowerCase() : null;
@@ -294,13 +295,19 @@ async function revisar(id, por, { enviarStel = true, herramientas = null } = {})
   // repartirla más adelante desde Llaves y herramientas.
   if ((dest === 'herramientas' || dest === 'ropa') && Array.isArray(herramientas) && herramientas.length) {
     const act = require('./activos'); const creadas = [];
+    // Una unidad por cada cantidad de la línea ("4 × pantalón" → 4 prendas), tope 30 por línea.
+    let total = 0;
     for (const h of herramientas.slice(0, 40)) {
       const nombre = String(h.nombre || '').trim(); if (!nombre) continue;
-      try {
-        const r = await act.crearActivo({ tipo: dest === 'ropa' ? 'ropa' : 'herramienta', nombre, talla: h.talla || '', marca: h.marca || '', modelo: h.modelo || '', valor: Math.abs(Number(h.valor) || 0), fechaCompra: c.fecha || new Date().toISOString().slice(0, 10), notas: `Compra ${c.proveedor || ''}${c.numero ? ' nº ' + c.numero : ''} (foto en Compras)` }, por);
-        if (c.paraWorker && c.paraWorker.id) await act.darActivo(r.id, { holderType: 'operario', holderId: c.paraWorker.id, holderName: c.paraWorker.name, nota: 'Entregada al comprarla' }, por);
-        creadas.push({ id: r.id, codigo: r.codigo, nombre });
-      } catch (e) { console.warn('[Compras] alta herramienta:', e.message); }
+      const n = Math.min(30, Math.max(1, Math.round(Number(h.cantidad) || 1)));
+      const valorUd = Math.abs(Number(h.valor) || 0) / (Number(h.valorEsTotal) ? n : 1);
+      for (let i = 0; i < n && total < 60; i++, total++) {
+        try {
+          const r = await act.crearActivo({ tipo: dest === 'ropa' ? 'ropa' : 'herramienta', nombre, talla: h.talla || '', marca: h.marca || '', modelo: h.modelo || '', valor: Math.round(valorUd * 100) / 100, fechaCompra: c.fecha || new Date().toISOString().slice(0, 10), notas: `Compra ${c.proveedor || ''}${c.numero ? ' nº ' + c.numero : ''}${n > 1 ? ` (${i + 1} de ${n})` : ''} (foto en Compras)` }, por);
+          if (c.paraWorker && c.paraWorker.id) await act.darActivo(r.id, { holderType: 'operario', holderId: c.paraWorker.id, holderName: c.paraWorker.name, nota: 'Entregada al comprarla' }, por);
+          creadas.push({ id: r.id, codigo: r.codigo, nombre: nombre + (h.talla ? ' ' + h.talla : '') });
+        } catch (e) { console.warn('[Compras] alta:', e.message); }
+      }
     }
     set.activosCreados = creadas;
   }
