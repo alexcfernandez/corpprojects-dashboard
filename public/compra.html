@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Compra — Corp Projects</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/tool-theme.css">
+<meta name="theme-color" content="#4d9cf8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Compra">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.15);
+  --text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;--green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b;--r:14px;--rs:10px;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:16px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:14px 20px;display:flex;align-items:center;gap:10px}
+.logo{width:34px;height:34px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#fff}
+.header-text{font-weight:700;font-size:16px}.header-sub{font-size:12px;color:var(--text2)}
+.header-logout{margin-left:auto;background:none;border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;font-family:inherit}
+.page{display:none}.page.active{display:block}
+.container{max-width:560px;margin:0 auto;padding:18px 16px 40px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:20px 18px;margin-bottom:14px}
+.login-title{font-size:20px;font-weight:700;margin-bottom:4px;text-align:center}.login-sub{font-size:13px;color:var(--text2);text-align:center;margin-bottom:16px}
+.worker-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.worker-btn{background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:13px 8px;color:var(--text);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+.worker-btn.selected{border-color:var(--blue);background:rgba(77,156,248,.15)}
+.pin-input{width:100%;padding:14px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:24px;text-align:center;letter-spacing:10px;font-family:inherit}
+.btn{display:block;width:100%;background:var(--blue);color:#fff;border:none;border-radius:var(--r);padding:16px;font-size:17px;font-weight:700;cursor:pointer;font-family:inherit}
+.btn:disabled{opacity:.55}.btn.big{background:var(--green);padding:22px;font-size:20px}
+.sec-btn{display:block;width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:14px;color:var(--text);font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;padding:15px;margin-top:12px}
+.lbl{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);font-weight:600;margin:0 0 6px}
+.fotos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}
+.foto{position:relative;aspect-ratio:3/4;border-radius:10px;overflow:hidden;background:var(--bg3);border:1px solid var(--border)}
+.foto img{width:100%;height:100%;object-fit:cover}
+.foto .x{position:absolute;top:4px;right:4px;background:rgba(0,0,0,.7);color:#fff;border:none;border-radius:50%;width:26px;height:26px;font-size:15px;cursor:pointer}
+.foto.add{display:flex;align-items:center;justify-content:center;flex-direction:column;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;border-style:dashed;border-color:var(--border2)}
+.foto.add span{font-size:26px}
+textarea{width:100%;padding:12px;border-radius:12px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:15px;font-family:inherit;resize:vertical}
+.chk{display:flex;gap:10px;align-items:center;font-size:14px;color:var(--text2);margin:12px 0 4px;cursor:pointer}
+.chk input{width:20px;height:20px}
+.mia{padding:12px 0;border-top:1px solid var(--border)}.mia:first-child{border-top:none}
+.mia .t{font-weight:600;font-size:15px}.mia .s{font-size:12.5px;color:var(--text3);margin-top:3px;line-height:1.4}
+.est{display:inline-block;font-size:10.5px;border-radius:20px;padding:1px 8px;margin-left:6px;font-weight:600;vertical-align:1px}
+.est.por_revisar{color:var(--amber);border:1px solid var(--amber)}.est.revisada{color:var(--green);border:1px solid var(--green)}.est.descartada{color:var(--text3);border:1px solid var(--text3)}
+.spinner{display:inline-block;width:18px;height:18px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle}
+@keyframes sp{to{transform:rotate(360deg)}}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);max-width:92%;min-width:220px;padding:13px 18px;border-radius:12px;font-size:14px;font-weight:600;text-align:center;opacity:0;transition:all .25s;z-index:999;background:var(--bg3);border:1px solid var(--border2);color:var(--text)}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}#toast.ok{border-color:var(--green)}#toast.error{border-color:var(--red)}#toast.warn{border-color:var(--amber)}
+.res{border-radius:14px;padding:16px;border:1px solid var(--green);background:rgba(34,196,135,.08);margin-bottom:14px}
+.res.warn{border-color:var(--amber);background:rgba(245,158,11,.08)}
+.res .h{font-size:17px;font-weight:700;margin-bottom:6px}.res .d{font-size:14px;color:var(--text2);line-height:1.5}
+</style>
+</head>
+<body>
+<script>try{if(localStorage.getItem("cp_theme")==="light")document.body.classList.add("light");}catch(e){}</script>
+<div class="header">
+  <div class="logo">CP</div>
+  <div><div class="header-text">Compra</div><div class="header-sub" id="header-sub"></div></div>
+  <button class="header-logout" id="logout-btn" onclick="logout()" style="display:none">Salir</button>
+</div>
+<div id="toast"></div>
+
+<!-- LOGIN -->
+<div class="page active" id="page-login"><div class="container"><div class="card">
+  <div class="login-title">📸 Subir una compra</div><div class="login-sub">Elige tu nombre e introduce el PIN</div>
+  <div class="worker-grid" id="worker-selector"></div>
+  <input type="tel" inputmode="numeric" id="pin-input" class="pin-input" placeholder="••••" maxlength="6" onkeydown="if(event.key==='Enter')doLogin()">
+  <div style="height:16px"></div><button class="btn" id="login-btn" onclick="doLogin()">Entrar →</button>
+</div></div></div>
+
+<!-- NUEVA COMPRA -->
+<div class="page" id="page-nueva"><div class="container">
+  <div id="resultado"></div>
+  <div class="card">
+    <span class="lbl">Foto del albarán, factura o ticket</span>
+    <div style="font-size:13px;color:var(--text2);line-height:1.45;margin-bottom:4px">Con buena luz y el papel entero. Si tiene varias páginas, una foto por página.</div>
+    <div class="fotos" id="fotos"></div>
+    <input type="file" id="cam" accept="image/*,application/pdf" capture="environment" multiple style="display:none" onchange="addFotos(this.files)">
+    <input type="file" id="gal" accept="image/*,application/pdf" multiple style="display:none" onchange="addFotos(this.files)">
+    <div style="display:flex;gap:8px">
+      <button class="btn" onclick="document.getElementById('cam').click()">📷 Hacer foto</button>
+      <button class="sec-btn" style="margin:0;width:auto;padding:12px 14px" onclick="document.getElementById('gal').click()">🖼️</button>
+    </div>
+  </div>
+  <div class="card">
+    <span class="lbl">¿Para qué obra es?</span>
+    <div id="obra-pick"></div>
+    <label class="chk"><input type="checkbox" id="varias" onchange="onVarias()"> Es para varias obras (oficina lo reparte)</label>
+    <span class="lbl" style="margin-top:12px">Nota (opcional)</span>
+    <textarea id="nota" rows="2" maxlength="300" placeholder="Ej.: lo del baño de arriba · devolución de 3 sacos"></textarea>
+  </div>
+  <button class="btn big" id="enviar-btn" onclick="enviar()">Enviar a oficina</button>
+  <button class="link-btn sec-btn" onclick="abrirMias()">📋 Mis compras enviadas</button>
+</div></div>
+
+<!-- MIS COMPRAS -->
+<div class="page" id="page-mias"><div class="container">
+  <button class="sec-btn" style="margin:0 0 14px" onclick="showPage('nueva')">← Nueva compra</button>
+  <div class="card" id="mias-lista"></div>
+</div></div>
+
+<script src="/obra-picker.js"></script>
+<script>
+if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
+let workerToken=null, esAdmin=false, todosWorkers=[], fotos=[], pick=null, _obras=[];
+function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('page-'+id).classList.add('active');window.scrollTo(0,0);}
+let _tt=null;function toast(t,ty){const e=document.getElementById('toast');e.textContent=t;e.className='show '+(ty||'ok');clearTimeout(_tt);_tt=setTimeout(()=>e.className='',3000);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function authH(x){return Object.assign({'Authorization':`Bearer ${workerToken}`},x||{});}
+
+// ── LOGIN (PIN de trabajador, o sesión de admin del dashboard) ──
+async function loadWorkers(){try{const r=await fetch('/api/partes/workers');todosWorkers=await r.json();document.getElementById('worker-selector').innerHTML=todosWorkers.map(w=>`<button class="worker-btn" data-id="${w.id}" onclick="selW(this)">${esc(w.name)}</button>`).join('');}catch(e){}}
+function selW(b){document.querySelectorAll('.worker-btn').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');document.getElementById('pin-input').focus();}
+async function doLogin(){const sel=document.querySelector('.worker-btn.selected');if(!sel){toast('Selecciona tu nombre','warn');return;}const pin=document.getElementById('pin-input').value;if(pin.length<4){toast('Introduce el PIN','warn');return;}
+  const b=document.getElementById('login-btn');b.disabled=true;b.innerHTML='<span class="spinner"></span>';
+  try{const r=await fetch('/api/partes/worker-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workerId:sel.dataset.id,pin})});const d=await r.json();if(!r.ok)throw new Error(d.error||'PIN incorrecto');
+    workerToken=d.token;localStorage.setItem('cpWT',d.token);localStorage.setItem('cpWN',d.workerName||'');entrar(d.workerName);}
+  catch(e){toast(e.message,'error');document.getElementById('pin-input').value='';}
+  finally{b.disabled=false;b.innerHTML='Entrar →';}}
+async function tryRestore(){
+  for(const [t,adm] of [[localStorage.getItem('cp_token'),true],[localStorage.getItem('cpWT'),false]]){if(!t)continue;
+    try{const r=await fetch('/api/compras/mias',{headers:{'Authorization':'Bearer '+t}});if(!r.ok)continue;workerToken=t;esAdmin=adm;entrar(adm?'Oficina':(localStorage.getItem('cpWN')||''));return true;}catch(e){}}
+  return false;}
+function entrar(nombre){document.getElementById('header-sub').textContent=nombre||'';const lb=document.getElementById('logout-btn');lb.textContent=esAdmin?'← Dashboard':'Salir';lb.style.display='block';showPage('nueva');cargarObras();}
+function logout(){if(esAdmin){location.href='/';return;}workerToken=null;localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');document.getElementById('logout-btn').style.display='none';showPage('login');}
+
+// ── OBRA ──
+async function cargarObras(){
+  try{const r=await fetch('/api/campo/obras',{headers:authH()});_obras=r.ok?await r.json():[];}catch(e){_obras=[];}
+  const last=localStorage.getItem('cpObra')||'';
+  pick=CPObra.crear(document.getElementById('obra-pick'),{obras:_obras,value:_obras.some(o=>o.id===last&&o.grupo==='abierta')?last:'',vacio:'— No lo sé / que lo mire oficina —',placeholder:'Elegir obra…',titulo:'¿Para qué obra es la compra?'});
+}
+function onVarias(){const v=document.getElementById('varias').checked;document.getElementById('obra-pick').style.opacity=v?'.45':'1';document.getElementById('obra-pick').style.pointerEvents=v?'none':'';}
+
+// ── FOTOS: se comprimen en el móvil (máx. 1600 px, JPEG 0.72 ≈ 200-300 KB) ──
+function comprimir(file){return new Promise(res=>{
+  if(!/^image\//.test(file.type)){res(file);return;}
+  const img=new Image(),url=URL.createObjectURL(file);
+  img.onload=()=>{URL.revokeObjectURL(url);const M=1600,k=Math.min(1,M/Math.max(img.width,img.height));const c=document.createElement('canvas');c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);c.toBlob(b=>res(b||file),'image/jpeg',0.72);};
+  img.onerror=()=>{URL.revokeObjectURL(url);res(file);};img.src=url;});}
+async function addFotos(files){
+  for(const f of [...files]){if(fotos.length>=8){toast('Máximo 8 fotos','warn');break;}
+    const blob=await comprimir(f);fotos.push({blob,name:f.name||'foto.jpg',type:blob.type||f.type,url:/^image\//.test(blob.type)?URL.createObjectURL(blob):null});}
+  document.getElementById('cam').value='';document.getElementById('gal').value='';renderFotos();}
+function quitarFoto(i){fotos.splice(i,1);renderFotos();}
+function renderFotos(){document.getElementById('fotos').innerHTML=fotos.map((f,i)=>`<div class="foto">${f.url?`<img src="${f.url}" alt="">`:'<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:12px;color:var(--text2)">📄 PDF</div>'}<button class="x" onclick="quitarFoto(${i})">×</button></div>`).join('')+(fotos.length?`<div class="foto add" onclick="document.getElementById('cam').click()"><span>＋</span>otra página</div>`:'');}
+
+// ── ENVIAR ──
+async function enviar(){
+  if(!fotos.length){toast('Haz primero la foto','warn');document.getElementById('cam').click();return;}
+  const b=document.getElementById('enviar-btn');b.disabled=true;b.innerHTML='<span class="spinner"></span> Leyendo el documento…';
+  try{
+    const fd=new FormData();fotos.forEach((f,i)=>fd.append('fotos',f.blob,f.name||('foto'+i+'.jpg')));
+    const varias=document.getElementById('varias').checked;
+    if(!varias&&pick&&pick.value){fd.append('obraId',pick.value);localStorage.setItem('cpObra',pick.value);}
+    fd.append('varias',varias?'1':'0');fd.append('nota',document.getElementById('nota').value.trim());
+    const c=new AbortController();const t=setTimeout(()=>c.abort(),90000);
+    const r=await fetch('/api/compras',{method:'POST',headers:authH(),body:fd,signal:c.signal}).finally(()=>clearTimeout(t));
+    const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'No se pudo enviar');
+    mostrarResultado(d);
+    fotos.forEach(f=>f.url&&URL.revokeObjectURL(f.url));fotos=[];renderFotos();document.getElementById('nota').value='';document.getElementById('varias').checked=false;onVarias();
+  }catch(e){toast(e.name==='AbortError'?'Ha tardado demasiado. Comprueba la cobertura y vuelve a enviar.':e.message,'error');}
+  finally{b.disabled=false;b.textContent='Enviar a oficina';}}
+// Lo que se le confirma: qué se ha entendido, sin importes.
+function mostrarResultado(d){
+  const mal=!d.leida||['borroso','cortado','no_es_documento'].includes(d.calidad);
+  const que=d.leida&&d.calidad!=='no_es_documento'?`${esc(d.tipoTxt)}${d.proveedor?' de <b>'+esc(d.proveedor)+'</b>':''}${d.numero?' · nº '+esc(d.numero):''}${d.fecha?' · '+esc(d.fecha.split('-').reverse().join('/')):''}${d.nLineas?' · '+d.nLineas+' línea'+(d.nLineas===1?'':'s'):''}`:'';
+  document.getElementById('resultado').innerHTML=`<div class="res ${mal?'warn':''}"><div class="h">${mal?'⚠️':'✅'} ${esc(d.mensaje)}</div>${que?`<div class="d">${que}${d.obraRef?' → 🏗️ '+esc(d.obraRef):d.varias?' → varias obras':''}</div>`:''}${mal?'<button class="sec-btn" onclick="document.getElementById(\'resultado\').innerHTML=\'\';document.getElementById(\'cam\').click()">📷 Repetir la foto</button>':''}</div>`;
+  window.scrollTo(0,0);}
+
+// ── MIS COMPRAS ──
+async function abrirMias(){showPage('mias');const el=document.getElementById('mias-lista');el.innerHTML='<div style="text-align:center"><span class="spinner"></span></div>';
+  try{const r=await fetch('/api/compras/mias',{headers:authH()});const l=await r.json();if(!r.ok)throw new Error(l.error||'Error');
+    const E={por_revisar:'por revisar',revisada:'revisada',descartada:'descartada'};
+    el.innerHTML=l.length?l.map(c=>`<div class="mia"><div class="t">${esc(c.tipoTxt)}${c.proveedor?' · '+esc(c.proveedor):''}<span class="est ${esc(c.estado)}">${E[c.estado]||c.estado}</span></div><div class="s">${c.numero?'nº '+esc(c.numero)+' · ':''}${new Date(c.createdAt).toLocaleDateString('es-ES',{day:'numeric',month:'short'})} ${new Date(c.createdAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})} · ${c.obraRef?'🏗️ '+esc(c.obraRef):c.varias?'varias obras':'sin obra'}${c.nLineas?' · '+c.nLineas+' líneas':''}${!c.leida?' · la IA no pudo leerla':''}</div></div>`).join(''):'<div style="color:var(--text3);text-align:center;padding:20px">Todavía no has enviado ninguna compra.</div>';
+  }catch(e){el.innerHTML='<div style="color:var(--red)">'+esc(e.message)+'</div>';}}
+
+(async function(){await loadWorkers();const ok=await tryRestore();if(!ok)showPage('login');})();
+</script>
+</body>
+</html>

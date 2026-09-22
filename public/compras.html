@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compras por revisar — Corp Projects</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/tool-theme.css">
+<meta name="theme-color" content="#4d9cf8">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.15);
+  --text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;--green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b;--r:14px;--rs:10px;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 18px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:5}
+.logo{width:32px;height:32px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff}
+.header-text{font-weight:700;font-size:15px}.header-sub{font-size:12px;color:var(--text2)}
+.hbtn{margin-left:auto;background:none;border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;font-family:inherit;text-decoration:none}
+.wrap{max-width:1100px;margin:0 auto;padding:16px}
+.tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.tab{background:var(--bg2);border:1px solid var(--border2);border-radius:20px;padding:7px 14px;font-size:13px;font-weight:600;color:var(--text2);cursor:pointer;font-family:inherit}
+.tab.on{color:var(--blue);border-color:var(--blue);background:rgba(77,156,248,.12)}
+.lista .it{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px;cursor:pointer;display:flex;gap:12px;align-items:center}
+.lista .it:hover{border-color:var(--border2)}
+.it .th{width:46px;height:60px;border-radius:6px;background:var(--bg3);object-fit:cover;flex-shrink:0}
+.it .t{font-weight:600;font-size:14.5px}.it .s{font-size:12.5px;color:var(--text3);margin-top:3px;line-height:1.4}
+.it .imp{margin-left:auto;font-weight:700;white-space:nowrap}
+.tag{display:inline-block;font-size:10.5px;border-radius:20px;padding:1px 8px;margin-left:6px;font-weight:600;vertical-align:1px;border:1px solid var(--text3);color:var(--text3)}
+.tag.dup,.tag.warn{color:var(--amber);border-color:var(--amber)}.tag.ok{color:var(--green);border-color:var(--green)}.tag.err{color:var(--red);border-color:var(--red)}
+.det{display:grid;grid-template-columns:minmax(280px,1fr) minmax(320px,1.2fr);gap:16px}
+@media(max-width:800px){.det{grid-template-columns:1fr}}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px}
+.card h3{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:10px;font-weight:600}
+.fotos img{width:100%;border-radius:10px;margin-bottom:10px;border:1px solid var(--border);cursor:zoom-in}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+label.f{display:block;font-size:11px;color:var(--text3);font-weight:600;margin:10px 0 4px;text-transform:uppercase;letter-spacing:.04em}
+input,select,textarea{width:100%;padding:10px 11px;border-radius:10px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:14px;font-family:inherit}
+textarea{resize:vertical}
+.aviso{border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.5;margin-bottom:10px;border:1px solid var(--amber);background:rgba(245,158,11,.08)}
+.aviso.err{border-color:var(--red);background:rgba(240,82,82,.08)}.aviso.ok{border-color:var(--green);background:rgba(34,196,135,.08)}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:5px 4px;border-bottom:1px solid var(--border);text-align:left}
+td input{padding:6px 7px;font-size:13px;border-radius:7px}th{font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em}
+.btn{background:var(--blue);color:#fff;border:none;border-radius:11px;padding:12px 16px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+.btn.ok{background:var(--green)}.btn.g{background:var(--bg3);color:var(--text);border:1px solid var(--border2)}.btn.rd{background:none;color:var(--red);border:1px solid var(--red)}
+.btn:disabled{opacity:.5}
+.acciones{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;position:sticky;bottom:0;background:var(--bg2);padding:12px 0 4px}
+.rep{display:grid;grid-template-columns:1fr 110px 34px;gap:6px;align-items:center;margin-bottom:6px}
+.empty{color:var(--text3);text-align:center;padding:40px 16px;line-height:1.6}
+.spinner{display:inline-block;width:18px;height:18px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle}
+@keyframes sp{to{transform:rotate(360deg)}}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);max-width:92%;padding:12px 18px;border-radius:12px;font-size:14px;font-weight:600;opacity:0;transition:opacity .25s;z-index:999;background:var(--bg3);border:1px solid var(--border2)}
+#toast.show{opacity:1}#toast.ok{border-color:var(--green)}#toast.error{border-color:var(--red)}
+.zoom{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:900;display:flex;align-items:center;justify-content:center;cursor:zoom-out;overflow:auto}
+.zoom img{max-width:none;width:auto;max-height:none}
+</style>
+</head>
+<body>
+<script>try{if(localStorage.getItem("cp_theme")==="light")document.body.classList.add("light");}catch(e){}</script>
+<div class="header"><div class="logo">CP</div><div><div class="header-text">Compras</div><div class="header-sub" id="sub">Cola de revisión</div></div><a class="hbtn" href="/compra">📸 Subir una</a><a class="hbtn" style="margin-left:8px" href="/">← Dashboard</a></div>
+<div id="toast"></div>
+<div class="wrap">
+  <div id="push-aviso"></div>
+  <div id="vista-lista">
+    <div class="tabs"><button class="tab on" data-e="por_revisar" onclick="verTab(this)">🔎 Por revisar <span id="n-pend"></span></button><button class="tab" data-e="revisada" onclick="verTab(this)">✅ Revisadas</button><button class="tab" data-e="descartada" onclick="verTab(this)">🚫 Descartadas</button></div>
+    <div class="lista" id="lista"><div class="empty"><span class="spinner"></span></div></div>
+  </div>
+  <div id="vista-det" style="display:none"></div>
+</div>
+<script src="/obra-picker.js"></script>
+<script src="/push-client.js"></script>
+<script>
+if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
+const tok=localStorage.getItem('cp_token')||localStorage.getItem('cpWT');
+let estadoTab='por_revisar', obras=[], cur=null, pick=null, _blobs=[];
+const TIPO_TXT={albaran:'Albarán',factura:'Factura',ticket:'Ticket',devolucion:'Devolución',otro:'Documento'};
+const CATS=['material','combustible','herramientas','subcontrata','gestoria','seguros','suministros','alquiler','otros'];
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function eur(v){return v==null?'—':Number(v).toLocaleString('es-ES',{style:'currency',currency:'EUR'});}
+function fh(d){return d?new Date(d).toLocaleString('es-ES',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';}
+let _tt=null;function toast(t,ty){const e=document.getElementById('toast');e.textContent=t;e.className='show '+(ty||'ok');clearTimeout(_tt);_tt=setTimeout(()=>e.className='',3000);}
+async function api(m,u,b){const o={method:m,headers:{'Authorization':'Bearer '+tok}};if(b){o.headers['Content-Type']='application/json';o.body=JSON.stringify(b);}const r=await fetch(u,o);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Error');return d;}
+
+async function cargarObras(){try{obras=await api('GET','/api/oficina/obras');}catch(e){obras=[];}}
+function verTab(b){document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));b.classList.add('on');estadoTab=b.dataset.e;cargar();}
+async function cargar(){
+  const el=document.getElementById('lista');
+  try{const l=await api('GET','/api/compras?estado='+estadoTab+'&limit=150');
+    if(estadoTab==='por_revisar')document.getElementById('n-pend').textContent=l.length?'('+l.length+')':'';
+    if(!l.length){el.innerHTML='<div class="empty">'+(estadoTab==='por_revisar'?'No hay compras por revisar. 🎉':'Nada por aquí.')+'</div>';return;}
+    el.innerHTML=l.map(c=>`<div class="it" onclick="abrir('${c._id}')"><img class="th" data-id="${c._id}" alt="">
+      <div><div class="t">${esc(TIPO_TXT[c.tipo]||'Documento')}${c.proveedor?' · '+esc(c.proveedor):' <span style="color:var(--text3)">sin proveedor</span>'}${c.numero?' <span style="color:var(--text3);font-weight:400">nº '+esc(c.numero)+'</span>':''}${c.duplicadoDe?'<span class="tag dup">posible duplicado</span>':''}${!c.ia||!c.ia.ok?'<span class="tag err">IA no la leyó</span>':(['borroso','cortado','no_es_documento'].includes(c.ia.calidad)?'<span class="tag warn">'+esc(c.ia.calidad.replace('_',' '))+'</span>':'')}${c.enviadaStel?(c.enviadaStel.ok?'<span class="tag ok">→ StelOrder</span>':'<span class="tag err">StelOrder falló</span>'):''}</div>
+      <div class="s">${c.obraRef?'🏗️ '+esc(c.obraRef):(c.reparto||[]).length?'🏗️ '+c.reparto.map(p=>esc(p.obraRef)).join(' + '):c.varias?'⚠️ varias obras (sin repartir)':c.categoria?'gasto general · '+esc(c.categoria):'<span style="color:var(--amber)">sin obra</span>'} · ${esc((c.subidaPor||{}).name||'?')} · ${fh(c.createdAt)}${c.nota?' · «'+esc(c.nota)+'»':''}</div></div>
+      <div class="imp">${eur(c.total)}</div></div>`).join('');
+    l.forEach(c=>cargarFoto(c._id,0,document.querySelector('.th[data-id="'+c._id+'"]')));
+  }catch(e){el.innerHTML='<div class="empty">❌ '+esc(e.message)+'</div>';}}
+async function cargarFoto(id,i,img){try{const r=await fetch(`/api/compras/${id}/foto/${i}`,{headers:{'Authorization':'Bearer '+tok}});if(!r.ok)return;const b=await r.blob();if(!/^image\//.test(b.type)){img.style.display='none';return;}const u=URL.createObjectURL(b);_blobs.push(u);img.src=u;}catch(e){}}
+
+// ── DETALLE ──
+async function abrir(id){
+  try{cur=await api('GET','/api/compras/'+id);}catch(e){toast(e.message,'error');return;}
+  document.getElementById('vista-lista').style.display='none';const v=document.getElementById('vista-det');v.style.display='block';
+  const c=cur, ia=c.ia||{}, rev=c.estado!=='por_revisar';
+  const avisos=[];
+  if(!ia.ok)avisos.push(`<div class="aviso err">🤖 La IA no ha podido leer este documento${ia.error?' ('+esc(ia.error)+')':''}. Rellénalo a mano o pulsa «Volver a leer».</div>`);
+  else if(ia.calidad&&ia.calidad!=='legible')avisos.push(`<div class="aviso">📷 La foto sale <b>${esc(ia.calidad.replace('_',' '))}</b>. Comprueba los datos con la imagen.</div>`);
+  if(ia.aviso)avisos.push(`<div class="aviso">🤖 ${esc(ia.aviso)}</div>`);
+  if(c.duplicadoInfo)avisos.push(`<div class="aviso">⚠️ <b>Posible duplicado:</b> ya hay un documento de este proveedor con el mismo número, subido el ${fh(c.duplicadoInfo.createdAt)} por ${esc(c.duplicadoInfo.por||'?')} (${esc(c.duplicadoInfo.estado)}${c.duplicadoInfo.obraRef?', '+esc(c.duplicadoInfo.obraRef):''}). <a href="#" onclick="abrir('${c.duplicadoInfo.id}');return false" style="color:var(--blue)">Verlo</a> · si es el mismo, descarta este.</div>`);
+  if(c.obraPista&&!c.obraId&&!(c.reparto||[]).length)avisos.push(`<div class="aviso">📍 En el documento pone: «${esc(c.obraPista)}». ¿Es alguna obra?</div>`);
+  if(c.enviadaStel)avisos.push(`<div class="aviso ${c.enviadaStel.ok?'ok':'err'}">${c.enviadaStel.ok?'📤 Enviada a StelOrder el '+fh(c.enviadaStel.at):'❌ No se pudo enviar a StelOrder: '+esc(c.enviadaStel.detalle||'')}</div>`);
+  v.innerHTML=`<button class="btn g" onclick="volver()" style="margin-bottom:12px">← Volver a la cola</button>
+  <div class="det">
+    <div class="card"><h3>Documento · subido por ${esc((c.subidaPor||{}).name||'?')} el ${fh(c.createdAt)}${c.nota?' · «'+esc(c.nota)+'»':''}</h3><div class="fotos" id="fotos">${Array.from({length:c.nFotos||1}).map((_,i)=>`<img data-i="${i}" alt="página ${i+1}" onclick="zoom(this)">`).join('')}</div></div>
+    <div class="card">
+      ${avisos.join('')}
+      <div class="g2"><div><label class="f">Tipo</label><select id="f-tipo" ${rev?'disabled':''}>${Object.entries(TIPO_TXT).map(([k,t])=>`<option value="${k}" ${c.tipo===k?'selected':''}>${t}</option>`).join('')}</select></div><div><label class="f">Fecha</label><input type="date" id="f-fecha" value="${esc(c.fecha||'')}" ${rev?'disabled':''}></div></div>
+      <div class="g2"><div><label class="f">Proveedor</label><input id="f-prov" value="${esc(c.proveedor||'')}" ${rev?'disabled':''}></div><div><label class="f">Nº documento</label><input id="f-num" value="${esc(c.numero||'')}" ${rev?'disabled':''}></div></div>
+      <div class="g3"><div><label class="f">Base</label><input id="f-base" inputmode="decimal" value="${c.base??''}" ${rev?'disabled':''}></div><div><label class="f">IVA</label><input id="f-iva" inputmode="decimal" value="${c.iva??''}" ${rev?'disabled':''}></div><div><label class="f">Total</label><input id="f-total" inputmode="decimal" value="${c.total??''}" ${rev?'disabled':''}></div></div>
+      <div id="f-albs" style="${c.tipo==='factura'?'':'display:none'}"><label class="f">Albaranes que agrupa (nº separados por comas)</label><input id="f-alb" value="${esc((c.albaranesRef||[]).join(', '))}" ${rev?'disabled':''}></div>
+      <label class="f">Obra</label>
+      <div id="obra-pick" ${rev?'style="pointer-events:none;opacity:.7"':''}></div>
+      <label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text2);margin:8px 0;cursor:pointer"><input type="checkbox" id="f-varias" style="width:18px;height:18px" onchange="onVarias()" ${(c.reparto||[]).length>1||c.varias&&!c.obraId?'checked':''} ${rev?'disabled':''}> Repartir entre varias obras</label>
+      <div id="reparto" style="display:none"></div>
+      <div id="gasto" style="display:none"><label class="f">Gasto general (sin obra) · categoría</label><select id="f-cat" ${rev?'disabled':''}><option value="">— elige —</option>${CATS.map(k=>`<option value="${k}" ${c.categoria===k?'selected':''}>${k}</option>`).join('')}</select></div>
+      <label class="f">Líneas (${(c.lineas||[]).length})</label>
+      <div style="max-height:260px;overflow:auto"><table id="lineas"><thead><tr><th>Descripción</th><th style="width:60px">Cant.</th><th style="width:50px">Ud</th><th style="width:80px">Importe</th></tr></thead><tbody>${(c.lineas||[]).map(l=>`<tr><td><input value="${esc(l.descripcion)}" ${rev?'disabled':''}></td><td><input value="${l.cantidad??''}" ${rev?'disabled':''}></td><td><input value="${esc(l.unidad||'')}" ${rev?'disabled':''}></td><td><input value="${l.importe??''}" ${rev?'disabled':''}></td></tr>`).join('')}</tbody></table></div>
+      ${rev?'':'<button class="btn g" style="margin-top:6px;padding:6px 10px;font-size:12px" onclick="addLinea()">＋ línea</button>'}
+      <div class="acciones">${rev
+        ? `<span style="font-size:13px;color:var(--text2);align-self:center">${c.estado==='revisada'?'✅ Revisada por '+esc(c.revisadaPor||'')+' el '+fh(c.revisadaAt):'🚫 Descartada'+(c.descarteMotivo?': '+esc(c.descarteMotivo):'')}</span><button class="btn g" onclick="accion('reabrir')">↩︎ Reabrir</button>`
+        : `<button class="btn ok" onclick="confirmar()">✅ Confirmar${['factura','ticket'].includes(c.tipo)?' y enviar a StelOrder':''}</button><button class="btn g" onclick="guardar()">💾 Guardar</button><button class="btn g" onclick="accion('releer')">🤖 Volver a leer</button><button class="btn rd" onclick="descartar()">🚫 Descartar</button>`}</div>
+    </div></div>`;
+  for(let i=0;i<(c.nFotos||1);i++)cargarFoto(c._id,i,v.querySelector('#fotos img[data-i="'+i+'"]'));
+  pick=CPObra.crear(document.getElementById('obra-pick'),{obras,value:c.obraId||'',vacio:'— Sin obra (gasto general) —',placeholder:'Elegir obra…',titulo:'¿De qué obra es la compra?',onChange:()=>pintarGasto()});
+  document.getElementById('f-tipo').addEventListener('change',e=>{document.getElementById('f-albs').style.display=e.target.value==='factura'?'':'none';const b=document.querySelector('.acciones .btn.ok');if(b)b.textContent='✅ Confirmar'+(['factura','ticket'].includes(e.target.value)?' y enviar a StelOrder':'');});
+  onVarias(true);window.scrollTo(0,0);
+}
+function volver(){cur=null;document.getElementById('vista-det').style.display='none';document.getElementById('vista-lista').style.display='';cargar();}
+function zoom(img){const z=document.createElement('div');z.className='zoom';z.innerHTML=`<img src="${img.src}" style="width:${Math.max(window.innerWidth,900)}px">`;z.onclick=()=>z.remove();document.body.appendChild(z);}
+function pintarGasto(){const v=document.getElementById('f-varias').checked;document.getElementById('gasto').style.display=(!v&&pick&&!pick.value)?'':'none';}
+function onVarias(inicial){const v=document.getElementById('f-varias').checked;document.getElementById('obra-pick').style.display=v?'none':'';document.getElementById('reparto').style.display=v?'':'none';
+  if(v&&inicial)renderReparto((cur.reparto||[]).length?cur.reparto:[{obraId:cur.obraId,importe:null},{obraId:'',importe:null}]);else if(v&&!document.querySelector('#reparto .rep'))renderReparto([{obraId:pick.value,importe:null},{obraId:'',importe:null}]);pintarGasto();}
+let _repPicks=[];
+function renderReparto(filas){const el=document.getElementById('reparto');el.innerHTML='<div style="font-size:12px;color:var(--text3);margin-bottom:6px">Qué parte del importe va a cada obra (sin IVA). Si no sabes el detalle, pon los totales aproximados.</div>'+filas.map((f,i)=>`<div class="rep"><div id="rp-${i}"></div><input id="ri-${i}" inputmode="decimal" placeholder="€" value="${f.importe??''}"><button class="btn g" style="padding:6px" onclick="quitarRep(${i})">×</button></div>`).join('')+'<button class="btn g" style="padding:6px 10px;font-size:12px" onclick="addRep()">＋ otra obra</button>';
+  _repPicks=filas.map((f,i)=>CPObra.crear(document.getElementById('rp-'+i),{obras,value:f.obraId||'',vacio:null,placeholder:'Obra…'}));}
+function leerReparto(){return _repPicks.map((p,i)=>({obraId:p.value,importe:document.getElementById('ri-'+i).value})).filter(r=>r.obraId);}
+function addRep(){const f=leerReparto();f.push({obraId:'',importe:null});renderReparto(f);}
+function quitarRep(i){const f=_repPicks.map((p,j)=>({obraId:p.value,importe:document.getElementById('ri-'+j).value}));f.splice(i,1);renderReparto(f.length?f:[{obraId:'',importe:null}]);}
+function leerForm(){
+  const g=id=>document.getElementById(id).value;
+  const lineas=[...document.querySelectorAll('#lineas tbody tr')].map(tr=>{const c=tr.querySelectorAll('input');return {descripcion:c[0].value,cantidad:c[1].value,unidad:c[2].value,importe:c[3].value};}).filter(l=>l.descripcion.trim());
+  const varias=document.getElementById('f-varias').checked;
+  const d={tipo:g('f-tipo'),fecha:g('f-fecha'),proveedor:g('f-prov'),numero:g('f-num'),base:g('f-base'),iva:g('f-iva'),total:g('f-total'),albaranesRef:g('f-alb'),lineas,categoria:(!varias&&!pick.value)?g('f-cat'):null};
+  if(varias){d.reparto=leerReparto();d.obraId=null;}else{d.obraId=pick.value||null;d.reparto=[];}
+  return d;}
+async function guardar(silencio){try{cur=await api('PUT','/api/compras/'+cur._id,leerForm());if(!silencio)toast('Guardado','ok');return true;}catch(e){toast(e.message,'error');return false;}}
+async function confirmar(){if(!(await guardar(true)))return;
+  const d=leerForm();if(!d.proveedor.trim()){toast('Pon el proveedor','error');return;}
+  if(!d.obraId&&!(d.reparto||[]).length&&!d.categoria){toast('Indica la obra, el reparto, o la categoría de gasto general','error');return;}
+  const txt=['factura','ticket'].includes(d.tipo)?'Se da por revisada y se envía a StelOrder (contabilidad). ¿Seguimos?':'Se da por revisada. Los albaranes y devoluciones se quedan solo en el dashboard (no van a StelOrder). ¿Seguimos?';
+  if(!confirm(txt))return;
+  try{cur=await api('POST','/api/compras/'+cur._id+'/revisar',{});toast('✅ Revisada','ok');abrir(cur._id);}catch(e){toast(e.message,'error');}}
+async function descartar(){const m=prompt('Motivo (lo verá quien la subió): p. ej. «foto repetida», «no es una compra»');if(m===null)return;
+  try{await api('POST','/api/compras/'+cur._id+'/descartar',{motivo:m});toast('Descartada','ok');volver();}catch(e){toast(e.message,'error');}}
+async function accion(a){try{const b=[...document.querySelectorAll('.acciones .btn')];b.forEach(x=>x.disabled=true);cur=await api('POST','/api/compras/'+cur._id+'/'+a,{});toast(a==='releer'?'🤖 Releída':'Reabierta','ok');abrir(cur._id);}catch(e){toast(e.message,'error');abrir(cur._id);}}
+function addLinea(){const tb=document.querySelector('#lineas tbody');const tr=document.createElement('tr');tr.innerHTML='<td><input></td><td><input></td><td><input></td><td><input></td>';tb.appendChild(tr);tr.querySelector('input').focus();}
+
+// Avisos push en este dispositivo (llegan las compras nuevas al momento)
+async function avisoPush(){const el=document.getElementById('push-aviso');if(!el||!window.CPPush)return;const st=await CPPush.estado();
+  if(st==='activo'){el.innerHTML='';CPPush.resync(tok);return;}if(st!=='inactivo'){el.innerHTML='';return;}
+  el.innerHTML='<div class="aviso" style="border-color:var(--blue);background:rgba(77,156,248,.08)">🔔 Recibe aquí cada compra nueva al momento. <button class="btn" style="padding:6px 10px;font-size:12px;margin-left:6px" onclick="CPPush.activar(tok).then(()=>avisoPush()).catch(e=>toast(e.message,\'error\'))">Activar avisos</button></div>';}
+
+(async function(){if(!tok){document.getElementById('lista').innerHTML='<div class="empty">Abre esta página desde el dashboard (necesita sesión de oficina).</div>';return;}
+  await cargarObras();cargar();avisoPush();
+  const id=new URLSearchParams(location.search).get('id');if(id){history.replaceState(null,'',location.pathname);abrir(id);}})();
+</script>
+</body>
+</html>

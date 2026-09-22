@@ -1397,6 +1397,74 @@ async function _quienPush(req) {
   try { const u = jwt.verify(token, JWT_SECRET); return { kind: 'admin', userId: u.uid || u.user || 'admin', name: u.name || 'Admin', role: u.role || 'owner' }; } catch (e) {}
   return null;
 }
+// ── COMPRAS POR FOTO (Paso 4) ─────────────────────────────────────
+// Sube cualquiera (trabajador u oficina); revisa solo Dueño/Oficina. El trabajador nunca ve importes.
+const uploadCompra = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024, files: 8 } });
+const _revisaCompras = q => !!q && (q.kind === 'admin' ? users.canSeeMoney(q.role) : users.canSeeMoney(users.normalizeRole(q.role)));
+app.post('/api/compras', uploadCompra.any(), async (req, res) => {
+  try {
+    const q = await _quienPush(req); if (!q) return res.status(401).json({ error: 'No autorizado' });
+    const fotos = (req.files || []).filter(f => /^image\//.test(f.mimetype || '') || /pdf/i.test(f.mimetype || '')).map(f => ({ data: f.buffer, mimetype: f.mimetype }));
+    const b = req.body || {};
+    res.json(await require('./compras').crear({ fotos, obraId: b.obraId || null, varias: b.varias === '1' || b.varias === 'true', nota: b.nota, subidaPor: { kind: q.kind, userId: String(q.userId), name: q.name } }));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/compras/mias', async (req, res) => {
+  try { const q = await _quienPush(req); if (!q) return res.status(401).json({ error: 'No autorizado' }); res.json(await require('./compras').mias({ kind: q.kind, userId: String(q.userId) })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/compras/pendientes', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json({ n: await require('./compras').contarPendientes() }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/compras', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo Dueño y Oficina revisan compras' });
+    res.json(await require('./compras').lista({ estado: req.query.estado, desde: req.query.desde, hasta: req.query.hasta, limit: req.query.limit })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/compras/:id', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').getCompra(req.params.id)); }
+  catch (err) { res.status(404).json({ error: err.message }); }
+});
+// La foto: oficina, o el propio trabajador que la subió.
+app.get('/api/compras/:id/foto/:idx', async (req, res) => {
+  try {
+    const q = await _quienPush(req); if (!q) return res.status(401).json({ error: 'No autorizado' });
+    const compras = require('./compras');
+    if (!_revisaCompras(q)) { const c = await compras.getCompra(req.params.id); if (!c.subidaPor || c.subidaPor.kind !== q.kind || String(c.subidaPor.userId) !== String(q.userId)) return res.status(403).json({ error: 'Sin acceso' }); }
+    const f = await compras.getFoto(req.params.id, req.params.idx); if (!f) return res.status(404).end();
+    res.set('Content-Type', f.mimetype || 'image/jpeg'); res.set('Cache-Control', 'private, max-age=3600');
+    res.send(Buffer.from(f.data.buffer || f.data));
+  } catch (err) { res.status(404).json({ error: err.message }); }
+});
+app.put('/api/compras/:id', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').editar(req.params.id, req.body || {}, q.name)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/compras/:id/releer', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').releer(req.params.id)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/compras/:id/revisar', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' });
+    const r = await require('./compras').revisar(req.params.id, q.name, { enviarStel: (req.body || {}).enviarStel !== false });
+    activity.registrar({ actor: q.name, actorRole: q.role, kind: 'modificado', entidad: 'Compra', ref: [r.proveedor, r.numero].filter(Boolean).join(' '), detalle: `Revisada (${r.tipo}) → ${r.obraRef || 'reparto/gasto general'}` });
+    res.json(r); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/compras/:id/descartar', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').descartar(req.params.id, q.name, (req.body || {}).motivo)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/compras/:id/reabrir', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').reabrir(req.params.id)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/compras-prueba/resumen', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').resumenPendientes({ dryRun: true })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/push/key', async (req, res) => {
   try { res.json({ publicKey: await require('./push').publicKey() }); }
   catch (err) { res.status(500).json({ error: err.message }); }
@@ -3284,6 +3352,8 @@ app.get('/informe-presencia', (req, res) => res.sendFile(path.join(__dirname, '.
 app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
 app.get('/fichar', (req, res) => res.sendFile(path.join(__dirname, '../public/fichar.html')));
 app.get('/fichajes', (req, res) => res.sendFile(path.join(__dirname, '../public/fichajes.html')));
+app.get('/compra', (req, res) => res.sendFile(path.join(__dirname, '../public/compra.html')));
+app.get('/compras', (req, res) => res.sendFile(path.join(__dirname, '../public/compras.html')));
 app.get('/gps', (req, res) => res.sendFile(path.join(__dirname, '../public/gps.html')));
 app.get('/subir-factura', (req, res) => res.sendFile(path.join(__dirname, '../public/subir-factura.html')));
 app.get('/asignar-facturas', (req, res) => res.sendFile(path.join(__dirname, '../public/asignar-facturas.html')));

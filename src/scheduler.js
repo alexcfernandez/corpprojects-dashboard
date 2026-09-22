@@ -346,6 +346,8 @@ function startScheduler() {
   cron.schedule('15 9 * * 1-5', () => fichajeAvisos.resumenOficina()
     .then(r => console.log('[Fichaje] resumen oficina →', JSON.stringify({ enviado: r.enviado, motivo: r.motivo })))
     .catch(e => console.error('[Fichaje] resumen oficina:', e.message)), { timezone: 'Europe/Madrid' });
+  // Compras por foto: si a las 18:00 quedan compras sin revisar, WhatsApp + push a oficina.
+  cron.schedule('0 18 * * 1-5', () => require('./compras').resumenPendientes().catch(e => console.warn('[Compras] resumen:', e.message)), { timezone: 'Europe/Madrid' });
 
   // Resumen diario INTERNO (al admin) 08:30 lun–vie
   cron.schedule('30 8 * * 1-5', runDailySummary, { timezone: 'Europe/Madrid' });
