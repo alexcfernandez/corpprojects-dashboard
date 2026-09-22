@@ -416,6 +416,24 @@ async function procesarEmail(gmail, messageId) {
 
     console.log(`[Email] Guardado: ${clasificacion.categoria} — ${clasificacion.resumen}`);
 
+    // Compras por foto: una FACTURA DE PROVEEDOR con PDF/imagen entra en la cola de compras
+    // (la lee la IA; oficina le pone la obra). NO se reenvía a StelOrder desde ahí por defecto:
+    // ese correo ya sigue su camino de siempre. Desactivable con EMAIL_COMPRAS=0.
+    if (clasificacion.categoria === 'FACTURA_PROVEEDOR' && process.env.EMAIL_COMPRAS !== '0') {
+      try {
+        const docs = adjuntos.filter(a => /pdf$/i.test(a.mimeType || '') || /^image\//i.test(a.mimeType || '') || /\.(pdf|jpe?g|png)$/i.test(a.filename || '')).slice(0, 4);
+        if (docs.length) {
+          const fotos = [];
+          for (const a of docs) { const buf = await getAttachment(messageId, a.attachmentId); if (buf && buf.length && buf.length < 12 * 1024 * 1024) fotos.push({ data: buf, mimetype: /pdf/i.test(a.mimeType || '') || /\.pdf$/i.test(a.filename || '') ? 'application/pdf' : (a.mimeType || 'image/jpeg') }); }
+          if (fotos.length) {
+            const r = await require('./compras').crear({ fotos, destino: 'obra', origen: 'email', gmailId: messageId, email: { de, asunto, fecha }, nota: `Correo: ${asunto}`.slice(0, 300), subidaPor: { kind: 'email', userId: 'email', name: (remitente && remitente.nombre) || de.replace(/<.*>/, '').trim() || 'correo' } });
+            await db.collection('emails').updateOne({ gmailId: messageId }, { $set: { compraId: r.id } });
+            console.log(`[Email] → compra ${r.id} en la cola (${r.tipoTxt}${r.proveedor ? ' ' + r.proveedor : ''})`);
+          }
+        }
+      } catch (e) { console.warn('[Email] compra desde correo:', e.message); }
+    }
+
     // Fase 6a: aviso inmediato al owner por WhatsApp SOLO para gestoría. Una vez por
     // correo (procesarEmail deduplica por gmailId, así que esto corre una sola vez).
     if (clasificacion.categoria === 'GESTORIA') {

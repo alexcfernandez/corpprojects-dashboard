@@ -92,7 +92,7 @@ textarea{width:100%;padding:12px;border-radius:12px;border:1px solid var(--borde
     <span class="lbl">¿Para qué es?</span>
     <div class="dest" id="dest">
       <button class="dbtn on" data-d="obra" onclick="setDest('obra')">🏗️ Una obra</button><button class="dbtn" data-d="varias" onclick="setDest('varias')">🏗️🏗️ Varias obras</button>
-      <button class="dbtn" data-d="herramientas" onclick="setDest('herramientas')">🔧 Herramientas</button><button class="dbtn" data-d="ropa" onclick="setDest('ropa')">👕 Ropa de trabajo</button><button class="dbtn" data-d="general" onclick="setDest('general')">🏢 Otro gasto</button>
+      <button class="dbtn" data-d="herramientas" onclick="setDest('herramientas')">🔧 Herramientas</button><button class="dbtn" data-d="ropa" onclick="setDest('ropa')">👕 Ropa de trabajo</button><button class="dbtn" data-d="almacen" onclick="setDest('almacen')">📦 Para el almacén</button><button class="dbtn" data-d="general" onclick="setDest('general')">🏢 Otro gasto</button>
     </div>
     <div id="dest-obra"><div id="obra-pick"></div></div>
     <div id="dest-quien" style="display:none"><span class="lbl" style="margin-top:10px" id="quien-lbl">¿Para quién?</span><select id="quien" class="sel"></select></div>
@@ -102,6 +102,7 @@ textarea{width:100%;padding:12px;border-radius:12px;border:1px solid var(--borde
   </div>
   <button class="btn big" id="enviar-btn" onclick="enviar()">Enviar a oficina</button>
   <button class="link-btn sec-btn" onclick="abrirMias()">📋 Mis compras enviadas</button>
+  <button class="sec-btn" onclick="location.href='/almacen'">📦 Almacén · sacar material para una obra</button>
 </div></div>
 
 <!-- MIS COMPRAS -->
@@ -142,7 +143,7 @@ async function cargarObras(){
   pick=CPObra.crear(document.getElementById('obra-pick'),{obras:_obras,value:_obras.some(o=>o.id===last&&o.grupo==='abierta')?last:'',vacio:'— No lo sé / que lo mire oficina —',placeholder:'Elegir obra…',titulo:'¿Para qué obra es la compra?'});
 }
 // Destino de la compra. Herramientas y ropa se apuntan a un trabajador (por defecto, el que sube).
-const NOTA_DEST={varias:'Oficina repartirá el importe entre las obras.',herramientas:'Oficina la revisa y las herramientas quedan a nombre de quien las recibe (en Llaves y herramientas).',ropa:'Cada prenda queda en Llaves y herramientas (pestaña Ropa). Si es para tener en la oficina e ir repartiendo, deja «Nadie todavía».',general:'Gasolina, gestoría, seguros… oficina le pone la categoría.'};
+const NOTA_DEST={varias:'Oficina repartirá el importe entre las obras.',herramientas:'Oficina la revisa y las herramientas quedan a nombre de quien las recibe (en Llaves y herramientas).',ropa:'Cada prenda queda en Llaves y herramientas (pestaña Ropa). Si es para tener en la oficina e ir repartiendo, deja «Nadie todavía».',general:'Gasolina, gestoría, seguros… oficina le pone la categoría.',almacen:'Material para tener (big bags, sacos, tornillería…). Entra en el almacén y luego se va sacando por obras.'};
 function setDest(d){dest=d;document.querySelectorAll('.dbtn').forEach(b=>b.classList.toggle('on',b.dataset.d===d));
   document.getElementById('dest-obra').style.display=d==='obra'?'':'none';
   const q=document.getElementById('dest-quien');q.style.display=(d==='herramientas'||d==='ropa')?'':'none';

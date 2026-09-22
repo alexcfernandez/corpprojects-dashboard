@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Almacén — Corp Projects</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/tool-theme.css">
+<meta name="theme-color" content="#4d9cf8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Almacén">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.15);
+  --text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;--green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b;--r:14px;--rs:10px;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:16px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:14px 20px;display:flex;align-items:center;gap:10px}
+.logo{width:34px;height:34px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#fff}
+.header-text{font-weight:700;font-size:16px}.header-sub{font-size:12px;color:var(--text2)}
+.header-logout{margin-left:auto;background:none;border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;font-family:inherit}
+.page{display:none}.page.active{display:block}
+.container{max-width:640px;margin:0 auto;padding:18px 16px 60px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:12px}
+.login-title{font-size:20px;font-weight:700;margin-bottom:4px;text-align:center}.login-sub{font-size:13px;color:var(--text2);text-align:center;margin-bottom:16px}
+.worker-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.worker-btn{background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:13px 8px;color:var(--text);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+.worker-btn.selected{border-color:var(--blue);background:rgba(77,156,248,.15)}
+.pin-input{width:100%;padding:14px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:24px;text-align:center;letter-spacing:10px;font-family:inherit}
+.btn{display:block;width:100%;background:var(--blue);color:#fff;border:none;border-radius:var(--r);padding:15px;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit}
+.btn:disabled{opacity:.55}.btn.ok{background:var(--green)}.btn.sec{background:var(--bg3);color:var(--text);border:1px solid var(--border2)}.btn.sm{display:inline-block;width:auto;padding:8px 12px;font-size:13px;border-radius:10px}
+.tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.tab{background:var(--bg2);border:1px solid var(--border2);border-radius:20px;padding:8px 14px;font-size:13.5px;font-weight:600;color:var(--text2);cursor:pointer;font-family:inherit}
+.tab.on{color:var(--blue);border-color:var(--blue);background:rgba(77,156,248,.12)}
+.art{display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid var(--border);cursor:pointer}.art:first-child{border-top:none}
+.art .n{font-weight:600;font-size:15.5px}.art .s{font-size:12.5px;color:var(--text3);margin-top:2px}.art .q{margin-left:auto;text-align:right;white-space:nowrap}.art .q b{font-size:20px}.art .q span{font-size:11px;color:var(--text3);display:block}
+.tag{display:inline-block;font-size:10.5px;border-radius:20px;padding:1px 7px;margin-left:6px;font-weight:600;vertical-align:1px;border:1px solid var(--amber);color:var(--amber)}
+.lbl{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);font-weight:600;margin:12px 0 6px}
+input,select,textarea{width:100%;padding:13px 12px;border-radius:12px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:16px;font-family:inherit}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:800;display:none;align-items:flex-end;justify-content:center}.overlay.show{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:18px 18px 0 0;padding:20px 18px 28px;width:100%;max-width:560px;max-height:92vh;overflow:auto}
+@media(min-width:700px){.overlay{align-items:center}.modal{border-radius:18px}}
+.rec{border-top:1px solid var(--border);padding:12px 0}.rec:first-child{border-top:none}
+.rec .t{font-weight:600}.rec .s{font-size:12.5px;color:var(--text3);margin-top:3px;line-height:1.5}
+.pill{display:inline-block;font-size:11px;border-radius:20px;padding:2px 8px;font-weight:600}
+.pill.colocada{background:rgba(245,158,11,.15);color:var(--amber)}.pill.pedida{background:rgba(77,156,248,.15);color:var(--blue)}
+.empty{color:var(--text3);text-align:center;padding:24px 10px;line-height:1.5}
+.spinner{display:inline-block;width:18px;height:18px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle}
+@keyframes sp{to{transform:rotate(360deg)}}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);max-width:92%;min-width:220px;padding:13px 18px;border-radius:12px;font-size:14px;font-weight:600;text-align:center;opacity:0;transition:opacity .25s;z-index:999;background:var(--bg3);border:1px solid var(--border2)}
+#toast.show{opacity:1}#toast.ok{border-color:var(--green)}#toast.error{border-color:var(--red)}#toast.warn{border-color:var(--amber)}
+</style>
+</head>
+<body>
+<script>try{if(localStorage.getItem("cp_theme")==="light")document.body.classList.add("light");}catch(e){}</script>
+<div class="header"><div class="logo">CP</div><div><div class="header-text">Almacén</div><div class="header-sub" id="header-sub"></div></div><button class="header-logout" id="logout-btn" onclick="logout()" style="display:none">Salir</button></div>
+<div id="toast"></div>
+<div id="cargando" style="text-align:center;padding:60px 0;color:var(--text3)"><span class="spinner"></span></div>
+
+<div class="page" id="page-login"><div class="container"><div class="card">
+  <div class="login-title">📦 Almacén</div><div class="login-sub">Elige tu nombre e introduce el PIN</div>
+  <div class="worker-grid" id="worker-selector"></div>
+  <input type="tel" inputmode="numeric" id="pin-input" class="pin-input" placeholder="••••" maxlength="6" onkeydown="if(event.key==='Enter')doLogin()">
+  <div style="height:16px"></div><button class="btn" id="login-btn" onclick="doLogin()">Entrar →</button>
+</div></div></div>
+
+<div class="page" id="page-main"><div class="container">
+  <div class="tabs"><button class="tab on" data-t="stock" onclick="verTab(this)">📦 Stock</button><button class="tab" data-t="recogidas" onclick="verTab(this)">♻️ Recogidas <span id="n-rec"></span></button><button class="tab" data-t="salidas" onclick="verTab(this)">📋 Salidas</button></div>
+  <div id="t-stock">
+    <div style="font-size:13px;color:var(--text2);margin-bottom:10px;line-height:1.5">Toca un artículo para <b>sacarlo para una obra</b>. Lo que se saca carga su coste a esa obra.</div>
+    <div class="card" id="stock-lista"><div class="empty"><span class="spinner"></span></div></div>
+    <button class="btn sec" id="btn-entrada" onclick="abrirEntrada()" style="display:none">＋ Entrada a mano (sin factura)</button>
+  </div>
+  <div id="t-recogidas" style="display:none">
+    <div style="font-size:13px;color:var(--text2);margin-bottom:10px;line-height:1.5">Sacas y contenedores colocados en obra que hay que ir a recoger. Cuando llaméis al camión, marca <b>Recogida pedida</b>; cuando se lo lleven, <b>Recogido</b>.</div>
+    <div id="rec-lista"><div class="empty"><span class="spinner"></span></div></div>
+  </div>
+  <div id="t-salidas" style="display:none"><div class="card" id="sal-lista"><div class="empty"><span class="spinner"></span></div></div></div>
+</div></div>
+
+<!-- SACAR -->
+<div class="overlay" id="ov-sacar"><div class="modal">
+  <div style="font-weight:700;font-size:18px" id="s-titulo">Sacar</div><div style="font-size:13px;color:var(--text3)" id="s-sub"></div>
+  <label class="lbl">¿Cuántos?</label><input type="number" inputmode="decimal" id="s-cant" min="1" step="1" value="1">
+  <label class="lbl">¿Para qué obra?</label><div id="s-obra"></div>
+  <label class="lbl">Nota (opcional)</label><input type="text" id="s-nota" maxlength="200" placeholder="Ej.: para el derribo del baño">
+  <div style="display:flex;gap:8px;margin-top:16px"><button class="btn sec" onclick="cerrar('ov-sacar')">Cancelar</button><button class="btn ok" id="s-btn" onclick="confirmarSacar()">Sacar</button></div>
+</div></div>
+<!-- ENTRADA / EDITAR (oficina) -->
+<div class="overlay" id="ov-entrada"><div class="modal">
+  <div style="font-weight:700;font-size:18px" id="e-titulo">Entrada a mano</div>
+  <label class="lbl">Artículo</label><input type="text" id="e-nombre" placeholder="Ej. Big bag 1 m³">
+  <div class="g2"><div><label class="lbl">Cantidad</label><input type="number" inputmode="decimal" id="e-cant" value="1"></div><div><label class="lbl">Unidad</label><input type="text" id="e-ud" value="ud"></div></div>
+  <label class="lbl">Precio por unidad (€, sin IVA)</label><input type="number" inputmode="decimal" id="e-precio" step="0.01" placeholder="0">
+  <label style="display:flex;gap:10px;align-items:center;font-size:14px;color:var(--text2);margin-top:12px;cursor:pointer"><input type="checkbox" id="e-rec" style="width:20px;height:20px"> ♻️ Hay que recogerlo después (big bag, contenedor)</label>
+  <div style="display:flex;gap:8px;margin-top:16px"><button class="btn sec" onclick="cerrar('ov-entrada')">Cancelar</button><button class="btn" onclick="guardarEntrada()">Guardar</button></div>
+</div></div>
+
+<script src="/obra-picker.js"></script>
+<script>
+if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
+let workerToken=null, esAdmin=false, oficina=false, todosWorkers=[], obras=[], stock=[], sel=null, pick=null, editId=null, tab='stock';
+function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('page-'+id).classList.add('active');}
+let _tt=null;function toast(t,ty){const e=document.getElementById('toast');e.textContent=t;e.className='show '+(ty||'ok');clearTimeout(_tt);_tt=setTimeout(()=>e.className='',3000);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function eur(v){return v==null?'':Number(v).toLocaleString('es-ES',{style:'currency',currency:'EUR'});}
+function abrir(id){document.getElementById(id).classList.add('show');}function cerrar(id){document.getElementById(id).classList.remove('show');}
+async function api(m,u,b){const o={method:m,headers:{'Authorization':'Bearer '+workerToken}};if(b){o.headers['Content-Type']='application/json';o.body=JSON.stringify(b);}const r=await fetch(u,o);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Error');return d;}
+
+// ── LOGIN ──
+async function loadWorkers(){try{const r=await fetch('/api/partes/workers');todosWorkers=await r.json();document.getElementById('worker-selector').innerHTML=todosWorkers.map(w=>`<button class="worker-btn" data-id="${w.id}" onclick="selW(this)">${esc(w.name)}</button>`).join('');}catch(e){}}
+function selW(b){document.querySelectorAll('.worker-btn').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');document.getElementById('pin-input').focus();}
+async function doLogin(){const s=document.querySelector('.worker-btn.selected');if(!s){toast('Selecciona tu nombre','warn');return;}const pin=document.getElementById('pin-input').value;if(pin.length<4){toast('Introduce el PIN','warn');return;}
+  const b=document.getElementById('login-btn');b.disabled=true;b.innerHTML='<span class="spinner"></span>';
+  try{const r=await fetch('/api/partes/worker-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workerId:s.dataset.id,pin})});const d=await r.json();if(!r.ok)throw new Error(d.error||'PIN incorrecto');workerToken=d.token;localStorage.setItem('cpWT',d.token);localStorage.setItem('cpWN',d.workerName||'');await entrar(d.workerName);}
+  catch(e){toast(e.message,'error');document.getElementById('pin-input').value='';}finally{b.disabled=false;b.innerHTML='Entrar →';}}
+async function tryRestore(){for(const [t,adm] of [[localStorage.getItem('cp_token'),true],[localStorage.getItem('cpWT'),false]]){if(!t)continue;try{const r=await fetch('/api/almacen',{headers:{'Authorization':'Bearer '+t}});if(!r.ok)continue;workerToken=t;esAdmin=adm;await entrar(adm?'Oficina':(localStorage.getItem('cpWN')||''),await r.json());return true;}catch(e){}}return false;}
+async function entrar(nombre,lista){document.getElementById('cargando').style.display='none';document.getElementById('header-sub').textContent=nombre||'';const lb=document.getElementById('logout-btn');lb.textContent=esAdmin?'← Dashboard':'Salir';lb.style.display='block';
+  try{obras=await api('GET','/api/campo/obras');}catch(e){obras=[];}
+  showPage('main');await cargarStock(lista);}
+function logout(){if(esAdmin){location.href='/';return;}workerToken=null;localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');document.getElementById('logout-btn').style.display='none';showPage('login');}
+
+// ── STOCK ──
+function verTab(b){document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));b.classList.add('on');tab=b.dataset.t;['stock','recogidas','salidas'].forEach(t=>document.getElementById('t-'+t).style.display=t===tab?'':'none');if(tab==='stock')cargarStock();if(tab==='recogidas')cargarRecogidas();if(tab==='salidas')cargarSalidas();}
+async function cargarStock(lista){try{stock=lista||await api('GET','/api/almacen');}catch(e){toast(e.message,'error');return;}
+  oficina=stock.some(a=>'precioUd' in a)||esAdmin;document.getElementById('btn-entrada').style.display=oficina?'':'none';
+  const el=document.getElementById('stock-lista');
+  el.innerHTML=stock.length?stock.map(a=>`<div class="art" onclick="sacar('${a.id}')"><div><div class="n">${esc(a.nombre)}${a.recogida?'<span class="tag">♻️ con recogida</span>':''}</div><div class="s">${oficina&&a.precioUd!=null?eur(a.precioUd)+'/'+esc(a.unidad)+' · '+eur(a.valor)+' en stock':'toca para sacar'}${oficina?` · <a href="#" onclick="event.stopPropagation();editarArt('${a.id}');return false" style="color:var(--blue)">editar</a>`:''}</div></div><div class="q"><b>${a.cantidad}</b><span>${esc(a.unidad)}</span></div></div>`).join(''):'<div class="empty">El almacén está vacío. Las compras marcadas «📦 Para el almacén» entran aquí al confirmarlas en oficina.</div>';
+  try{const r=await api('GET','/api/almacen/recogidas');const n=r.reduce((a,o)=>a+o.total,0);document.getElementById('n-rec').textContent=n?'('+n+')':'';}catch(e){}}
+function sacar(id){sel=stock.find(a=>a.id===id);if(!sel)return;document.getElementById('s-titulo').textContent='Sacar '+sel.nombre;document.getElementById('s-sub').textContent='Quedan '+sel.cantidad+' '+sel.unidad+(sel.recogida?' · ♻️ luego habrá que recogerlo':'');
+  const c=document.getElementById('s-cant');c.value='1';c.max=sel.cantidad;document.getElementById('s-nota').value='';
+  const last=localStorage.getItem('cpObra')||'';pick=CPObra.crear(document.getElementById('s-obra'),{obras,value:obras.some(o=>o.id===last&&o.grupo==='abierta')?last:'',vacio:null,placeholder:'Elegir obra…',titulo:'¿Para qué obra es?'});abrir('ov-sacar');}
+async function confirmarSacar(){const cant=Number(document.getElementById('s-cant').value);if(!cant||cant<=0){toast('¿Cuántos sacas?','warn');return;}if(!pick.value){toast('Elige la obra','warn');pick.abrir();return;}
+  const b=document.getElementById('s-btn');b.disabled=true;
+  try{const r=await api('POST','/api/almacen/salida',{articuloId:sel.id,cantidad:cant,obraId:pick.value,nota:document.getElementById('s-nota').value.trim()});localStorage.setItem('cpObra',pick.value);cerrar('ov-sacar');toast(`✅ ${r.cantidad} × ${r.nombre} → ${r.obraRef}${r.recogida?' · apuntado para recoger':''}`,'ok');cargarStock();}
+  catch(e){toast(e.message,'error');}finally{b.disabled=false;}}
+
+// ── ENTRADA / EDICIÓN (oficina) ──
+function abrirEntrada(){editId=null;document.getElementById('e-titulo').textContent='Entrada a mano';['e-nombre','e-precio'].forEach(i=>document.getElementById(i).value='');document.getElementById('e-cant').value='1';document.getElementById('e-ud').value='ud';document.getElementById('e-rec').checked=false;abrir('ov-entrada');}
+function editarArt(id){const a=stock.find(x=>x.id===id);if(!a)return;editId=id;document.getElementById('e-titulo').textContent='Editar · ajuste de inventario';document.getElementById('e-nombre').value=a.nombre;document.getElementById('e-cant').value=a.cantidad;document.getElementById('e-ud').value=a.unidad;document.getElementById('e-precio').value=a.precioUd??'';document.getElementById('e-rec').checked=!!a.recogida;abrir('ov-entrada');}
+async function guardarEntrada(){const b={nombre:document.getElementById('e-nombre').value.trim(),cantidad:document.getElementById('e-cant').value,unidad:document.getElementById('e-ud').value.trim()||'ud',precioUd:document.getElementById('e-precio').value,recogida:document.getElementById('e-rec').checked};
+  try{if(editId)await api('PUT','/api/almacen/'+editId,b);else await api('POST','/api/almacen',b);cerrar('ov-entrada');toast('Guardado','ok');cargarStock();}catch(e){toast(e.message,'error');}}
+
+// ── RECOGIDAS ──
+async function cargarRecogidas(){const el=document.getElementById('rec-lista');try{const r=await api('GET','/api/almacen/recogidas');
+  el.innerHTML=r.length?r.map(o=>`<div class="card"><div style="font-weight:700;font-size:16px">🏗️ ${esc(o.obraRef||'Sin obra')} <span style="color:var(--text3);font-weight:400;font-size:13px">· ${o.total} por recoger${o.pedidas?' · '+o.pedidas+' ya pedidas':''}</span></div>
+    ${o.items.map(i=>`<div class="rec"><div class="t">${i.pendientes} × ${esc(i.nombre)} <span class="pill ${i.estado}">${i.estado==='pedida'?'recogida pedida':'colocada'}</span></div><div class="s">Colocada hace ${i.dias} día${i.dias===1?'':'s'}${i.pedidaAt?' · pedida el '+new Date(i.pedidaAt).toLocaleDateString('es-ES'):''}${i.pedidaNota?' · «'+esc(i.pedidaNota)+'»':''}</div>
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">${i.estado!=='pedida'?`<button class="btn sec sm" onclick="pedir('${i.id}')">📞 Recogida pedida</button>`:''}<button class="btn ok sm" onclick="recogido('${i.id}',${i.pendientes})">✅ Recogido</button></div></div>`).join('')}</div>`).join(''):'<div class="empty">No hay nada pendiente de recoger. 🎉</div>';
+  }catch(e){el.innerHTML='<div class="empty">❌ '+esc(e.message)+'</div>';}}
+async function pedir(id){const nota=prompt('Nota (opcional): a quién habéis llamado, cuándo pasan…');if(nota===null)return;try{await api('POST','/api/almacen/salidas/'+id+'/recogida',{accion:'pedir',nota});toast('Apuntado: recogida pedida','ok');cargarRecogidas();}catch(e){toast(e.message,'error');}}
+async function recogido(id,pend){let n=pend;if(pend>1){const v=prompt('¿Cuántas se han llevado? (quedan '+pend+')',pend);if(v===null)return;n=Number(v)||pend;}try{const r=await api('POST','/api/almacen/salidas/'+id+'/recogida',{accion:'recogida',cantidad:n});toast(r.quedan>0?'✅ '+r.recogidas+' recogidas, quedan '+r.quedan:'✅ Todo recogido','ok');cargarRecogidas();cargarStock();}catch(e){toast(e.message,'error');}}
+
+// ── SALIDAS ──
+async function cargarSalidas(){const el=document.getElementById('sal-lista');try{const l=await api('GET','/api/almacen/salidas?limit=60');
+  el.innerHTML=l.length?l.map(s=>`<div class="rec"><div class="t">${s.cantidad} ${esc(s.unidad)} × ${esc(s.nombre)} → 🏗️ ${esc(s.obraRef)}${s.importe!=null?' <span style="color:var(--text3);font-weight:400">· '+eur(s.importe)+'</span>':''}</div><div class="s">${new Date(s.fecha).toLocaleString('es-ES',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})} · ${esc((s.por||{}).name||'')}${s.nota?' · «'+esc(s.nota)+'»':''}${s.recogida?' · ♻️ '+(s.recogida.pendientes>0?s.recogida.pendientes+' por recoger':'recogido'):''}${oficina&&(!s.recogida||s.recogida.estado==='colocada')?` · <a href="#" onclick="deshacer('${s._id}');return false" style="color:var(--red)">deshacer</a>`:''}</div></div>`).join(''):'<div class="empty">Todavía no se ha sacado nada.</div>';
+  }catch(e){el.innerHTML='<div class="empty">❌ '+esc(e.message)+'</div>';}}
+async function deshacer(id){if(!confirm('¿Deshacer esta salida? El material vuelve al almacén.'))return;try{await api('DELETE','/api/almacen/salidas/'+id);toast('Deshecha','ok');cargarSalidas();}catch(e){toast(e.message,'error');}}
+
+document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('show');}));
+(async function(){await loadWorkers();const ok=await tryRestore();if(!ok){document.getElementById('cargando').style.display='none';showPage('login');}})();
+</script>
+</body>
+</html>

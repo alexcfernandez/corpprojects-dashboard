@@ -27,8 +27,8 @@ const TIPO_TXT = { albaran: 'Albarán', factura: 'Factura', ticket: 'Ticket', de
 // Para qué es la compra: una obra · varias obras (oficina reparte) · herramientas para un
 // trabajador (al confirmar se dan de alta en Llaves y herramientas y se le entregan) ·
 // ropa de trabajo para un trabajador · otro gasto general (con categoría).
-const DESTINOS = ['obra', 'varias', 'herramientas', 'ropa', 'general'];
-const DESTINO_TXT = { obra: 'Obra', varias: 'Varias obras', herramientas: 'Herramientas', ropa: 'Ropa de trabajo', general: 'Gasto general' };
+const DESTINOS = ['obra', 'varias', 'herramientas', 'ropa', 'almacen', 'general'];
+const DESTINO_TXT = { obra: 'Obra', varias: 'Varias obras', herramientas: 'Herramientas', ropa: 'Ropa de trabajo', almacen: 'Stock de almacén', general: 'Gasto general' };
 function limpiarWorker(w) { if (!w || !w.id) return null; return { id: String(w.id), name: String(w.name || '').trim().slice(0, 80) }; }
 
 async function getDB() { return require('./db').getDB(); }
@@ -111,6 +111,7 @@ function aplicarLectura(doc, d) {
 async function buscarDuplicado(db, doc) {
   if (!doc.proveedorNorm || !doc.numero) return null;
   const q = { empresaId: EMPRESA, estado: { $ne: 'descartada' }, proveedorNorm: doc.proveedorNorm, numero: doc.numero };
+  if (doc.gmailId) { const e = await db.collection(COL).findOne({ empresaId: EMPRESA, gmailId: doc.gmailId, _id: { $ne: doc._id } }, { projection: { _id: 1 } }); if (e) return String(e._id); }
   if (doc._id) q._id = { $ne: doc._id };
   const d = await db.collection(COL).findOne(q, { projection: { _id: 1 } });
   return d ? String(d._id) : null;
@@ -118,7 +119,7 @@ async function buscarDuplicado(db, doc) {
 
 // ── ALTA (trabajador u oficina) ──────────────────────────────────
 // fotos: [{data: Buffer, mimetype}]. Devuelve lo que se le confirma al que la sube.
-async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaPor }) {
+async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaPor, origen, gmailId, email }) {
   if (!fotos || !fotos.length) throw new Error('Haz al menos una foto del documento');
   const db = await getDB();
   let obraRef = null;
@@ -136,6 +137,7 @@ async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaP
     proveedor: null, proveedorNorm: null, nif: null, numero: null, fecha: null, base: null, iva: null, total: null, lineas: [], albaranesRef: [], obraPista: null,
     obraId: obraId ? String(obraId) : null, obraRef: obraId ? obraRef : null, varias: !!varias, reparto: [], categoria: dest === 'herramientas' ? 'herramientas' : dest === 'ropa' ? 'ropa' : null,
     nota: String(nota || '').trim().slice(0, 300) || null, subidaPor: subidaPor || null, nFotos: fotos.length,
+    origen: origen || 'app', gmailId: gmailId || null, email: email || null,   // 'email' = llegó al correo (n8n ya la manda a StelOrder)
     ia: { ok: false }, duplicadoDe: null, revisadaPor: null, revisadaAt: null, enviadaStel: null, createdAt: now, updatedAt: now,
   };
   const r = await db.collection(COL).insertOne(doc);
@@ -156,9 +158,9 @@ async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaP
 
   // Aviso a oficina (push al momento; el WhatsApp va en el resumen de las 18:00)
   try {
-    const quien = (subidaPor && subidaPor.name) || 'Alguien';
+    const quien = origen === 'email' ? 'el correo' : ((subidaPor && subidaPor.name) || 'Alguien');
     const que = doc.ia.ok ? `${TIPO_TXT[doc.tipo]}${doc.proveedor ? ' de ' + doc.proveedor : ''}${doc.numero ? ' nº ' + doc.numero : ''}` : 'un documento (la IA no pudo leerlo)';
-    await require('./push').sendToOficina({ title: `📸 Compra de ${quien}`, body: `${que}${doc.obraRef ? ' · ' + doc.obraRef : dest === 'varias' ? ' · para varias obras' : dest === 'herramientas' || dest === 'ropa' ? ' · ' + DESTINO_TXT[dest].toLowerCase() + (pw ? ' para ' + pw.name : ' (queda en oficina)') : dest === 'general' ? ' · gasto general' : ''}. Por revisar.`, url: '/compras', tag: 'compra-nueva' });
+    await require('./push').sendToOficina({ title: origen === 'email' ? '📧 Factura llegada por correo' : `📸 Compra de ${quien}`, body: `${que}${doc.obraRef ? ' · ' + doc.obraRef : dest === 'varias' ? ' · para varias obras' : dest === 'herramientas' || dest === 'ropa' ? ' · ' + DESTINO_TXT[dest].toLowerCase() + (pw ? ' para ' + pw.name : ' (queda en oficina)') : dest === 'general' ? ' · gasto general' : ''}. Por revisar.`, url: '/compras', tag: 'compra-nueva' });
   } catch (e) {}
   return { ok: true, id: String(doc._id), ...resumenParaTrabajador(doc) };
 }
@@ -279,7 +281,7 @@ async function releer(id) {
 }
 // CONFIRMAR: pasa a revisada. Las FACTURAS y TICKETS se mandan a StelOrder (n8n) en este
 // momento, con la obra ya correcta. Los albaranes y devoluciones se quedan en el dashboard.
-async function revisar(id, por, { enviarStel = true, herramientas = null } = {}) {
+async function revisar(id, por, { enviarStel = true, herramientas = null, almacen = null } = {}) {
   const db = await getDB();
   const c = await db.collection(COL).findOne({ _id: oid(id), empresaId: EMPRESA });
   if (!c) throw new Error('Compra no encontrada');
@@ -289,7 +291,21 @@ async function revisar(id, por, { enviarStel = true, herramientas = null } = {})
   if (dest === 'obra' && !c.obraId) throw new Error('Elige la obra (o cambia el destino: varias obras, herramientas, ropa o gasto general)');
   if (dest === 'varias' && !(c.reparto || []).length) throw new Error('Reparte el importe entre las obras');
   if (dest === 'general' && !c.categoria) throw new Error('Pon la categoría del gasto general');
+  if (dest === 'almacen' && !(Array.isArray(almacen) && almacen.length) && !(c.almacenCreado || []).length) throw new Error('Marca qué líneas entran en el almacén');
   const set = { estado: 'revisada', revisadaPor: por || '', revisadaAt: new Date(), updatedAt: new Date() };
+  // ALMACÉN: cada línea marcada entra como existencias (se agrupa por nombre; precio medio).
+  if (dest === 'almacen' && Array.isArray(almacen) && almacen.length && !(c.almacenCreado || []).length) {
+    const alm = require('./almacen'); const creado = [];
+    for (const l of almacen.slice(0, 60)) {
+      try {
+        const q = Math.max(0, Number(l.cantidad) || 0); if (!q) continue;
+        const total = Math.abs(Number(l.valor) || 0);
+        const r = await alm.entrada({ nombre: l.nombre, unidad: l.unidad || 'ud', cantidad: q, precioUd: Number(l.valorEsTotal) ? total / q : total, recogida: !!l.recogida, compraId: String(c._id), proveedor: c.proveedor, fecha: c.fecha, by: por });
+        creado.push({ id: r.id, nombre: r.nombre, cantidad: q });
+      } catch (e) { console.warn('[Compras] almacén:', e.message); }
+    }
+    set.almacenCreado = creado;
+  }
   // HERRAMIENTAS y ROPA: cada línea marcada se da de alta en Llaves y herramientas. Si hay un
   // trabajador, se le ENTREGA (queda en su historial); si no, se queda en OFICINA para
   // repartirla más adelante desde Llaves y herramientas.
@@ -324,7 +340,8 @@ async function revisar(id, por, { enviarStel = true, herramientas = null } = {})
         if (pdf) attachments.push({ filename: `${c.tipo}-${(c.proveedor || 'proveedor').replace(/[^\w-]+/g, '_')}-${(c.numero || id).replace(/[^\w-]+/g, '_')}.pdf`, content: pdf, contentType: 'application/pdf' });
       }
       const obraRef = dest === 'obra' ? c.obraRef : dest === 'varias' ? (c.reparto || []).map(p => p.obraRef).join(' + ') : null;
-      const r = await fw.reenviarFacturaMail({ attachments, obraRef, obraId: c.obraId || null, origen: 'compras', from: por || 'oficina', nota: [c.proveedor, c.numero ? 'nº ' + c.numero : null, c.total != null ? c.total + ' €' : null, (dest === 'herramientas' || dest === 'ropa') ? DESTINO_TXT[dest] + (c.paraWorker ? ' para ' + c.paraWorker.name : ' (stock en oficina)') : null].filter(Boolean).join(' · '), categoria: !obraRef ? (c.categoria || (dest === 'herramientas' ? 'herramientas' : dest === 'ropa' ? 'ropa' : null)) : null });
+      const catGasto = c.categoria || ({ herramientas: 'herramientas', ropa: 'ropa', almacen: 'material' })[dest] || null;
+      const r = await fw.reenviarFacturaMail({ attachments, obraRef, obraId: c.obraId || null, origen: 'compras', from: por || 'oficina', nota: [c.proveedor, c.numero ? 'nº ' + c.numero : null, c.total != null ? c.total + ' €' : null, (dest === 'herramientas' || dest === 'ropa') ? DESTINO_TXT[dest] + (c.paraWorker ? ' para ' + c.paraWorker.name : ' (stock en oficina)') : null].filter(Boolean).join(' · '), categoria: !obraRef ? catGasto : null });
       set.enviadaStel = { ok: !!r.ok, at: new Date(), detalle: r.reply || null };
     } catch (e) { set.enviadaStel = { ok: false, at: new Date(), detalle: e.message }; }
   }
@@ -351,6 +368,29 @@ async function reabrir(id) {
   return getCompra(id);
 }
 
+// ── PRECIOS POR TIENDA ───────────────────────────────────────────
+// Qué nos ha costado un material en cada proveedor, según las compras CONFIRMADAS
+// (albaranes incluidos si traen precio). Lo usa el bot ("cuánto nos costó…") y /compras.
+async function buscarPrecios(material, proveedor, { limit = 30 } = {}) {
+  const mat = norm(material); if (mat.length < 2) return [];
+  const palabras = mat.split(' ').filter(w => w.length >= 3);
+  const db = await getDB();
+  const q = { empresaId: EMPRESA, estado: 'revisada', 'lineas.0': { $exists: true } };
+  if (proveedor) q.proveedorNorm = { $regex: norm(proveedor).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') };
+  const cs = await db.collection(COL).find(q).project({ lineas: 1, proveedor: 1, numero: 1, fecha: 1, tipo: 1, createdAt: 1 }).sort({ fecha: -1 }).limit(600).toArray();
+  const hits = [];
+  for (const c of cs) for (const l of (c.lineas || [])) {
+    const n = norm(l.descripcion); if (!n) continue;
+    if (!(n.includes(mat) || (palabras.length && palabras.every(w => n.includes(w))))) continue;
+    let unit = l.precio, total = l.importe; const units = l.cantidad || null;
+    if (unit == null && total != null && units) unit = Math.round(total / units * 10000) / 10000;
+    if (total == null && unit != null && units) total = Math.round(unit * units * 100) / 100;
+    if (unit == null && total == null) continue;
+    hits.push({ fuente: 'compras', compraId: String(c._id), tipo: c.tipo, fpr: c.numero || '', supplier: c.proveedor || '', date: c.fecha || (c.createdAt && c.createdAt.toISOString().slice(0, 10)), itemName: l.descripcion, units, unit, total });
+  }
+  return hits.sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, limit);
+}
+
 // ── RESUMEN DE LAS 18:00 (WhatsApp a oficina solo si queda algo por revisar) ──
 async function resumenPendientes({ dryRun = false } = {}) {
   const db = await getDB();
@@ -366,4 +406,4 @@ async function resumenPendientes({ dryRun = false } = {}) {
   return { pendientes: pend.length, enviado: ok > 0 };
 }
 
-module.exports = { TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };
+module.exports = { TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };

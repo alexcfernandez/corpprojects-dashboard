@@ -1246,6 +1246,12 @@ async function handlerBuscarCompras(texto, from, { material = null, proveedor = 
       hits.push({ fpr: inv.number, supplier: inv.supplier, date: inv.date, itemName: nombre, units: pr.units, unit: pr.unit, total: pr.total });
     }
   }
+  // + compras confirmadas en el dashboard (fotos de albaranes/tickets), sin repetir las que ya están en StelOrder
+  try {
+    const extra = await require('./compras').buscarPrecios(mat, proveedor || null);
+    const ya = new Set(hits.map(h => norm(h.supplier) + '|' + String(h.fpr).replace(/^0+/, '') + '|' + norm(h.itemName)));
+    for (const e of extra) { const k = norm(e.supplier) + '|' + String(e.fpr).replace(/^0+/, '') + '|' + norm(e.itemName); if (!ya.has(k)) { hits.push({ ...e, fpr: e.fpr || (e.tipo === 'albaran' ? 'albarán' : 'ticket') }); ya.add(k); } }
+  } catch (e) {}
   if (!hits.length) return `No encuentro compras de *«${mat}»*${provTxt}. Prueba con otra palabra (marca o referencia).`;
 
   hits.sort((a, b) => String(b.date).localeCompare(String(a.date)));

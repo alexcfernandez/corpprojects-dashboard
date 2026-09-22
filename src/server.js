@@ -1447,7 +1447,7 @@ app.post('/api/compras/:id/releer', async (req, res) => {
 });
 app.post('/api/compras/:id/revisar', async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' });
-    const r = await require('./compras').revisar(req.params.id, q.name, { enviarStel: (req.body || {}).enviarStel !== false, herramientas: (req.body || {}).herramientas || null });
+    const r = await require('./compras').revisar(req.params.id, q.name, { enviarStel: (req.body || {}).enviarStel !== false, herramientas: (req.body || {}).herramientas || null, almacen: (req.body || {}).almacen || null });
     activity.registrar({ actor: q.name, actorRole: q.role, kind: 'modificado', entidad: 'Compra', ref: [r.proveedor, r.numero].filter(Boolean).join(' '), detalle: `Revisada (${r.tipo}) → ${r.obraRef || r.destino || 'gasto general'}${(r.activosCreados || []).length ? ' · ' + r.activosCreados.length + ' herramienta(s) dadas de alta' : ''}` });
     res.json(r); }
   catch (err) { res.status(400).json({ error: err.message }); }
@@ -1460,6 +1460,66 @@ app.post('/api/compras/:id/reabrir', async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').reabrir(req.params.id)); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+// Precios por tienda: qué nos ha costado un material en cada proveedor (compras + StelOrder).
+app.get('/api/compras-precios', async (req, res) => {
+  try {
+    const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' });
+    const mat = String(req.query.q || '').trim(); if (mat.length < 2) return res.json([]);
+    const [propias, stel] = await Promise.all([
+      require('./compras').buscarPrecios(mat, req.query.proveedor || null),
+      (async () => { // líneas de factura de StelOrder (mismo criterio que el bot)
+        try {
+          const invs = await require('./stelorder').getPurchaseInvoices(); const n = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const m = n(mat), pal = m.split(/\s+/).filter(w => w.length >= 3), out = [];
+          for (const inv of invs || []) for (const l of (inv.lines || [])) { if (l.deleted || (l['line-type'] && l['line-type'] !== 'ITEM')) continue; const nom = String(l['item-name'] || l['item-description'] || '').trim(); const nn = n(nom); if (!nom || !(nn.includes(m) || (pal.length && pal.every(w => nn.includes(w))))) continue;
+            const u = Number(l['units'] ?? l['quantity']) || 0; let t = Number(l['total-amount']), p = Number(l['unit-price'] ?? l['price']); if (!Number.isFinite(p) && Number.isFinite(t) && u) p = t / u; if (!Number.isFinite(t) && Number.isFinite(p)) t = p * u;
+            out.push({ fuente: 'stelorder', fpr: inv.number, supplier: inv.supplier, date: inv.date, itemName: nom, units: u, unit: Number.isFinite(p) ? p : null, total: Number.isFinite(t) ? t : null }); }
+          return out;
+        } catch (e) { return []; }
+      })(),
+    ]);
+    const ya = new Set(); const todo = [];
+    for (const h of [...stel, ...propias]) { const k = String(h.supplier || '').toLowerCase() + '|' + String(h.fpr || '').replace(/^0+/, '') + '|' + String(h.itemName || '').toLowerCase(); if (ya.has(k)) continue; ya.add(k); todo.push(h); }
+    res.json(todo.sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))).slice(0, 60));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── ALMACÉN (stock de consumibles + recogidas) ────────────────────
+// Ver y sacar material: cualquiera (sin precios). Entradas a mano, ajustes y precios: oficina.
+app.get('/api/almacen', async (req, res) => {
+  try { const q = await _quienPush(req); if (!q) return res.status(401).json({ error: 'No autorizado' }); res.json(await require('./almacen').lista({ conPrecios: _revisaCompras(q), todos: req.query.todos === '1' })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/almacen', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); const b = req.body || {}; res.json(await require('./almacen').entrada({ nombre: b.nombre, unidad: b.unidad, cantidad: b.cantidad, precioUd: b.precioUd, recogida: !!b.recogida, proveedor: b.proveedor || null, fecha: b.fecha || null, by: q.name })); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.put('/api/almacen/:id', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./almacen').editar(req.params.id, req.body || {}, q.name)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/almacen/salida', async (req, res) => {
+  try { const q = await _quienPush(req); if (!q) return res.status(401).json({ error: 'No autorizado' }); const b = req.body || {}; res.json(await require('./almacen').salida({ articuloId: b.articuloId, cantidad: b.cantidad, obraId: b.obraId, nota: b.nota, por: { kind: q.kind, userId: String(q.userId), name: q.name } })); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/almacen/salidas', async (req, res) => {
+  try { const q = await _quienPush(req); if (!q) return res.status(401).json({ error: 'No autorizado' }); res.json(await require('./almacen').salidas({ obraId: req.query.obraId, desde: req.query.desde, hasta: req.query.hasta, limit: req.query.limit, conPrecios: _revisaCompras(q) })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.delete('/api/almacen/salidas/:id', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./almacen').deshacerSalida(req.params.id)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/almacen/recogidas', async (req, res) => {
+  try { const q = await _quienPush(req); if (!q) return res.status(401).json({ error: 'No autorizado' }); res.json(await require('./almacen').recogidasPendientes()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/almacen/salidas/:id/recogida', async (req, res) => {
+  try { const q = await _quienPush(req); if (!q) return res.status(401).json({ error: 'No autorizado' }); const b = req.body || {}; const alm = require('./almacen');
+    res.json(b.accion === 'pedir' ? await alm.pedirRecogida(req.params.id, { nota: b.nota, por: q.name }) : await alm.marcarRecogida(req.params.id, { cantidad: b.cantidad, por: q.name })); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 app.get('/api/compras-prueba/resumen', async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').resumenPendientes({ dryRun: true })); }
   catch (err) { res.status(500).json({ error: err.message }); }
@@ -3354,6 +3414,7 @@ app.get('/fichar', (req, res) => res.sendFile(path.join(__dirname, '../public/fi
 app.get('/fichajes', (req, res) => res.sendFile(path.join(__dirname, '../public/fichajes.html')));
 app.get('/compra', (req, res) => res.sendFile(path.join(__dirname, '../public/compra.html')));
 app.get('/compras', (req, res) => res.sendFile(path.join(__dirname, '../public/compras.html')));
+app.get('/almacen', (req, res) => res.sendFile(path.join(__dirname, '../public/almacen.html')));
 app.get('/gps', (req, res) => res.sendFile(path.join(__dirname, '../public/gps.html')));
 app.get('/subir-factura', (req, res) => res.sendFile(path.join(__dirname, '../public/subir-factura.html')));
 app.get('/asignar-facturas', (req, res) => res.sendFile(path.join(__dirname, '../public/asignar-facturas.html')));

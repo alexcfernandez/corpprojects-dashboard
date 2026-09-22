@@ -128,6 +128,11 @@ async function ensureIndexes(db) {
     ['compras',                { empresaId: 1, proveedorNorm: 1, numero: 1 }],
     ['compras',                { empresaId: 1, 'subidaPor.kind': 1, 'subidaPor.userId': 1, createdAt: -1 }],
     ['comprasFotos',           { compraId: 1, idx: 1 }, { unique: true }],
+    ['compras',                { empresaId: 1, gmailId: 1 }],
+    // Almacén de consumibles (4.1b)
+    ['almacen',                { empresaId: 1, nombreNorm: 1 }, { unique: true }],
+    ['almacenSalidas',         { empresaId: 1, obraId: 1, fecha: -1 }],
+    ['almacenSalidas',         { empresaId: 1, 'recogida.pendientes': 1 }],
     ['pushSubs',               { endpoint: 1 }, { unique: true }],
     ['pushSubs',               { empresaId: 1, kind: 1, userId: 1 }],
   ];
