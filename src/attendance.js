@@ -420,7 +420,80 @@ async function getClientExtract(clientName, from, to) {
   return { clientName, from, to, byWorker, totalDias: entries.length };
 }
 
+// ── ¿DÓNDE HEMOS ESTADO? (buscador de sitios para facturar) ─────────
+// Texto libre («oviedo», «claudia», «classicauto») → días, trabajadores y horas por SITIO.
+// Casa por: obras (nombre, motes, dirección, cliente) y por el texto libre de la presencia
+// (clientName / obras[].clientName). Los fichajes con obra elegida también cuentan.
+// Cada sitio = una obra (si casó por obra) o un nombre libre de la presencia antigua.
+async function buscarSitio(texto, { from, to } = {}) {
+  const q = normName(texto).replace(/[^a-z0-9ñç ]+/g, ' ').trim();
+  if (q.length < 2) return { q: texto, sitios: [] };
+  const toks = q.split(/\s+/).filter(Boolean);
+  // Tolerante a espacios: «classic auto» casa con «classicauto» y al revés.
+  const sq = x => String(x || '').replace(/\s+/g, '');
+  const casa = s => { const n = normName(s); if (!n) return false; const ns = sq(n); return toks.every(t => n.includes(t)) || ns.includes(sq(q)); };
+  const db = await getDB();
+  const { ObjectId } = require('mongodb');
+
+  // 1. Obras que casan (nombre, motes, dirección, cliente) → sus nombres también valen para casar presencia
+  const obras = await db.collection('obras').find({ status: { $ne: 'archivada' } }).project({ reference: 1, clientName: 1, address: 1, aliases: 1, status: 1 }).toArray();
+  const obrasHit = obras.filter(o => [o.reference, o.clientName, o.address, ...(o.aliases || [])].some(casa));
+  const nombresObra = o => [o.reference, o.clientName, ...(o.aliases || [])].map(normName).filter(x => x.length >= 3);
+  const obraDe = txt => { const n = normName(txt); if (!n) return null; const ns = sq(n); return obrasHit.find(o => nombresObra(o).some(x => { const xs = sq(x); return n.includes(x) || x.includes(n) || ns.includes(xs) || xs.includes(ns); })) || null; };
+
+  // 2. Presencia del periodo (solo días de obra)
+  const query = { estado: 'obra' };
+  if (from || to) { query.date = {}; if (from) query.date.$gte = from; if (to) query.date.$lte = to; }
+  const entries = await db.collection('attendance').find(query).sort({ date: 1 }).toArray();
+
+  // 3. Fichajes con obra elegida (entrada del día) → workerId|date → obraId
+  const fichObra = new Map();
+  if (obrasHit.length) {
+    const ids = obrasHit.map(o => String(o._id));
+    const fq = { tipo: 'entrada', estado: 'valido', obraId: { $in: ids } };
+    if (from || to) { fq.fecha = {}; if (from) fq.fecha.$gte = from; if (to) fq.fecha.$lte = to; }
+    const ms = await db.collection('fichajeMarcas').find(fq).project({ userId: 1, fecha: 1, obraId: 1 }).toArray();
+    ms.forEach(m => fichObra.set(String(m.userId) + '|' + m.fecha, String(m.obraId)));
+  }
+
+  const sitios = {};
+  const add = (key, info, e, horas, fuente) => {
+    const s = (sitios[key] = sitios[key] || { key, ...info, fechas: new Set(), trabajadores: {}, horas: 0, lineas: [] });
+    s.fechas.add(e.date);
+    const w = (s.trabajadores[e.workerId] = s.trabajadores[e.workerId] || { name: e.workerName || e.workerId, dias: new Set(), horas: 0 });
+    w.dias.add(e.date); w.horas += horas; s.horas += horas;
+    s.lineas.push({ date: e.date, worker: e.workerName || e.workerId, horas, fuente });
+  };
+  for (const e of entries) {
+    const lista = getObras(e);
+    let casado = false;
+    for (const o of lista) {
+      const h = parseFloat(o.horas || 0) || parseFloat(e.horas || 0) || 8;
+      const ob = obraDe(o.clientName);
+      if (ob) { add('obra:' + ob._id, { obraId: String(ob._id), sitio: ob.reference, direccion: ob.address || '', motes: ob.aliases || [], estado: ob.status }, e, h, 'presencia'); casado = true; }
+      else if (casa(o.clientName)) { add('txt:' + normName(o.clientName), { obraId: null, sitio: o.clientName, direccion: '', motes: [], estado: null }, e, h, 'presencia'); casado = true; }
+    }
+    if (!casado) {
+      const obraId = fichObra.get(String(e.workerId) + '|' + e.date);
+      if (obraId) { const ob = obrasHit.find(o => String(o._id) === obraId); if (ob) add('obra:' + obraId, { obraId, sitio: ob.reference, direccion: ob.address || '', motes: ob.aliases || [], estado: ob.status }, e, parseFloat(e.horas || 0) || 8, 'fichaje'); }
+    }
+  }
+  // Obras que casan pero sin presencia en el periodo: se enseñan igual (a 0) para que se vea que existen
+  obrasHit.forEach(o => { if (!sitios['obra:' + o._id]) sitios['obra:' + o._id] = { key: 'obra:' + o._id, obraId: String(o._id), sitio: o.reference, direccion: o.address || '', motes: o.aliases || [], estado: o.status, fechas: new Set(), trabajadores: {}, horas: 0, lineas: [] }; });
+
+  const out = Object.values(sitios).map(s => ({
+    obraId: s.obraId, sitio: s.sitio, direccion: s.direccion, motes: s.motes, estado: s.estado,
+    dias: s.fechas.size, horas: Math.round(s.horas * 100) / 100,
+    desde: s.lineas.length ? s.lineas[0].date : null, hasta: s.lineas.length ? s.lineas[s.lineas.length - 1].date : null,
+    trabajadores: Object.values(s.trabajadores).map(w => ({ name: w.name, dias: w.dias.size, horas: Math.round(w.horas * 100) / 100 })).sort((a, b) => b.horas - a.horas),
+    diasPersona: Object.values(s.trabajadores).reduce((a, w) => a + w.dias.size, 0),
+    lineas: s.lineas.sort((a, b) => a.date.localeCompare(b.date) || a.worker.localeCompare(b.worker)),
+  })).sort((a, b) => b.horas - a.horas || b.dias - a.dias);
+  return { q: texto, from: from || null, to: to || null, sitios: out };
+}
+
 module.exports = {
+  buscarSitio,
   WORKERS, ESTADOS, getWorkers,
   saveAttendance, deleteAttendance, getAttendance, syncPresenceFromParte, marcarPresenciaFichaje, actualizarHorasFichaje,
   getMonthlySummary, buildClientSummary, getClientExtract,

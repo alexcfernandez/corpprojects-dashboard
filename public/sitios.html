@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>¿Dónde hemos estado? — Corp Projects</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/tool-theme.css">
+<meta name="theme-color" content="#4d9cf8">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.15);
+  --text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;--green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b;--r:14px;--rs:10px;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 18px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:5}
+.logo{width:32px;height:32px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff}
+.header-text{font-weight:700;font-size:15px}.header-sub{font-size:12px;color:var(--text2)}
+.hbtn{margin-left:auto;background:none;border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;font-family:inherit;text-decoration:none}
+.wrap{max-width:1000px;margin:0 auto;padding:16px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:12px}
+.card h3{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:10px;font-weight:600}
+input{padding:12px 13px;border-radius:12px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:16px;font-family:inherit}
+.btn{background:var(--blue);color:#fff;border:none;border-radius:11px;padding:12px 16px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+.btn.g{background:var(--bg3);color:var(--text);border:1px solid var(--border2)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.chip{background:var(--bg3);border:1px solid var(--border2);border-radius:20px;padding:5px 11px;font-size:12.5px;color:var(--text2);cursor:pointer;font-family:inherit}.chip.on{color:var(--blue);border-color:var(--blue)}
+.sitio{border-left:3px solid var(--green)}.sitio.txt{border-left-color:var(--text3)}
+.st{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}.st .n{font-size:17px;font-weight:700}.st .s{font-size:12.5px;color:var(--text3);margin-top:3px;line-height:1.5}
+.kpis{display:flex;gap:14px;margin-left:auto;text-align:right}.kpis b{font-size:20px;display:block}.kpis span{font-size:11px;color:var(--text3)}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}td,th{padding:6px 4px;border-bottom:1px solid var(--border);text-align:left}th{font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em}
+.r{text-align:right}.det{display:none;margin-top:8px}.det.show{display:block}
+.empty{color:var(--text3);text-align:center;padding:40px 16px;line-height:1.6}
+.spinner{display:inline-block;width:18px;height:18px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media print{.header,.card.busca,.btn,.chip,.hbtn{display:none!important}body{background:#fff;color:#000}.card{border-color:#ccc}.det{display:block!important}}
+</style>
+</head>
+<body>
+<script>try{if(localStorage.getItem("cp_theme")==="light")document.body.classList.add("light");}catch(e){}</script>
+<div class="header"><div class="logo">CP</div><div><div class="header-text">¿Dónde hemos estado?</div><div class="header-sub">Días, trabajadores y horas por sitio · para facturar</div></div><a class="hbtn" href="/">← Dashboard</a></div>
+<div class="wrap">
+  <div class="card busca">
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><input id="q" style="flex:1;min-width:220px" placeholder="Sitio, cliente, calle o mote: oviedo, claudia, classicauto…" onkeydown="if(event.key==='Enter')buscar()"><input type="date" id="from" style="width:160px"><input type="date" id="to" style="width:160px"><button class="btn" onclick="buscar()">Buscar</button></div>
+    <div class="chips"><button class="chip" onclick="rango(3)">Últimos 3 meses</button><button class="chip" onclick="rango(12)">Último año</button><button class="chip on" onclick="rango(0)">Todo</button><span style="flex:1"></span><button class="chip" onclick="excel()" id="btn-xls" style="display:none">⬇️ Excel</button><button class="chip" onclick="window.print()" id="btn-pdf" style="display:none">🖨️ PDF</button></div>
+    <div style="font-size:11.5px;color:var(--text3);margin-top:8px;line-height:1.5">Casa por el nombre de la obra, sus <b>motes</b>, la dirección y el cliente, y por el texto de la presencia. Si «classicauto» y «taller marc» son el mismo sitio, pon «classicauto» como mote en la obra y saldrán juntos.</div>
+  </div>
+  <div id="res"></div>
+</div>
+<script>
+const tok=localStorage.getItem('cp_token');let _r=null;
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function f(d){return d?String(d).split('-').reverse().join('/'):'';}
+function rango(m){document.querySelectorAll('.chips .chip').forEach(c=>c.classList.toggle('on',c.textContent.includes(m===3?'3 meses':m===12?'Último año':'Todo')));const to=new Date();if(!m){document.getElementById('from').value='';document.getElementById('to').value='';return;}const fr=new Date(to.getFullYear(),to.getMonth()-m,to.getDate());document.getElementById('from').value=fr.toISOString().slice(0,10);document.getElementById('to').value=to.toISOString().slice(0,10);}
+async function buscar(){const q=document.getElementById('q').value.trim();const el=document.getElementById('res');if(q.length<2){el.innerHTML='<div class="empty">Escribe al menos 2 letras.</div>';return;}
+  el.innerHTML='<div class="empty"><span class="spinner"></span></div>';history.replaceState(null,'','?q='+encodeURIComponent(q));
+  try{const r=await fetch('/api/presencia/sitio?q='+encodeURIComponent(q)+'&from='+(document.getElementById('from').value||'')+'&to='+(document.getElementById('to').value||''),{headers:{'Authorization':'Bearer '+tok}});const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');_r=d;
+    document.getElementById('btn-xls').style.display=d.sitios.length?'':'none';document.getElementById('btn-pdf').style.display=d.sitios.length?'':'none';
+    if(!d.sitios.length){el.innerHTML=`<div class="empty">No encuentro nada con «${esc(q)}».<br>Prueba con la calle, el cliente o un mote de la obra.</div>`;return;}
+    el.innerHTML=d.sitios.map((s,i)=>`<div class="card sitio ${s.obraId?'':'txt'}"><div class="st"><div><div class="n">${s.obraId?'🏗️ ':'📝 '}${esc(s.sitio)}</div><div class="s">${s.obraId?[s.direccion,s.motes.length?'motes: '+s.motes.join(', '):'',s.estado].filter(Boolean).map(esc).join(' · '):'texto de la presencia (sin obra creada)'}${s.desde?' · del '+f(s.desde)+' al '+f(s.hasta):' · sin presencia en el periodo'}</div></div>
+      <div class="kpis"><div><b>${s.dias}</b><span>días</span></div><div><b>${s.diasPersona}</b><span>días·persona</span></div><div><b>${s.horas}</b><span>horas</span></div></div></div>
+      ${s.trabajadores.length?`<table><thead><tr><th>Trabajador</th><th class="r">Días</th><th class="r">Horas</th></tr></thead><tbody>${s.trabajadores.map(w=>`<tr><td>${esc(w.name)}</td><td class="r">${w.dias}</td><td class="r"><b>${w.horas}</b></td></tr>`).join('')}</tbody></table>
+      <button class="btn g" style="margin-top:8px;padding:6px 10px;font-size:12px" onclick="document.getElementById('det-${i}').classList.toggle('show')">📅 Ver día a día</button>
+      <div class="det" id="det-${i}"><table><thead><tr><th>Fecha</th><th>Trabajador</th><th class="r">Horas</th><th>Fuente</th></tr></thead><tbody>${s.lineas.map(l=>`<tr><td>${f(l.date)}</td><td>${esc(l.worker)}</td><td class="r">${l.horas}</td><td style="color:var(--text3)">${l.fuente}</td></tr>`).join('')}</tbody></table></div>`:''}
+    </div>`).join('');
+  }catch(e){el.innerHTML='<div class="empty">❌ '+esc(e.message)+'</div>';}}
+async function excel(){if(!_r)return;if(!window.XLSX){await new Promise((ok,ko)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';s.onload=ok;s.onerror=()=>ko(new Error('No se pudo cargar Excel'));document.head.appendChild(s);});}
+  const wb=XLSX.utils.book_new();const res=[['Sitio','Dirección','Días','Días·persona','Horas','Desde','Hasta']];_r.sitios.forEach(s=>res.push([s.sitio,s.direccion,s.dias,s.diasPersona,s.horas,f(s.desde),f(s.hasta)]));XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(res),'Resumen');
+  const det=[['Sitio','Fecha','Trabajador','Horas','Fuente']];_r.sitios.forEach(s=>s.lineas.forEach(l=>det.push([s.sitio,f(l.date),l.worker,l.horas,l.fuente])));XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(det),'Día a día');
+  XLSX.writeFile(wb,'presencia_'+(_r.q||'sitio').replace(/[^\w]+/g,'_')+'.xlsx');}
+(function(){if(!tok){document.getElementById('res').innerHTML='<div class="empty">Abre esta página desde el dashboard.</div>';return;}const q=new URLSearchParams(location.search).get('q');if(q){document.getElementById('q').value=q;buscar();}else document.getElementById('q').focus();})();
+</script>
+</body>
+</html>

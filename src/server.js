@@ -1882,6 +1882,11 @@ app.get('/api/attendance/summary/:year/:month', requireAuth, async (req, res) =>
   }
 });
 
+// ¿Dónde hemos estado? Texto libre → días/trabajadores/horas por sitio (para facturar).
+app.get('/api/presencia/sitio', requireAuth, async (req, res) => {
+  try { res.json(await attendance.buscarSitio(String(req.query.q || ''), { from: req.query.from || null, to: req.query.to || null })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
 app.get('/api/attendance/client', requireAuth, async (req, res) => {
   try {
     const { clientName, from, to } = req.query;
@@ -3409,6 +3414,7 @@ app.delete('/api/pagos/:id', requireAuth, async (req, res) => {
 
 // ── Rutas HTML ────────────────────────────────────────────────────
 app.get('/informe-presencia', (req, res) => res.sendFile(path.join(__dirname, '../public/informe-presencia.html')));
+app.get('/sitios', (req, res) => res.sendFile(path.join(__dirname, '../public/sitios.html')));
 app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
 app.get('/fichar', (req, res) => res.sendFile(path.join(__dirname, '../public/fichar.html')));
 app.get('/fichajes', (req, res) => res.sendFile(path.join(__dirname, '../public/fichajes.html')));
