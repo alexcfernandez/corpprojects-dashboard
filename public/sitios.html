@@ -39,20 +39,23 @@ table{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}td,th{p
 <div class="header"><div class="logo">CP</div><div><div class="header-text">¿Dónde hemos estado?</div><div class="header-sub">Días, trabajadores y horas por sitio · para facturar</div></div><a class="hbtn" href="/">← Dashboard</a></div>
 <div class="wrap">
   <div class="card busca">
-    <div style="display:flex;gap:8px;flex-wrap:wrap"><input id="q" style="flex:1;min-width:220px" placeholder="Sitio, cliente, calle o mote: oviedo, claudia, classicauto…" onkeydown="if(event.key==='Enter')buscar()"><input type="date" id="from" style="width:160px"><input type="date" id="to" style="width:160px"><button class="btn" onclick="buscar()">Buscar</button></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><input id="q" style="flex:1;min-width:220px" placeholder="Sitio, cliente, calle o mote: oviedo, claudia, classicauto…" oninput="alEscribir()" onkeydown="if(event.key==='Enter')buscar()"><input type="date" id="from" style="width:160px" onchange="buscar()"><input type="date" id="to" style="width:160px" onchange="buscar()"><button class="btn" onclick="buscar()">Buscar</button></div>
     <div class="chips"><button class="chip" onclick="rango(3)">Últimos 3 meses</button><button class="chip" onclick="rango(12)">Último año</button><button class="chip on" onclick="rango(0)">Todo</button><span style="flex:1"></span><button class="chip" onclick="excel()" id="btn-xls" style="display:none">⬇️ Excel</button><button class="chip" onclick="window.print()" id="btn-pdf" style="display:none">🖨️ PDF</button></div>
     <div style="font-size:11.5px;color:var(--text3);margin-top:8px;line-height:1.5">Casa por el nombre de la obra, sus <b>motes</b>, la dirección y el cliente, y por el texto de la presencia. Si «classicauto» y «taller marc» son el mismo sitio, pon «classicauto» como mote en la obra y saldrán juntos.</div>
   </div>
   <div id="res"></div>
 </div>
 <script>
-const tok=localStorage.getItem('cp_token');let _r=null;
+const tok=localStorage.getItem('cp_token');let _r=null,_t=null,_seq=0;
+// Busca solo al escribir (con una pequeña espera para no disparar una petición por letra)
+function alEscribir(){clearTimeout(_t);_t=setTimeout(buscar,350);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function f(d){return d?String(d).split('-').reverse().join('/'):'';}
-function rango(m){document.querySelectorAll('.chips .chip').forEach(c=>c.classList.toggle('on',c.textContent.includes(m===3?'3 meses':m===12?'Último año':'Todo')));const to=new Date();if(!m){document.getElementById('from').value='';document.getElementById('to').value='';return;}const fr=new Date(to.getFullYear(),to.getMonth()-m,to.getDate());document.getElementById('from').value=fr.toISOString().slice(0,10);document.getElementById('to').value=to.toISOString().slice(0,10);}
-async function buscar(){const q=document.getElementById('q').value.trim();const el=document.getElementById('res');if(q.length<2){el.innerHTML='<div class="empty">Escribe al menos 2 letras.</div>';return;}
-  el.innerHTML='<div class="empty"><span class="spinner"></span></div>';history.replaceState(null,'','?q='+encodeURIComponent(q));
-  try{const r=await fetch('/api/presencia/sitio?q='+encodeURIComponent(q)+'&from='+(document.getElementById('from').value||'')+'&to='+(document.getElementById('to').value||''),{headers:{'Authorization':'Bearer '+tok}});const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');_r=d;
+function rango(m){setTimeout(buscar,0);document.querySelectorAll('.chips .chip').forEach(c=>c.classList.toggle('on',c.textContent.includes(m===3?'3 meses':m===12?'Último año':'Todo')));const to=new Date();if(!m){document.getElementById('from').value='';document.getElementById('to').value='';return;}const fr=new Date(to.getFullYear(),to.getMonth()-m,to.getDate());document.getElementById('from').value=fr.toISOString().slice(0,10);document.getElementById('to').value=to.toISOString().slice(0,10);}
+async function buscar(){const q=document.getElementById('q').value.trim();const el=document.getElementById('res');
+  if(q.length<2){ultimos();return;}
+  const seq=++_seq;if(!el.querySelector('.sitio'))el.innerHTML='<div class="empty"><span class="spinner"></span></div>';history.replaceState(null,'','?q='+encodeURIComponent(q));
+  try{const r=await fetch('/api/presencia/sitio?q='+encodeURIComponent(q)+'&from='+(document.getElementById('from').value||'')+'&to='+(document.getElementById('to').value||''),{headers:{'Authorization':'Bearer '+tok}});const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');if(seq!==_seq)return;_r=d;
     document.getElementById('btn-xls').style.display=d.sitios.length?'':'none';document.getElementById('btn-pdf').style.display=d.sitios.length?'':'none';
     if(!d.sitios.length){el.innerHTML=`<div class="empty">No encuentro nada con «${esc(q)}».<br>Prueba con la calle, el cliente o un mote de la obra.</div>`;return;}
     el.innerHTML=d.sitios.map((s,i)=>`<div class="card sitio ${s.obraId?'':'txt'}"><div class="st"><div><div class="n">${s.obraId?'🏗️ ':'📝 '}${esc(s.sitio)}</div><div class="s">${s.obraId?[s.direccion,s.motes.length?'motes: '+s.motes.join(', '):'',s.estado].filter(Boolean).map(esc).join(' · '):'texto de la presencia (sin obra creada)'}${s.desde?' · del '+f(s.desde)+' al '+f(s.hasta):' · sin presencia en el periodo'}</div></div>
@@ -62,11 +65,21 @@ async function buscar(){const q=document.getElementById('q').value.trim();const 
       <div class="det" id="det-${i}"><table><thead><tr><th>Fecha</th><th>Trabajador</th><th class="r">Horas</th><th>Fuente</th></tr></thead><tbody>${s.lineas.map(l=>`<tr><td>${f(l.date)}</td><td>${esc(l.worker)}</td><td class="r">${l.horas}</td><td style="color:var(--text3)">${l.fuente}</td></tr>`).join('')}</tbody></table></div>`:''}
     </div>`).join('');
   }catch(e){el.innerHTML='<div class="empty">❌ '+esc(e.message)+'</div>';}}
+// Sin buscar nada: dónde hemos estado los últimos 14 días, lo más reciente arriba.
+function verSitio(el){document.getElementById('q').value=el.dataset.sitio||'';buscar();}
+async function ultimos(){const el=document.getElementById('res');const seq=++_seq;history.replaceState(null,'',location.pathname);
+  const hasta=new Date(),desde=new Date(Date.now()-14*864e5);const f0=document.getElementById('from').value,f1=document.getElementById('to').value;
+  try{const r=await fetch('/api/presencia/sitio?todos=1&from='+(f0||desde.toISOString().slice(0,10))+'&to='+(f1||hasta.toISOString().slice(0,10)),{headers:{'Authorization':'Bearer '+tok}});const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');if(seq!==_seq)return;_r=d;
+    document.getElementById('btn-xls').style.display=d.sitios.length?'':'none';document.getElementById('btn-pdf').style.display=d.sitios.length?'':'none';
+    if(!d.sitios.length){el.innerHTML='<div class="empty">Sin presencia en obra en los últimos 14 días.</div>';return;}
+    const hoy=new Date().toISOString().slice(0,10);const rel=x=>{const n=Math.round((new Date(hoy)-new Date(x))/864e5);return n===0?'hoy':n===1?'ayer':'hace '+n+' días';};
+    el.innerHTML=`<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin:4px 0 10px">Últimos sitios · ${f0||f1?'periodo elegido':'14 días'} · toca uno para verlo entero</div>`+d.sitios.map(s=>`<div class="card sitio ${s.obraId?'':'txt'}" style="cursor:pointer;padding:12px 16px" data-sitio="${esc(s.sitio)}" onclick="verSitio(this)"><div class="st"><div style="min-width:0"><div class="n" style="font-size:15.5px">${s.obraId?'🏗️ ':'📝 '}${esc(s.sitio)}</div><div class="s">último día <b>${rel(s.hasta)}</b> (${f(s.hasta)}) · ${s.trabajadores.map(w=>esc(w.name.split(' ')[0])+' '+w.horas+'h').join(' · ')}</div></div><div class="kpis"><div><b>${s.dias}</b><span>días</span></div><div><b>${s.horas}</b><span>horas</span></div></div></div></div>`).join('');
+  }catch(e){el.innerHTML='<div class="empty">❌ '+esc(e.message)+'</div>';}}
 async function excel(){if(!_r)return;if(!window.XLSX){await new Promise((ok,ko)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';s.onload=ok;s.onerror=()=>ko(new Error('No se pudo cargar Excel'));document.head.appendChild(s);});}
   const wb=XLSX.utils.book_new();const res=[['Sitio','Dirección','Días','Días·persona','Horas','Desde','Hasta']];_r.sitios.forEach(s=>res.push([s.sitio,s.direccion,s.dias,s.diasPersona,s.horas,f(s.desde),f(s.hasta)]));XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(res),'Resumen');
   const det=[['Sitio','Fecha','Trabajador','Horas','Fuente']];_r.sitios.forEach(s=>s.lineas.forEach(l=>det.push([s.sitio,f(l.date),l.worker,l.horas,l.fuente])));XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(det),'Día a día');
   XLSX.writeFile(wb,'presencia_'+(_r.q||'sitio').replace(/[^\w]+/g,'_')+'.xlsx');}
-(function(){if(!tok){document.getElementById('res').innerHTML='<div class="empty">Abre esta página desde el dashboard.</div>';return;}const q=new URLSearchParams(location.search).get('q');if(q){document.getElementById('q').value=q;buscar();}else document.getElementById('q').focus();})();
+(function(){if(!tok){document.getElementById('res').innerHTML='<div class="empty">Abre esta página desde el dashboard.</div>';return;}const q=new URLSearchParams(location.search).get('q');if(q){document.getElementById('q').value=q;buscar();}else{document.getElementById('q').focus();ultimos();}})();
 </script>
 </body>
 </html>

@@ -425,19 +425,20 @@ async function getClientExtract(clientName, from, to) {
 // Casa por: obras (nombre, motes, dirección, cliente) y por el texto libre de la presencia
 // (clientName / obras[].clientName). Los fichajes con obra elegida también cuentan.
 // Cada sitio = una obra (si casó por obra) o un nombre libre de la presencia antigua.
-async function buscarSitio(texto, { from, to } = {}) {
+// `todos`: sin texto, devuelve TODOS los sitios del periodo (vista «últimos sitios»), ordenados por el día más reciente.
+async function buscarSitio(texto, { from, to, todos = false } = {}) {
   const q = normName(texto).replace(/[^a-z0-9ñç ]+/g, ' ').trim();
-  if (q.length < 2) return { q: texto, sitios: [] };
+  if (!todos && q.length < 2) return { q: texto, sitios: [] };
   const toks = q.split(/\s+/).filter(Boolean);
   // Tolerante a espacios: «classic auto» casa con «classicauto» y al revés.
   const sq = x => String(x || '').replace(/\s+/g, '');
-  const casa = s => { const n = normName(s); if (!n) return false; const ns = sq(n); return toks.every(t => n.includes(t)) || ns.includes(sq(q)); };
+  const casa = s => { const n = normName(s); if (!n) return false; if (todos) return true; const ns = sq(n); return toks.every(t => n.includes(t)) || ns.includes(sq(q)); };
   const db = await getDB();
   const { ObjectId } = require('mongodb');
 
   // 1. Obras que casan (nombre, motes, dirección, cliente) → sus nombres también valen para casar presencia
   const obras = await db.collection('obras').find({ status: { $ne: 'archivada' } }).project({ reference: 1, clientName: 1, address: 1, aliases: 1, status: 1 }).toArray();
-  const obrasHit = obras.filter(o => [o.reference, o.clientName, o.address, ...(o.aliases || [])].some(casa));
+  const obrasHit = todos ? obras : obras.filter(o => [o.reference, o.clientName, o.address, ...(o.aliases || [])].some(casa));
   const nombresObra = o => [o.reference, o.clientName, ...(o.aliases || [])].map(normName).filter(x => x.length >= 3);
   const obraDe = txt => { const n = normName(txt); if (!n) return null; const ns = sq(n); return obrasHit.find(o => nombresObra(o).some(x => { const xs = sq(x); return n.includes(x) || x.includes(n) || ns.includes(xs) || xs.includes(ns); })) || null; };
 
@@ -479,7 +480,7 @@ async function buscarSitio(texto, { from, to } = {}) {
     }
   }
   // Obras que casan pero sin presencia en el periodo: se enseñan igual (a 0) para que se vea que existen
-  obrasHit.forEach(o => { if (!sitios['obra:' + o._id]) sitios['obra:' + o._id] = { key: 'obra:' + o._id, obraId: String(o._id), sitio: o.reference, direccion: o.address || '', motes: o.aliases || [], estado: o.status, fechas: new Set(), trabajadores: {}, horas: 0, lineas: [] }; });
+  if (!todos) obrasHit.forEach(o => { if (!sitios['obra:' + o._id]) sitios['obra:' + o._id] = { key: 'obra:' + o._id, obraId: String(o._id), sitio: o.reference, direccion: o.address || '', motes: o.aliases || [], estado: o.status, fechas: new Set(), trabajadores: {}, horas: 0, lineas: [] }; });
 
   const out = Object.values(sitios).map(s => ({
     obraId: s.obraId, sitio: s.sitio, direccion: s.direccion, motes: s.motes, estado: s.estado,
@@ -488,8 +489,8 @@ async function buscarSitio(texto, { from, to } = {}) {
     trabajadores: Object.values(s.trabajadores).map(w => ({ name: w.name, dias: w.dias.size, horas: Math.round(w.horas * 100) / 100 })).sort((a, b) => b.horas - a.horas),
     diasPersona: Object.values(s.trabajadores).reduce((a, w) => a + w.dias.size, 0),
     lineas: s.lineas.sort((a, b) => a.date.localeCompare(b.date) || a.worker.localeCompare(b.worker)),
-  })).sort((a, b) => b.horas - a.horas || b.dias - a.dias);
-  return { q: texto, from: from || null, to: to || null, sitios: out };
+  })).sort((a, b) => todos ? (String(b.hasta || '').localeCompare(String(a.hasta || '')) || b.horas - a.horas) : (b.horas - a.horas || b.dias - a.dias));
+  return { q: texto, from: from || null, to: to || null, todos, sitios: out };
 }
 
 module.exports = {
