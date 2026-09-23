@@ -82,6 +82,8 @@ window.CP_CONFIG = {
     // Aún NO aceptadas: van en la pestaña «En estudio» (solo Dueño y Oficina)
     estudio:   { label: 'En estudio', emoji: '🔍', color: '#38bdf8' },
     descartada:{ label: 'Descartada', emoji: '🚫', color: '#8a8f98' },
+    // Obra vieja que ya no quieres ver en ningún sitio (selector, lista, rentabilidad)
+    archivada: { label: 'Archivada',  emoji: '🗄️', color: '#5a6278' },
   },
 
   // ── Estados de expedientes ────────────────────────────────────

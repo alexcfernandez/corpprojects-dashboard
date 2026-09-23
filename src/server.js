@@ -1291,9 +1291,12 @@ app.post('/api/fichaje/consent', async (req, res) => {
 });
 // Obras ACTIVAS para el operario (elegir en el parte). Mínimo: sin importes.
 app.get('/api/campo/obras', async (req, res) => {
-  try { const w = await _worker(req, res); if (!w) return;
+  try {
+    // Trabajador (PIN) o sesión de admin del dashboard (Álex entra en /compra y /almacén con su cuenta).
+    const q = await _quienPush(req); if (!q) return res.status(401).json({ error: 'No autorizado' });
+    const esOficina = q.kind === 'admin' ? users.canSeeMoney(q.role) : users.canSeeMoney(users.normalizeRole(q.role));
     // Selector único: abiertas + cerradas (las antiguas solo salen al buscar), con dirección y motes. Sin importes.
-    res.json(await require('./obras').getSelector({ todas: true }));
+    res.json(await require('./obras').getSelector({ todas: true, conEstudio: esOficina }));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 app.get('/api/fichaje/mios', async (req, res) => {

@@ -10,6 +10,8 @@ async function getDB() {
 // 'estudio' = aún NO aceptada (visita, medición, presupuestos en marcha): solo la ven Dueño y
 // Oficina, no sale al fichar ni en el parte ni en los resúmenes. 'descartada' = no salió.
 const ESTADOS_PREVIOS = ['estudio', 'descartada'];
+// 'archivada' = obra vieja que ya no queremos ver en ningún sitio (ni selector, ni lista, ni rentabilidad).
+const ESTADOS_OCULTOS = [...ESTADOS_PREVIOS, 'archivada'];
 const ESTADOS_OBRA = {
   estudio:    { label: 'En estudio',  color: '#38bdf8', emoji: '🔍' },
   descartada: { label: 'Descartada',  color: '#8a8f98', emoji: '🚫' },
@@ -17,6 +19,7 @@ const ESTADOS_OBRA = {
   pausada:    { label: 'Pausada',     color: '#f59e0b', emoji: '⏸️' },
   terminada:  { label: 'Terminada',   color: '#4d9cf8', emoji: '✅' },
   facturada:  { label: 'Facturada',   color: '#a78bfa', emoji: '💰' },
+  archivada:  { label: 'Archivada',   color: '#5a6278', emoji: '🗄️' },
 };
 
 // ── CLASIFICACIÓN DE FACTURAS DE PROVEEDOR ───────────────────────
@@ -220,7 +223,7 @@ async function getObras({ clientName, status, search, verEstudio = true } = {}) 
   const query = {};
   if (status)     query.status = status;
   // Las obras en estudio / descartadas van en su propia pestaña (y solo para Dueño/Oficina).
-  else            query.status = { $nin: ESTADOS_PREVIOS };
+  else            query.status = { $nin: ESTADOS_OCULTOS };
   if (status && ESTADOS_PREVIOS.includes(status) && !verEstudio) return [];
   if (clientName) query.clientName = { $regex: clientName, $options: 'i' };
   if (search)     query.$or = [
@@ -323,7 +326,7 @@ async function resumenAbiertas({ dias = 90, conDinero = false } = {}) {
 //   · abierta  → en curso o pausada (arriba)
 //   · cerrada  → terminada/facturada hace poco (abajo; aún llegan albaranes y horas)
 //   · antigua  → cerrada hace más tiempo (solo con `todas`, y el selector la enseña al buscar)
-const ESTADOS_CERRADA = ['terminada', 'facturada'];
+const ESTADOS_CERRADA = ['terminada', 'facturada', 'archivada'];
 const DIAS_CERRADA_RECIENTE = Number(process.env.OBRA_CERRADA_DIAS) || 60;
 async function getSelector({ todas = false, conEstudio = false } = {}) {
   const db = await getDB();
@@ -675,7 +678,7 @@ async function getResumenGeneral() {
 async function _getResumenGeneral() {
   const db = await getDB();
   // Las obras en estudio/descartadas no tienen rentabilidad que mirar todavía.
-  const obras = await db.collection('obras').find({ status: { $nin: ESTADOS_PREVIOS } }).sort({ createdAt: -1 }).toArray();
+  const obras = await db.collection('obras').find({ status: { $nin: ESTADOS_OCULTOS } }).sort({ createdAt: -1 }).toArray();
 
   const resumen = await Promise.all(obras.map(async obra => {
     try {

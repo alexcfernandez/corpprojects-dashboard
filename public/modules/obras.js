@@ -5,6 +5,7 @@
   // ── Todo desde config central ─────────────────────────────────
   const ESTADOS = window.CP_CONFIG.estadosObras;
   const PREVIOS = ['estudio','descartada'];   // aún no aceptadas: pestaña propia, solo Dueño/Oficina
+  // 'archivada' sí se deja en el filtro de la lista: es la forma de recuperar una obra archivada
 
   const eur = v => new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0);
   const ceMod = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
