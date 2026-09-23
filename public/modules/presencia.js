@@ -295,7 +295,7 @@
     // Obras del día (estado 'obra'): lista editable cliente+horas.
     // Se rellena desde entry.obras (multi), o desde clientName/horas (single), o una fila vacía.
     if (entry && Array.isArray(entry.obras) && entry.obras.length) {
-      _obrasModal = entry.obras.map(o => ({ clientName: o.clientName || '', horas: o.horas }));
+      _obrasModal = entry.obras.map(o => ({ clientName: o.clientName || '', horas: o.horas, obraId: o.obraId || null }));
     } else if (entry && entry.estado === 'obra' && entry.clientName) {
       _obrasModal = [{ clientName: entry.clientName, horas: entry.horas }];
     } else {
@@ -403,6 +403,7 @@
       </div>`;
 
     document.body.appendChild(modal);
+    _mountPickers();
     modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
 
     _renderObrasRows();
@@ -478,12 +479,27 @@
   }
 
   // ── OBRAS DEL DÍA (lista editable cliente+horas) ──────────────────
+  // Cada fila: el SELECTOR ÚNICO de obra (abiertas, motes, crear al vuelo) y, si no es una
+  // obra nuestra, un texto libre de cliente. Se guarda obraId (para casar) y clientName (compat).
+  let _obrasSel = null;
+  async function _mountPickers() {
+    if (!window.CPObra) return;
+    if (!_obrasSel) { try { _obrasSel = await api('/api/obras/selector'); if (!Array.isArray(_obrasSel)) _obrasSel = []; } catch (e) { _obrasSel = []; } }
+    document.querySelectorAll('#p-obras-rows .p-obra-row').forEach(r => {
+      const cont = r.querySelector('.p-obra-pick'); if (!cont || cont.dataset.ok) return; cont.dataset.ok = '1';
+      const txt = r.querySelector('.p-obra-cli');
+      CPObra.crear(cont, { obras: _obrasSel, value: r.dataset.obraid || '', vacio: '— Cliente sin obra (escribirlo) —', placeholder: 'Elegir obra…', titulo: '¿En qué obra estuvo?',
+        crear: async (n, d) => { const o = await api('/api/oficina/obra-nueva', { method: 'POST', body: JSON.stringify({ reference: n, address: d || '', status: 'activa' }) }); if (o && o.error) throw new Error(o.error); _obrasSel = [o, ..._obrasSel]; return o; },
+        onChange: o => { r.dataset.obraid = o ? o.id : ''; if (o) { txt.value = o.reference; txt.style.display = 'none'; } else { txt.style.display = ''; txt.value = ''; txt.focus(); } } });
+    });
+  }
   function _obraRowHtml(o, i) {
     const cli = String(o.clientName || '').replace(/"/g, '&quot;');
     const h   = (o.horas != null && o.horas !== '') ? o.horas : '';
-    return `<div class="p-obra-row" data-i="${i}" style="display:flex;gap:6px;margin-bottom:6px">
-      <input type="text" class="p-obra-cli" value="${cli}" placeholder="Buscar cliente / obra..." list="p-clients-datalist" autocomplete="off"
-        style="flex:1;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;color:var(--text);font-size:13px;outline:none;font-family:'Inter',sans-serif">
+    return `<div class="p-obra-row" data-i="${i}" data-obraid="${o.obraId || ''}" style="display:flex;gap:6px;margin-bottom:6px;align-items:flex-start">
+      <div style="flex:1;min-width:0"><div class="p-obra-pick"></div>
+      <input type="text" class="p-obra-cli" value="${cli}" placeholder="…o escribe el cliente a mano" list="p-clients-datalist" autocomplete="off"
+        style="width:100%;margin-top:6px;display:${o.obraId ? 'none' : ''};background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;color:var(--text);font-size:13px;outline:none;font-family:'Inter',sans-serif"></div>
       <input type="number" class="p-obra-h" value="${h}" placeholder="h" min="0.5" max="16" step="0.5"
         oninput="CP.Presencia._updateObrasTotal()"
         style="width:62px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px 6px;color:var(--text);font-size:13px;outline:none;text-align:center">
@@ -499,7 +515,7 @@
       const clientName = r.querySelector('.p-obra-cli')?.value?.trim() || '';
       const raw = r.querySelector('.p-obra-h')?.value;
       const horas = (raw === '' || raw == null) ? '' : parseFloat(raw);
-      arr.push({ clientName, horas: isNaN(horas) ? '' : horas });
+      arr.push({ clientName, horas: isNaN(horas) ? '' : horas, obraId: r.dataset.obraid || null });
     });
     return arr;
   }
@@ -508,6 +524,7 @@
     const cont = document.getElementById('p-obras-rows');
     if (!cont) return;
     cont.innerHTML = _obrasModal.map((o,i) => _obraRowHtml(o,i)).join('');
+    _mountPickers();
     _updateObrasTotal();
   }
 
@@ -520,7 +537,7 @@
 
   function _addObraRow() {
     _obrasModal = _readObrasFromDOM();
-    _obrasModal.push({ clientName: '', horas: '' });
+    _obrasModal.push({ clientName: '', horas: '', obraId: null });
     _renderObrasRows();
   }
 
@@ -548,7 +565,7 @@
         if (msg) { msg.textContent='⚠️ Añade al menos una obra con cliente'; msg.style.display='block'; msg.style.color='var(--amber)'; }
         return;
       }
-      obras      = valid.map(o => ({ clientName: o.clientName, horas: parseFloat(o.horas) || 0 }));
+      obras      = valid.map(o => ({ clientName: o.clientName, horas: parseFloat(o.horas) || 0, obraId: o.obraId || null }));
       clientName = obras[0].clientName;
       horas      = obras.reduce((s,o) => s + o.horas, 0);
     } else {
@@ -870,7 +887,7 @@
     addMatRow, calcObra,
     _selectEstado, _saveEntry, _deleteEntry,
     _toggleChipEquipo, _addExternoPresencia, _removeLibre,
-    _addObraRow, _removeObraRow, _updateObrasTotal,
+    _addObraRow, _removeObraRow, _updateObrasTotal, openModal,
   };
 
 })(window.CP = window.CP || {});

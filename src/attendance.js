@@ -470,7 +470,7 @@ async function buscarSitio(texto, { from, to, todos = false } = {}) {
     let casado = false;
     for (const o of lista) {
       const h = parseFloat(o.horas || 0) || parseFloat(e.horas || 0) || 8;
-      const ob = obraDe(o.clientName);
+      const ob = (o.obraId && obrasHit.find(x => String(x._id) === String(o.obraId))) || obraDe(o.clientName);
       if (ob) { add('obra:' + ob._id, { obraId: String(ob._id), sitio: ob.reference, direccion: ob.address || '', motes: ob.aliases || [], estado: ob.status }, e, h, 'presencia'); casado = true; }
       else if (casa(o.clientName)) { add('txt:' + normName(o.clientName), { obraId: null, sitio: o.clientName, direccion: '', motes: [], estado: null }, e, h, 'presencia'); casado = true; }
     }
