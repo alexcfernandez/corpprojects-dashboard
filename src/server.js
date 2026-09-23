@@ -2093,6 +2093,11 @@ app.get('/api/obras/selector', requireAuth, async (req, res) => {
 });
 
 // Obras EN ESTUDIO (aún no aceptadas) con sus mediciones y presupuestos: solo Dueño y Oficina.
+// Portada: obras abiertas de un vistazo (días, gente, horas, material; € solo para Dueño/Oficina).
+app.get('/api/obras/abiertas', requireAuth, async (req, res) => {
+  try { res.json(await obras.resumenAbiertas({ dias: Number(req.query.dias) || 90, conDinero: users.canSeeMoney(req.user?.role || 'owner') })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
 app.get('/api/obras/estudio', requireAuth, async (req, res) => {
   if (!users.canSeeMoney(req.user?.role || 'owner')) return res.status(403).json({ error: 'Solo Dueño y Oficina ven las obras en estudio' });
   try { res.json(await obras.getEnEstudio({ descartadas: req.query.descartadas === '1' })); }

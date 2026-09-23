@@ -33,11 +33,33 @@
       ${nada ? '<div style="font-size:13px;color:var(--text3)">Nadie ha fichado todavía hoy.</div>' : bloques.join('')}
     </div>`;
   }
+  // Obras abiertas de un vistazo: dónde estamos, cuánta gente, horas, material y sacas por recoger.
+  async function obras(containerId) {
+    const el = document.getElementById(containerId); if (!el) return;
+    const tok = localStorage.getItem('cp_token');
+    let l;
+    try { const r = await fetch('/api/obras/abiertas', { headers: { 'Authorization': 'Bearer ' + tok } }); if (!r.ok) throw new Error(); l = await r.json(); }
+    catch (e) { el.innerHTML = ''; return; }
+    const eur = v => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(v || 0);
+    const hoy = new Date().toISOString().slice(0, 10);
+    const rel = d => { if (!d) return 'sin actividad'; const n = Math.round((new Date(hoy) - new Date(d)) / 864e5); return n <= 0 ? 'hoy' : n === 1 ? 'ayer' : 'hace ' + n + ' días'; };
+    const conDinero = l.some(o => 'material' in o);
+    el.innerHTML = `<div class="card" style="margin-bottom:16px">
+      <div class="card-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">🏗️ Obras abiertas <span style="font-weight:400;color:var(--text3);font-size:11px">${l.length} · últimos 90 días · toca una para abrir su ficha</span>
+        <span style="margin-left:auto;display:flex;gap:6px"><a class="btn bgh" style="padding:4px 10px;font-size:11px;text-decoration:none" href="#" onclick="showTab('obras',document.querySelector('.nav-btn[onclick*=obras]'));return false">Todas las obras</a></span></div>
+      ${l.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px">${l.map(o => `
+        <div style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:var(--bg3);cursor:pointer;${o.status === 'pausada' ? 'opacity:.75' : ''}" onclick="CP.Obras&&CP.Obras.openObra('${o.id}')">
+          <div style="display:flex;gap:8px;align-items:flex-start"><div style="min-width:0;flex:1"><div style="font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(o.reference)}${o.status === 'pausada' ? ' <span style="font-size:10px;color:var(--amber)">pausada</span>' : ''}</div><div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(o.address || o.clientName || '')}</div></div><div style="font-size:11px;color:${o.ultimo && rel(o.ultimo) === 'hoy' ? 'var(--green)' : 'var(--text3)'};white-space:nowrap">${rel(o.ultimo)}</div></div>
+          <div style="display:flex;gap:14px;margin-top:10px;font-size:12px"><div><b style="font-size:16px">${o.dias}</b> <span style="color:var(--text3)">días</span></div><div><b style="font-size:16px">${o.gente.length}</b> <span style="color:var(--text3)">gente</span></div><div><b style="font-size:16px">${Math.round(o.horas)}</b> <span style="color:var(--text3)">h</span></div>${conDinero ? `<div style="margin-left:auto;text-align:right"><b style="font-size:16px;color:var(--red)">${eur(o.material)}</b> <span style="color:var(--text3)">material</span></div>` : ''}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${o.gente.length ? '👷 ' + o.gente.map(n => esc(n.split(' ')[0])).join(', ') : 'sin presencia registrada'}${o.sacasPendientes ? ' · <span style="color:var(--amber)">♻️ ' + o.sacasPendientes + ' por recoger</span>' : ''}${conDinero && o.presupuesto ? ' · presupuesto ' + eur(o.presupuesto) : ''}</div>
+        </div>`).join('')}</div>` : '<div style="font-size:13px;color:var(--text3)">No hay obras abiertas.</div>'}
+    </div>`;
+  }
   function auto(containerId) {
     render(containerId);
     if (_timer) clearInterval(_timer);
     _timer = setInterval(() => { if (!document.hidden && document.getElementById(containerId)) render(containerId); }, 120000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) render(containerId); });
   }
-  CP.Hoy = { render, auto };
+  CP.Hoy = { render, auto, obras };
 })(window.CP = window.CP || {});

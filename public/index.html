@@ -144,11 +144,13 @@ function cpUpdateBanner(){
     <button class="tq" onclick="location.href='/medir'"><span class="em">📐</span><span class="lb">Mediciones</span></button>
     <button class="tq" onclick="location.href='/presupuestos'"><span class="em">💶</span><span class="lb">Presupuestos</span></button>
     <button class="tq" onclick="location.href='/activos'"><span class="em">🔑</span><span class="lb">Llaves y herram.</span></button>
+    <button class="tq" onclick="showTab('presencia',document.querySelector('.nav-btn[onclick*=&quot;presencia&quot;]'))"><span class="em">📅</span><span class="lb">Presencia</span></button>
     <button class="tq" onclick="location.href='/fichajes'"><span class="em">🕐</span><span class="lb">Fichajes (hoy)</span></button>
     <button class="tq" onclick="location.href='/fichar'"><span class="em">▶</span><span class="lb">Fichar jornada</span></button>
     <button class="tq" onclick="location.href='/parte'"><span class="em">📋</span><span class="lb">Parte de trabajo</span></button>
   </div>
   <div id="inicio-hoy"></div>
+  <div id="inicio-obras"></div>
   <div id="inicio-container"><div style="text-align:center;padding:60px;color:var(--text3)">Cargando resumen…</div></div>
 </div>
 
@@ -1437,7 +1439,7 @@ async function renderInformes(){
 async function renderInicio(){
   const c=document.getElementById('inicio-container');
   if(!c) return;
-  if(window.CP&&CP.Hoy) CP.Hoy.auto('inicio-hoy');   // «Hoy en obra», para todos los roles
+  if(window.CP&&CP.Hoy){ CP.Hoy.auto('inicio-hoy'); CP.Hoy.obras('inicio-obras'); }   // «Hoy en obra» y «Obras abiertas», para todos los roles
   // Sin acceso a dinero (Encargado/Técnico): portada operativa, sin cifras.
   if(!cpCan('facturas')){ renderInicioOperativo(c); return; }
   let d;

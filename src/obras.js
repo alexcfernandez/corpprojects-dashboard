@@ -280,6 +280,42 @@ async function getEnEstudio({ descartadas = false } = {}) {
   });
 }
 
+// ── PORTADA: obras abiertas de un vistazo ────────────────────────
+// Ligero (sin StelOrder): presencia de los últimos `dias` días agrupada por obra (mismo casado que
+// «¿Dónde hemos estado?»), compras confirmadas y material del almacén de cada obra, sacas por recoger.
+async function resumenAbiertas({ dias = 90, conDinero = false } = {}) {
+  const db = await getDB();
+  const abiertas = await db.collection('obras').find({ status: { $in: ['activa', 'pausada'] } })
+    .project({ reference: 1, clientName: 1, address: 1, status: 1, budgetAmount: 1, startDate: 1, aliases: 1 }).sort({ reference: 1 }).toArray();
+  if (!abiertas.length) return [];
+  const ids = abiertas.map(o => String(o._id));
+  const desde = new Date(Date.now() - dias * 86400000).toISOString().slice(0, 10);
+  let porObra = {};
+  try {
+    const r = await require('./attendance').buscarSitio('', { todos: true, from: desde });
+    r.sitios.forEach(s => { if (s.obraId) porObra[s.obraId] = s; });
+  } catch (e) {}
+  const [compras, salidas] = await Promise.all([
+    db.collection('compras').find({ estado: 'revisada', $or: [{ obraId: { $in: ids } }, { 'reparto.obraId': { $in: ids } }] }).project({ obraId: 1, reparto: 1, base: 1, total: 1, tipo: 1, casado: 1, facturaId: 1, fecha: 1 }).toArray().catch(() => []),
+    db.collection('almacenSalidas').find({ obraId: { $in: ids } }).project({ obraId: 1, importe: 1, fecha: 1, recogida: 1 }).toArray().catch(() => []),
+  ]);
+  const mat = {}, sacas = {}, ultCompra = {};
+  for (const c of compras) {
+    if (c.tipo === 'factura' && c.casado && c.casado.n > 0) continue;  // desglosada en sus albaranes
+    const partes = (c.reparto || []).length ? c.reparto.filter(p => ids.includes(p.obraId)).map(p => [p.obraId, Number(p.importe) || 0]) : [[c.obraId, c.base != null ? c.base : (c.total || 0)]];
+    for (const [id, imp] of partes) { mat[id] = (mat[id] || 0) + imp; if (c.fecha && (!ultCompra[id] || c.fecha > ultCompra[id])) ultCompra[id] = c.fecha; }
+  }
+  for (const s of salidas) { mat[s.obraId] = (mat[s.obraId] || 0) + (s.importe || 0); sacas[s.obraId] = (sacas[s.obraId] || 0) + ((s.recogida && s.recogida.pendientes) || 0); }
+  return abiertas.map(o => {
+    const id = String(o._id), p = porObra[id];
+    const ultimo = [p && p.hasta, ultCompra[id]].filter(Boolean).sort().pop() || null;
+    const out = { id, reference: o.reference || '', clientName: o.clientName || '', address: o.address || '', status: o.status, startDate: o.startDate || null,
+      dias: p ? p.dias : 0, horas: p ? p.horas : 0, gente: p ? p.trabajadores.map(w => w.name) : [], ultimo, sacasPendientes: sacas[id] || 0 };
+    if (conDinero) { out.material = Math.round((mat[id] || 0) * 100) / 100; out.presupuesto = Number(o.budgetAmount) || 0; }
+    return out;
+  }).sort((a, b) => String(b.ultimo || '').localeCompare(String(a.ultimo || '')) || a.reference.localeCompare(b.reference));
+}
+
 // ── SELECTOR ÚNICO DE OBRA ───────────────────────────────────────
 // La misma lista para TODAS las pantallas que eligen obra (fichar, parte, compras,
 // mediciones…). Sin importes: la ven también los trabajadores. Se busca por nombre,
@@ -655,7 +691,7 @@ async function _getResumenGeneral() {
 
 module.exports = {
   ESTADOS_OBRA, CATEGORIAS_GASTO,
-  ESTADOS_PREVIOS, createObra, getObras, getObra, updateObra, deleteObra, getSelector, getEnEstudio, addMaterial, deleteMaterial,
+  ESTADOS_PREVIOS, createObra, getObras, getObra, updateObra, deleteObra, getSelector, getEnEstudio, resumenAbiertas, addMaterial, deleteMaterial,
   addCertificacion, setCertificacion, deleteCertificacion, resumenCertificaciones,
   getRentabilidad, getResumenGeneral,
   extraerObraMarcador, extraerGastoMarcador, getAsignacionesFacturaMap, getReglasMap, resolverFacturaObra,
