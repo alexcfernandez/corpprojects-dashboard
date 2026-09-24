@@ -3443,6 +3443,7 @@ app.delete('/api/pagos/:id', requireAuth, async (req, res) => {
 // ── Rutas HTML ────────────────────────────────────────────────────
 app.get('/informe-presencia', (req, res) => res.sendFile(path.join(__dirname, '../public/informe-presencia.html')));
 app.get('/sitios', (req, res) => res.sendFile(path.join(__dirname, '../public/sitios.html')));
+app.get('/diag', (req, res) => res.sendFile(path.join(__dirname, '../public/diag.html')));
 app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
 app.get('/fichar', (req, res) => res.sendFile(path.join(__dirname, '../public/fichar.html')));
 app.get('/fichajes', (req, res) => res.sendFile(path.join(__dirname, '../public/fichajes.html')));
