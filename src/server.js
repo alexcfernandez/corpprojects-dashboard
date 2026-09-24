@@ -713,7 +713,8 @@ app.get('/api/diag/ping', requireAuth, async (req, res) => {
   try {
     const { db } = await getDB(); const uri = String(process.env.MONGODB_URI || ''); out.mongo.host = (uri.match(/@([^/?]+)/) || [])[1] || null;
     let t0 = Date.now(); await db.command({ ping: 1 }); out.mongo.pingMs = Date.now() - t0;
-    t0 = Date.now(); await db.collection('users').find({}).limit(5).toArray(); out.mongo.findUsersMs = Date.now() - t0;
+    t0 = Date.now(); await db.collection('users').find({}).limit(5).toArray(); out.mongo.findUsersMs = Date.now() - t0;   // primera consulta (si el pool está frío, paga abrir conexión)
+    t0 = Date.now(); await db.collection('users').find({}).limit(5).toArray(); out.mongo.segundaFindMs = Date.now() - t0;  // la misma, ya caliente
     t0 = Date.now(); await Promise.all([1, 2, 3, 4, 5].map(() => db.collection('users').countDocuments({}))); out.mongo.cincoEnParaleloMs = Date.now() - t0;
   } catch (e) { out.mongo.error = e.message; }
   try { const t0 = Date.now(); await require('./stelorder').getSuppliers(); out.stelorder.documentStatesMs = Date.now() - t0; out.stelorder.cache = require('./cache').stats().entries.map(k => k.key + (k.freshForMs > 0 ? ' ✓' : ' (caducada)')).slice(0, 30); } catch (e) { out.stelorder.error = e.message; }

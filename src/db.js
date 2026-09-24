@@ -31,13 +31,19 @@ async function getDB() {
 
     client = new MongoClient(uri, {
       maxPoolSize: 10,            // reutiliza hasta 10 conexiones
-      minPoolSize: 1,
+      // Abrir una conexión a Atlas (TLS + autenticación) cuesta ~700 ms: se mantienen 5 siempre
+      // abiertas y no se cierran por inactividad, así la primera consulta del día no lo paga.
+      minPoolSize: 5,
+      maxIdleTimeMS: 0,
       serverSelectionTimeoutMS: 10000,
       retryWrites: true,
     });
     await client.connect();
     db = client.db('corpprojects');
     console.log('[DB] ✅ Conexión única a MongoDB establecida (pool compartido)');
+    // Latido cada 45 s con 3 comandos a la vez: Atlas no cierra las conexiones por inactividad
+    // y el pool se queda caliente aunque nadie use el dashboard durante horas.
+    if (!global.__dbKeepAlive) global.__dbKeepAlive = setInterval(() => { Promise.all([0, 1, 2].map(() => db.command({ ping: 1 }))).catch(() => {}); }, 45000);
 
     await ensureIndexes(db);
     return db;
