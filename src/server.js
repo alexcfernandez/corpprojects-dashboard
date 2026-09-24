@@ -716,7 +716,7 @@ app.get('/api/diag/ping', requireAuth, async (req, res) => {
     t0 = Date.now(); await db.collection('users').find({}).limit(5).toArray(); out.mongo.findUsersMs = Date.now() - t0;
     t0 = Date.now(); await Promise.all([1, 2, 3, 4, 5].map(() => db.collection('users').countDocuments({}))); out.mongo.cincoEnParaleloMs = Date.now() - t0;
   } catch (e) { out.mongo.error = e.message; }
-  try { const t0 = Date.now(); await require('./stelorder').getDocumentStates(); out.stelorder.documentStatesMs = Date.now() - t0; out.stelorder.cache = require('./cache').stats().entries.map(k => k.key + (k.freshForMs > 0 ? ' ✓' : ' (caducada)')).slice(0, 30); } catch (e) { out.stelorder.error = e.message; }
+  try { const t0 = Date.now(); await require('./stelorder').getSuppliers(); out.stelorder.documentStatesMs = Date.now() - t0; out.stelorder.cache = require('./cache').stats().entries.map(k => k.key + (k.freshForMs > 0 ? ' ✓' : ' (caducada)')).slice(0, 30); } catch (e) { out.stelorder.error = e.message; }
   res.json(out);
 });
 app.get('/api/invoices/pending',   requireAuth, async (req,res) => res.json(await getPendingInvoices()));
