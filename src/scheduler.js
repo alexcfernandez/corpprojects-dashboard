@@ -346,6 +346,11 @@ function startScheduler() {
   cron.schedule('15 9 * * 1-5', () => fichajeAvisos.resumenOficina()
     .then(r => console.log('[Fichaje] resumen oficina →', JSON.stringify({ enviado: r.enviado, motivo: r.motivo })))
     .catch(e => console.error('[Fichaje] resumen oficina:', e.message)), { timezone: 'Europe/Madrid' });
+  // Caché caliente: lo que usa la portada (facturas, pedidos, compras) se refresca solo cada
+  // 10 min, así el primero que entra por la mañana no espera a StelOrder.
+  const calentar = async () => { try { const st = require('./stelorder'); await Promise.allSettled([st.getSummary(), st.getMonthlyBilling(6), st.getPurchaseInvoices(), st.getPendingInvoices ? st.getPendingInvoices() : null, require('./stelorder').getWorkEstimates ? require('./stelorder').getWorkEstimates() : null]); } catch (e) {} };
+  setTimeout(calentar, 30000);
+  cron.schedule('*/10 6-21 * * *', calentar, { timezone: 'Europe/Madrid' });
   // Compras por foto: si a las 18:00 quedan compras sin revisar, WhatsApp + push a oficina.
   // Día 1 a las 9:30: albaranes de más de 35 días que ninguna factura ha recogido.
   cron.schedule('30 9 1 * *', () => require('./compras').avisoAlbaranesSinFactura().catch(e => console.warn('[Compras] sin factura:', e.message)), { timezone: 'Europe/Madrid' });

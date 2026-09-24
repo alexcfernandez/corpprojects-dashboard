@@ -114,6 +114,8 @@ app.use((req, res, next) => {
   }
   next();
 });
+// gzip/brotli: el dashboard pesa ~400 KB de HTML+JS por carga; comprimido baja a ~90 KB.
+app.use(require('compression')({ threshold: 1024 }));
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Límite global de /api/ por IP. Sube a 1200/15min (300 se quedaba corto con el
@@ -667,89 +669,54 @@ app.get('/api/summary',            requireAuth, async (req,res) => res.json(awai
 // Cada bloque va en su try/catch: si una fuente falla, las demás se muestran igual.
 app.get('/api/inicio', requireAuth, async (req, res) => {
   const out = { lastUpdated: new Date().toISOString() };
-
+  // Todo EN PARALELO: cada consulta a Mongo tarda ~1 s desde Railway; en serie eran 6-8 s.
+  const t = [];
   // 1) Facturación (mes, total, pendientes) — reutiliza getSummary
-  try {
+  t.push((async () => { try {
     const s = await getSummary();
-    out.facturacion = {
-      mes: s.totalBilledMonth, mesCount: s.totalInvoicesMonth,
-      pendiente: s.totalPending, pendienteCount: s.pendingInvoices,
-      criticas: s.criticalCount, avisos: s.overdueCount + s.warningCount,
-      topPendientes: (s.pendingList || []).slice(0, 5).map(p => ({
-        number: p.number, client: p.client, pending: p.pending, days: p.daysOverdue, alert: p.alertLevel
-      }))
-    };
-  } catch (e) { out.facturacion = { error: e.message }; }
-
+    out.facturacion = { mes: s.totalBilledMonth, mesCount: s.totalInvoicesMonth, pendiente: s.totalPending, pendienteCount: s.pendingInvoices, criticas: s.criticalCount, avisos: s.overdueCount + s.warningCount,
+      topPendientes: (s.pendingList || []).slice(0, 5).map(p => ({ number: p.number, client: p.client, pending: p.pending, days: p.daysOverdue, alert: p.alertLevel })) };
+  } catch (e) { out.facturacion = { error: e.message }; } })());
   // 2) Serie mensual (6 meses) para la gráfica de barras
-  try {
-    out.serieMensual = await require('./stelorder').getMonthlyBilling(6);
-  } catch (e) {
-    out.serieMensual = [];
-    out.serieMensualError = e.message;
-  }
-
+  t.push((async () => { try { out.serieMensual = await require('./stelorder').getMonthlyBilling(6); } catch (e) { out.serieMensual = []; out.serieMensualError = e.message; } })());
   // 3) Pedidos de trabajo vivos por nivel de alerta
-  try {
-    const list = await getWorkOrdersLive();
-    let rojo = 0, ambar = 0;
-    for (const p of list) {
-      const lvl = p.alertLevel || (require('./stelorder').getWorkOrderAlertLevel
-        ? require('./stelorder').getWorkOrderAlertLevel(p) : null);
-      if (lvl === 'red' || lvl === 'rojo') rojo++;
-      else if (lvl === 'amber' || lvl === 'ambar') ambar++;
-    }
+  t.push((async () => { try {
+    const list = await getWorkOrdersLive(); let rojo = 0, ambar = 0;
+    for (const p of list) { const lvl = p.alertLevel || (require('./stelorder').getWorkOrderAlertLevel ? require('./stelorder').getWorkOrderAlertLevel(p) : null); if (lvl === 'red' || lvl === 'rojo') rojo++; else if (lvl === 'amber' || lvl === 'ambar') ambar++; }
     out.pedidos = { total: list.length, rojo, ambar };
-  } catch (e) { out.pedidos = { total: 0, rojo: 0, ambar: 0, error: e.message }; }
-
-  // 4) Partes por estado (pendientes de revisar / de facturar)
-  try {
-    const { db } = await getDB();
-    const porRevisar = await db.collection('partes').countDocuments({ status: 'pendiente' });
-    const porFacturar = await db.collection('partes').countDocuments({ status: 'verificado' });
-    out.partes = { porRevisar, porFacturar };
-  } catch (e) { out.partes = { porRevisar: 0, porFacturar: 0, error: e.message }; }
-
-  // 5) Emails urgentes sin gestionar (excluye publicidad/spam)
-  try {
-    const { db } = await getDB();
-    const urgentes = await db.collection('emails').countDocuments({
-      estado: 'PENDIENTE', urgencia: 'ALTA', categoria: { $nin: ['PUBLICIDAD', 'SPAM'] }
-    });
-    const sinLeer = await db.collection('emails').countDocuments({
-      leido: false, categoria: { $nin: ['PUBLICIDAD', 'SPAM'] }
-    });
-    out.emails = { urgentes, sinLeer };
-  } catch (e) { out.emails = { urgentes: 0, sinLeer: 0, error: e.message }; }
-
-  // 6) Presencia de hoy (quién ha fichado)
-  try {
-    const { db } = await getDB();
-    const hoy = new Date().toISOString().slice(0, 10);
-    const presentes = await db.collection('attendance').countDocuments({ date: hoy });
-    out.presencia = { hoy: presentes };
-  } catch (e) { out.presencia = { hoy: null }; }
-
+  } catch (e) { out.pedidos = { total: 0, rojo: 0, ambar: 0, error: e.message }; } })());
+  // 4) Partes por estado · 5) Emails · 6) Presencia de hoy — contadores de Mongo, a la vez
+  t.push((async () => { try {
+    const { db } = await getDB(); const hoy = new Date().toISOString().slice(0, 10);
+    const [porRevisar, porFacturar, urgentes, sinLeer, presentes] = await Promise.all([
+      db.collection('partes').countDocuments({ status: 'pendiente' }), db.collection('partes').countDocuments({ status: 'verificado' }),
+      db.collection('emails').countDocuments({ estado: 'PENDIENTE', urgencia: 'ALTA', categoria: { $nin: ['PUBLICIDAD', 'SPAM'] } }),
+      db.collection('emails').countDocuments({ leido: false, categoria: { $nin: ['PUBLICIDAD', 'SPAM'] } }),
+      db.collection('attendance').countDocuments({ date: hoy }),
+    ]);
+    out.partes = { porRevisar, porFacturar }; out.emails = { urgentes, sinLeer }; out.presencia = { hoy: presentes };
+  } catch (e) { out.partes = out.partes || { porRevisar: 0, porFacturar: 0, error: e.message }; out.emails = out.emails || { urgentes: 0, sinLeer: 0 }; out.presencia = out.presencia || { hoy: null }; } })());
   // 7) Planificación: lo de hoy y el conteo de esta semana
+  t.push((async () => { try {
+    const { getPlanning } = require('./planning'); const now = new Date(); const hoy = now.toISOString().slice(0, 10);
+    const dow = (now.getDay() + 6) % 7; const lunes = new Date(now); lunes.setDate(now.getDate() - dow); const domingo = new Date(lunes); domingo.setDate(lunes.getDate() + 6);
+    const fmt = d => d.toISOString().slice(0, 10); const semana = await getPlanning(fmt(lunes), fmt(domingo));
+    out.planning = { hoy: semana.filter(p => p.date === hoy).map(p => ({ workerName: p.workerName, color: p.color, client: p.client, tipo: p.tipo, horaInicio: p.horaInicio, workOrderNumber: p.workOrderNumber })), semanaTotal: semana.length };
+  } catch (e) { out.planning = { hoy: [], semanaTotal: 0 }; } })());
+  await Promise.all(t);
+  res.json(out);
+});
+// Diagnóstico de velocidad (Dueño): cuánto tarda una consulta a Mongo y una llamada a StelOrder desde el servidor.
+app.get('/api/diag/ping', requireAuth, async (req, res) => {
+  if ((req.user?.role || 'owner') !== 'owner') return res.status(403).json({ error: 'Solo Dueño' });
+  const out = { servidor: { region: process.env.RAILWAY_REPLICA_REGION || process.env.RAILWAY_REGION || null, uptimeMin: Math.round(process.uptime() / 60) }, mongo: {}, stelorder: {} };
   try {
-    const { getPlanning } = require('./planning');
-    const now = new Date();
-    const hoy = now.toISOString().slice(0, 10);
-    // lunes..domingo de la semana actual
-    const dow = (now.getDay() + 6) % 7;
-    const lunes = new Date(now); lunes.setDate(now.getDate() - dow);
-    const domingo = new Date(lunes); domingo.setDate(lunes.getDate() + 6);
-    const fmt = d => d.toISOString().slice(0, 10);
-    const semana = await getPlanning(fmt(lunes), fmt(domingo));
-    out.planning = {
-      hoy: semana.filter(p => p.date === hoy).map(p => ({
-        workerName: p.workerName, color: p.color, client: p.client,
-        tipo: p.tipo, horaInicio: p.horaInicio, workOrderNumber: p.workOrderNumber
-      })),
-      semanaTotal: semana.length
-    };
-  } catch (e) { out.planning = { hoy: [], semanaTotal: 0 }; }
-
+    const { db } = await getDB(); const uri = String(process.env.MONGODB_URI || ''); out.mongo.host = (uri.match(/@([^/?]+)/) || [])[1] || null;
+    let t0 = Date.now(); await db.command({ ping: 1 }); out.mongo.pingMs = Date.now() - t0;
+    t0 = Date.now(); await db.collection('users').find({}).limit(5).toArray(); out.mongo.findUsersMs = Date.now() - t0;
+    t0 = Date.now(); await Promise.all([1, 2, 3, 4, 5].map(() => db.collection('users').countDocuments({}))); out.mongo.cincoEnParaleloMs = Date.now() - t0;
+  } catch (e) { out.mongo.error = e.message; }
+  try { const t0 = Date.now(); await require('./stelorder').getDocumentStates(); out.stelorder.documentStatesMs = Date.now() - t0; out.stelorder.cache = require('./cache').stats().entries.map(k => k.key + (k.freshForMs > 0 ? ' ✓' : ' (caducada)')).slice(0, 30); } catch (e) { out.stelorder.error = e.message; }
   res.json(out);
 });
 app.get('/api/invoices/pending',   requireAuth, async (req,res) => res.json(await getPendingInvoices()));

@@ -1,5 +1,5 @@
 // Service Worker — Corp Projects Dashboard
-const CACHE = 'cp-v105';
+const CACHE = 'cp-v106';
 const STATIC = [
   '/',
   '/parte',
@@ -56,20 +56,17 @@ self.addEventListener('fetch', e => {
   // API calls — siempre red, nunca cache
   if (url.pathname.startsWith('/api/')) return;
 
-  // Recursos estáticos — red primero, cache como fallback
-  e.respondWith(
-    fetch(e.request)
-      .then(res => {
-        // Guardar en cache si es válido
-        if (res && res.status === 200 && e.request.method === 'GET') {
-          const clone = res.clone();
-          caches.open(CACHE).then(cache => cache.put(e.request, clone));
-        }
-        return res;
-      })
-      // Sin red: lo guardado. Al abrir una página se ignora el ?t= / ?w= del enlace.
-      .catch(() => caches.match(e.request, { ignoreSearch: e.request.mode === 'navigate' }))
-  );
+  // Recursos estáticos — CACHÉ PRIMERO (pinta al instante) y se actualiza por detrás.
+  // Cada despliegue cambia CACHE, así que la versión vieja se borra al activar el SW nuevo.
+  if (e.request.method !== 'GET') return;
+  e.respondWith((async () => {
+    const cache = await caches.open(CACHE);
+    const enCache = await cache.match(e.request, { ignoreSearch: e.request.mode === 'navigate' });
+    const red = fetch(e.request).then(res => { if (res && res.status === 200) cache.put(e.request, res.clone()); return res; }).catch(() => null);
+    if (enCache) { e.waitUntil(red); return enCache; }
+    const res = await red;
+    return res || new Response('Sin conexión', { status: 503, headers: { 'Content-Type': 'text/plain' } });
+  })());
 });
 
 // ── Notificaciones push (avisos de fichaje) ──────────────────────

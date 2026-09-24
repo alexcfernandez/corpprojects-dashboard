@@ -12,6 +12,7 @@
 // quien la usa.
 
 const store = new Map();    // key -> { value, expires }
+const MAX_STALE = parseInt(process.env.CACHE_MAX_STALE_MIN || 120) * 60 * 1000; // hasta 2 h se sirve caducado mientras se refresca
 const inflight = new Map(); // key -> Promise (descarga en curso)
 
 /**
@@ -29,6 +30,17 @@ async function cached(key, ttlMs, fetcher) {
   // 1) ¿Hay valor fresco? -> devolver sin tocar la API
   const hit = store.get(key);
   if (hit && now < hit.expires) {
+    return hit.value;
+  }
+
+  // 1b) Caducado pero reciente (hasta MAX_STALE): se devuelve YA lo viejo y se refresca por
+  //     detrás. Así el dashboard nunca espera a que StelOrder pagine; como mucho ve datos de
+  //     hace unos minutos, que al siguiente refresco ya están al día.
+  if (hit && now < hit.expires + MAX_STALE) {
+    if (!inflight.has(key)) {
+      const p = (async () => { try { const v = await fetcher(); store.set(key, { value: v, expires: Date.now() + ttlMs }); } catch (e) { /* se queda lo viejo */ } finally { inflight.delete(key); } })();
+      inflight.set(key, p);
+    }
     return hit.value;
   }
 
