@@ -289,7 +289,7 @@ async function getEnEstudio({ descartadas = false } = {}) {
 async function resumenAbiertas({ dias = 90, conDinero = false } = {}) {
   const db = await getDB();
   const abiertas = await db.collection('obras').find({ status: { $in: ['activa', 'pausada'] } })
-    .project({ reference: 1, clientName: 1, address: 1, status: 1, budgetAmount: 1, startDate: 1, aliases: 1 }).sort({ reference: 1 }).toArray();
+    .project({ reference: 1, clientName: 1, address: 1, status: 1, budgetAmount: 1, startDate: 1, aliases: 1, materiales: 1 }).sort({ reference: 1 }).toArray();
   if (!abiertas.length) return [];
   const ids = abiertas.map(o => String(o._id));
   const desde = new Date(Date.now() - dias * 86400000).toISOString().slice(0, 10);
@@ -299,22 +299,49 @@ async function resumenAbiertas({ dias = 90, conDinero = false } = {}) {
     r.sitios.forEach(s => { if (s.obraId) porObra[s.obraId] = s; });
   } catch (e) {}
   const [compras, salidas] = await Promise.all([
-    db.collection('compras').find({ estado: 'revisada', $or: [{ obraId: { $in: ids } }, { 'reparto.obraId': { $in: ids } }] }).project({ obraId: 1, reparto: 1, base: 1, total: 1, tipo: 1, casado: 1, facturaId: 1, fecha: 1 }).toArray().catch(() => []),
+    db.collection('compras').find({ estado: 'revisada', $or: [{ obraId: { $in: ids } }, { 'reparto.obraId': { $in: ids } }] }).project({ obraId: 1, reparto: 1, base: 1, total: 1, tipo: 1, casado: 1, facturaId: 1, fecha: 1, numero: 1, proveedorNorm: 1 }).toArray().catch(() => []),
     db.collection('almacenSalidas').find({ obraId: { $in: ids } }).project({ obraId: 1, importe: 1, fecha: 1, recogida: 1 }).toArray().catch(() => []),
   ]);
-  const mat = {}, sacas = {}, ultCompra = {};
+  // Material = facturas de proveedor de StelOrder asignadas a la obra (Clasificar facturas, reglas,
+  // marcador n8n, repartos) + compras por foto confirmadas + material sacado del almacén + material
+  // apuntado a mano en la ficha. Mismas reglas anti-doble que la rentabilidad.
+  const stel = {}, stelNums = {}, fotos = {}, alm = {}, sacas = {}, ultCompra = {};
+  const norm = v => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  const nn = v => String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '').replace(/^0+/, '');
+  try {
+    const [facturasProv, asignMap, reglaMap] = await Promise.all([require('./stelorder').getPurchaseInvoices(), getAsignacionesFacturaMap(db), getReglasMap(db)]);
+    const porRef = abiertas.map(o => ({ id: String(o._id), n: norm(o.reference || '') })).filter(x => x.n);
+    for (const f of (facturasProv || [])) {
+      const rec = asignMap.get(String(f.id));
+      const suma = (id, imp) => { stel[id] = (stel[id] || 0) + imp; (stelNums[id] = stelNums[id] || new Set()).add(norm(f.supplier).split(' ')[0] + '|' + nn(f.number)); if (f.date && (!ultCompra[id] || String(f.date).slice(0, 10) > ultCompra[id])) ultCompra[id] = String(f.date).slice(0, 10); };
+      if (rec && Array.isArray(rec.repartos) && rec.repartos.length) { rec.repartos.forEach(p => { if (ids.includes(String(p.obraId))) suma(String(p.obraId), Number(p.importe) || 0); }); continue; }
+      const cls = resolverFacturaObra(f, asignMap, reglaMap);
+      if (!cls || cls.tipo !== 'obra') continue;
+      let id = cls.obraId && ids.includes(String(cls.obraId)) ? String(cls.obraId) : null;
+      if (!id && cls.obraRef) { const tag = norm(cls.obraRef); const hit = porRef.find(x => tag.includes(x.n) || x.n.includes(tag)); if (hit) id = hit.id; }
+      if (id) suma(id, Number(f.total) || 0);
+    }
+  } catch (e) { /* StelOrder caído → el panel sigue con lo del dashboard */ }
   for (const c of compras) {
-    if (c.tipo === 'factura' && c.casado && c.casado.n > 0) continue;  // desglosada en sus albaranes
+    if (c.tipo === 'factura' && c.casado && c.casado.n > 0) continue;                        // desglosada en sus albaranes
     const partes = (c.reparto || []).length ? c.reparto.filter(p => ids.includes(p.obraId)).map(p => [p.obraId, Number(p.importe) || 0]) : [[c.obraId, c.base != null ? c.base : (c.total || 0)]];
-    for (const [id, imp] of partes) { mat[id] = (mat[id] || 0) + imp; if (c.fecha && (!ultCompra[id] || c.fecha > ultCompra[id])) ultCompra[id] = c.fecha; }
+    for (const [id, imp] of partes) {
+      // factura/ticket que ya está en StelOrder asignada a esta obra → ya sumó arriba
+      if ((c.tipo === 'factura' || c.tipo === 'ticket') && c.numero && stelNums[id] && stelNums[id].has(String(c.proveedorNorm || '').split(' ')[0] + '|' + nn(c.numero))) continue;
+      fotos[id] = (fotos[id] || 0) + imp; if (c.fecha && (!ultCompra[id] || c.fecha > ultCompra[id])) ultCompra[id] = c.fecha;
+    }
   }
-  for (const s of salidas) { mat[s.obraId] = (mat[s.obraId] || 0) + (s.importe || 0); sacas[s.obraId] = (sacas[s.obraId] || 0) + ((s.recogida && s.recogida.pendientes) || 0); }
+  for (const s of salidas) { alm[s.obraId] = (alm[s.obraId] || 0) + (s.importe || 0); sacas[s.obraId] = (sacas[s.obraId] || 0) + ((s.recogida && s.recogida.pendientes) || 0); }
   return abiertas.map(o => {
     const id = String(o._id), p = porObra[id];
     const ultimo = [p && p.hasta, ultCompra[id]].filter(Boolean).sort().pop() || null;
     const out = { id, reference: o.reference || '', clientName: o.clientName || '', address: o.address || '', status: o.status, startDate: o.startDate || null,
       dias: p ? p.dias : 0, horas: p ? p.horas : 0, gente: p ? p.trabajadores.map(w => w.name) : [], ultimo, sacasPendientes: sacas[id] || 0 };
-    if (conDinero) { out.material = Math.round((mat[id] || 0) * 100) / 100; out.presupuesto = Number(o.budgetAmount) || 0; }
+    if (conDinero) {
+      const manual = (o.materiales || []).reduce((a, m) => a + (Number(m.importe) || 0), 0);
+      const d = { stelorder: Math.round((stel[id] || 0) * 100) / 100, fotos: Math.round((fotos[id] || 0) * 100) / 100, almacen: Math.round((alm[id] || 0) * 100) / 100, manual: Math.round(manual * 100) / 100 };
+      out.material = Math.round((d.stelorder + d.fotos + d.almacen + d.manual) * 100) / 100; out.materialDesglose = d; out.presupuesto = Number(o.budgetAmount) || 0;
+    }
     return out;
   }).sort((a, b) => String(b.ultimo || '').localeCompare(String(a.ultimo || '')) || a.reference.localeCompare(b.reference));
 }
