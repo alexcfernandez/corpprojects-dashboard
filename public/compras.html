@@ -118,7 +118,8 @@ async function abrir(id){
   document.getElementById('vista-lista').style.display='none';const v=document.getElementById('vista-det');v.style.display='block';
   const c=cur, ia=c.ia||{}, rev=c.estado!=='por_revisar';
   const avisos=[];
-  if(!ia.ok)avisos.push(`<div class="aviso err">🤖 La IA no ha podido leer este documento${ia.error?' ('+esc(ia.error)+')':''}. Rellénalo a mano o pulsa «Volver a leer».</div>`);
+  if(!ia.ok)avisos.push(`<div class="aviso err">🤖 La IA no ha podido leer este documento${ia.error?' ('+esc(ia.error)+')':''}${ia.intentoAt?' · último intento '+fh(ia.intentoAt):''}. Rellénalo a mano o pulsa «Volver a leer».</div>`);
+  else if(ia.error&&ia.intentoAt&&(!ia.releidaAt||new Date(ia.intentoAt)>new Date(ia.releidaAt)))avisos.push(`<div class="aviso">🤖 El último «Volver a leer» (${fh(ia.intentoAt)}) falló: ${esc(ia.error)}. Se mantienen los datos anteriores.</div>`);
   else if(ia.calidad&&ia.calidad!=='legible')avisos.push(`<div class="aviso">📷 La foto sale <b>${esc(ia.calidad.replace('_',' '))}</b>. Comprueba los datos con la imagen.</div>`);
   if(ia.aviso)avisos.push(`<div class="aviso">🤖 ${esc(ia.aviso)}</div>`);
   if(c.duplicadoInfo)avisos.push(`<div class="aviso">⚠️ <b>Posible duplicado:</b> ya hay un documento de este proveedor con el mismo número, subido el ${fh(c.duplicadoInfo.createdAt)} por ${esc(c.duplicadoInfo.por||'?')} (${esc(c.duplicadoInfo.estado)}${c.duplicadoInfo.obraRef?', '+esc(c.duplicadoInfo.obraRef):''}). <a href="#" onclick="abrir('${c.duplicadoInfo.id}');return false" style="color:var(--blue)">Verlo</a> · si es el mismo, descarta este.</div>`);

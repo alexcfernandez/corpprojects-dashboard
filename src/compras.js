@@ -53,6 +53,29 @@ const PROMPT = `Eres el administrativo de una empresa de reformas en Girona. Te 
 }
 Si el documento tiene más de 60 líneas, incluye las 60 primeras y resume el resto en una línea "… y N líneas más". Reglas: "albaran" = entrega de material SIN importes totales o con la palabra albarán/entrega; "factura" = lleva la palabra factura y desglose de IVA; "ticket" = ticket de caja/TPV; "devolucion" = abono, devolución o importes negativos (pon los importes en NEGATIVO). Números con formato español (1.234,56) → 1234.56. Si no es un documento de compra, calidad="no_es_documento". No inventes: lo que no se lea, null.`;
 
+// Esquema de la salida estructurada (mismo contenido que pide PROMPT).
+const _n = { type: ['number', 'null'] }, _s = { type: ['string', 'null'] };
+const HERRAMIENTA = {
+  name: 'registrar_documento',
+  description: 'Registra los datos leídos del documento de compra.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      calidad: { type: 'string', enum: ['legible', 'borroso', 'cortado', 'no_es_documento'] },
+      tipo: { type: 'string', enum: ['albaran', 'factura', 'ticket', 'devolucion', 'otro'] },
+      proveedor: _s, razonSocial: _s, nif: _s, numero: _s,
+      fecha: { type: ['string', 'null'], description: 'YYYY-MM-DD' },
+      base: _n, iva: _n, total: _n,
+      lineas: { type: 'array', items: { type: 'object', properties: { descripcion: { type: 'string' }, cantidad: _n, unidad: _s, precio: _n, importe: _n, talla: _s }, required: ['descripcion'] } },
+      albaranesRef: { type: 'array', items: { type: 'string' } },
+      obraPista: _s,
+      confianza: _n,
+      aviso: _s,
+    },
+    required: ['calidad', 'tipo', 'lineas'],
+  },
+};
+
 // Si la respuesta se cortó (documento con muchas líneas), se recorta hasta el último objeto
 // completo y se cierran los corchetes/llaves que falten: se conserva todo lo leído hasta ahí.
 function repararJson(s) {
@@ -89,20 +112,24 @@ async function leerConIA(fotos) {
     if (/pdf/i.test(f.mimetype || '')) content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } });
     else content.push({ type: 'image', source: { type: 'base64', media_type: f.mimetype || 'image/jpeg', data: b64 } });
   }
-  content.push({ type: 'text', text: PROMPT });
+  content.push({ type: 'text', text: PROMPT + '\n\nRegistra el resultado llamando a la herramienta «registrar_documento» (no escribas el JSON como texto).' });
   const modelo = CONFIG.ia.vision;
   let raw = '';
   try {
-    const c = new AbortController(); const t = setTimeout(() => c.abort(), 60000);
+    const c = new AbortController(); const t = setTimeout(() => c.abort(), 90000);
+    // Salida ESTRUCTURADA (tool_use forzado): el API devuelve un objeto ya validado, así que las
+    // comillas de las medidas en pulgadas (3/4", 1/2") o cualquier carácter raro de una factura
+    // larga ya no rompen el JSON. Si no llega el bloque de herramienta, se lee el texto como antes.
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST', signal: c.signal,
       headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: modelo, max_tokens: 8000, messages: [{ role: 'user', content }] }),
+      body: JSON.stringify({ model: modelo, max_tokens: 12000, tools: [HERRAMIENTA], tool_choice: { type: 'tool', name: HERRAMIENTA.name }, messages: [{ role: 'user', content }] }),
     }).finally(() => clearTimeout(t));
     const data = await r.json();
     if (!r.ok) throw new Error(`API ${r.status}: ${JSON.stringify(data).slice(0, 160)}`);
+    const tu = (data.content || []).find(b => b.type === 'tool_use' && b.input && typeof b.input === 'object');
     raw = (data.content || []).map(b => b.text || '').join('');
-    const j = parseJsonLoose(raw);
+    const j = (tu && (tu.input.tipo || tu.input.proveedor || (tu.input.lineas || []).length)) ? { ...tu.input } : parseJsonLoose(raw);
     if (j._truncado || data.stop_reason === 'max_tokens') { delete j._truncado; j.aviso = [j.aviso, 'Documento muy largo: la IA no llegó a leer todas las líneas; comprueba las últimas.'].filter(Boolean).join(' · '); }
     return { ok: true, modelo, datos: j };
   } catch (e) {
@@ -292,7 +319,11 @@ async function releer(id) {
   if (!c) throw new Error('Compra no encontrada');
   const fotos = await fotosDe(id);
   const lec = await leerConIA(fotos.map(f => ({ data: f.data.buffer ? Buffer.from(f.data.buffer) : f.data, mimetype: f.mimetype })));
-  if (!lec.ok) throw new Error('La IA no ha podido leerla: ' + lec.error);
+  if (!lec.ok) {
+    // Se guarda el intento fallido (con la hora): si no, la pantalla seguía enseñando el error antiguo.
+    await db.collection(COL).updateOne({ _id: c._id }, { $set: { 'ia.error': lec.error, 'ia.intentoAt': new Date(), updatedAt: new Date() } });
+    throw new Error('La IA no ha podido leerla: ' + lec.error);
+  }
   const doc = aplicarLectura({}, lec.datos);
   doc.ia = { ok: true, calidad: lec.datos.calidad || 'legible', confianza: num(lec.datos.confianza), aviso: String(lec.datos.aviso || '').trim().slice(0, 200) || null, modelo: lec.modelo, releidaAt: new Date() };
   doc.updatedAt = new Date();
