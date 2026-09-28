@@ -51,13 +51,34 @@ const PROMPT = `Eres el administrativo de una empresa de reformas en Girona. Te 
  "confianza": 0-1,
  "aviso": "una frase corta en español si hay algo que oficina deba mirar (importe ilegible, falta una página, es un presupuesto y no una compra…), o null"
 }
-Reglas: "albaran" = entrega de material SIN importes totales o con la palabra albarán/entrega; "factura" = lleva la palabra factura y desglose de IVA; "ticket" = ticket de caja/TPV; "devolucion" = abono, devolución o importes negativos (pon los importes en NEGATIVO). Números con formato español (1.234,56) → 1234.56. Si no es un documento de compra, calidad="no_es_documento". No inventes: lo que no se lea, null.`;
+Si el documento tiene más de 60 líneas, incluye las 60 primeras y resume el resto en una línea "… y N líneas más". Reglas: "albaran" = entrega de material SIN importes totales o con la palabra albarán/entrega; "factura" = lleva la palabra factura y desglose de IVA; "ticket" = ticket de caja/TPV; "devolucion" = abono, devolución o importes negativos (pon los importes en NEGATIVO). Números con formato español (1.234,56) → 1234.56. Si no es un documento de compra, calidad="no_es_documento". No inventes: lo que no se lea, null.`;
 
+// Si la respuesta se cortó (documento con muchas líneas), se recorta hasta el último objeto
+// completo y se cierran los corchetes/llaves que falten: se conserva todo lo leído hasta ahí.
+function repararJson(s) {
+  let t = s.slice(0, s.lastIndexOf('}') + 1);
+  for (let intento = 0; intento < 3 && t; intento++) {
+    let pila = [], enStr = false, esc = false;
+    for (const ch of t) {
+      if (esc) { esc = false; continue; }
+      if (ch === '\\') { if (enStr) esc = true; continue; }
+      if (ch === '"') { enStr = !enStr; continue; }
+      if (enStr) continue;
+      if (ch === '{' || ch === '[') pila.push(ch === '{' ? '}' : ']');
+      else if (ch === '}' || ch === ']') pila.pop();
+    }
+    const cerrado = t.replace(/,\s*$/, '') + pila.reverse().join('');
+    try { return JSON.parse(cerrado); } catch (e) { t = t.slice(0, t.lastIndexOf('}', t.length - 2) + 1); }
+  }
+  return null;
+}
 function parseJsonLoose(raw) {
   const s = String(raw || '').trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
-  const i = s.indexOf('{'), j = s.lastIndexOf('}');
-  if (i < 0 || j < 0) throw new Error('La IA no devolvió JSON');
-  return JSON.parse(s.slice(i, j + 1));
+  const i = s.indexOf('{');
+  if (i < 0) throw new Error('La IA no devolvió JSON');
+  const cuerpo = s.slice(i, s.lastIndexOf('}') + 1 || undefined);
+  try { return JSON.parse(cuerpo); }
+  catch (e) { const r = repararJson(s.slice(i)); if (r) { r._truncado = true; return r; } throw new Error('La IA devolvió un JSON incompleto (documento muy largo)'); }
 }
 async function leerConIA(fotos) {
   const key = process.env.ANTHROPIC_API_KEY;
@@ -76,12 +97,13 @@ async function leerConIA(fotos) {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST', signal: c.signal,
       headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: modelo, max_tokens: 2500, messages: [{ role: 'user', content }] }),
+      body: JSON.stringify({ model: modelo, max_tokens: 8000, messages: [{ role: 'user', content }] }),
     }).finally(() => clearTimeout(t));
     const data = await r.json();
     if (!r.ok) throw new Error(`API ${r.status}: ${JSON.stringify(data).slice(0, 160)}`);
     raw = (data.content || []).map(b => b.text || '').join('');
     const j = parseJsonLoose(raw);
+    if (j._truncado || data.stop_reason === 'max_tokens') { delete j._truncado; j.aviso = [j.aviso, 'Documento muy largo: la IA no llegó a leer todas las líneas; comprueba las últimas.'].filter(Boolean).join(' · '); }
     return { ok: true, modelo, datos: j };
   } catch (e) {
     console.error('[Compras] IA:', e.message, '| raw:', String(raw).slice(0, 200));
