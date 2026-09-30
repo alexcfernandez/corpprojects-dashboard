@@ -35,6 +35,94 @@ async function _pushOficina(payload) {
   catch (e) { console.error('[FichajeAvisos] push oficina:', e.message); return 0; }
 }
 
+// ── ENLACES DE FICHAR (implantación) ──────────────────────────────
+// Mientras la plantilla no tiene la app instalada: cada día laborable, un WhatsApp con
+// SU enlace personal (abre su pantalla de fichar sin PIN) por la mañana y otro por la
+// tarde. Se activa/desactiva y se elige quién lo recibe desde Fichajes → Enlaces.
+//   config en appSettings { key:'fichajeEnlaces', activo, excluidos:[userId] }
+const BASE_URL = (process.env.PUBLIC_URL || 'https://dashboard.corpprojects.es').replace(/\/+$/, '');
+function horasEnlaces() {
+  const h = (v, d) => (/^\d{1,2}:\d{2}$/.test(String(v || '').trim()) ? String(v).trim().padStart(5, '0') : d);
+  return { manana: h(process.env.FICHAJE_ENLACE_MANANA, '07:45'), tarde: h(process.env.FICHAJE_ENLACE_TARDE, '16:00') };
+}
+function cronDe(hhmm) { const [H, M] = hhmm.split(':').map(Number); return `${M} ${H} * * 1-5`; }
+async function _db() { return require('./db').getDB(); }
+async function getConfigEnlaces() {
+  const doc = await (await _db()).collection('appSettings').findOne({ key: 'fichajeEnlaces' });
+  return { activo: !!(doc && doc.activo), excluidos: (doc && Array.isArray(doc.excluidos)) ? doc.excluidos.map(String) : [], ...horasEnlaces() };
+}
+async function setConfigEnlaces({ activo, excluir } = {}, por) {
+  const db = await _db();
+  const cfg = await getConfigEnlaces();
+  const ex = new Set(cfg.excluidos);
+  if (excluir && typeof excluir === 'object') for (const [id, v] of Object.entries(excluir)) { if (v) ex.add(String(id)); else ex.delete(String(id)); }
+  const set = { key: 'fichajeEnlaces', excluidos: [...ex], updatedAt: new Date(), updatedBy: por || '' };
+  if (typeof activo === 'boolean') set.activo = activo;
+  await db.collection('appSettings').updateOne({ key: 'fichajeEnlaces' }, { $set: set }, { upsert: true });
+  return getConfigEnlaces();
+}
+async function enlacePersonal(userId) {
+  const { token } = await require('./users').ensureMagicToken(String(userId));
+  return `${BASE_URL}/fichar?t=${token}`;
+}
+function textoEnlace(momento, nombre, url, estado) {
+  const n = _nombre(nombre);
+  if (momento === 'manana') {
+    return `Buenos días ${n} 👋 Desde ahora apuntamos la jornada con el móvil.\n\n` +
+      `Cuando empieces, abre tu enlace y pulsa *Empiezo*:\n${url}\n\n` +
+      `Ahí mismo puedes marcar las pausas y el final del día. El enlace es solo tuyo: no lo reenvíes.`;
+  }
+  if (estado === 'sin_fichar') {
+    return `Hola ${n} 👋 Hoy no consta tu entrada.\n\n` +
+      `Si has trabajado, abre tu enlace y usa *Me olvidé de fichar* para poner la hora real:\n${url}`;
+  }
+  return `Hola ${n} 👋 Cuando acabes la jornada, abre tu enlace y pulsa *Termino la jornada*` +
+    `${estado === 'pausa' ? ' (ahora estás en pausa)' : ''}:\n${url}`;
+}
+// Quién lo recibiría ahora y con qué texto (base de la lista de la pantalla y de los envíos).
+async function destinatariosEnlaces(momento, { fecha } = {}) {
+  const f = fecha || fm.fechaHoy();
+  const [cfg, plantilla, dia] = await Promise.all([getConfigEnlaces(), fm.trabajadoresQueFichan(), fm.getDia(f)]);
+  const sf = await fm.sinFichar(f, { dia, plantilla });
+  const ausente = {}; (sf.ausentes || []).forEach(a => { ausente[a.id] = a.estado; });
+  const estadoDe = {}; dia.forEach(d => { estadoDe[String(d.userId)] = d.estado; });
+  return plantilla.map(w => {
+    const est = estadoDe[w.id] || 'sin_fichar';
+    let motivo = null;
+    if (!sf.laborable) motivo = 'hoy no es laborable';
+    else if (cfg.excluidos.includes(w.id)) motivo = 'no lo recibe (desmarcado)';
+    else if (!w.whatsapp) motivo = 'sin teléfono en su ficha';
+    else if (ausente[w.id]) motivo = `hoy está de ${ausente[w.id]}`;
+    else if (momento === 'tarde' && est === 'fuera') motivo = 'ya ha terminado la jornada';
+    return { ...w, estadoHoy: est, ausente: ausente[w.id] || null, excluido: cfg.excluidos.includes(w.id), recibe: !motivo, motivo };
+  });
+}
+async function enviarEnlaces(momento, { dryRun = false, soloUserId = null, forzar = false } = {}) {
+  if (!['manana', 'tarde'].includes(momento)) throw new Error('Momento no válido');
+  const cfg = await getConfigEnlaces();
+  if (!soloUserId && !cfg.activo) return { momento, activo: false, motivo: 'envío de enlaces desactivado' };
+  if (!dryRun && !soloUserId && await avisos.isGlobalPaused()) return { pausado: true };
+  const fecha = fm.fechaHoy();
+  let lista = await destinatariosEnlaces(momento, { fecha });
+  if (soloUserId) {
+    lista = lista.filter(w => w.id === String(soloUserId));
+    if (!lista.length) throw new Error('Ese trabajador no está en la plantilla que ficha');
+    if (!lista[0].whatsapp) throw new Error('No tiene teléfono en su ficha');
+    lista[0].recibe = true;   // envío manual: se manda aunque esté desmarcado
+  }
+  const out = [];
+  for (const w of lista.filter(x => x.recibe)) {
+    const clave = `fichaje-enlace-${momento}-${w.id}`;
+    if (!dryRun && !forzar && !soloUserId && await avisos.wasAlertSentToday(clave, fecha)) continue;
+    const texto = textoEnlace(momento, w.name, await enlacePersonal(w.id), w.estadoHoy);
+    if (dryRun) { out.push({ name: w.name, to: w.whatsapp, texto }); continue; }
+    const ok = !!(await _enviar(w.whatsapp, texto));
+    if (ok) await avisos.markAlertSent(clave, fecha);
+    out.push({ name: w.name, to: w.whatsapp, enviado: ok });
+  }
+  return { momento, fecha, avisos: out };
+}
+
 // ── ESCALERA DE LA MAÑANA ─────────────────────────────────────────
 // paso 1 y 2 = push; paso 3 = el ÚNICO WhatsApp del día (si no tiene teléfono, push).
 // Si en el paso 3 no ha fichado NADIE, casi seguro es festivo: no se molesta a la
@@ -51,6 +139,8 @@ async function recordatorioEntrada(paso, { dryRun = false } = {}) {
   if (!r.laborable) return { fecha: r.fecha, paso, motivo: 'no laborable / festivo', avisos: [] };
   if (!r.faltan.length) return { fecha: r.fecha, paso, motivo: 'todos han fichado', avisos: [] };
   const posibleFestivo = paso === 3 && r.fichados === 0;
+  // En implantación (enlaces activos) ya han recibido su enlace a primera hora: sin WhatsApp extra.
+  const enlacesActivos = (await getConfigEnlaces()).activo;
   const out = [];
   if (posibleFestivo) {
     if (!dryRun && !(await avisos.wasAlertSentToday('fichaje-posible-festivo', r.fecha))) {
@@ -62,7 +152,7 @@ async function recordatorioEntrada(paso, { dryRun = false } = {}) {
   for (const w of r.faltan) {
     const clave = `fichaje-entrada-p${paso}-${w.id}`;
     if (!dryRun && await avisos.wasAlertSentToday(clave, r.fecha)) continue;
-    const usarWa = paso === 3 && !!w.whatsapp;
+    const usarWa = paso === 3 && !!w.whatsapp && !enlacesActivos;
     if (dryRun) { out.push({ name: w.name, canal: usarWa ? 'whatsapp' : 'push', to: usarWa ? w.whatsapp : undefined }); continue; }
     let ok = false;
     if (usarWa) {
@@ -96,7 +186,8 @@ async function avisarSalidasOlvidadas({ dryRun = false } = {}) {
     if (!dryRun && await avisos.wasAlertSentToday(clave, fecha)) continue;
     const inicio = (d.tramos[0] && d.tramos[0].entrada) || d.desde;
     const texto = `Hola ${_nombre(d.userName)} 👋 Tu jornada de hoy sigue abierta (empezaste a las ${_hhmm(inicio)}).\n\n` +
-      `Si ya has terminado, entra en la app y pulsa *Termino la jornada*. Si se te pasó la hora, usa *Me olvidé de fichar* y pon a qué hora acabaste.`;
+      `Si ya has terminado, entra en la app y pulsa *Termino la jornada*. Si se te pasó la hora, usa *Me olvidé de fichar* y pon a qué hora acabaste.` +
+      (to ? `\n${await enlacePersonal(d.userId).catch(() => BASE_URL + '/fichar')}` : '');
     if (dryRun) { out.push({ name: d.userName, to: to || '(sin teléfono: solo push)', enviado: false }); continue; }
     const nPush = await _pushWorker(d.userId, { title: 'Tu jornada sigue abierta', body: `Empezaste a las ${_hhmm(inicio)}. Si ya has acabado, pulsa «Termino la jornada».`, url: '/fichar', tag: 'fichaje-abierto' });
     const okWa = to ? await _enviar(to, texto) : false;
@@ -162,4 +253,4 @@ async function recordarFirmaMensual({ dryRun = false } = {}) {
   return { mes, avisos: out };
 }
 
-module.exports = { recordatorioEntrada, cronsEscalera, avisarSalidasOlvidadas, resumenOficina, avisarCorreccionNueva, avisarCorreccionResuelta, recordarFirmaMensual };
+module.exports = { horasEnlaces, cronDe, getConfigEnlaces, enlacePersonal, setConfigEnlaces, destinatariosEnlaces, enviarEnlaces, textoEnlace, recordatorioEntrada, cronsEscalera, avisarSalidasOlvidadas, resumenOficina, avisarCorreccionNueva, avisarCorreccionResuelta, recordarFirmaMensual };

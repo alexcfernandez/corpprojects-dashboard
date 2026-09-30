@@ -91,6 +91,19 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   <div class="vtabs">
     <button class="vtab on" id="vt-dia" onclick="verVista('dia')">Día</button>
     <button class="vtab" id="vt-mes" onclick="verVista('mes')">Informe mensual</button>
+    <button class="vtab" id="vt-enl" onclick="verVista('enl')">Enlaces</button>
+  </div>
+  <div id="vista-enl" style="display:none">
+    <div class="panel pend" id="enl-estado"><h4>Enlace de fichar por WhatsApp</h4><div class="al">Cargando…</div></div>
+    <div class="panel">
+      <h4>Prueba</h4>
+      <div class="al" style="margin-bottom:8px">Te manda a ti el texto de ejemplo (sin enlace real) para que veas cómo llega.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="b2" onclick="pruebaEnl('manana',this)">🧪 Mensaje de la mañana</button><button class="b2" onclick="pruebaEnl('tarde',this)">🧪 Mensaje de la tarde</button></div>
+      <div id="enl-ej" style="font-size:12.5px;color:var(--text2);white-space:pre-wrap;margin-top:10px;background:var(--bg3);border-radius:9px;padding:10px 12px"></div>
+    </div>
+    <h4 style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin:14px 2px 8px;font-weight:600">Plantilla que ficha</h4>
+    <div id="enl-lista"></div>
+    <div class="al" style="font-size:12px;color:var(--text3);margin:8px 2px 30px">¿Falta alguien o no tiene teléfono? Añádelo en el dashboard → <b>Usuarios</b> (rol Técnico o Encargado, con su teléfono) y vuelve aquí.</div>
   </div>
   <div id="vista-mes" style="display:none">
     <div class="datebar">
@@ -315,8 +328,10 @@ const FIRMA_TXT={firmado:'Firmado',no_conforme:'No conforme',cambiado:'Cambió t
 function verVista(v){
   document.getElementById('vista-dia').style.display=v==='dia'?'block':'none';
   document.getElementById('vista-mes').style.display=v==='mes'?'block':'none';
-  document.getElementById('vt-dia').classList.toggle('on',v==='dia');document.getElementById('vt-mes').classList.toggle('on',v==='mes');
+  document.getElementById('vista-enl').style.display=v==='enl'?'block':'none';
+  document.getElementById('vt-dia').classList.toggle('on',v==='dia');document.getElementById('vt-mes').classList.toggle('on',v==='mes');document.getElementById('vt-enl').classList.toggle('on',v==='enl');
   if(v==='mes'){if(!_mesA)_mesA=mesHoyA();cargarMesA();}
+  if(v==='enl')cargarEnl();
 }
 function moverMesA(n){const [y,m]=_mesA.split('-').map(Number);const d=new Date(y,m-1+n,1);const nm=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');if(nm>mesHoyA())return;_mesA=nm;cargarMesA();}
 async function cargarMesA(){
@@ -441,6 +456,48 @@ async function activarPush(){
   try{await CPPush.activar(tok);}catch(e){alert(e.message);}
   avisoPush();
 }
+
+// ── Enlaces de fichar (implantación) ──
+const EST_HOY={sin_fichar:'sin fichar hoy',dentro:'trabajando',pausa:'en pausa',fuera:'jornada terminada'};
+function haceTxt(ts){if(!ts)return'nunca';const m=Math.round((Date.now()-new Date(ts))/60000);if(m<60)return'hace '+m+' min';const h=Math.round(m/60);if(h<48)return'hace '+h+' h';return'hace '+Math.round(h/24)+' días';}
+async function apiEnl(url,body){const r=await fetch(url,body?{method:'POST',headers:{...authH(),'Content-Type':'application/json'},body:JSON.stringify(body)}:{headers:authH()});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||('Error '+r.status));return d;}
+async function cargarEnl(){
+  const el=document.getElementById('enl-lista');el.innerHTML='<div class="empty">Cargando…</div>';
+  try{
+    const d=await apiEnl('/api/fichaje/enlaces');
+    const n=d.trabajadores.filter(w=>w.recibe).length;
+    document.getElementById('enl-estado').className='panel '+(d.activo?'pend':'warn');
+    document.getElementById('enl-estado').innerHTML=`<h4>Enlace de fichar por WhatsApp</h4>
+      <div class="al">Cada día laborable, a las <b>${d.manana}</b> (para empezar) y a las <b>${d.tarde}</b> (para terminar), cada trabajador marcado recibe <b>su enlace personal</b>: lo abre en el navegador y ficha sin PIN. A las ${d.tarde} solo lo recibe quien no ha terminado la jornada.</div>
+      <div class="al" style="margin-top:8px">Estado: ${d.activo?'<b style="color:var(--green)">ACTIVADO</b>':'<b style="color:var(--amber)">DESACTIVADO</b> — no se envía nada'} · Hoy lo recibirían <b>${n}</b> de ${d.trabajadores.length}${d.pausadoGlobal?' · <b style="color:var(--red)">avisos en pausa global</b>':''}</div>
+      <div style="margin-top:10px"><button class="${d.activo?'b3':'b1'}" onclick="activarEnl(${!d.activo},this)">${d.activo?'Desactivar envíos':'Activar envíos'}</button></div>
+      ${d.activo?'':'<div class="al" style="font-size:12px;color:var(--text3);margin-top:6px">Mientras está desactivado, la escalera de siempre sigue igual (push y WhatsApp de las 9:00). Al activarlo, el WhatsApp de las 9:00 deja de mandarse: ya tienen el enlace de primera hora.</div>'}`;
+    document.getElementById('enl-ej').textContent=d.ejemplo.manana;
+    el.innerHTML=d.trabajadores.map(w=>`<div class="row" style="align-items:flex-start">
+      <input type="checkbox" ${w.excluido?'':'checked'} onchange="excluirEnl('${w.id}',!this.checked)" style="width:20px;height:20px;margin-top:2px;accent-color:var(--green)" title="Recibe el enlace">
+      <div class="nm"><b>${esc(w.name)}</b>
+        <div class="sub">${w.whatsapp?esc(w.whatsapp):'<span style="color:var(--red)">sin teléfono</span>'} · abrió el enlace: ${haceTxt(w.lastLogin)} · ${EST_HOY[w.estadoHoy]||w.estadoHoy}</div>
+        ${w.motivo?`<div class="sub" style="color:var(--amber)">${esc(w.motivo)}</div>`:''}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <button class="b2" style="padding:6px 10px;font-size:12px" onclick="copiarEnl('${w.id}',this)">Copiar enlace</button>
+        ${w.whatsapp?`<button class="b2" style="padding:6px 10px;font-size:12px" onclick="enviarEnl('${w.id}','${esc(w.name).replace(/'/g,'')}',this)">Enviar ahora</button>`:''}
+      </div></div>`).join('')||'<div class="empty">No hay nadie con rol Técnico, Encargado u Oficina.</div>';
+  }catch(e){el.innerHTML='<div class="empty" style="color:var(--red)">'+esc(e.message)+'</div>';}
+}
+async function activarEnl(on,b){
+  if(on&&!confirm('A partir de ahora, cada día laborable se mandará el enlace por WhatsApp a los trabajadores marcados. ¿Activar?'))return;
+  b.disabled=true;try{await apiEnl('/api/fichaje/enlaces/config',{activo:on});}catch(e){alert(e.message);}cargarEnl();}
+async function excluirEnl(id,ex){try{await apiEnl('/api/fichaje/enlaces/config',{excluir:{[id]:ex}});}catch(e){alert(e.message);}cargarEnl();}
+async function pruebaEnl(m,b){b.disabled=true;const t=b.textContent;b.textContent='Enviando…';
+  try{const d=await apiEnl('/api/fichaje/enlaces/prueba',{momento:m});b.textContent=d.ok?'✓ Enviado':'No salió';}catch(e){alert(e.message);b.textContent=t;}
+  setTimeout(()=>{b.disabled=false;b.textContent=t;},3000);}
+async function copiarEnl(id,b){try{const d=await apiEnl('/api/fichaje/enlaces/'+id+'/url');await navigator.clipboard.writeText(d.url);const t=b.textContent;b.textContent='✓ Copiado';setTimeout(()=>b.textContent=t,2000);}catch(e){alert(e.message);}}
+async function enviarEnl(id,nombre,b){
+  const h=new Date().getHours();const m=h<13?'manana':'tarde';
+  if(!confirm(`¿Mandar ahora a ${nombre} su enlace (mensaje de la ${m==='manana'?'mañana':'tarde'})?`))return;
+  b.disabled=true;try{const d=await apiEnl('/api/fichaje/enlaces/enviar',{userId:id,momento:m});const a=(d.avisos||[])[0];b.textContent=a&&a.enviado?'✓ Enviado':'No salió';}catch(e){alert(e.message);}
+  setTimeout(()=>{b.disabled=false;b.textContent='Enviar ahora';},3000);}
 
 if(!tok){document.getElementById('lista').innerHTML='<div class="empty">Abre esta página desde el dashboard (necesita sesión de admin).</div>';}
 else{cargar();avisoPush();}

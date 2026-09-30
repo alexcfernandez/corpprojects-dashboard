@@ -1692,6 +1692,51 @@ app.post('/api/fichaje/magic-login', async (req, res) => {
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
+// ── Enlaces de fichar (implantación): lista, activar, quién recibe, prueba y envío manual ──
+app.get('/api/fichaje/enlaces', requireAuthOficina, async (req, res) => {
+  try {
+    const fa = require('./fichajeAvisos');
+    const momento = req.query.momento === 'tarde' ? 'tarde' : 'manana';
+    const [cfg, lista, us] = await Promise.all([fa.getConfigEnlaces(), fa.destinatariosEnlaces(momento), users.getUsers(false)]);
+    const info = {}; us.forEach(u => { info[String(u._id)] = { lastLogin: u.lastLogin || null, role: u.role }; });
+    res.json({ ...cfg, momento, pausadoGlobal: await avisos.isGlobalPaused(),
+      trabajadores: lista.map(w => ({ ...w, ...(info[w.id] || {}) })),
+      ejemplo: { manana: fa.textoEnlace('manana', 'Nombre', 'https://…/fichar?t=(su enlace)'), tarde: fa.textoEnlace('tarde', 'Nombre', 'https://…/fichar?t=(su enlace)', 'dentro') } });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/fichaje/enlaces/config', requireAuthOficina, express.json(), async (req, res) => {
+  try {
+    const q = (await _quienPush(req)) || {};
+    const b = req.body || {};
+    res.json(await require('./fichajeAvisos').setConfigEnlaces({ activo: typeof b.activo === 'boolean' ? b.activo : undefined, excluir: b.excluir }, q.name));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+// Prueba: el texto de ejemplo a un número (por defecto, el del dueño). No manda enlaces reales.
+app.post('/api/fichaje/enlaces/prueba', requireAuthOficina, express.json(), async (req, res) => {
+  try {
+    const fa = require('./fichajeAvisos');
+    const b = req.body || {};
+    const to = String(b.to || process.env.WHATSAPP_TO || '').replace(/^whatsapp:/i, '').trim();
+    if (!to) return res.status(400).json({ error: 'Falta el número' });
+    const momento = b.momento === 'tarde' ? 'tarde' : 'manana';
+    const texto = '🧪 *PRUEBA* — así le llegará a cada trabajador:\n\n' + fa.textoEnlace(momento, 'Nombre', 'https://dashboard.corpprojects.es/fichar?t=(su enlace personal)', 'dentro');
+    const ok = await require('./notifications').sendWhatsAppTo(to, texto);
+    res.json({ ok: !!ok, to });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+// Enviar YA su enlace a un trabajador (o a todos los que tocan ahora).
+app.post('/api/fichaje/enlaces/enviar', requireAuthOficina, express.json(), async (req, res) => {
+  try {
+    const b = req.body || {};
+    const momento = b.momento === 'tarde' ? 'tarde' : 'manana';
+    res.json(await require('./fichajeAvisos').enviarEnlaces(momento, { soloUserId: b.userId || null, forzar: !!b.userId }));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/fichaje/enlaces/:id/url', requireAuthOficina, async (req, res) => {
+  try { res.json({ url: await require('./fichajeAvisos').enlacePersonal(req.params.id) }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 // Estado de pausa de los avisos de pedidos.
 app.get('/api/workorders/alert-status', requireAuth, async (req, res) => {
   try { res.json({ paused: await avisos.isPedidosPaused() }); }

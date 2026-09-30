@@ -339,6 +339,15 @@ function startScheduler() {
       .catch(err => console.error(`[Fichaje] recordatorio paso ${e.paso}:`, err.message)), { timezone: 'Europe/Madrid' });
   }
   console.log('[Fichaje] Escalera de avisos (L-V):', fichajeAvisos.cronsEscalera().map(e => `${e.hora} paso ${e.paso}`).join(' · '), '| 09:15 resumen oficina | 20:00 jornada abierta');
+  // Implantación: enlace personal de fichar por WhatsApp (mañana y tarde, L-V). Solo si
+  // está activado en Fichajes → Enlaces (llega desactivado).
+  const hEnl = fichajeAvisos.horasEnlaces();
+  for (const momento of ['manana', 'tarde']) {
+    cron.schedule(fichajeAvisos.cronDe(hEnl[momento]), () => fichajeAvisos.enviarEnlaces(momento)
+      .then(r => console.log(`[Fichaje] enlaces ${momento} →`, JSON.stringify(r)))
+      .catch(err => console.error(`[Fichaje] enlaces ${momento}:`, err.message)), { timezone: 'Europe/Madrid' });
+  }
+  console.log(`[Fichaje] Enlaces de fichar (si están activos): ${hEnl.manana} y ${hEnl.tarde} L-V`);
   // Día 2 de cada mes, 10:00: push a quien no ha firmado el resumen del mes pasado.
   cron.schedule('0 10 2 * *', () => fichajeAvisos.recordarFirmaMensual()
     .then(r => console.log('[Fichaje] recordatorio firma mensual →', JSON.stringify(r)))
