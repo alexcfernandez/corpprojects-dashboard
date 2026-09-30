@@ -23,7 +23,15 @@ if (!DASHBOARD_URL || !BRIDGE_TOKEN) {
   process.exit(1);
 }
 
-const api = axios.create({ baseURL: DASHBOARD_URL, timeout: 15000, headers: { 'X-Bridge-Token': BRIDGE_TOKEN } });
+// timeout 40 s: holgado frente a la espera del dashboard (10 s), para no colgar nunca antes que él.
+const api = axios.create({ baseURL: DASHBOARD_URL, timeout: 40000, headers: { 'X-Bridge-Token': BRIDGE_TOKEN } });
+
+// Estado compartido. Antes cada reconexión arrancaba OTRO bucle de salida y el viejo seguía vivo
+// con el socket muerto: recogía mensajes del buzón y los perdía. Ahora hay UN solo bucle que usa
+// siempre el socket actual y solo recoge mensajes cuando WhatsApp está conectado ('open').
+let sockActual = null;
+let estado = 'connecting'; // connecting | open | close | loggedOut
+let bucleArrancado = false;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // +34XXXXXXXXX  ↔  34XXXXXXXXX@s.whatsapp.net
@@ -71,18 +79,33 @@ async function reenviarEntrante(from, body, extra) {
   }
 }
 
-async function bucleSalida(sock) {
+async function confirmar(acks) {
+  if (!acks.length) return;
+  try { await api.post('/api/bridge/ack', { acks }); }
+  catch (e) { console.error('[Bridge] ack error:', e.message); }
+}
+
+async function bucleSalida() {
   for (;;) {
     try {
-      const { data } = await api.get('/api/bridge/outbox', { params: { limit: 10 } });
+      // Se informa el estado en cada sondeo: si no es 'open', el dashboard no entrega mensajes
+      // (se quedan pendientes) y en /diag se ve «sesión desconectada».
+      const { data } = await api.get('/api/bridge/outbox', { params: { limit: 10, estado } });
       const mensajes = (data && data.messages) || [];
+      const acks = [];
       for (const m of mensajes) {
         try {
+          if (!sockActual || estado !== 'open') throw new Error('WhatsApp no conectado (' + estado + ')');
           const destino = chatPorTelefono.get(soloDigitos(m.to)) || phoneToJid(m.to);
-          await sock.sendMessage(destino, { text: String(m.body || '') });
+          await sockActual.sendMessage(destino, { text: String(m.body || '') });
           console.log('[Bridge] enviado a', m.to, '->', destino);
-        } catch (e) { console.error('[Bridge] fallo enviando a', m.to, ':', e.message); }
+          acks.push({ id: m.id, ok: true });
+        } catch (e) {
+          console.error('[Bridge] fallo enviando a', m.to, ':', e.message);
+          acks.push({ id: m.id, ok: false, error: e.message });
+        }
       }
+      await confirmar(acks);
     } catch (e) {
       if (e.response && e.response.status === 401) console.error('[Bridge] outbox 401: BRIDGE_TOKEN no coincide con el dashboard');
       else console.error('[Bridge] outbox error:', e.message); // dashboard caído / red: se reintenta
@@ -95,6 +118,8 @@ async function start() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
   const { version } = await fetchLatestBaileysVersion();
   const sock = makeWASocket({ version, auth: state, printQRInTerminal: false, logger: pino({ level: 'silent' }) });
+  sockActual = sock;
+  estado = 'connecting';
 
   sock.ev.on('creds.update', saveCreds);
 
@@ -105,13 +130,17 @@ async function start() {
       console.log('        WhatsApp → Dispositivos vinculados → Vincular un dispositivo\n');
       qrcode.generate(qr, { small: true });
     }
+    if (sock !== sockActual) return; // eventos de un socket viejo: se ignoran
     if (connection === 'open') {
+      estado = 'open';
       console.log('[Bridge] Conectado a WhatsApp ✅  — sondeando la cola cada', POLL_MS, 'ms');
     } else if (connection === 'close') {
       const code = lastDisconnect && lastDisconnect.error && lastDisconnect.error.output && lastDisconnect.error.output.statusCode;
       if (code === DisconnectReason.loggedOut) {
+        estado = 'loggedOut';
         console.error('[Bridge] Sesión cerrada (loggedOut). Borra el volumen de AUTH_DIR y vuelve a vincular con QR.');
       } else {
+        estado = 'close';
         console.log('[Bridge] Conexión cerrada (code', code, '). Reconectando…');
         start().catch((e) => console.error('[Bridge] reinicio:', e.message));
       }
@@ -135,7 +164,8 @@ async function start() {
     }
   });
 
-  bucleSalida(sock); // arranca el pull en paralelo
+  // El bucle de salida se arranca UNA sola vez; las reconexiones solo cambian sockActual.
+  if (!bucleArrancado) { bucleArrancado = true; bucleSalida(); }
 }
 
 start().catch((e) => { console.error('[Bridge] fatal:', e.message); process.exit(1); });

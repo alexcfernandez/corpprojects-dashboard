@@ -369,7 +369,9 @@ async function bridgeOutboxHandler(req, res) {
   req.on('close', () => { closed = true; });
   if (estado && estado !== 'open') { await new Promise(r => setTimeout(r, 10000)); if (!closed) res.json({ messages: [], pausado: true }); return; }
   try {
-    const deadline = Date.now() + 25000;
+    // 10 s: por DEBAJO del timeout del puente. Si el servidor responde cuando el puente ya ha
+    // colgado (y el proxy de Railway no avisa), los mensajes recogidos se perdían como 'sent'.
+    const deadline = Date.now() + (Number(process.env.BRIDGE_LONGPOLL_MS) || 10000);
     let messages = await canalWa.reclamarLoteOutbox(limit);
     while ((!messages || !messages.length) && Date.now() < deadline && !closed) {
       await new Promise(r => setTimeout(r, 2000));
