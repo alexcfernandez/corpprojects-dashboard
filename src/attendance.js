@@ -24,10 +24,12 @@ function _invalidateWorkersCache() {
 async function getWorkers() {
   if (_workersCache && Date.now() - _workersCacheTime < 5 * 60 * 1000) return _workersCache;
   try {
-    const { getUsers } = require('./users');
+    const { getUsers, normalizeRole } = require('./users');
     const users   = await getUsers(false);
+    // Roles antiguos (tech/office) y nuevos (tecnico/encargado/oficina): antes solo
+    // entraban los antiguos y quien se dio de alta después faltaba en el resumen.
     const workers = users
-      .filter(u => u.role === 'tech' || u.role === 'office')
+      .filter(u => u.role !== 'client' && ['tecnico', 'encargado', 'oficina'].includes(normalizeRole(u.role)))
       .map(u => ({
         id:        String(u._id),
         name:      u.name,
