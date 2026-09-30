@@ -1692,6 +1692,21 @@ app.post('/api/fichaje/magic-login', async (req, res) => {
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
+// ── Autónomos: cuadre del mes (días y obras de Presencia vs lo que factura) ──
+app.get('/api/autonomos/cuadre', requireAuthOficina, async (req, res) => {
+  try {
+    const mes = String(req.query.mes || new Date().toISOString().slice(0, 7));
+    res.json(await require('./autonomos').cuadre(mes));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/autonomos/cuadre', requireAuthOficina, express.json(), async (req, res) => {
+  try {
+    const b = req.body || {}; const q = (await _quienPush(req)) || {};
+    if (!b.userId || !b.mes) return res.status(400).json({ error: 'Faltan userId y mes' });
+    res.json(await require('./autonomos').guardarCuadre(b.userId, b.mes, b, q.name));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 // ── Enlaces de fichar (implantación): lista, activar, quién recibe, prueba y envío manual ──
 app.get('/api/fichaje/enlaces', requireAuthOficina, async (req, res) => {
   try {

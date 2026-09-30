@@ -50,6 +50,15 @@
         <button class="btab active" onclick="CP.Pagos.showTab('colaboradores',this)">👷 Colaboradores</button>
         <button class="btab" onclick="CP.Pagos.showTab('pagos',this)">💵 Pagos generales</button>
         <button class="btab" onclick="CP.Pagos.showTab('proyectos',this)">🏠 Proyectos inversión</button>
+        <button class="btab" onclick="CP.Pagos.showTab('autonomos',this)">🧾 Autónomos</button>
+      </div>
+
+      <div id="pg-tab-autonomos" class="p-tab" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+          <div style="font-size:12px;color:var(--text3);max-width:520px">Días y obras de cada autónomo según <b>Presencia</b>, lo que sale por su tarifa y lo que nos ha facturado. Para marcar a alguien como autónomo: Usuarios → Editar → «Es autónomo».</div>
+          <div><div style="font-size:10px;color:var(--text3);margin-bottom:4px">Mes</div><input type="month" id="pg-aut-mes" class="srch" style="width:160px" onchange="CP.Pagos.loadAutonomos()"></div>
+        </div>
+        <div id="pg-aut-lista"><div class="empty"><div class="et">Cargando...</div></div></div>
       </div>
 
       <div id="pg-tab-colaboradores" class="p-tab active">
@@ -151,6 +160,73 @@
     if (id === 'colaboradores') loadColaboradores();
     if (id === 'pagos')         loadResumen();
     if (id === 'proyectos')     loadProyectos();
+    if (id === 'autonomos')     loadAutonomos();
+  }
+
+  // ── AUTÓNOMOS: cuadre del mes ──
+  const eur2 = v => new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(v||0);
+  const escA = x => String(x==null?'':x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  let _aut = null;
+  async function loadAutonomos() {
+    const inp = document.getElementById('pg-aut-mes');
+    // Los autónomos facturan al acabar el mes: hasta el día 15 se abre el mes anterior.
+    if (inp && !inp.value) { const h = new Date(); if (h.getDate() <= 15) h.setDate(0); inp.value = h.getFullYear()+'-'+String(h.getMonth()+1).padStart(2,'0'); }
+    const el = document.getElementById('pg-aut-lista'); if (!el) return;
+    el.innerHTML = '<div class="empty"><div class="et">Cargando...</div></div>';
+    try {
+      _aut = await api('/api/autonomos/cuadre?mes=' + encodeURIComponent(inp.value));
+      if (!_aut.autonomos.length) { el.innerHTML = '<div class="empty"><div class="ei">🧾</div><div class="et">No hay nadie marcado como autónomo</div><div style="font-size:12px;color:var(--text3);margin-top:6px">Usuarios → Editar → «Es autónomo (no ficha)»</div></div>'; return; }
+      el.innerHTML = _aut.autonomos.map(pintarAut).join('');
+    } catch (e) { el.innerHTML = `<div style="color:var(--red);font-size:12px">Error: ${escA(e.message)}</div>`; }
+  }
+  function pintarAut(a) {
+    const tar = a.tarifa.tipo === 'hora' ? `${eur2(a.tarifa.hora)}/hora` : `${eur2(a.tarifa.dia)}/día`;
+    const dif = a.diferencia;
+    const difTxt = dif == null ? '<span style="color:var(--text3)">Falta su factura</span>'
+      : Math.abs(dif) < 0.5 ? '<b style="color:var(--green)">Cuadra ✓</b>'
+      : `<b style="color:${dif > 0 ? 'var(--red)' : 'var(--amber)'}">${dif > 0 ? 'Factura ' + eur2(dif) + ' de más' : 'Factura ' + eur2(-dif) + ' de menos'}</b>`;
+    const k = a.userId;
+    return `<div class="card" style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
+        <div><div style="font-weight:700;font-size:15px">${escA(a.nombre)} ${a.estado==='cuadrado'?'<span style="font-size:11px;color:var(--green);font-weight:600">· cuadrado</span>':''}</div>
+          <div style="font-size:12px;color:var(--text3)">${a.sinTarifa?'<span style="color:var(--red)">Sin tarifa: ponla en Usuarios</span>':tar}${a.nif?' · NIF '+escA(a.nif):''}${a.nombreFiscal?' · '+escA(a.nombreFiscal):''}</div></div>
+        <div style="text-align:right">${difTxt}</div>
+      </div>
+      <div class="metrics-row" style="margin:12px 0">
+        <div class="mc"><div class="ml">Días</div><div class="mv">${a.nDias}${a.jornadas!==a.nDias?` <span style="font-size:12px;color:var(--text3)">(${String(a.jornadas).replace('.',',')} jorn.)</span>`:''}</div></div>
+        <div class="mc"><div class="ml">Horas</div><div class="mv">${String(a.horas).replace('.',',')}</div></div>
+        <div class="mc"><div class="ml">Según tarifa (base)</div><div class="mv b">${eur2(a.esperado)}</div></div>
+        <div class="mc"><div class="ml">Base de su factura</div><div class="mv">${a.facturado!=null?eur2(a.facturado):'—'}</div></div>
+      </div>
+      <div style="font-size:12.5px;color:var(--text2);margin:-4px 0 12px">${impTxt('Debería facturar', a.esperadoImportes)}${a.facturadoImportes?'<br>'+impTxt('Ha facturado', a.facturadoImportes):''}</div>
+      ${a.obras.length?`<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Por obra</div>
+        <div style="display:grid;gap:4px;margin-bottom:10px">${a.obras.map(o=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;border-bottom:1px solid var(--border);padding:4px 0"><span>${escA(o.nombre)}</span><span style="color:var(--text2);white-space:nowrap">${o.dias?String(o.dias).replace('.',',')+' d · ':''}${String(o.horas).replace('.',',')} h · ${eur2(o.coste)}</span></div>`).join('')}</div>`:'<div style="font-size:13px;color:var(--text3);margin-bottom:10px">No consta en Presencia este mes.</div>'}
+      ${a.dias.length?`<details style="margin-bottom:10px"><summary style="cursor:pointer;font-size:12px;color:var(--blue)">Ver día a día (${a.dias.length})</summary>
+        <div style="margin-top:6px">${a.dias.map(d=>`<div style="display:flex;gap:10px;font-size:12.5px;padding:3px 0;border-bottom:1px solid var(--border)"><span style="width:78px;color:var(--text3)">${dt(d.fecha)}</span><span style="flex:1">${d.obras.map(o=>escA(o.nombre)+(d.obras.length>1?' ('+o.horas+' h)':'')).join(' · ')}</span><span style="white-space:nowrap;color:var(--text2)">${d.horas} h${d.jornada<1?' · media':''}</span></div>`).join('')}</div></details>`:''}
+      ${a.facturas.length?`<div style="font-size:12px;color:var(--text2);margin-bottom:8px">Facturas suyas en Compras: ${a.facturas.map(f=>`<a href="/compras#${f.id}" target="_blank" style="color:var(--blue)">${escA(f.numero||f.tipo||'doc')} ${f.fecha?dt(f.fecha):''} ${f.total!=null?eur2(f.total):''}</a>${(f.base!=null||f.total!=null)?` <button class="btn bgh" style="padding:2px 7px;font-size:11px" title="Usa la base (sin IVA) de esta factura" onclick="CP.Pagos.usarFactAut('${k}',${f.base!=null?f.base:Math.round(f.total/(1+(a.iva-a.irpf)/100)*100)/100},'${escA(f.numero||'').replace(/'/g,'')}')">usar</button>`:''}`).join(' · ')}</div>`:''}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+        <div><div style="font-size:10px;color:var(--text3);margin-bottom:4px">Importe de su factura (sin IVA)</div><input type="number" step="0.01" id="aut-f-${k}" class="srch" style="width:150px" value="${a.facturado!=null?a.facturado:''}"></div>
+        <div><div style="font-size:10px;color:var(--text3);margin-bottom:4px">Nº factura</div><input type="text" id="aut-n-${k}" class="srch" style="width:120px" value="${escA(a.numFactura||'')}"></div>
+        <div style="flex:1;min-width:160px"><div style="font-size:10px;color:var(--text3);margin-bottom:4px">Notas</div><input type="text" id="aut-o-${k}" class="srch" style="width:100%" value="${escA(a.notas||'')}" placeholder="Ej.: el día 12 no lo cobra"></div>
+        <button class="btn bp" onclick="CP.Pagos.guardarAut('${k}')">💾 Guardar</button>
+        <button class="btn bgh" onclick="CP.Pagos.guardarAut('${k}','${a.estado==='cuadrado'?'pendiente':'cuadrado'}')">${a.estado==='cuadrado'?'↩️ Reabrir':'✓ Marcar cuadrado'}</button>
+      </div>
+    </div>`;
+  }
+  function impTxt(t, i) {
+    if (!i) return '';
+    return `${t}: <b>${eur2(i.base)}</b> + IVA ${i.iva} % ${eur2(i.cuotaIva)}${i.irpf?` − IRPF ${i.irpf} % ${eur2(i.retencion)}`:''} = <b>${eur2(i.total)}</b> a pagar${i.iva===0?' <span style="color:var(--text3)">(sin IVA: inversión del sujeto pasivo)</span>':''}`;
+  }
+  function usarFactAut(k, total, num) {
+    const f = document.getElementById('aut-f-'+k); if (f) f.value = total;
+    const n = document.getElementById('aut-n-'+k); if (n && !n.value && num) n.value = num;
+  }
+  async function guardarAut(k, estado) {
+    const mes = document.getElementById('pg-aut-mes').value;
+    const body = { userId: k, mes, facturado: document.getElementById('aut-f-'+k)?.value ?? '', numFactura: document.getElementById('aut-n-'+k)?.value || '', notas: document.getElementById('aut-o-'+k)?.value || '' };
+    if (estado) body.estado = estado;
+    try { await api('/api/autonomos/cuadre', { method: 'POST', body: JSON.stringify(body) }); loadAutonomos(); }
+    catch (e) { alert('No se pudo guardar: ' + e.message); }
   }
 
   function showPagosTab(id, btn) {
@@ -970,6 +1046,7 @@
   }
 
   CP.Pagos = {
+    loadAutonomos, guardarAut, usarFactAut,
     render, showTab, showPagosTab,
     loadColaboradores, abrirFichaColaborador, borrarColaborador,
     abrirModalColaborador, guardarColaborador,

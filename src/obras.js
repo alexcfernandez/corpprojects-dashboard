@@ -490,7 +490,11 @@ async function getRentabilidad(obraId) {
   const RATES = { jose: 26.72, diego: 19.05, abdellah: 13.28, mamadou: 13.28, paula: 8.66 };
   let trabs = [];
   try { trabs = await require('./trabajadores').getTrabajadores(false); } catch (e) {}
+  // Autónomos: su coste es su tarifa (por id de usuario, que es el workerId de presencia/partes).
+  const tarifaAut = {};
+  try { const aut = require('./autonomos'); (await aut.lista()).forEach(u => { const ch = aut.costeHora(u); if (ch) tarifaAut[String(u._id)] = ch; }); } catch (e) {}
   const rateFor = (name, id) => {
+    if (id && tarifaAut[String(id)]) return tarifaAut[String(id)];
     const n = norm(name);
     for (const w of trabs) {
       if (!w.costeHora) continue;

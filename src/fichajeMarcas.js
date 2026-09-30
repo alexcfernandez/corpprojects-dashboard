@@ -401,6 +401,7 @@ async function trabajadoresQueFichan() {
   const us = await getUsers(false);
   return (us || [])
     .filter(u => u.role !== 'client' && ['tecnico', 'encargado', 'oficina'].includes(normalizeRole(u.role)))
+    .filter(u => !(u.autonomo && u.autonomo.activo))   // los autónomos no fichan (solo presencia)
     .map(u => ({ id: String(u._id), name: u.name, whatsapp: _tel(u.whatsapp || u.telefono) }));
 }
 function _tel(t) {

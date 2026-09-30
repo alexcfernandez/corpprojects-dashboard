@@ -164,12 +164,15 @@ async function createUser(data) {
     updatedAt: new Date(),
     lastLogin: null,
   };
+  // Autónomo: no ficha; su coste/hora en las obras es su tarifa.
+  user.autonomo = require('./autonomos').limpiar(data.autonomo);
+  if (user.autonomo && !(user.costeHora > 0)) user.costeHora = require('./autonomos').costeHora(user) || 0;
 
   const isPassword = ROLES_PASSWORD.includes(role);              // owner/oficina/encargado → entran por contraseña
   if (!user.name) throw new Error('El nombre es obligatorio');
   if (role === 'tecnico') {
     if (!user.pin || user.pin.length < 4)       throw new Error('El PIN debe tener al menos 4 dígitos');
-    if (!user.costeHora || user.costeHora <= 0) throw new Error('El coste/hora es obligatorio');
+    if (!user.costeHora || user.costeHora <= 0) throw new Error(user.autonomo ? 'Pon su tarifa (por día o por hora)' : 'El coste/hora es obligatorio');
   }
   if (isPassword && !user.email && !user.username) {
     throw new Error('Una cuenta de Dueño/Oficina/Encargado necesita un email (es su usuario para entrar)');
@@ -193,6 +196,12 @@ async function updateUser(id, data) {
 
   // Parsear costeHora como número
   if (set.costeHora !== undefined) set.costeHora = parseFloat(set.costeHora || 0);
+  // Autónomo (o dejar de serlo). Su tarifa pasa a ser su coste/hora en las obras.
+  if (data.autonomo !== undefined) {
+    const aut = require('./autonomos');
+    set.autonomo = aut.limpiar(data.autonomo);
+    if (set.autonomo) { const ch = aut.costeHora({ autonomo: set.autonomo }); if (ch) set.costeHora = ch; }
+  }
   // Normalizar rol a los 4 nuevos
   if (set.role !== undefined) set.role = normalizeRole(set.role);
   if (set.username !== undefined) set.username = String(set.username || '').trim().toLowerCase();

@@ -494,7 +494,7 @@ async function buscarSitio(texto, { from, to, todos = false } = {}) {
 }
 
 module.exports = {
-  buscarSitio,
+  buscarSitio, getObras,
   WORKERS, ESTADOS, getWorkers,
   saveAttendance, deleteAttendance, getAttendance, syncPresenceFromParte, marcarPresenciaFichaje, actualizarHorasFichaje,
   getMonthlySummary, buildClientSummary, getClientExtract,

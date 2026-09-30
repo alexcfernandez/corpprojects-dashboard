@@ -151,6 +151,45 @@
         <div style="font-size:10px;color:var(--text3);margin-top:3px">Sueldo + SS prorrateado por hora</div>
       </div>
     </div>
+    <div id="u-aut-block" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:12px 14px;margin-bottom:12px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer">
+        <input type="checkbox" id="u-aut" ${user.autonomo&&user.autonomo.activo?'checked':''} onchange="CP.Usuarios.onAutChange()" style="width:16px;height:16px;cursor:pointer"> Es autónomo (no ficha)
+      </label>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">No entra en Fichajes ni recibe los avisos de fichar. Sigue en Presencia (qué día y en qué obra) para cuadrar su factura en Pagos → Autónomos.</div>
+      <div id="u-aut-campos" style="display:${user.autonomo&&user.autonomo.activo?'block':'none'};margin-top:10px">
+        <div class="g2" style="margin-bottom:8px">
+          <div>
+            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">Cobra por</div>
+            <select id="u-aut-tipo" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px"><option value="dia" ${!(user.autonomo&&user.autonomo.tarifaTipo==='hora')?'selected':''}>Día</option><option value="hora" ${user.autonomo&&user.autonomo.tarifaTipo==='hora'?'selected':''}>Hora</option></select>
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">Tarifa (€, sin IVA)</div>
+            <input type="number" id="u-aut-tarifa" value="${user.autonomo?(user.autonomo.tarifaTipo==='hora'?(user.autonomo.tarifaHora||''):(user.autonomo.tarifaDia||'')):''}" placeholder="Ej: 150" min="0" step="0.01" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px">
+          </div>
+        </div>
+        <div class="g2">
+          <div>
+            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">NIF</div>
+            <input type="text" id="u-aut-nif" value="${(user.autonomo&&user.autonomo.nif)||''}" placeholder="12345678A" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">Nombre en sus facturas</div>
+            <input type="text" id="u-aut-nombre" value="${(user.autonomo&&user.autonomo.nombreFiscal)||''}" placeholder="Como aparece en la factura" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px">
+          </div>
+        </div>
+        <div class="g2" style="margin-top:8px">
+          <div>
+            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">IVA de sus facturas</div>
+            <select id="u-aut-iva" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px">${[[21,'21 %'],[10,'10 %'],[0,'Sin IVA (inversión del sujeto pasivo)']].map(([v,t])=>`<option value="${v}" ${(user.autonomo&&user.autonomo.iva!=null?Number(user.autonomo.iva):21)===v?'selected':''}>${t}</option>`).join('')}</select>
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">Retención IRPF</div>
+            <select id="u-aut-irpf" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px">${[[0,'Ninguna'],[1,'1 % (módulos)'],[7,'7 %'],[15,'15 %']].map(([v,t])=>`<option value="${v}" ${(user.autonomo&&Number(user.autonomo.irpf)||0)===v?'selected':''}>${t}</option>`).join('')}</select>
+          </div>
+        </div>
+        <div style="font-size:10px;color:var(--text3);margin-top:6px">Con el NIF o el nombre, las facturas suyas que entren por Compras aparecen solas en el cuadre.</div>
+      </div>
+    </div>
     <div class="g2" style="margin-bottom:12px">
       <div>
         <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">📱 Teléfono</div>
@@ -252,7 +291,7 @@
             </div>
             <div style="flex:1 1 150px;min-width:0">
               <div style="font-weight:600;font-size:13px">${u.name} ${u.active===false?'<span style="font-size:10px;color:var(--text3)">(inactivo)</span>':''}</div>
-              <div style="font-size:11px;color:${ROLE_COLORS[r]}">${ROLE_LABELS[r]||r} ${ROLES_PASSWORD.includes(r)?(u.hasPassword?'· <span style="color:var(--green)">🔑 con contraseña</span>':'· <span style="color:var(--amber)">⚠️ sin contraseña</span>'):''}</div>
+              <div style="font-size:11px;color:${ROLE_COLORS[r]}">${ROLE_LABELS[r]||r}${u.autonomo&&u.autonomo.activo?' · <span style="color:var(--amber)">Autónomo · no ficha</span>':''} ${ROLES_PASSWORD.includes(r)?(u.hasPassword?'· <span style="color:var(--green)">🔑 con contraseña</span>':'· <span style="color:var(--amber)">⚠️ sin contraseña</span>'):''}</div>
               ${u.notes?`<div style="font-size:11px;color:var(--text3);margin-top:2px">${u.notes}</div>`:''}
               ${u.lastLogin?`<div style="font-size:10px;color:var(--text3)">Último acceso: ${new Date(u.lastLogin).toLocaleDateString('es-ES')}</div>`:''}
               ${ROLES_FIELD.includes(r)?(u.gpsConsentAt?`<div style="font-size:10px;color:var(--green)">📍 Consentimiento GPS firmado el ${new Date(u.gpsConsentAt).toLocaleDateString('es-ES')}</div>`:`<div style="font-size:10px;color:var(--amber)">📍 GPS sin firmar</div>`):''}
@@ -307,6 +346,13 @@
       set('u-dni', u.docs?.dni||'');
       set('u-carnet', u.docs?.carnet||'');
       set('u-emergency', u.docs?.emergency||'');
+      const ua=u.autonomo&&u.autonomo.activo?u.autonomo:null;
+      const ck=document.getElementById('u-aut');if(ck)ck.checked=!!ua;
+      set('u-aut-tipo', ua&&ua.tarifaTipo==='hora'?'hora':'dia');
+      set('u-aut-tarifa', ua?(ua.tarifaTipo==='hora'?(ua.tarifaHora||''):(ua.tarifaDia||'')):'');
+      set('u-aut-nif', (ua&&ua.nif)||''); set('u-aut-nombre', (ua&&ua.nombreFiscal)||'');
+      set('u-aut-iva', ua&&ua.iva!=null?String(ua.iva):'21'); set('u-aut-irpf', ua&&ua.irpf?String(ua.irpf):'0');
+      onAutChange();
       onRoleChange();
     } catch(err) { alert('Error: '+err.message); }
   }
@@ -361,6 +407,7 @@
     email:     document.getElementById('u-email')?.value?.trim(),
     color:     document.getElementById('u-color')?.value,
     notes:     document.getElementById('u-notes')?.value?.trim(),
+    autonomo: autData(),
     docs: {
       dni:       document.getElementById('u-dni')?.value?.trim(),
       carnet:    document.getElementById('u-carnet')?.value?.trim(),
@@ -368,6 +415,19 @@
     }
   };
 }
+
+  function autData() {
+    const ck = document.getElementById('u-aut'); if (!ck || !ck.checked) return null;
+    const tipo = document.getElementById('u-aut-tipo')?.value === 'hora' ? 'hora' : 'dia';
+    const t = document.getElementById('u-aut-tarifa')?.value || '';
+    return { activo: true, tarifaTipo: tipo, tarifaDia: tipo === 'dia' ? t : '', tarifaHora: tipo === 'hora' ? t : '',
+      nif: document.getElementById('u-aut-nif')?.value?.trim() || '', nombreFiscal: document.getElementById('u-aut-nombre')?.value?.trim() || '',
+      iva: Number(document.getElementById('u-aut-iva')?.value ?? 21), irpf: Number(document.getElementById('u-aut-irpf')?.value || 0) };
+  }
+  function onAutChange() {
+    const on = !!document.getElementById('u-aut')?.checked;
+    const c = document.getElementById('u-aut-campos'); if (c) c.style.display = on ? 'block' : 'none';
+  }
 
   async function submitUser() {
     const data = getFormData();
@@ -385,9 +445,10 @@
   }
 
   function resetForm() {
-    ['u-name','u-pass','u-pin','u-coste-hora','u-telefono','u-email','u-notes','u-dni','u-carnet','u-emergency'].forEach(id => {
+    ['u-name','u-pass','u-pin','u-coste-hora','u-telefono','u-email','u-notes','u-dni','u-carnet','u-emergency','u-aut-tarifa','u-aut-nif','u-aut-nombre'].forEach(id => {
       const e = document.getElementById(id); if(e) e.value='';
     });
+    { const ck = document.getElementById('u-aut'); if (ck) ck.checked = false; onAutChange(); }
     const msg = document.getElementById('u-form-msg');
     if (msg) msg.style.display='none';
     const card = document.querySelector('#ut-nuevo .card');
@@ -430,6 +491,6 @@
     finally { btn.disabled = false; btn.textContent = old; }
   };
 
-  CP.Usuarios = { render, showTab, loadUsers, editUser, deactivateUser, reactivateUser, submitUser, resetForm, onRoleChange };
+  CP.Usuarios = { render, showTab, loadUsers, editUser, deactivateUser, reactivateUser, submitUser, resetForm, onRoleChange, onAutChange };
 
 })(window.CP = window.CP || {});
