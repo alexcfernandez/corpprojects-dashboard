@@ -325,7 +325,7 @@ async function pedirPin(from, texto) {
 
 module.exports = {
   // identidad
-  esOwner, resolverIdentidad, normalizarNumero, ultimos9,
+  esOwner, resolverIdentidad, normalizarNumero, ultimos9, ownersConfigurados,
   // trabajadores (solo presencia)
   esTrabajador, esTrabajadorActivo, matchTrabajador, TRABAJADORES_WA,
   // clasificación

@@ -490,7 +490,10 @@ async function activarEnl(on,b){
   b.disabled=true;try{await apiEnl('/api/fichaje/enlaces/config',{activo:on});}catch(e){alert(e.message);}cargarEnl();}
 async function excluirEnl(id,ex){try{await apiEnl('/api/fichaje/enlaces/config',{excluir:{[id]:ex}});}catch(e){alert(e.message);}cargarEnl();}
 async function pruebaEnl(m,b){b.disabled=true;const t=b.textContent;b.textContent='Enviando…';
-  try{const d=await apiEnl('/api/fichaje/enlaces/prueba',{momento:m});b.textContent=d.ok?'✓ Enviado':'No salió';}catch(e){alert(e.message);b.textContent=t;}
+  let to=null;try{to=localStorage.getItem('cpPruebaTel');}catch(e){}
+  try{let d;try{d=await apiEnl('/api/fichaje/enlaces/prueba',{momento:m,to:to||undefined});}
+    catch(e){if(!/n[uú]mero/i.test(e.message))throw e;to=prompt('¿A qué número de WhatsApp te mando la prueba?','+34');if(!to)throw new Error('Sin número, no se envía');try{localStorage.setItem('cpPruebaTel',to);}catch(x){}d=await apiEnl('/api/fichaje/enlaces/prueba',{momento:m,to});}
+    b.textContent=d.ok?'✓ Enviado a '+d.to:'No salió';}catch(e){alert(e.message);b.textContent=t;}
   setTimeout(()=>{b.disabled=false;b.textContent=t;},3000);}
 async function copiarEnl(id,b){try{const d=await apiEnl('/api/fichaje/enlaces/'+id+'/url');await navigator.clipboard.writeText(d.url);const t=b.textContent;b.textContent='✓ Copiado';setTimeout(()=>b.textContent=t,2000);}catch(e){alert(e.message);}}
 async function enviarEnl(id,nombre,b){

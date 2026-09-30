@@ -1716,8 +1716,18 @@ app.post('/api/fichaje/enlaces/prueba', requireAuthOficina, express.json(), asyn
   try {
     const fa = require('./fichajeAvisos');
     const b = req.body || {};
-    const to = String(b.to || process.env.WHATSAPP_TO || '').replace(/^whatsapp:/i, '').trim();
-    if (!to) return res.status(400).json({ error: 'Falta el número' });
+    // Destino: el que se indique → el teléfono de quien pulsa (su ficha) → el del dueño configurado.
+    let to = String(b.to || '').trim();
+    if (!to) {
+      try {
+        const q = await _quienPush(req);
+        if (q && q.userId && /^[a-f0-9]{24}$/i.test(String(q.userId))) { const u = await users.getUser(String(q.userId)); to = (u && (u.whatsapp || u.telefono)) || ''; }
+      } catch (e) {}
+    }
+    if (!to) to = require('./acceso').ownersConfigurados ? (require('./acceso').ownersConfigurados()[0] || '') : '';
+    to = String(to).replace(/^whatsapp:/i, '').replace(/[^\d+]/g, '');
+    if (/^\d{9}$/.test(to)) to = '+34' + to;
+    if (!to) return res.status(400).json({ error: 'Falta el número', pedirNumero: true });
     const momento = b.momento === 'tarde' ? 'tarde' : 'manana';
     const texto = '🧪 *PRUEBA* — así le llegará a cada trabajador:\n\n' + fa.textoEnlace(momento, 'Nombre', 'https://dashboard.corpprojects.es/fichar?t=(su enlace personal)', 'dentro');
     const ok = await require('./notifications').sendWhatsAppTo(to, texto);
