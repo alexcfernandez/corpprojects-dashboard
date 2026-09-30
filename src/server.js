@@ -706,6 +706,15 @@ app.get('/api/inicio', requireAuth, async (req, res) => {
   await Promise.all(t);
   res.json(out);
 });
+// Diagnóstico de WhatsApp (Dueño): estado del puente, buzón, Twilio y prueba por canal.
+app.get('/api/diag/whatsapp', requireAuth, async (req, res) => {
+  if ((req.user?.role || 'owner') !== 'owner') return res.status(403).json({ error: 'Solo Dueño' });
+  try { res.json(await require('./canalWhatsapp').diagnostico()); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/diag/whatsapp/prueba', requireAuth, express.json({ limit: '4kb' }), async (req, res) => {
+  if ((req.user?.role || 'owner') !== 'owner') return res.status(403).json({ error: 'Solo Dueño' });
+  const b = req.body || {}; res.json(await require('./canalWhatsapp').probar(String(b.to || '').trim(), b.canal === 'bridge' ? 'bridge' : 'twilio'));
+});
 // Diagnóstico de velocidad (Dueño): cuánto tarda una consulta a Mongo y una llamada a StelOrder desde el servidor.
 app.get('/api/diag/ping', requireAuth, async (req, res) => {
   if ((req.user?.role || 'owner') !== 'owner') return res.status(403).json({ error: 'Solo Dueño' });

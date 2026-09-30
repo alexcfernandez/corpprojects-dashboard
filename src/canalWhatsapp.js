@@ -132,4 +132,54 @@ function tokenBridgeValido(provided) {
   return crypto.timingSafeEqual(a, b);
 }
 
-module.exports = { enviarUno, canalActivo, tokenBridgeValido, encolarSalida, reclamarLoteOutbox };
+// ── DIAGNÓSTICO (pantalla /diag, solo Dueño) ─────────────────────
+// Estado de los dos canales sin enseñar secretos: si hay credenciales, cuándo sondeó el puente
+// por última vez, qué hay en su buzón, y los últimos mensajes de Twilio con su código de error.
+const _mask = t => { const s = String(t || ''); return s.length > 6 ? s.slice(0, 4) + '…' + s.slice(-3) : s; };
+async function diagnostico() {
+  const db = await require('./db').getDB();
+  const out = { canalActivo: canalActivo(), config: {
+    TWILIO_ACCOUNT_SID: !!process.env.TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN: !!process.env.TWILIO_AUTH_TOKEN,
+    TWILIO_WHATSAPP_FROM: process.env.TWILIO_WHATSAPP_FROM || null, BRIDGE_TOKEN: !!process.env.BRIDGE_TOKEN,
+    CANAL_WHATSAPP: process.env.CANAL_WHATSAPP || '(sin definir → twilio)', TWILIO_VALIDATE: process.env.TWILIO_VALIDATE || 'log' } };
+  // Puente
+  try {
+    const st = await db.collection('bridgeStatus').findOne({ _id: 'bridge' });
+    const lastSeen = st && st.lastSeen ? new Date(st.lastSeen) : null;
+    const pend = await db.collection(OUTBOX).find({ status: 'pending' }).sort({ ts: 1 }).limit(50).toArray();
+    const ult = await db.collection(OUTBOX).find({}).sort({ ts: -1 }).limit(10).toArray();
+    out.puente = { ultimoSondeo: lastSeen, segundosDesdeSondeo: lastSeen ? Math.round((Date.now() - lastSeen) / 1000) : null,
+      conectado: !!(lastSeen && Date.now() - lastSeen < 90000), pendientes: pend.length, pendienteMasAntiguo: pend[0] ? pend[0].ts : null,
+      ultimos: ult.map(m => ({ to: _mask(m.to), status: m.status, ts: m.ts, sentAt: m.sentAt || null, texto: String(m.body || '').slice(0, 50) })) };
+  } catch (e) { out.puente = { error: e.message }; }
+  // Entradas recientes (webhook de Twilio y puente)
+  try { const w = await db.collection('webhookSeen').find({}).sort({ ts: -1 }).limit(1).toArray(); out.ultimaEntradaTwilio = w[0] ? w[0].ts : null; } catch (e) {}
+  // Twilio: cuenta + últimos mensajes con su error
+  if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
+    try {
+      const client = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+      const acc = await client.api.v2010.accounts(process.env.TWILIO_ACCOUNT_SID).fetch();
+      out.twilio = { cuenta: { estado: acc.status, tipo: acc.type } };
+      const msgs = await client.messages.list({ limit: 15 });
+      out.twilio.ultimos = msgs.map(m => ({ fecha: m.dateCreated, direccion: m.direction, to: _mask(m.to), from: _mask(m.from), estado: m.status, errorCode: m.errorCode || null, errorMessage: m.errorMessage || null, texto: String(m.body || '').slice(0, 50) }));
+    } catch (e) { out.twilio = { error: e.message, code: e.code || null, status: e.status || null }; }
+  } else out.twilio = { error: 'Faltan TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN' };
+  return out;
+}
+// Envío de prueba por un canal concreto, devolviendo el ERROR real (no solo true/false).
+async function probar(to, canal) {
+  if (!_destinoValido(to)) return { ok: false, error: 'Número no válido' };
+  const texto = 'Prueba de Corp Projects (' + canal + ') · ' + new Date().toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid' });
+  try {
+    if (canal === 'bridge') { await encolarSalida(to, texto); return { ok: true, nota: 'Encolado: el puente debe recogerlo en menos de 30 s. Mira el buzón en 1 minuto.' }; }
+    if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) return { ok: false, error: 'Twilio no configurado' };
+    const client = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+    const dest = /^whatsapp:/i.test(to) ? to : `whatsapp:${to}`;
+    const m = await client.messages.create({ from: process.env.TWILIO_WHATSAPP_FROM, to: dest, body: texto });
+    await new Promise(r => setTimeout(r, 4000));
+    const f = await client.messages(m.sid).fetch();
+    return { ok: !f.errorCode, estado: f.status, errorCode: f.errorCode || null, errorMessage: f.errorMessage || null };
+  } catch (e) { return { ok: false, error: e.message, code: e.code || null }; }
+}
+
+module.exports = { enviarUno, canalActivo, tokenBridgeValido, encolarSalida, reclamarLoteOutbox, diagnostico, probar };
