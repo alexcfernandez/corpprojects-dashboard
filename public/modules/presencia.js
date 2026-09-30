@@ -250,6 +250,7 @@
           <div style="font-size:11px;line-height:1">${est ? est.emoji : weekend ? '⭐' : ''}</div>
           <div style="font-size:7px;color:${numObras>1?'var(--blue)':'var(--text3)'};overflow:hidden;max-width:100%;white-space:nowrap;text-overflow:ellipsis;padding:0 2px">${clientLabel}</div>
           <div style="font-size:8px;line-height:1;display:flex;gap:1px">
+            ${entry?.revisar ? `<span title="Revisar: ${(entry.revisarMotivo||'').replace(/"/g,'&quot;')}">⚠️</span>` : ''}
             ${entry?.tieneParte ? '<span title="Tiene parte">📋</span>' : ''}
             ${tieneEquipo ? '<span title="Con ayudantes">👥</span>' : ''}
           </div>
@@ -391,6 +392,17 @@
             <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Notas</div>
             <input type="text" id="p-notas" value="${entry?.notas||''}" placeholder="Observaciones..."
               style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none;font-family:'Inter',sans-serif">
+          </div>
+        </div>
+
+        <div style="background:${entry?.revisar?'rgba(245,158,11,.1)':'var(--bg3)'};border:1px solid ${entry?.revisar?'rgba(245,158,11,.5)':'var(--border)'};border-radius:10px;padding:10px 12px;margin-bottom:16px">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <input type="checkbox" id="p-revisar" ${entry?.revisar?'checked':''} onchange="document.getElementById('p-revisar-wrap').style.display=this.checked?'block':'none'" style="width:18px;height:18px;cursor:pointer;accent-color:#f59e0b">
+            <div><div style="font-size:13px;font-weight:600">⚠️ Revisar este día</div><div style="font-size:11px;color:var(--text3)">Sale marcado en el informe y en el cuadre del autónomo (p. ej. fue a arreglar algo que hizo mal)</div></div>
+          </label>
+          <div id="p-revisar-wrap" style="display:${entry?.revisar?'block':'none'};margin-top:8px">
+            <input type="text" id="p-revisar-motivo" value="${(entry?.revisarMotivo||'').replace(/"/g,'&quot;')}" placeholder="¿Por qué? Ej.: repasar el alicatado de Rutlla que dejó mal, no se cobra" maxlength="300"
+              style="width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none;font-family:'Inter',sans-serif">
           </div>
         </div>
 
@@ -581,10 +593,16 @@
       horas,
       notas:       document.getElementById('p-notas')?.value?.trim() || '',
       tieneParte:  document.getElementById('p-tiene-parte')?.checked || false,
+      revisar:     !!document.getElementById('p-revisar')?.checked,
+      revisarMotivo: document.getElementById('p-revisar')?.checked ? (document.getElementById('p-revisar-motivo')?.value?.trim() || '') : '',
       tipoJornada: CFG.tipoJornadaPorFecha(modalDate),
       equipo:      [..._equipoPresencia, ..._libresPresencia],
     };
     if (obras) entry.obras = obras;
+    if (entry.revisar && !entry.revisarMotivo) {
+      if (msg) { msg.textContent='⚠️ Escribe por qué hay que revisar este día'; msg.style.display='block'; msg.style.color='var(--amber)'; }
+      document.getElementById('p-revisar-motivo')?.focus(); return;
+    }
     if (msg) { msg.textContent='⏳ Guardando...'; msg.style.display='block'; msg.style.color='var(--text2)'; }
     try {
       await api('/api/attendance', { method:'POST', body: JSON.stringify(entry) });
@@ -866,10 +884,10 @@
     try {
       const data = await api(`/api/attendance?from=${sumYear2}-${String(sumMonth2).padStart(2,'0')}-01&to=${sumYear2}-${String(sumMonth2).padStart(2,'0')}-31`);
       if (!data?.length) return;
-      const rows = [['Fecha','Trabajador','Estado','Cliente/Obra','Horas','Jornada','Equipo','Notas']];
+      const rows = [['Fecha','Trabajador','Estado','Cliente/Obra','Horas','Jornada','Equipo','Notas','Revisar']];
       data.forEach(e => {
         const equipoStr = (e.equipo||[]).map(m=>m.nombre||m.name).join('+');
-        rows.push([e.date, e.workerName, ESTADOS[e.estado]?.label||e.estado, e.clientName||'', e.horas||8, e.tipoJornada||'NORMAL', equipoStr, e.notas||'']);
+        rows.push([e.date, e.workerName, ESTADOS[e.estado]?.label||e.estado, e.clientName||'', e.horas||8, e.tipoJornada||'NORMAL', equipoStr, e.notas||'', e.revisar?('REVISAR: '+(e.revisarMotivo||'')):'']);
       });
       const csv = rows.map(r=>r.map(v=>`"${v}"`).join(',')).join('\n');
       const a = document.createElement('a');

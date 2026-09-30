@@ -69,7 +69,8 @@ function diasDe(entries) {
       ? obras.map(o => ({ nombre: o.clientName || 'Sin obra', horas: parseFloat(o.horas) || (obras.length === 1 ? horas : 0) }))
       : [{ nombre: e.estado === 'oficina' ? 'Oficina / taller' : (e.clientName || 'Sin obra'), horas }];
     // Media jornada si el día tiene 4 h o menos; si no, jornada completa.
-    dias.push({ fecha: e.date, horas: r2(horas), jornada: horas <= 4 ? 0.5 : 1, obras: lista, nota: e.notas || e.nota || '' });
+    dias.push({ fecha: e.date, horas: r2(horas), jornada: horas <= 4 ? 0.5 : 1, obras: lista, nota: e.notas || e.nota || '',
+      revisar: !!e.revisar, revisarMotivo: e.revisar ? (e.revisarMotivo || '') : '' });
   }
   return dias.sort((a, b) => a.fecha.localeCompare(b.fecha));
 }
@@ -115,7 +116,7 @@ async function cuadre(mes) {
       userId: id, nombre: u.name, telefono: u.telefono || null,
       tarifa: { tipo: a.tarifaTipo, dia: a.tarifaDia, hora: a.tarifaHora }, nif: a.nif, nombreFiscal: a.nombreFiscal,
       iva: a.iva != null ? a.iva : 21, irpf: a.irpf || 0,
-      dias, nDias: dias.length, jornadas, horas: r2(horas), esperado, esperadoImportes: importes(esperado, a), obras,
+      dias, nDias: dias.length, nRevisar: dias.filter(d => d.revisar).length, jornadas, horas: r2(horas), esperado, esperadoImportes: importes(esperado, a), obras,
       facturas,
       facturado, numFactura: (guardado && guardado.numFactura) || null, notas: (guardado && guardado.notas) || '',
       estado: (guardado && guardado.estado) || 'pendiente',

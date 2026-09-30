@@ -179,6 +179,7 @@ async function load() {
   }
 }
 
+function esc(x){return String(x==null?'':x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function render(data, yr, mo) {
   document.getElementById('loading').style.display = 'none';
   const el = document.getElementById('content');
@@ -204,6 +205,7 @@ function render(data, yr, mo) {
   const diasObra    = campo.reduce((s,w) => s+(w.dias_obra||0), 0);
   const horasCampo  = campo.reduce((s,w) => s+(w.horas_productivas??w.horas??0), 0);
   const faltasI     = entries.filter(e => e.estado==='falta_i');
+  const revisar     = entries.filter(e => e.revisar).sort((a,b)=>a.date.localeCompare(b.date));
   const faltasTotal = all.reduce((s,w) => s+(w.dias_falta||0)+(w.dias_baja||0)+(w.dias_vacaciones||0), 0);
 
   // Coste real (incluye bajas)
@@ -256,6 +258,14 @@ function render(data, yr, mo) {
       <div class="report-meta">Generado: ${now}</div>
     </div>
   </div>
+
+  <!-- DÍAS PARA REVISAR -->
+  ${revisar.length ? `
+  <div class="alert alert-red" style="background:#fff7ed;border-color:#f59e0b;color:#92400e">
+    <span>⚠️</span>
+    <div><strong>${revisar.length} día${revisar.length>1?'s':''} para revisar:</strong><br>
+    ${revisar.map(e=>`<b>${esc(e.workerName?.split(' ')[0]||'')}</b> ${new Date(e.date+'T12:00:00').toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'})}${e.clientName?' · '+esc(e.clientName):''} — ${esc(e.revisarMotivo||'sin motivo')}`).join('<br>')}</div>
+  </div>` : ''}
 
   <!-- ALERTAS -->
   ${faltasI.length > 0 ? `
