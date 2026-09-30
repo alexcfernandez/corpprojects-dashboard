@@ -315,7 +315,8 @@ app.post('/api/whatsapp', express.urlencoded({ extended: false }), async (req, r
   const pdfM = medios.find(m => /pdf/i.test(m.type));
   const fotos = medios.filter(m => /image/i.test(m.type));
   console.log(`[WhatsApp] De ${from}: "${body}"${numMedia ? ` (+${numMedia} media: ${medios.map(m => m.type).join(',')})` : ''}`);
-  procesarWhatsApp(from, body, { numMedia, mediaUrl: audioM ? audioM.url : (medios[0] && medios[0].url), mediaType: audioM ? audioM.type : (medios[0] && medios[0].type), fotos, pdf: pdfM })
+  // canal:'twilio' → la respuesta sale por Twilio (antes usaba CANAL_WHATSAPP=bridge y se iba al puente).
+  procesarWhatsApp(from, body, { numMedia, canal: 'twilio', mediaUrl: audioM ? audioM.url : (medios[0] && medios[0].url), mediaType: audioM ? audioM.type : (medios[0] && medios[0].type), fotos, pdf: pdfM })
     .catch(err => console.error('[WhatsApp] Error:', err.message));
 });
 
@@ -359,8 +360,14 @@ async function bridgeOutboxHandler(req, res) {
   const canalWa = require('./canalWhatsapp');
   if (!canalWa.tokenBridgeValido(req.get('X-Bridge-Token'))) return res.sendStatus(401);
   const limit = Number(req.query.limit) || 10;
+  // Estado de la sesión de WhatsApp que informa el puente (?estado=open|connecting|close o cabecera
+  // X-Bridge-Estado). Si informa y NO está 'open', no se le dan mensajes: se quedan pendientes en
+  // vez de perderse. Un puente antiguo que no informa sigue funcionando como antes.
+  const estado = String(req.query.estado || req.get('X-Bridge-Estado') || '').toLowerCase() || null;
+  if (estado) { try { await canalWa.guardarEstadoPuente(estado); } catch (e) {} }
   let closed = false;
   req.on('close', () => { closed = true; });
+  if (estado && estado !== 'open') { await new Promise(r => setTimeout(r, 10000)); if (!closed) res.json({ messages: [], pausado: true }); return; }
   try {
     const deadline = Date.now() + 25000;
     let messages = await canalWa.reclamarLoteOutbox(limit);
@@ -373,6 +380,14 @@ async function bridgeOutboxHandler(req, res) {
   } catch (e) { console.error('[Bridge] outbox:', e.message); if (!closed) res.status(500).json({ error: e.message }); }
 }
 app.get(['/api/bridge/outbox', '/bridge/outbox'], bridgeOutboxHandler);
+// Confirmación de entrega desde el puente: {id, ok, error} o {acks:[…]}. Pasa el mensaje de 'sent'
+// (recogido) a 'delivered' o 'failed' con su error, para que /diag diga si llegó de verdad.
+app.post(['/api/bridge/ack', '/bridge/ack'], express.json({ limit: '64kb' }), async (req, res) => {
+  const canalWa = require('./canalWhatsapp');
+  if (!canalWa.tokenBridgeValido(req.get('X-Bridge-Token'))) return res.sendStatus(401);
+  try { const b = req.body || {}; res.json({ ok: true, n: await canalWa.confirmarEntregas(Array.isArray(b.acks) ? b.acks : [b]) }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // PRUEBA de envío proactivo (owner): manda un WhatsApp por el canal activo a un
 // número que quizá NUNCA ha escrito al puente → verifica el caso del Map vacío

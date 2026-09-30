@@ -132,6 +132,23 @@ function tokenBridgeValido(provided) {
   return crypto.timingSafeEqual(a, b);
 }
 
+// Estado de la sesión de WhatsApp informado por el puente en cada sondeo.
+async function guardarEstadoPuente(estado) {
+  const db = await require('./db').getDB();
+  await db.collection('bridgeStatus').updateOne({ _id: 'bridge' }, { $set: { lastSeen: new Date(), estado: String(estado).slice(0, 20), estadoAt: new Date() } }, { upsert: true });
+}
+// Confirmaciones de entrega del puente → delivered | failed (+ error).
+async function confirmarEntregas(acks) {
+  const db = await require('./db').getDB(); const { ObjectId } = require('mongodb'); let n = 0;
+  for (const a of (acks || []).slice(0, 100)) {
+    if (!a || !a.id) continue;
+    let _id; try { _id = new ObjectId(String(a.id)); } catch (e) { continue; }
+    const set = a.ok ? { status: 'delivered', deliveredAt: new Date() } : { status: 'failed', failedAt: new Date(), error: String(a.error || 'error').slice(0, 300) };
+    const r = await db.collection(OUTBOX).updateOne({ _id }, { $set: set }); n += r.modifiedCount || 0;
+  }
+  return n;
+}
+
 // ── DIAGNÓSTICO (pantalla /diag, solo Dueño) ─────────────────────
 // Estado de los dos canales sin enseñar secretos: si hay credenciales, cuándo sondeó el puente
 // por última vez, qué hay en su buzón, y los últimos mensajes de Twilio con su código de error.
@@ -148,9 +165,12 @@ async function diagnostico() {
     const lastSeen = st && st.lastSeen ? new Date(st.lastSeen) : null;
     const pend = await db.collection(OUTBOX).find({ status: 'pending' }).sort({ ts: 1 }).limit(50).toArray();
     const ult = await db.collection(OUTBOX).find({}).sort({ ts: -1 }).limit(10).toArray();
+    const sondea = !!(lastSeen && Date.now() - lastSeen < 90000);
+    const confirmados = await db.collection(OUTBOX).countDocuments({ status: { $in: ['delivered', 'failed'] } });
     out.puente = { ultimoSondeo: lastSeen, segundosDesdeSondeo: lastSeen ? Math.round((Date.now() - lastSeen) / 1000) : null,
-      conectado: !!(lastSeen && Date.now() - lastSeen < 90000), pendientes: pend.length, pendienteMasAntiguo: pend[0] ? pend[0].ts : null,
-      ultimos: ult.map(m => ({ to: _mask(m.to), status: m.status, ts: m.ts, sentAt: m.sentAt || null, texto: String(m.body || '').slice(0, 50) })) };
+      sondea, estadoSesion: (st && st.estado) || null, estadoAt: (st && st.estadoAt) || null, informaEstado: !!(st && st.estado), confirmaEntregas: confirmados > 0,
+      conectado: sondea && (!(st && st.estado) || st.estado === 'open'), pendientes: pend.length, pendienteMasAntiguo: pend[0] ? pend[0].ts : null,
+      ultimos: ult.map(m => ({ to: _mask(m.to), status: m.status, ts: m.ts, sentAt: m.sentAt || null, error: m.error || null, texto: String(m.body || '').slice(0, 50) })) };
   } catch (e) { out.puente = { error: e.message }; }
   // Entradas recientes (webhook de Twilio y puente)
   try { const w = await db.collection('webhookSeen').find({}).sort({ ts: -1 }).limit(1).toArray(); out.ultimaEntradaTwilio = w[0] ? w[0].ts : null; } catch (e) {}
@@ -182,4 +202,4 @@ async function probar(to, canal) {
   } catch (e) { return { ok: false, error: e.message, code: e.code || null }; }
 }
 
-module.exports = { enviarUno, canalActivo, tokenBridgeValido, encolarSalida, reclamarLoteOutbox, diagnostico, probar };
+module.exports = { enviarUno, canalActivo, tokenBridgeValido, encolarSalida, reclamarLoteOutbox, diagnostico, probar, guardarEstadoPuente, confirmarEntregas };
