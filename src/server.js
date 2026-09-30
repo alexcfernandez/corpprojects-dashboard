@@ -367,15 +367,19 @@ async function bridgeOutboxHandler(req, res) {
   if (estado) { try { await canalWa.guardarEstadoPuente(estado); } catch (e) {} }
   let closed = false;
   req.on('close', () => { closed = true; });
+  canalWa.registrarSondeo(+1);
+  res.on('close', () => canalWa.registrarSondeo(-1));
   if (estado && estado !== 'open') { await new Promise(r => setTimeout(r, 10000)); if (!closed) res.json({ messages: [], pausado: true }); return; }
   try {
     // 10 s: por DEBAJO del timeout del puente. Si el servidor responde cuando el puente ya ha
     // colgado (y el proxy de Railway no avisa), los mensajes recogidos se perdían como 'sent'.
     const deadline = Date.now() + (Number(process.env.BRIDGE_LONGPOLL_MS) || 10000);
     let messages = await canalWa.reclamarLoteOutbox(limit);
+    // Sin mensajes: se espera al AVISO de «mensaje nuevo» (o al plazo), sin tocar Mongo mientras.
     while ((!messages || !messages.length) && Date.now() < deadline && !closed) {
-      await new Promise(r => setTimeout(r, 2000));
+      const hay = await canalWa.esperarNuevo(Math.max(0, deadline - Date.now()));
       if (closed) return;
+      if (!hay) break;
       messages = await canalWa.reclamarLoteOutbox(limit);
     }
     if (!closed) res.json({ messages: messages || [] });

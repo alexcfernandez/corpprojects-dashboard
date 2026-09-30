@@ -11,6 +11,16 @@
 // El troceo de mensajes largos se mantiene en quien llama (server.enviarWhatsApp).
 
 const OUTBOX = 'whatsappOutbox';
+// Aviso en memoria de «hay mensaje nuevo en el buzón»: el long-poll del puente espera a este evento
+// en vez de consultar Mongo cada 2 s por petición (con varios bucles del puente abiertos a la vez,
+// eso saturaba el pool de conexiones y todo el dashboard iba lento).
+const _aviso = new (require('events'))(); _aviso.setMaxListeners(500);
+function esperarNuevo(ms) { return new Promise(res => { const t = setTimeout(() => { _aviso.off('nuevo', f); res(false); }, ms); const f = () => { clearTimeout(t); res(true); }; _aviso.once('nuevo', f); }); }
+// Métricas del puente en memoria (para /diag): sondeos del último minuto y peticiones abiertas ahora.
+const _sondeos = []; let _abiertos = 0;
+function registrarSondeo(delta) { if (delta > 0) { const now = Date.now(); _sondeos.push(now); while (_sondeos.length && now - _sondeos[0] > 60000) _sondeos.shift(); } _abiertos = Math.max(0, _abiertos + delta); }
+function metricasPuente() { const now = Date.now(); while (_sondeos.length && now - _sondeos[0] > 60000) _sondeos.shift(); return { sondeosUltimoMinuto: _sondeos.length, peticionesAbiertas: _abiertos }; }
+let _ultimoLatido = 0;
 
 function canalActivo(override) {
   const c = String(override || process.env.CANAL_WHATSAPP || 'twilio').toLowerCase();
@@ -33,6 +43,7 @@ async function encolarSalida(to, body) {
   const db = await require('./db').getDB();
   const dest = String(to || '').replace(/^whatsapp:/i, ''); // el puente usa el número tal cual (+34…)
   await db.collection(OUTBOX).insertOne({ to: dest, body: String(body || ''), ts: new Date(), status: 'pending' });
+  _aviso.emit('nuevo');
   console.log(`[Canal] respuesta encolada para el puente → to=${dest} | "${String(body || '').slice(0, 40)}"`);
   return true;
 }
@@ -42,10 +53,12 @@ async function encolarSalida(to, body) {
 // sondeos). Actualiza bridgeStatus.lastSeen como heartbeat del puente.
 async function reclamarLoteOutbox(limit = 10) {
   const db = await require('./db').getDB();
-  try {
-    await db.collection('bridgeStatus').updateOne(
-      { _id: 'bridge' }, { $set: { lastSeen: new Date() } }, { upsert: true });
-  } catch (e) { /* el heartbeat no debe tumbar la respuesta */ }
+  // Latido como mucho cada 15 s (antes, en cada consulta de cada sondeo).
+  if (Date.now() - _ultimoLatido > 15000) {
+    _ultimoLatido = Date.now();
+    try { await db.collection('bridgeStatus').updateOne({ _id: 'bridge' }, { $set: { lastSeen: new Date() } }, { upsert: true }); }
+    catch (e) { /* el heartbeat no debe tumbar la respuesta */ }
+  }
 
   const max = Math.max(1, Math.min(Number(limit) || 10, 50));
   const lote = [];
@@ -169,7 +182,7 @@ async function diagnostico() {
     const confirmados = await db.collection(OUTBOX).countDocuments({ status: { $in: ['delivered', 'failed'] } });
     out.puente = { ultimoSondeo: lastSeen, segundosDesdeSondeo: lastSeen ? Math.round((Date.now() - lastSeen) / 1000) : null,
       sondea, estadoSesion: (st && st.estado) || null, estadoAt: (st && st.estadoAt) || null, informaEstado: !!(st && st.estado), confirmaEntregas: confirmados > 0,
-      conectado: sondea && (!(st && st.estado) || st.estado === 'open'), pendientes: pend.length, pendienteMasAntiguo: pend[0] ? pend[0].ts : null,
+      conectado: sondea && (!(st && st.estado) || st.estado === 'open'), ...metricasPuente(), pendientes: pend.length, pendienteMasAntiguo: pend[0] ? pend[0].ts : null,
       ultimos: ult.map(m => ({ to: _mask(m.to), status: m.status, ts: m.ts, sentAt: m.sentAt || null, error: m.error || null, texto: String(m.body || '').slice(0, 50) })) };
   } catch (e) { out.puente = { error: e.message }; }
   // Entradas recientes (webhook de Twilio y puente)
@@ -202,4 +215,4 @@ async function probar(to, canal) {
   } catch (e) { return { ok: false, error: e.message, code: e.code || null }; }
 }
 
-module.exports = { enviarUno, canalActivo, tokenBridgeValido, encolarSalida, reclamarLoteOutbox, diagnostico, probar, guardarEstadoPuente, confirmarEntregas };
+module.exports = { enviarUno, canalActivo, tokenBridgeValido, encolarSalida, reclamarLoteOutbox, diagnostico, probar, guardarEstadoPuente, confirmarEntregas, esperarNuevo, registrarSondeo, metricasPuente };
