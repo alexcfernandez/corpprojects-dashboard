@@ -7,7 +7,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 pre{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:12px;overflow:auto;white-space:pre-wrap}.btn{background:var(--blue);color:#fff;border:none;border-radius:10px;padding:10px 14px;font:inherit;font-weight:700;cursor:pointer}</style></head>
 <body><script>try{if(localStorage.getItem("cp_theme")==="light")document.body.classList.add("light");}catch(e){}</script>
 <div class="header"><div class="logo">CP</div><div><div style="font-weight:700">Diagnóstico</div><div style="font-size:12px;color:var(--text2)">WhatsApp y velocidad</div></div><a class="hbtn" href="/">← Dashboard</a></div>
-<div class="wrap"><div id="wa"><div class="card">Comprobando WhatsApp…</div></div><div id="res"><div class="card">Midiendo…</div></div><button class="btn" onclick="medir()">Medir otra vez</button><div class="card" style="margin-top:12px"><h3>Datos en crudo (para pegar)</h3><pre id="raw"></pre></div></div>
+<div class="wrap"><div id="wa"><div class="card">Comprobando WhatsApp…</div></div><div id="grupos"></div><div id="res"><div class="card">Midiendo…</div></div><button class="btn" onclick="medir()">Medir otra vez</button><div class="card" style="margin-top:12px"><h3>Datos en crudo (para pegar)</h3><pre id="raw"></pre></div></div>
 <script>
 const tok=localStorage.getItem('cp_token');
 function ms(v,ok,mal){if(v==null)return '<span class="mal">—</span>';const c=v<=ok?'ok':v<=mal?'reg':'mal';return `<span class="${c}"><b>${v} ms</b></span>`;}
@@ -44,10 +44,16 @@ async function wa(){const el=document.getElementById('wa');let d;try{const r=awa
   <div class="card"><h3>Últimos mensajes Twilio</h3>${(t.ultimos||[]).map(fila).join('')||'<div style="color:var(--text3)">—</div>'}</div>
   <div class="card"><h3>Buzón del puente (últimos)</h3>${(p.ultimos||[]).map(fila).join('')||'<div style="color:var(--text3)">—</div>'}</div>`;
   try{document.getElementById('wa-to').value=localStorage.getItem('waTo')||'';}catch(e){}}
+async function grupos(){const el=document.getElementById('grupos');let l;try{const r=await fetch('/api/bridge/grupos',{headers:{'Authorization':'Bearer '+tok}});l=await r.json();if(!r.ok)throw new Error(l.error||'HTTP '+r.status);}catch(e){el.innerHTML='';return;}
+  const esc=x=>String(x==null?'':x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  el.innerHTML=`<div class="card"><h3>Grupos de WhatsApp (puente)</h3><div style="font-size:13px;color:var(--text3);line-height:1.5;margin-bottom:8px">Grupos en los que está el número de Corpy. Solo se lee lo que se manda en los grupos <b>activados</b>: sus albaranes, facturas y tickets van a Compras. Corpy no contesta en el grupo. El puente aplica los cambios en menos de 5 minutos.</div>
+  ${l.length?l.map(g=>`<div class="kv" style="align-items:center"><span><b>${esc(g.nombre||'(sin nombre)')}</b><br><span style="font-size:12px;color:var(--text3)">${g.activo?`escuchando · ${g.nMensajes} mensajes · ${g.nCompras} a Compras · último ${hace(g.ultimoMsgAt)}`:'visto hace '+hace(g.vistoAt)+' · no se lee'}</span></span><button class="btn" style="margin:0;${g.activo?'background:var(--bg3);color:var(--text)':''}" onclick="grupoOn('${esc(g.jid)}',${!g.activo})">${g.activo?'Dejar de escuchar':'Escuchar este grupo'}</button></div>`).join(''):'<div style="color:var(--text3);font-size:13px">Aún no ha visto ningún grupo. Mete el número de Corpy en el grupo y escribe algo en él; aparecerá aquí.</div>'}</div>`;}
+async function grupoOn(jid,on){if(on&&!confirm('A partir de ahora Corpy leerá lo que se mande en este grupo y pasará los albaranes y facturas a Compras. ¿Avisaste al grupo?'))return;
+  try{const r=await fetch('/api/bridge/grupos',{method:'POST',headers:{'Authorization':'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify({jid,activo:on})});const d=await r.json();if(!r.ok)throw new Error(d.error||'HTTP '+r.status);}catch(e){alert(e.message);}grupos();}
 async function probar(canal){const to=document.getElementById('wa-to').value.trim();const el=document.getElementById('wa-prueba');if(!to){el.textContent='Pon un número';return;}try{localStorage.setItem('waTo',to);}catch(e){}
   el.innerHTML='Enviando…';try{const r=await fetch('/api/diag/whatsapp/prueba',{method:'POST',headers:{'Authorization':'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify({to,canal})});const d=await r.json();
   el.innerHTML=d.ok?`<span class="ok">✓ ${canal}: ${d.estado||''} ${d.nota||''}</span>`:`<span class="mal">✗ ${canal}: ${d.errorCode?d.errorCode+' — '+(ERR[d.errorCode]||d.errorMessage||''):(d.error||'')}${d.code&&!d.errorCode?' ('+d.code+')':''}</span>`;
   document.getElementById('raw').textContent=JSON.stringify({prueba:{canal,...d},whatsapp:window._wa},null,2);setTimeout(wa,canal==='bridge'?45000:1500);}catch(e){el.innerHTML='<span class="mal">'+e.message+'</span>';}}
-if(tok)wa();
+if(tok){wa();grupos();}
 if(!tok)document.getElementById('res').innerHTML='<div class="card mal">Abre esta página desde el dashboard (necesita sesión de Dueño).</div>';else medir();
 </script></body></html>

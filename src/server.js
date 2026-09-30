@@ -329,12 +329,19 @@ app.post('/api/whatsapp', express.urlencoded({ extended: false }), async (req, r
 // Quien tenga el token puede suplantar `from` → el TOKEN es la frontera de
 // seguridad. Sin BRIDGE_TOKEN configurado, el endpoint responde 401 siempre.
 // ─────────────────────────────────────────────────────────────
-app.post('/api/bridge/inbound', express.json({ limit: '256kb' }), (req, res) => {
+app.post('/api/bridge/inbound', express.json({ limit: '40mb' }), (req, res) => {
   if (!require('./canalWhatsapp').tokenBridgeValido(req.get('X-Bridge-Token'))) return res.sendStatus(401);
   res.sendStatus(200); // acuse inmediato; se procesa en segundo plano
   const p = req.body || {};
   const from = String(p.from || '').trim();  // SENSIBLE: decide identidad (ver nota de seguridad arriba).
   const body = String(p.body != null ? p.body : (p.text || '')).trim();
+  // Grupos: uno no autorizado solo se apunta como «visto» (para poder activarlo en /diag).
+  if (p.isGroup) {
+    const gw = require('./grupoWhatsapp');
+    if (p.soloAviso) { gw.grupoVisto(p.chatId, p.groupName).catch(e => console.warn('[Bridge] grupo visto:', e.message)); return; }
+    gw.procesar({ ...p, from, body, media: (p.media || []).map(guardarMediaPuente) }).catch(e => console.error('[Bridge] grupo:', e.message));
+    return;
+  }
   if (!from) return;
   // Diagnóstico: ver en los logs que el mensaje del puente LLEGA y cómo se identifica.
   try {
@@ -342,10 +349,29 @@ app.post('/api/bridge/inbound', express.json({ limit: '256kb' }), (req, res) => 
     const rol = ac.esOwner(from) ? 'OWNER' : (ac.esTrabajador(from) ? 'trabajador' : 'DESCONOCIDO');
     console.log(`[Bridge] inbound from=${from} → ${rol} | texto="${body.slice(0, 50)}"`);
   } catch (e) {}
-  // Incremento 1: SOLO texto (media por el puente = incremento 2). canal:'bridge'
-  // hace que la RESPUESTA salga por el puente (mismo canal de entrada).
-  procesarWhatsApp(from, body, { numMedia: 0, canal: 'bridge', chatId: p.chatId, isGroup: !!p.isGroup })
+  // Media (foto, PDF, nota de voz): se guarda un rato en memoria y se usa por el MISMO
+  // camino que la de Twilio (url 'bridge-media:<id>'). canal:'bridge' → se responde por el puente.
+  const medios = (Array.isArray(p.media) ? p.media : []).map(guardarMediaPuente);
+  const fallidos = medios.filter(m => !m.url);
+  if (fallidos.length && !body && fallidos.length === medios.length) {
+    const t = fallidos.some(m => m.demasiadoGrande) ? 'es demasiado grande para mí (máx. 16 MB)' : 'no lo he podido descargar';
+    enviarWhatsApp(from, `📎 He recibido tu archivo, pero ${t}. ¿Me lo mandas otra vez o en foto?`, 'bridge').catch(() => {});
+    return;
+  }
+  const ok = medios.filter(m => m.url);
+  const audioM = ok.find(m => /audio/i.test(m.type));
+  const pdfM = ok.find(m => /pdf/i.test(m.type));
+  const fotos = ok.filter(m => /^image\//i.test(m.type));
+  procesarWhatsApp(from, body, { numMedia: ok.length, canal: 'bridge', chatId: p.chatId, isGroup: false,
+    mediaUrl: audioM ? audioM.url : (ok[0] && ok[0].url), mediaType: audioM ? audioM.type : (ok[0] && ok[0].type), fotos, pdf: pdfM })
     .catch(err => console.error('[Bridge] inbound:', err.message));
+});
+
+// Config que el puente pide cada 5 min: qué grupos puede leer.
+app.get(['/api/bridge/config', '/bridge/config'], async (req, res) => {
+  if (!require('./canalWhatsapp').tokenBridgeValido(req.get('X-Bridge-Token'))) return res.sendStatus(401);
+  try { res.json({ grupos: await require('./grupoWhatsapp').gruposPermitidos() }); }
+  catch (e) { res.json({ grupos: [] }); }
 });
 
 // SALIDA del puente (pull): el servicio Baileys sondea aquí y recibe un lote de
@@ -409,8 +435,22 @@ app.post('/api/whatsapp/test', requireAuth, express.json({ limit: '16kb' }), asy
 });
 
 // Descarga una imagen de Twilio y la devuelve como {media_type, data(base64)}
+// Media del puente (foto/PDF/audio): src/mediaPuente.js
+const guardarMediaPuente = m => require('./mediaPuente').guardar(m);
+const mediaPuente = url => require('./mediaPuente').get(url);
+async function _bajarMedia(url, timeout) {
+  const mp = mediaPuente(url);
+  if (mp === null) throw new Error('archivo del puente caducado');
+  if (mp) return mp.buf;
+  const r = await axios.get(url, { responseType: 'arraybuffer', auth: { username: process.env.TWILIO_ACCOUNT_SID, password: process.env.TWILIO_AUTH_TOKEN }, timeout });
+  return Buffer.from(r.data);
+}
+
 async function descargarFoto(url, type) {
   try {
+    const mp = mediaPuente(url);
+    if (mp) { let mt = (type || mp.type || 'image/jpeg').split(';')[0].trim(); if (!/^image\/(jpeg|png|gif|webp)$/.test(mt)) mt = 'image/jpeg'; return { media_type: mt, data: mp.buf.toString('base64') }; }
+    if (mp === null) throw new Error('archivo del puente caducado');
     const r = await axios.get(url, {
       responseType: 'arraybuffer',
       auth: { username: process.env.TWILIO_ACCOUNT_SID, password: process.env.TWILIO_AUTH_TOKEN },
@@ -425,6 +465,9 @@ async function descargarFoto(url, type) {
 // Descarga genérica (p. ej. PDF) de Twilio y la devuelve como base64.
 async function descargarArchivo(url) {
   try {
+    const mp = mediaPuente(url);
+    if (mp) return mp.buf.toString('base64');
+    if (mp === null) throw new Error('archivo del puente caducado');
     const r = await axios.get(url, {
       responseType: 'arraybuffer',
       auth: { username: process.env.TWILIO_ACCOUNT_SID, password: process.env.TWILIO_AUTH_TOKEN },
@@ -547,13 +590,8 @@ async function transcribirAudio(mediaUrl, contentType, hint) {
   if (!key || !mediaUrl) return null;
   const FormData = require('form-data');
 
-  // 1) Descargar el audio de Twilio (autenticación básica SID:token)
-  const audio = await axios.get(mediaUrl, {
-    responseType: 'arraybuffer',
-    auth: { username: process.env.TWILIO_ACCOUNT_SID, password: process.env.TWILIO_AUTH_TOKEN },
-    timeout: 20000
-  });
-  const buf = Buffer.from(audio.data);
+  // 1) Descargar el audio (Twilio con SID:token, o el que ha traído el puente)
+  const buf = await _bajarMedia(mediaUrl, 20000);
 
   // 2) Enviar a la API de transcripción (formato OpenAI: /audio/transcriptions)
   const base  = (process.env.STT_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
@@ -1704,6 +1742,18 @@ app.post('/api/autonomos/cuadre', requireAuthOficina, express.json(), async (req
     const b = req.body || {}; const q = (await _quienPush(req)) || {};
     if (!b.userId || !b.mes) return res.status(400).json({ error: 'Faltan userId y mes' });
     res.json(await require('./autonomos').guardarCuadre(b.userId, b.mes, b, q.name));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// ── Grupos de WhatsApp que ve el puente: activar/desactivar la escucha ──
+app.get('/api/bridge/grupos', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./grupoWhatsapp').listaGrupos()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/bridge/grupos', requireAuthOficina, express.json(), async (req, res) => {
+  try {
+    const b = req.body || {}; const q = (await _quienPush(req)) || {};
+    res.json(await require('./grupoWhatsapp').setGrupo(String(b.jid || ''), { activo: !!b.activo }, q.name));
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 

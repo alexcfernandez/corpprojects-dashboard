@@ -168,7 +168,7 @@ async function buscarDuplicado(db, doc) {
 
 // ── ALTA (trabajador u oficina) ──────────────────────────────────
 // fotos: [{data: Buffer, mimetype}]. Devuelve lo que se le confirma al que la sube.
-async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaPor, origen, gmailId, email }) {
+async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaPor, origen, gmailId, email, soloSiDocumento = false, grupo = null }) {
   if (!fotos || !fotos.length) throw new Error('Haz al menos una foto del documento');
   const db = await getDB();
   let obraRef = null;
@@ -187,6 +187,7 @@ async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaP
     obraId: obraId ? String(obraId) : null, obraRef: obraId ? obraRef : null, varias: !!varias, reparto: [], categoria: dest === 'herramientas' ? 'herramientas' : dest === 'ropa' ? 'ropa' : null,
     nota: String(nota || '').trim().slice(0, 300) || null, subidaPor: subidaPor || null, nFotos: fotos.length,
     origen: origen || 'app', gmailId: gmailId || null, email: email || null,   // 'email' = llegó al correo (n8n ya la manda a StelOrder)
+    grupo: grupo || null,   // { jid, nombre } si llegó por un grupo de WhatsApp
     ia: { ok: false }, duplicadoDe: null, revisadaPor: null, revisadaAt: null, enviadaStel: null, createdAt: now, updatedAt: now,
   };
   const r = await db.collection(COL).insertOne(doc);
@@ -200,6 +201,12 @@ async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaP
   } else {
     doc.ia = { ok: false, error: lec.error, modelo: lec.modelo || null };
   }
+  // Del grupo llegan también fotos de la obra: si la IA ve que NO es un documento de compra, no se guarda.
+  if (soloSiDocumento && lec.ok && doc.tipo === 'otro' && !doc.proveedor && doc.total == null && !(doc.lineas || []).length) {
+    await db.collection(COL).deleteOne({ _id: doc._id });
+    await db.collection(FOTOS).deleteMany({ compraId: String(doc._id) });
+    return { ok: true, noEsDocumento: true };
+  }
   doc.duplicadoDe = await buscarDuplicado(db, doc);
   doc.updatedAt = new Date();
   const { _id, ...set } = doc;
@@ -207,7 +214,7 @@ async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaP
 
   // Aviso a oficina (push al momento; el WhatsApp va en el resumen de las 18:00)
   try {
-    const quien = origen === 'email' ? 'el correo' : ((subidaPor && subidaPor.name) || 'Alguien');
+    const quien = origen === 'email' ? 'el correo' : ((subidaPor && subidaPor.name) || 'Alguien') + (grupo && grupo.nombre ? ` (grupo ${grupo.nombre})` : '');
     const que = doc.ia.ok ? `${TIPO_TXT[doc.tipo]}${doc.proveedor ? ' de ' + doc.proveedor : ''}${doc.numero ? ' nº ' + doc.numero : ''}` : 'un documento (la IA no pudo leerlo)';
     await require('./push').sendToOficina({ title: origen === 'email' ? '📧 Factura llegada por correo' : `📸 Compra de ${quien}`, body: `${que}${doc.obraRef ? ' · ' + doc.obraRef : dest === 'varias' ? ' · para varias obras' : dest === 'herramientas' || dest === 'ropa' ? ' · ' + DESTINO_TXT[dest].toLowerCase() + (pw ? ' para ' + pw.name : ' (queda en oficina)') : dest === 'general' ? ' · gasto general' : ''}. Por revisar.`, url: '/compras', tag: 'compra-nueva' });
   } catch (e) {}

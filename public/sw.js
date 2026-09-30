@@ -1,5 +1,5 @@
 // Service Worker — Corp Projects Dashboard
-const CACHE = 'cp-v118';
+const CACHE = 'cp-v119';
 const STATIC = [
   '/',
   '/parte',
