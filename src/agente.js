@@ -139,6 +139,9 @@ async function intentar({ texto, from, imagenes = [], puerta = null } = {}) {
     return { handled: out.handled !== false, reply: out.reply };
   }
   if (resp.tipo === 'texto') {
+    // Solo UNA ronda de aclaración: si tras aclarar sigue sin entenderlo, se suelta el
+    // hilo (antes encadenaba respuestas inventando contexto: "me he inventado contexto").
+    if (enAclaracion) { estado.delete(from); console.log(`[Agente] 2ª aclaración → suelto el hilo puerta=${puerta || '?'}`); return { handled: true, reply: resp.texto }; }
     estado.set(from, { accion: 'agente_aclara', textoOriginal: (enAclaracion && prev.textoOriginal) || texto, pregunta: resp.texto, ts: Date.now() });
     console.log(`[Agente] aclara puerta=${puerta || '?'}`);
     return { handled: true, reply: resp.texto };

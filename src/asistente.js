@@ -1787,6 +1787,23 @@ async function informeTrabajadorTxt(w, periodo) {
   return pagosT.formatInforme(movs, { nombre: w.nombre, tituloPeriodo: titulo });
 }
 
+// "hazme/prepara/redacta un presupuesto…" (texto ya normalizado)
+function _pidePresupuesto(np) {
+  return /\b(haz(me|le|lo|les|nos)?|prepara(me|le|lo|les|nos)?|redacta(me|le|lo|les|nos)?|genera(me|le|lo|les|nos)?|monta(me|le|lo|les|nos)?)\b[\s\S]*\bpresupuest/.test(np) ||
+    /\bpresupuesto (detallado|tecnico|t\u00e9cnico|profesional)\b/.test(np) ||
+    /\bpresupuesto (a|para|de)\b[\s\S]{0,80}:\s*\S/.test(np);
+}
+// Órdenes que tienen su propio circuito y nunca son "la respuesta" a una aclaración del agente.
+function esOrdenDirecta(texto) {
+  const np = norm(texto);
+  if (_pidePresupuesto(np)) return true;
+  if (/^(resumen|pendientes|cobros|ayuda|menu|men\u00fa|hola|buenas|ver mas)\b/.test(np)) return true;
+  if (/\b(haz|genera(r)?|crea(r)?|saca)\b[\s\S]*\b(pedido|incidencia|factura)\b/.test(np)) return true;
+  if (/\b(dime|dame|busca|ensena|mu[eé]strame)\b[\s\S]*\b(factura|presupuesto|pedido|albaran)\b/.test(np)) return true;
+  if (/\b(que|cuanto) (debe|deben|nos deben)\b/.test(np)) return true;
+  return false;
+}
+
 async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx = {}) {
   // A0) AISLAMIENTO DE CLIENTE — solo su familia y solo lectura.
   // Aditivo: si ctx viene vacío (owner/office/uso normal) NO se ejecuta nada de esto
@@ -1814,7 +1831,10 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
   // Devuelve la continuidad al agente (usa el contexto guardado en estadoConversacion).
   {
     const pa = pendiente.get(from);
-    if (pa && pa.accion === 'agente_aclara' && (Date.now() - (pa.ts || 0)) < 10 * 60 * 1000) {
+    // Una ORDEN clara ("hazme un presupuesto…") no es una respuesta a la aclaración:
+    // va al enrutador normal (el agente solo sabe de agenda y notas, y la rechazaba).
+    if (pa && pa.accion === 'agente_aclara' && esOrdenDirecta(texto)) pendiente.delete(from);
+    else if (pa && pa.accion === 'agente_aclara' && (Date.now() - (pa.ts || 0)) < 10 * 60 * 1000) {
       try {
         const res = await require('./agente').intentar({ texto, from, imagenes, puerta: 'aclara' });
         if (res && res.handled) return res.reply;
@@ -1826,7 +1846,9 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
   const pend = pendiente.get(from);
 
   // A.inc) Flujo de creación de incidencia (cliente / tipo / confirmación)
-  if (pend && (Date.now() - pend.ts) < 10 * 60 * 1000) {
+  // Un borrador de presupuesto se revisa con calma: su confirmación dura 45 min (el resto, 10).
+  const _ttlPend = pend && /^(presu|import|comp)/.test(pend.accion || '') ? 45 * 60 * 1000 : 10 * 60 * 1000;
+  if (pend && (Date.now() - pend.ts) < _ttlPend) {
     const nn = norm(texto);
     if (pend.accion === 'cerrarSemConfirm') {
       if (/^(s[ií]|si|vale|ok|dale|confirmo|adelante|correcto|apunta(lo)?|hazlo)\b/.test(nn)) {
@@ -2056,10 +2078,7 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
     if (r) return r;
   }
 
-  const pidePresu =
-    /\b(haz(me|le|lo|les|nos)?|prepara(me|le|lo|les|nos)?|redacta(me|le|lo|les|nos)?|genera(me|le|lo|les|nos)?|monta(me|le|lo|les|nos)?)\b[\s\S]*\bpresupuest/.test(_np) ||
-    /\bpresupuesto (detallado|tecnico|t\u00e9cnico|profesional)\b/.test(_np) ||
-    /\bpresupuesto (a|para|de)\b[\s\S]{0,80}:\s*\S/.test(_np);
+  const pidePresu = _pidePresupuesto(_np);
   if (pidePresu || (imagenes && imagenes.length && /presupuest/.test(_np))) {
     return handlerPresupuesto(texto, from, imagenes, ctx);
   }
@@ -2346,6 +2365,11 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
   if (intent === 'facturas')     return handlerFacturas(texto, from, scope, rawTarget);
   if (intent === 'presupuestos') return handlerPresupuestos(texto, from, scope, rawTarget);
   if (intent === 'pedidos')      return handlerPedidos(texto, from, scope, rawTarget);
+
+  // "sí"/"no" suelto sin nada pendiente: el agente no tiene contexto y se lo inventaría.
+  if (!imagenes.length && /^(s[ií]|si+|vale|ok|dale|no|nop|correcto|confirmo|adelante|hazlo|cr[eé]alo)[\s.!,]*$/i.test(norm(texto))) {
+    return '🤔 No tengo nada pendiente de confirmar ahora mismo (las confirmaciones caducan pasado un rato). ¿Qué necesitas? Si era un presupuesto, pídemelo otra vez.';
+  }
 
   // Puerta A (Fase 1): antes de rendirse, que lo intente el agente (fallback).
   try {

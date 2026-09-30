@@ -482,7 +482,8 @@ async function procesarWhatsApp(from, body, media = {}) {
     try {
       const hint = await asistente.vocabularioVoz().catch(() => '');
       const t = await transcribirAudio(media.mediaUrl, media.mediaType, hint);
-      if (!t) return responder('🎙️ He recibido tu nota de voz, pero la transcripción aún no está configurada. Escríbeme el texto y te respondo igual.');
+      if (t === null) return responder('🎙️ He recibido tu nota de voz, pero la transcripción aún no está configurada. Escríbeme el texto y te respondo igual.');
+      if (!t) return responder('🎙️ No he oído nada claro en la nota de voz (salía en silencio o cortada). ¿Me la repites o me lo escribes?');
       texto = t;
       prefijo = `🎙️ _He entendido:_ “${t}”\n\n`;
     } catch (e) {
@@ -563,13 +564,41 @@ async function transcribirAudio(mediaUrl, contentType, hint) {
   form.append('file', buf, { filename: `audio.${ext}`, contentType: ct });
   form.append('model', model);
   form.append('language', 'es');
+  form.append('temperature', '0');
   if (hint) form.append('prompt', String(hint).slice(0, 1200)); // pista de nombres propios reales
+  // whisper-1 da, por tramo, la probabilidad de que NO haya voz: así se descartan los
+  // silencios, que Whisper "rellena" con frases de subtítulos ("Subtitulado por la comunidad…").
+  const detallado = /^whisper/i.test(model);
+  if (detallado) form.append('response_format', 'verbose_json');
 
   const r = await axios.post(`${base}/audio/transcriptions`, form, {
     headers: { ...form.getHeaders(), Authorization: `Bearer ${key}` },
     maxBodyLength: Infinity, maxContentLength: Infinity, timeout: 30000
   });
-  return ((r.data && r.data.text) || '').trim();
+  let texto = ((r.data && r.data.text) || '').trim();
+  const segs = detallado && Array.isArray(r.data && r.data.segments) ? r.data.segments : null;
+  if (segs && segs.length) {
+    texto = segs.filter(sg => !((Number(sg.no_speech_prob) || 0) > 0.6 && (Number(sg.avg_logprob) || 0) < -0.5))
+      .map(sg => String(sg.text || '').trim()).filter(Boolean).join(' ').trim();
+  }
+  return limpiarAlucinacionesSTT(texto);
+}
+
+// Frases que Whisper se inventa con audio vacío o ruido (vienen de subtítulos de YouTube).
+const ALUCINACIONES_STT = [
+  /subt[ií]tul(os?|ado|ados)( realizados?)? (por|de) (la comunidad|amara)/i, /amara\.org/i,
+  /m[aá]s informaci[oó]n\s*(en\s*)?www\./i, /\bwww\.[a-z0-9-]+\.(com|org|es|net)\b/i,
+  /gracias por (ver|mirar)( el v[ií]deo)?/i, /suscr[ií]bete (al canal)?/i, /no olvides suscribirte/i,
+  /^(m[uú]sica|\[m[uú]sica\]|aplausos|risas)\.?$/i,
+];
+function limpiarAlucinacionesSTT(t) {
+  const s = String(t || '').trim();
+  if (!s) return '';
+  // Se quitan las frases alucinadas; si no queda nada con sentido, el audio no tenía voz.
+  const frases = s.split(/(?<=[.!?])\s+/).filter(f => !ALUCINACIONES_STT.some(re => re.test(f)));
+  const limpio = frases.join(' ').trim();
+  if (limpio !== s) console.warn(`[WhatsApp] STT: descartada alucinación de silencio → "${s.slice(0, 120)}"`);
+  return limpio.replace(/[\s.…,]+/g, '') ? limpio : '';
 }
 
 // Trocea un texto largo en partes <= max. Corta preferentemente por BLOQUES
