@@ -1869,13 +1869,61 @@ app.post('/api/trimestre/justificar/:movId/confirmar', requireAuthOficina, expre
 app.delete('/api/trimestre/justificar/:movId', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./trimestre').deshacerJustificacion(req.params.movId)); } catch (err) { res.status(400).json({ error: err.message }); }
 });
-// ── Vehículos: lista (para elegir) y gastos por vehículo ──
+// ── Vehículos (flota): ficha, conductor, documentos, avisos, gastos y GPS Quartix ──
+const uploadDocVeh = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
+const _porVeh = async (req) => { const q = (await _quienPush(req)) || {}; return q.name || 'Oficina'; };
+// Lista mínima para elegir vehículo (Compras, cierre del trimestre).
 app.get('/api/vehiculos', requireAuth, async (req, res) => {
   try { const v = require('./vehiculos'); res.json({ vehiculos: await v.lista(), categorias: v.CATEGORIAS, sugerida: req.query.texto ? v.sugerirCategoria(req.query.texto) : null }); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
+app.get('/api/vehiculos/flota', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./vehiculos').flota({ anio: req.query.anio })); } catch (err) { res.status(500).json({ error: err.message }); }
+});
 app.get('/api/vehiculos/resumen', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./vehiculos').resumen({ anio: req.query.anio })); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/vehiculos/avisos', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./vehiculos').revisarVencimientos({ dryRun: true })); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/vehiculos/gps', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./quartix').mapa()); } catch (err) { res.status(502).json({ error: err.message }); }
+});
+app.get('/api/vehiculos/gps/diag', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./quartix').diagnostico()); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/vehiculos', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./vehiculos').crear(req.body || {}, await _porVeh(req))); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/vehiculos/docs/:docId', requireAuthOficina, async (req, res) => {
+  try {
+    const d = await require('./vehiculos').documento(req.params.docId);
+    if (!d) return res.status(404).json({ error: 'No encontrado' });
+    res.set('Content-Type', d.mime || 'application/octet-stream');
+    res.set('Content-Disposition', `inline; filename="${encodeURIComponent(d.nombre || 'documento')}"`);
+    res.send(Buffer.from(d.data.buffer || d.data));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.delete('/api/vehiculos/docs/:docId', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./vehiculos').borrarDocumento(req.params.docId)); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/vehiculos/:id', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./vehiculos').ficha(req.params.id, { anio: req.query.anio })); } catch (err) { res.status(404).json({ error: err.message }); }
+});
+app.put('/api/vehiculos/:id', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./vehiculos').editar(req.params.id, req.body || {}, await _porVeh(req))); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/vehiculos/:id/conductor', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./vehiculos').asignarConductor(req.params.id, req.body || {}, await _porVeh(req))); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/vehiculos/:id/baja', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./vehiculos').darDeBaja(req.params.id, req.body || {}, await _porVeh(req))); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/vehiculos/:id/reactivar', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./vehiculos').reactivar(req.params.id, await _porVeh(req))); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/vehiculos/:id/docs', requireAuthOficina, uploadDocVeh.single('archivo'), async (req, res) => {
+  try { res.json(await require('./vehiculos').subirDocumento(req.params.id, { tipo: (req.body || {}).tipo, nombre: (req.body || {}).nombre, archivo: req.file }, await _porVeh(req))); } catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.get('/api/tarjetas', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./tarjetas').listaTarjetas()); } catch (err) { res.status(500).json({ error: err.message }); }

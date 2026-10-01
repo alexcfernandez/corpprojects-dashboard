@@ -169,7 +169,7 @@ function destSel(){return document.getElementById('f-dest').value;}
 let _veh=null;
 async function cargarVehiculos(){const sv=document.getElementById('f-veh'),sc=document.getElementById('f-vcat');if(!sv)return;
   try{if(!_veh){const r=await fetch('/api/vehiculos?texto='+encodeURIComponent(cur.proveedor||''),{headers:{Authorization:'Bearer '+localStorage.getItem('cp_token')}});_veh=await r.json();}
-    sv.innerHTML='<option value="">— elige —</option>'+_veh.vehiculos.map(v=>`<option value="${v.id}" ${cur.vehiculoId===v.id?'selected':''}>${esc(v.nombre)}${v.matricula?' · '+esc(v.matricula):''}</option>`).join('')+(_veh.vehiculos.length?'':'<option value="" disabled>No hay vehículos: dalos de alta en Llaves y herramientas</option>');
+    sv.innerHTML='<option value="">— elige —</option>'+_veh.vehiculos.map(v=>`<option value="${v.id}" ${cur.vehiculoId===v.id?'selected':''}>${esc(v.nombre)}${v.matricula?' · '+esc(v.matricula):''}</option>`).join('')+(_veh.vehiculos.length?'':'<option value="" disabled>No hay vehículos: dalos de alta en 🚐 Vehículos</option>');
     const sel=cur.destino==='vehiculo'&&cur.categoria?cur.categoria:_veh.sugerida;
     sc.innerHTML=Object.entries(_veh.categorias).map(([k,t])=>`<option value="${k}" ${k===sel?'selected':''}>${t}</option>`).join('');}
   catch(e){sv.innerHTML='<option value="">No se pudieron cargar</option>';}}

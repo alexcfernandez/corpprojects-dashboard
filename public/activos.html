@@ -113,7 +113,6 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
       <button id="seg-llave" class="on" onclick="setFiltro('llave')">🔑 Llaves</button>
       <button id="seg-herramienta" onclick="setFiltro('herramienta')">🛠️ Herramientas</button>
       <button id="seg-ropa" onclick="setFiltro('ropa')">👕 Ropa</button>
-      <button id="seg-vehiculo" onclick="setFiltro('vehiculo')">🚐 Vehículos</button>
       <button id="seg-persona" onclick="setFiltro('persona')">👤 Por persona</button>
     </div>
     <button class="addbtn" onclick="nuevo()">+ Nuevo</button>
@@ -131,7 +130,7 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
   <div style="height:14px"></div>
   <div class="field" id="f-tipo-wrap">
     <label class="fld">Tipo</label>
-    <select id="f-tipo" onchange="onTipo()"><option value="llave">🔑 Llave</option><option value="herramienta">🛠️ Herramienta</option><option value="ropa">👕 Ropa de trabajo</option><option value="vehiculo">🚐 Vehículo</option></select>
+    <select id="f-tipo" onchange="onTipo()"><option value="llave">🔑 Llave</option><option value="herramienta">🛠️ Herramienta</option><option value="ropa">👕 Ropa de trabajo</option></select>
   </div>
   <div class="field"><label class="fld">Código (etiqueta)</label><input type="text" id="f-codigo" placeholder="auto"><div class="mini">Es lo único que va impreso en la llave.</div></div>
   <div class="field" id="f-cant-wrap" style="display:none"><label class="fld">Cuántas unidades</label><input type="number" id="f-cant" min="1" value="1"><div class="mini">Se crean tantas como pongas, con códigos seguidos (p. ej. 4 pantalones de la talla L).</div></div>
@@ -153,7 +152,7 @@ label.fld{display:block;font-size:11px;font-weight:600;color:var(--text3);text-t
       <div class="field"><label class="fld">Modelo</label><input type="text" id="f-modelo"></div>
     </div>
     <div class="row2">
-      <div class="field" id="f-serie-wrap"><label class="fld" id="f-serie-lbl">Nº serie</label><input type="text" id="f-serie"></div>
+      <div class="field" id="f-serie-wrap"><label class="fld">Nº serie</label><input type="text" id="f-serie"></div>
       <div class="field" id="f-talla-wrap" style="display:none"><label class="fld">Talla</label><input type="text" id="f-talla" placeholder="M, L, 42…"></div>
       <div class="field"><label class="fld">Valor (€)</label><input type="number" id="f-valor" step="0.01"></div>
     </div>
@@ -255,8 +254,8 @@ function logout(){if(esAdmin){location.href='/';return;}workerToken=null;localSt
 // ── DATOS + LISTA ──
 async function cargar(){document.getElementById('lista').innerHTML='<div class="empty"><span class="spinner"></span></div>';
   try{activosCache=await api('GET','/api/activos');render();}catch(e){toast(e.message,'error');}}
-function setFiltro(f){filtro=f;['llave','herramienta','ropa','vehiculo','persona'].forEach(k=>document.getElementById('seg-'+k).classList.toggle('on',k===f));document.getElementById('buscar').style.display=f==='persona'?'none':'block';render();}
-const ICONO={llave:'🔑',herramienta:'🛠️',ropa:'👕',vehiculo:'🚐'};const TIPO_NOM={llave:'llave',herramienta:'herramienta',ropa:'ropa de trabajo',vehiculo:'vehículo'};
+function setFiltro(f){filtro=f;['llave','herramienta','ropa','persona'].forEach(k=>document.getElementById('seg-'+k).classList.toggle('on',k===f));document.getElementById('buscar').style.display=f==='persona'?'none':'block';render();}
+const ICONO={llave:'🔑',herramienta:'🛠️',ropa:'👕'};const TIPO_NOM={llave:'llave',herramienta:'herramienta',ropa:'ropa de trabajo'};
 function badge(a){const map={oficina:['b-oficina','En oficina'],operario:['b-operario','Con '+esc(a.holderName||'operario')],cliente:['b-cliente','Con cliente '+esc(a.holderName||'')],perdida:['b-perdida','⚠️ Perdida']};const [c,t]=map[a.estado]||map.oficina;return `<span class="badge ${c}">${t}</span>`;}
 function render(){
   const cont=document.getElementById('lista');
@@ -277,7 +276,7 @@ function render(){
     const gs=Object.values(g).filter(x=>x.ids.length>1);
     if(gs.length)grupos=`<div class="card" style="margin-bottom:10px"><div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">En oficina para repartir</div>${gs.map(x=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)"><div style="flex:1"><b>${esc(x.nombre)}</b>${x.talla?' · talla '+esc(x.talla):''} <span style="color:var(--text3)">×${x.ids.length}</span></div><button class="btn" style="padding:7px 12px;font-size:13px" onclick='darVarias(${JSON.stringify(x.ids)},${JSON.stringify(x.nombre+(x.talla?" "+x.talla:""))})'>Entregar varias</button></div>`).join('')}</div>`;}
   cont.innerHTML=grupos+list.map(a=>{
-    const sub=a.tipo==='llave'?[a.clientName,a.family].filter(Boolean).join(' · '):[a.nombre,a.talla?'talla '+a.talla:'',a.matricula||''].filter(Boolean).join(' · ');
+    const sub=a.tipo==='llave'?[a.clientName,a.family].filter(Boolean).join(' · '):[a.nombre,a.talla?'talla '+a.talla:''].filter(Boolean).join(' · ');
     return `<div class="card" onclick="ficha('${a._id}')">
     <div class="card-top"><div class="card-cod">${ICONO[a.tipo]||'🛠️'} ${esc(a.codigo)}</div></div>
     <div class="card-name">${esc(sub)}</div>
@@ -290,7 +289,7 @@ async function ficha(id){fichaId=id;
     const kv=(k,v)=>v?`<div class="kv"><div class="k">${k}</div><div class="v">${esc(v)}</div></div>`:'';
     const detalle = a.tipo==='llave'
       ? kv('Cliente',a.clientName)+kv('Familia',a.family)+kv('Dirección',a.direccion)+kv('Copias',a.copias)+kv('Entregada',fecha(a.fechaEntrega))
-      : kv('Nombre',a.nombre)+kv('Marca',a.marca)+kv('Modelo',a.modelo)+(a.tipo==='vehiculo'?kv('Matrícula',a.matricula)+`<div class="kv"><div class="k">Gastos</div><div class="v"><a href="/vehiculos#${a._id}" style="color:var(--blue)">Ver lo que cuesta este vehículo →</a></div></div>`:a.tipo==='ropa'?kv('Talla',a.talla):kv('Nº serie',a.numeroSerie))+(a.valor?kv('Valor',eur(a.valor)):'')+(a.fechaCompra?kv('Comprada',fecha(a.fechaCompra)):'');
+      : kv('Nombre',a.nombre)+kv('Marca',a.marca)+kv('Modelo',a.modelo)+(a.tipo==='ropa'?kv('Talla',a.talla):kv('Nº serie',a.numeroSerie))+(a.valor?kv('Valor',eur(a.valor)):'')+(a.fechaCompra?kv('Comprada',fecha(a.fechaCompra)):'');
     const hist=movimientos.map(m=>{const ac={alta:'Alta',dar:'Entregada a',devolver:'Devuelta',perdida:'Marcada perdida',edicion:'Editada'}[m.accion]||m.accion;
       const quien=m.accion==='dar'?` <b>${esc(m.aName||'')}</b>`:(m.accion==='devolver'?' a oficina':'');
       return `<div class="hist">${new Date(m.ts).toLocaleDateString('es-ES')} · ${ac}${quien}${m.by?` <span style="color:var(--text3)">(${esc(m.by)})</span>`:''}${m.nota?` — ${esc(m.nota)}`:''}${m.foto?`<br><img src="${m.foto}" onclick="verFotoEl(this)" style="width:54px;height:54px;object-fit:cover;border-radius:6px;margin-top:6px;cursor:pointer" title="Ver foto">`:''}</div>`;}).join('')||'<div class="hist">Sin movimientos.</div>';
@@ -333,20 +332,20 @@ async function confirmarDar(){const tipo=document.getElementById('d-tipo').value
   }catch(e){toast(e.message,'error');}finally{b.disabled=false;}}
 
 // ── FORM (nuevo / editar) ──
-function onTipo(){const t=document.getElementById('f-tipo').value;const lbl=document.getElementById('f-serie-lbl');if(lbl)lbl.textContent=t==='vehiculo'?'Matrícula':'Nº serie';document.getElementById('f-serie').placeholder=t==='vehiculo'?'1234ABC':'';document.getElementById('campos-llave').style.display=t==='llave'?'block':'none';document.getElementById('campos-herr').style.display=t!=='llave'?'block':'none';document.getElementById('f-serie-wrap').style.display=t==='ropa'?'none':'';document.getElementById('f-talla-wrap').style.display=t==='ropa'?'':'none';document.getElementById('f-nombre').placeholder=t==='ropa'?'Ej. Pantalón de trabajo, chaleco reflectante':'Ej. Taladro Bosch GBH 2-28';document.getElementById('f-cant-wrap').style.display=(t!=='llave'&&t!=='vehiculo'&&!formId)?'':'none';if(!formId)prefillCodigo(t);}
+function onTipo(){const t=document.getElementById('f-tipo').value;document.getElementById('campos-llave').style.display=t==='llave'?'block':'none';document.getElementById('campos-herr').style.display=t!=='llave'?'block':'none';document.getElementById('f-serie-wrap').style.display=t==='ropa'?'none':'';document.getElementById('f-talla-wrap').style.display=t==='ropa'?'':'none';document.getElementById('f-nombre').placeholder=t==='ropa'?'Ej. Pantalón de trabajo, chaleco reflectante':'Ej. Taladro Bosch GBH 2-28';document.getElementById('f-cant-wrap').style.display=(t!=='llave'&&!formId)?'block':'none';if(!formId)prefillCodigo(t);}
 async function prefillCodigo(t){try{const r=await api('GET','/api/activos/siguiente-codigo?tipo='+t);document.getElementById('f-codigo').value=r.codigo||'';document.getElementById('f-codigo').placeholder=r.codigo||'auto';}catch(e){}}
 function limpiarForm(){['f-codigo','f-cliente','f-familia','f-direccion','f-nombre','f-marca','f-modelo','f-serie','f-talla','f-valor','f-notas','f-fentrega'].forEach(i=>{const e=document.getElementById(i);if(e)e.value='';});document.getElementById('f-copias').value='1';fotoData='';document.getElementById('f-foto-prev').style.display='none';document.getElementById('f-foto-input').value='';}
-function nuevo(){formId=null;document.getElementById('form-title').textContent='Nuevo activo';document.getElementById('f-tipo-wrap').style.display='block';document.getElementById('f-tipo').value=['herramienta','ropa','vehiculo'].includes(filtro)?filtro:'llave';limpiarForm();onTipo();abrir('ov-form');}
+function nuevo(){formId=null;document.getElementById('form-title').textContent='Nuevo activo';document.getElementById('f-tipo-wrap').style.display='block';document.getElementById('f-tipo').value=['herramienta','ropa'].includes(filtro)?filtro:'llave';limpiarForm();onTipo();abrir('ov-form');}
 async function editar(id){const {activo:a}=await api('GET','/api/activos/'+id);formId=id;document.getElementById('form-title').textContent='Editar '+a.codigo;document.getElementById('f-tipo-wrap').style.display='none';
   document.getElementById('f-tipo').value=a.tipo;onTipo();limpiarForm();
   document.getElementById('f-codigo').value=a.codigo;document.getElementById('f-cliente').value=a.clientName||'';document.getElementById('f-familia').value=a.family||'';document.getElementById('f-direccion').value=a.direccion||'';document.getElementById('f-copias').value=a.copias||1;document.getElementById('f-fentrega').value=fecha(a.fechaEntrega);
-  document.getElementById('f-nombre').value=a.nombre||'';document.getElementById('f-marca').value=a.marca||'';document.getElementById('f-modelo').value=a.modelo||'';document.getElementById('f-serie').value=(a.tipo==='vehiculo'?a.matricula:a.numeroSerie)||'';document.getElementById('f-talla').value=a.talla||'';document.getElementById('f-valor').value=a.valor||'';document.getElementById('f-notas').value=a.notas||'';
+  document.getElementById('f-nombre').value=a.nombre||'';document.getElementById('f-marca').value=a.marca||'';document.getElementById('f-modelo').value=a.modelo||'';document.getElementById('f-serie').value=a.numeroSerie||'';document.getElementById('f-talla').value=a.talla||'';document.getElementById('f-valor').value=a.valor||'';document.getElementById('f-notas').value=a.notas||'';
   if(a.foto){fotoData=a.foto;const p=document.getElementById('f-foto-prev');p.src=a.foto;p.style.display='block';}
   cerrar('ov-ficha');abrir('ov-form');}
 async function guardarForm(){const tipo=document.getElementById('f-tipo').value;
   const body={tipo,codigo:document.getElementById('f-codigo').value.trim(),notas:document.getElementById('f-notas').value.trim(),foto:fotoData};
   if(tipo==='llave'){body.clientName=document.getElementById('f-cliente').value.trim();body.family=document.getElementById('f-familia').value.trim();body.direccion=document.getElementById('f-direccion').value.trim();body.copias=document.getElementById('f-copias').value;body.fechaEntrega=document.getElementById('f-fentrega').value||null;body.nombre=body.clientName?('Llave '+body.clientName):'';}
-  else{body.nombre=document.getElementById('f-nombre').value.trim();body.marca=document.getElementById('f-marca').value.trim();body.modelo=document.getElementById('f-modelo').value.trim();if(tipo==='vehiculo')body.matricula=document.getElementById('f-serie').value.trim();else body.numeroSerie=document.getElementById('f-serie').value.trim();body.talla=document.getElementById('f-talla').value.trim();body.valor=document.getElementById('f-valor').value||0;}
+  else{body.nombre=document.getElementById('f-nombre').value.trim();body.marca=document.getElementById('f-marca').value.trim();body.modelo=document.getElementById('f-modelo').value.trim();body.numeroSerie=document.getElementById('f-serie').value.trim();body.talla=document.getElementById('f-talla').value.trim();body.valor=document.getElementById('f-valor').value||0;}
   const b=document.getElementById('form-save');b.disabled=true;b.innerHTML='<span class="spinner"></span>…';
   try{if(formId)await api('PUT','/api/activos/'+formId,body);else{const n=(tipo!=='llave')?Math.min(50,Math.max(1,parseInt(document.getElementById('f-cant').value)||1)):1;for(let i=0;i<n;i++)await api('POST','/api/activos',i===0?body:{...body,codigo:''});if(n>1)toast(n+' unidades creadas','ok');}cerrar('ov-form');await cargar();if(!formId)document.getElementById('f-cant').value='1';toast('Guardado','ok');}catch(e){toast(e.message,'error');}finally{b.disabled=false;b.innerHTML='Guardar';}}
 
