@@ -70,7 +70,7 @@ function textoEnlace(momento, nombre, url, estado) {
   if (momento === 'manana') {
     return `Buenos días ${n} 👋 Desde ahora apuntamos la jornada con el móvil.\n\n` +
       `Cuando empieces, abre tu enlace y pulsa *Empiezo*:\n${url}\n\n` +
-      `Ahí mismo puedes marcar las pausas y el final del día. Si te pide la ubicación, acéptala: solo se guarda en el momento de pulsar, no te sigue. El enlace es solo tuyo: no lo reenvíes.`;
+      `Elige la obra en la que estás antes de pulsar. Ahí mismo marcas las pausas y el final del día. El enlace es solo tuyo: no lo reenvíes.`;
   }
   if (estado === 'sin_fichar') {
     return `Hola ${n} 👋 Hoy no consta tu entrada.\n\n` +

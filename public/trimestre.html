@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cierre del trimestre — Corp Projects</title><link rel="stylesheet" href="/tool-theme.css">
+<meta name="theme-color" content="#4d9cf8">
+<style>*{box-sizing:border-box;margin:0;padding:0}:root{--bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.15);--text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;--green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 18px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:5}
+.logo{width:32px;height:32px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;flex-shrink:0}
+.hbtn{margin-left:auto;background:none;border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:6px 12px;font-size:13px;text-decoration:none;white-space:nowrap}
+.wrap{max-width:960px;margin:0 auto;padding:16px}
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+select,.btn{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;color:var(--text);padding:9px 12px;font:inherit;font-size:14px}
+.btn{cursor:pointer;font-weight:600}.btn.p{background:var(--blue);border-color:var(--blue);color:#fff}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:14px 16px}
+.kpi .l{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
+.kpi .n{font-size:24px;font-weight:800;margin-top:4px;font-variant-numeric:tabular-nums}
+.kpi .s{font-size:12.5px;color:var(--text2);margin-top:4px;font-variant-numeric:tabular-nums;line-height:1.5}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:12px}
+.card h3{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:10px}
+.chk{border-top:1px solid var(--border);padding:10px 0}.chk:first-of-type{border-top:none}
+.chk summary{cursor:pointer;display:flex;align-items:center;gap:10px;list-style:none;font-size:14.5px}
+.chk summary::-webkit-details-marker{display:none}
+.ic{width:22px;text-align:center;flex-shrink:0}
+.chk .q{flex:1}.chk .c{font-weight:700;font-variant-numeric:tabular-nums}
+.ok{color:var(--green)}.mal{color:var(--red)}.reg{color:var(--amber)}
+.lst{margin:8px 0 0 32px;font-size:13px;color:var(--text2);line-height:1.6}
+.lst a{color:var(--blue);text-decoration:none}
+.ayuda{font-size:12.5px;color:var(--text3);margin:4px 0 0 32px;line-height:1.5}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
+th{font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase}
+td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}
+.tw{overflow-x:auto}
+.vacio{padding:30px;text-align:center;color:var(--text3)}
+</style></head>
+<body><script>try{if(localStorage.getItem("cp_theme")==="light")document.body.classList.add("light");}catch(e){}</script>
+<div class="header"><div class="logo">CP</div><div><div style="font-weight:700">Cierre del trimestre</div><div style="font-size:12px;color:var(--text2)">Lo que falta antes de mandarlo a la gestoría</div></div><a class="hbtn" href="/">← Dashboard</a></div>
+<div class="wrap">
+  <div class="bar">
+    <select id="q" onchange="cargar()"></select>
+    <button class="btn" onclick="cargar()">Actualizar</button>
+    <button class="btn p" onclick="excel(this)">⬇️ Excel para la gestoría</button>
+  </div>
+  <div id="out"><div class="vacio">Cargando… (la primera vez tarda unos segundos: lee StelOrder)</div></div>
+</div>
+<script>
+const tok=localStorage.getItem('cp_token');const H={'Authorization':'Bearer '+tok};
+const esc=x=>String(x==null?'':x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const eur=v=>v==null?'—':new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(v);
+const dt=f=>f?f.slice(8,10)+'/'+f.slice(5,7):'—';
+(function(){const s=document.getElementById('q');const h=new Date();let y=h.getFullYear(),n=Math.ceil((h.getMonth()+1)/3);
+  const def=(()=>{const m=h.getMonth()+1,d=h.getDate();if(m===(n-1)*3+1&&d<=20)return n===1?(y-1)+'-T4':y+'-T'+(n-1);return y+'-T'+n;})();
+  for(let i=0;i<6;i++){const v=y+'-T'+n;s.add(new Option(n+'º trimestre '+y+(v===def?' (a cerrar)':''),v));if(--n===0){n=4;y--;}}s.value=def;})();
+const ORIGEN={app:'app',email:'correo',whatsapp:'WhatsApp','whatsapp-trabajador':'WhatsApp',grupo:'grupo'};
+function linCompra(x){return `<div><a href="/compras#${esc(x.id)}" target="_blank">${dt(x.fecha)} · ${esc(x.proveedor||'sin proveedor')}${x.numero?' nº '+esc(x.numero):''}</a> · ${eur(x.total)} · ${esc(ORIGEN[x.origen]||x.origen)}${x.quien?' · '+esc(x.quien):''}</div>`;}
+function linCorreo(x){return `<div>${dt(x.fecha)} · <b>${esc(x.de)}</b> — ${esc(x.asunto)}</div>`;}
+function chk(ok,titulo,n,ayuda,lista,warn){
+  const ic=ok?'<span class="ok">✓</span>':(warn?'<span class="reg">!</span>':'<span class="mal">✗</span>');
+  return `<details class="chk" ${!ok&&lista?'':''}><summary><span class="ic">${ic}</span><span class="q">${titulo}</span><span class="c ${ok?'ok':warn?'reg':'mal'}">${n}</span></summary>${ayuda?`<div class="ayuda">${ayuda}</div>`:''}${lista?`<div class="lst">${lista}</div>`:''}</details>`;}
+async function cargar(){
+  const el=document.getElementById('out');
+  if(!tok){el.innerHTML='<div class="vacio">Abre esta página desde el dashboard (hace falta sesión).</div>';return;}
+  el.innerHTML='<div class="vacio">Cargando… (la primera vez tarda unos segundos: lee StelOrder)</div>';
+  let d;try{const r=await fetch('/api/trimestre?q='+document.getElementById('q').value,{headers:H});d=await r.json();if(!r.ok)throw new Error(d.error||'HTTP '+r.status);}
+  catch(e){el.innerHTML='<div class="vacio mal">'+esc(e.message)+'</div>';return;}
+  const p=d.pendientes,E=d.resumen.emitidas,Rc=d.resumen.recibidas;
+  const ivaOk=E.ivaConocido>=0.9&&Rc.ivaConocido>=0.9;
+  let h=`<div class="kpis">
+    <div class="kpi"><div class="l">Facturas emitidas</div><div class="n">${eur(E.total)}</div><div class="s">${E.n} facturas${E.ivaConocido?` · base ${eur(E.base)} · IVA ${eur(E.iva)}`:''}</div></div>
+    <div class="kpi"><div class="l">Facturas y gastos recibidos</div><div class="n">${eur(Rc.total)}</div><div class="s">${Rc.n} documentos${Rc.ivaConocido?` · base ${eur(Rc.base)} · IVA ${eur(Rc.iva)}`:''}</div></div>
+    <div class="kpi"><div class="l">Pendiente antes de cerrar</div><div class="n ${d.nPendientes?'mal':'ok'}">${d.nPendientes?d.nPendientes+' cosas':'Todo listo ✓'}</div><div class="s">${d.from.split('-').reverse().join('/')} – ${d.to.split('-').reverse().join('/')}</div></div>
+  </div>`;
+  if(E.ivaConocido||Rc.ivaConocido)h+=`<div class="card" style="font-size:13.5px;line-height:1.6">IVA del trimestre (orientativo): repercutido <b>${eur(E.iva)}</b> − soportado <b>${eur(Rc.iva)}</b> = <b>${eur(Math.round((E.iva-Rc.iva)*100)/100)}</b>${ivaOk?'':`<br><span class="reg">Ojo: StelOrder no da el IVA de todos los documentos (${Math.round(E.ivaConocido*100)} % de las emitidas, ${Math.round(Rc.ivaConocido*100)} % de las recibidas). El cálculo bueno lo hace la gestoría.</span>`}</div>`;
+  if(d.errores&&(d.errores.emitidas||d.errores.recibidas))h+=`<div class="card mal" style="font-size:13px">No se pudo leer StelOrder: ${esc(d.errores.emitidas||d.errores.recibidas)}. Prueba «Actualizar» en un minuto.</div>`;
+  h+=`<div class="card"><h3>Antes de mandarlo a la gestoría</h3>
+    ${chk(!p.porRevisar.length,'Compras por revisar (fotos, correo, WhatsApp, grupo)',p.porRevisar.length,'Tickets y facturas que alguien ha subido y oficina aún no ha confirmado. Revísalas en <a href="/compras" style="color:var(--blue)">Compras</a>: al confirmar, las facturas y tickets pasan a StelOrder.',p.porRevisar.map(linCompra).join(''))}
+    ${chk(!p.sinContabilidad.length,'Revisadas que no han pasado a StelOrder',p.sinContabilidad.length,'Facturas o tickets confirmados que no constan enviados a contabilidad. Ábrelas y reenvíalas.',p.sinContabilidad.map(linCompra).join(''))}
+    ${chk(!p.correosSinAdjunto.length,'Correos de factura sin PDF',p.correosSinAdjunto.length,'Correos que parecen una factura pero no traen el archivo: hay que pedírsela al proveedor.',p.correosSinAdjunto.map(linCorreo).join(''))}
+    ${chk(!p.correosSinRevisar.length,'Facturas llegadas por correo sin revisar',p.correosSinRevisar.length,'Ya están en Compras; falta confirmarlas.',p.correosSinRevisar.map(linCorreo).join(''))}
+    ${chk(!!(p.banco&&p.banco.cubre),'Extracto del banco hasta el final del trimestre',p.banco&&p.banco.hasta?'hasta '+dt(p.banco.hasta):'sin subir','Sube el Excel de Santander en Banco y gastos para que la gestoría pueda cuadrar pagos y cobros. Revolut: pendiente de conectar (próximo paso).',null)}
+    ${chk(!p.albaranes.length,'Albaranes sin factura (informativo)',p.albaranes.length,'No van a la gestoría, pero si un proveedor no ha facturado, no tendrás el gasto en el trimestre.',p.albaranes.map(linCompra).join(''),!!p.albaranes.length)}
+    <div class="ayuda" style="margin:10px 0 0">Se recalcula cada mañana a las 8:40. Los lunes, si hay pendientes, oficina recibe un resumen.</div>
+  </div>`;
+  const tabla=(t,cols,rows)=>`<details class="card"><summary style="cursor:pointer;font-size:14px;font-weight:600">${t} (${rows.length})</summary><div class="tw" style="margin-top:10px"><table><tr>${cols.map(c=>`<th class="${c[2]||''}">${c[0]}</th>`).join('')}</tr>${rows.map(r=>`<tr>${cols.map(c=>`<td class="${c[2]||''}">${c[1](r)}</td>`).join('')}</tr>`).join('')}</table></div></details>`;
+  h+=tabla('Facturas emitidas',[['Fecha',r=>dt(r.fecha)],['Número',r=>esc(r.numero)],['Cliente',r=>esc(r.cliente)],['Base',r=>eur(r.base),'r'],['IVA',r=>eur(r.iva),'r'],['Total',r=>eur(r.total),'r']],d.emitidas);
+  h+=tabla('Facturas y gastos recibidos',[['Fecha',r=>dt(r.fecha)],['Número',r=>esc(r.numero)+(r.refProveedor?' · '+esc(r.refProveedor):'')],['Proveedor',r=>esc(r.proveedor)],['Base',r=>eur(r.base),'r'],['IVA',r=>eur(r.iva),'r'],['Total',r=>eur(r.total),'r']],d.recibidas);
+  el.innerHTML=h;
+}
+async function excel(b){const t=b.textContent;b.disabled=true;b.textContent='Preparando…';
+  try{const r=await fetch('/api/trimestre/excel?q='+document.getElementById('q').value,{headers:H});if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.error||'HTTP '+r.status);}
+    const u=URL.createObjectURL(await r.blob());const a=document.createElement('a');a.href=u;a.download='Corp_'+document.getElementById('q').value+'_gestoria.xlsx';document.body.appendChild(a);a.click();a.remove();}
+  catch(e){alert('No se pudo generar: '+e.message);}finally{b.disabled=false;b.textContent=t;}}
+cargar();
+</script>
+</body></html>

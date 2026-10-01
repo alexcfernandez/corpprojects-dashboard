@@ -1817,6 +1817,18 @@ app.post('/api/autonomos/cuadre', requireAuthOficina, express.json(), async (req
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
+// ── Cierre del trimestre (gestoría) ──
+app.get('/api/trimestre', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./trimestre').estado(req.query.q || null)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/trimestre/excel', requireAuthOficina, async (req, res) => {
+  try {
+    const { buf, nombre } = await require('./trimestre').excel(req.query.q || null);
+    res.set('Content-Disposition', `attachment; filename="${nombre}"`).type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').send(buf);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 // ── Conversaciones de WhatsApp (todas): lista, hilo y fotos ──
 app.get('/api/conversaciones', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./waLog').conversaciones({ dias: req.query.dias })); }
@@ -3711,6 +3723,7 @@ app.get('/informe-presencia', (req, res) => res.sendFile(path.join(__dirname, '.
 app.get('/sitios', (req, res) => res.sendFile(path.join(__dirname, '../public/sitios.html')));
 app.get('/diag', (req, res) => res.sendFile(path.join(__dirname, '../public/diag.html')));
 app.get('/conversaciones', (req, res) => res.sendFile(path.join(__dirname, '../public/conversaciones.html')));
+app.get('/trimestre', (req, res) => res.sendFile(path.join(__dirname, '../public/trimestre.html')));
 app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
 app.get('/fichar', (req, res) => res.sendFile(path.join(__dirname, '../public/fichar.html')));
 app.get('/fichajes', (req, res) => res.sendFile(path.join(__dirname, '../public/fichajes.html')));

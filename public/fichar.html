@@ -92,7 +92,8 @@ textarea.obra-sel{resize:vertical;line-height:1.4}
 <div id="toast"></div>
 
 <!-- LOGIN -->
-<div class="page active" id="page-login"><div class="container"><div class="card">
+<div class="page active" id="page-cargando"><div class="container" style="text-align:center;padding-top:30vh;color:var(--text3)"><span class="spinner"></span><div style="margin-top:12px;font-size:15px">Entrando…</div></div></div>
+<div class="page" id="page-login"><div class="container"><div class="card">
   <div class="login-title">Fichar jornada</div><div class="login-sub">Elige tu nombre e introduce el PIN</div>
   <div class="worker-grid" id="worker-selector"></div>
   <input type="tel" inputmode="numeric" id="pin-input" class="pin-input" placeholder="••••" maxlength="6" onkeydown="if(event.key==='Enter')doLogin()">
@@ -640,10 +641,13 @@ function mostrarBienvenida(nombre){const ov=document.createElement('div');ov.sty
   </div>`;
   document.body.appendChild(ov);}
 
-(async function(){await loadWorkers();
+// Arranque: primero se intenta entrar (enlace o sesión guardada) con un «Entrando…»;
+// la lista de nombres del login solo se pinta si de verdad hace falta (antes se veía un salto).
+(async function(){
   const t=new URLSearchParams(location.search).get('t');
-  if(t){const ok=await magicLogin(t);if(ok)return;}
-  const ok=await tryRestore();if(!ok)showPage('login');
+  if(t){const ok=await magicLogin(t);if(ok){loadWorkers();return;}}
+  const ok=await tryRestore();
+  if(ok)loadWorkers();else{await loadWorkers();showPage('login');}
   sincronizar();})();
 </script>
 </body>

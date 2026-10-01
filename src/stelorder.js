@@ -164,6 +164,23 @@ async function getAllReceipts() {
   });
 }
 
+// Importes de un documento (factura emitida o recibida): total, base e IVA si StelOrder
+// los trae. Los nombres de campo no están documentados, así que se prueban varios y se
+// guardan todos los importes en `_importes` para poder comprobarlo (cierre trimestral).
+function importesDoc(o) {
+  const n = v => { if (v == null || v === 'null' || v === '') return null; const x = Number(v); return Number.isFinite(x) ? x : null; };
+  const pick = (...ks) => { for (const k of ks) { const v = n(o[k]); if (v != null) return v; } return null; };
+  const total = pick('total-amount', 'total', 'amount');
+  let iva = pick('total-tax-amount', 'tax-amount', 'taxes-amount', 'total-taxes', 'tax-total-amount', 'vat-amount');
+  let base = pick('subtotal-amount', 'total-amount-without-taxes', 'taxable-base', 'base-amount', 'net-amount', 'subtotal', 'total-without-taxes');
+  const ret = pick('total-retention-amount', 'retention-amount', 'withholding-amount');
+  if (base == null && total != null && iva != null) base = Math.round((total - iva + (ret || 0)) * 100) / 100;
+  if (iva == null && total != null && base != null) iva = Math.round((total - base + (ret || 0)) * 100) / 100;
+  const _importes = {};
+  for (const [k, v] of Object.entries(o)) if (/amount|tax|total|base|subtotal|retention|vat/i.test(k) && n(v) != null) _importes[k] = n(v);
+  return { total, base, iva, retencion: ret, _importes };
+}
+
 // Carga masiva de facturas ordinarias. El RECIBO no trae la fecha de EMISIÓN ni el
 // enlace al PDF (solo el vencimiento payment-term-date), así que las sacamos de aquí.
 // Cacheada. Devuelve un mapa por id → { date (emisión), pdfPath, number }.
@@ -176,7 +193,7 @@ async function getAllOrdinaryInvoices() {
       if (!o || o.deleted) return;
       // La emisión suele venir en `date`; dejamos alternativas por si acaso.
       const date = o.date || o['issue-date'] || o['emission-date'] || o['creation-date'] || o['utc-creation-date'] || null;
-      map[String(o.id)] = { date, pdfPath: o['pdf-path'] || null, number: o['full-reference'] || null };
+      map[String(o.id)] = { date, pdfPath: o['pdf-path'] || null, number: o['full-reference'] || null, accountId: String(o['account-id'] || ''), ...importesDoc(o) };
       if (!sample) sample = { id: o.id, date, tienePdf: !!o['pdf-path'], camposFecha: Object.keys(o).filter(k => /date|fecha|pdf/i.test(k)) };
     });
     console.log(`[StelOrder] Facturas (ordinaryInvoices): ${Object.keys(map).length}` + (sample ? ` | muestra: ${JSON.stringify(sample)}` : ''));
@@ -822,6 +839,7 @@ async function getPurchaseInvoices() {
         paid: Number(x['paid-total-amount']) || 0,
         pending: Number.isFinite(pending) ? pending : total,
         date: x.date || x['creation-date'] || '',
+        base: importesDoc(x).base, iva: importesDoc(x).iva, retencion: importesDoc(x).retencion, _importes: importesDoc(x)._importes,
         settled: x.settled === true || String(x.settled) === 'true',
         lines: Array.isArray(x.lines) ? x.lines : []
       };
@@ -1920,7 +1938,7 @@ async function modificarImportePresupuesto({ id = null, modo, valor = null, part
 
 
 module.exports = {
-  getInvoices, getAllReceipts, getPendingInvoices, getClients,
+  getInvoices, getAllReceipts, getAllOrdinaryInvoices, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary, diagProveedores,
   getSuppliers, getPurchaseInvoices, getPurchaseInvoiceDetalle, getExpenses,
   getAlertLevel, getFamiliesSummary, getAccountCategories, clearCache,
