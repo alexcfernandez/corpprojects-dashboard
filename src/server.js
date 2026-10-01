@@ -1829,6 +1829,24 @@ app.get('/api/trimestre/excel', requireAuthOficina, async (req, res) => {
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
+app.get('/api/trimestre/punteo', requireAuthOficina, async (req, res) => {
+  try {
+    const t = require('./trimestre');
+    const [p, e] = await Promise.all([t.punteo(req.query.q || null), t.estado(req.query.q || null)]);
+    const b = t.borrador303(e, p);
+    res.json({ q: p.q, label: p.label, hayBanco: p.hayBanco, resumen: p.resumen, b303: b, texto: t.textoGestoria(e, p, b),
+      revisar: p.filas.filter(f => f.estado === 'revisar' || f.estado === 'sin_documento').map(f => ({ fecha: f.fecha, concepto: f.concepto, importe: f.importe, tipo: f.tipo, estado: f.estado, nota: f.nota || null })),
+      nSinPago: p.recibidasSinPago.length, duplicadas: p.avisos.duplicadas.map(d => ({ ref: d.duplicada.numero, igual: d.original.numero, proveedor: d.duplicada.proveedor, total: d.duplicada.total })),
+      iva0: p.avisos.iva0.map(r => ({ ref: r.numero, proveedor: r.proveedor, total: r.total })) });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/trimestre/paquete', requireAuthOficina, async (req, res) => {
+  req.setTimeout && req.setTimeout(300000);
+  try {
+    const { buf, nombre } = await require('./trimestre').paqueteGestoria(req.query.q || null);
+    res.set('Content-Disposition', `attachment; filename="${nombre}"`).type('application/zip').send(buf);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/trimestre/resumen-emitidas', requireAuthOficina, async (req, res) => {
   try {
     const { buf, nombre } = await require('./trimestre').resumenEmitidasXlsx(req.query.q || null);

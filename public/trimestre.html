@@ -45,11 +45,13 @@ td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}
     <h3>Paquete para la gestoría (mismo formato que el 2º trimestre en Drive)</h3>
     <div>Carpeta <b>PARA_GESTORIA_Q…</b>: <b>1</b> facturas emitidas (PDF por mes) · <b>2</b> facturas recibidas (ya se van guardando solas en Drive) · <b>3</b> resumen de emitidas · <b>5</b> extractos de tarjetas · <b>6</b> extracto del banco.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <button class="btn p" onclick="bajar(this,'/api/trimestre/paquete','PARA_GESTORIA.zip','Preparando el paquete completo… (1-2 min)')">⬇️ Paquete completo (1, 2-índice, 3, 4 y LÉEME)</button>
       <button class="btn" onclick="bajar(this,'/api/trimestre/emitidas-zip','1_Facturas_emitidas.zip','Descargando los PDF de StelOrder… (1-2 min)')">⬇️ 1 · Facturas emitidas (ZIP)</button>
       <button class="btn" onclick="bajar(this,'/api/trimestre/resumen-emitidas','3_Resumen_facturas_emitidas.xlsx','Preparando…')">⬇️ 3 · Resumen de emitidas (Excel)</button>
     </div>
     <div style="font-size:12px;color:var(--text3);margin-top:6px">Descomprime el ZIP y arrastra la carpeta a Drive. Si algún PDF no se pudo bajar, va apuntado en <i>_FALTAN.txt</i> dentro del ZIP.</div>
   </div>
+  <div id="punteo"></div>
   <div id="out"><div class="vacio">Cargando… (la primera vez tarda unos segundos: lee StelOrder)</div></div>
 </div>
 <script>
@@ -100,10 +102,25 @@ async function bajar(b,url,nombre,txt){const t=b.textContent;b.disabled=true;b.t
     const fa=Number(r.headers.get('X-Fallos')||0);const u=URL.createObjectURL(await r.blob());const a=document.createElement('a');a.href=u;a.download=nombre.replace('.',`_${q}.`);document.body.appendChild(a);a.click();a.remove();
     if(fa)alert(`Ojo: ${fa} factura(s) no se pudieron descargar de StelOrder. Van apuntadas en _FALTAN.txt dentro del ZIP.`);}
   catch(e){alert('No se pudo: '+e.message);}finally{b.disabled=false;b.textContent=t;}}
+async function cargarPunteo(){
+  const el=document.getElementById('punteo');el.innerHTML='<div class="card"><h3>Punteo del banco</h3><div style="color:var(--text3)">Cruzando cada movimiento con su factura…</div></div>';
+  let d;try{const r=await fetch('/api/trimestre/punteo?q='+document.getElementById('q').value,{headers:H});d=await r.json();if(!r.ok)throw new Error(d.error||'HTTP '+r.status);}catch(e){el.innerHTML='<div class="card mal">'+esc(e.message)+'</div>';return;}
+  if(!d.hayBanco){el.innerHTML='<div class="card"><h3>Punteo del banco</h3><div class="reg">No hay movimientos del banco de este trimestre en el dashboard. Sube el Excel de Santander en <b>Banco y gastos</b> y vuelve aquí.</div></div>';return;}
+  const R=d.resumen,B=d.b303;
+  el.innerHTML=`<div class="card"><h3>Punteo del banco · cada movimiento con su factura</h3>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px"><div style="flex:1;height:10px;background:var(--bg3);border-radius:6px;overflow:hidden"><div style="height:100%;width:${R.porcentaje}%;background:${R.porcentaje>=90?'var(--green)':R.porcentaje>=70?'var(--amber)':'var(--red)'}"></div></div><b>${R.porcentaje}%</b></div>
+    <div style="font-size:13.5px;color:var(--text2);line-height:1.6">${R.movimientos} movimientos: <b class="ok">${R.punteados} con factura</b> · ${R.noRequiere} no la necesitan (nóminas, SS, impuestos, traspasos, tarjeta) · <b class="${R.revisar?'reg':''}">${R.revisar} a revisar</b> · <b class="${R.sinDocumento?'mal':''}">${R.sinDocumento} sin factura</b>${d.nSinPago?` · ${d.nSinPago} facturas del trimestre sin pago en esta cuenta (tarjetas, efectivo o pendientes)`:''}</div>
+    <div style="font-size:13.5px;margin-top:10px;line-height:1.6">303 orientativo: repercutido <b>${eur(B.repercutido)}</b> − soportado <b>${eur(B.soportadoCorregido)}</b>${B.dupIva?` <span style="color:var(--text3)">(sin ${eur(B.dupIva)} de duplicadas)</span>`:''} = <b>${eur(B.resultado)}</b>${B.iva0Recuperable?` · <span class="reg">posible IVA recuperable de facturas al 0%: ${eur(B.iva0Recuperable)}</span>`:''}</div>
+    ${d.revisar.length?`<details style="margin-top:10px"><summary style="cursor:pointer;font-size:14px;font-weight:600">Movimientos sin factura o a revisar (${d.revisar.length})</summary><div class="tw" style="margin-top:8px"><table><tr><th>Fecha</th><th>Concepto</th><th class="r">Importe</th><th>Nota</th></tr>${d.revisar.map(f=>`<tr><td>${dt(f.fecha)}</td><td style="white-space:normal;min-width:260px">${esc(f.concepto)}</td><td class="r ${f.estado==='sin_documento'?'mal':'reg'}">${eur(f.importe)}</td><td style="white-space:normal">${esc(f.nota||(f.estado==='sin_documento'?'Sin factura':'Revisar'))}</td></tr>`).join('')}</table></div></details>`:''}
+    ${(d.duplicadas.length||d.iva0.length)?`<details style="margin-top:6px"><summary style="cursor:pointer;font-size:14px;font-weight:600">Corregir en StelOrder (${d.duplicadas.length} duplicadas · ${d.iva0.length} con IVA 0% sospechoso)</summary><div style="font-size:13px;color:var(--text2);margin-top:8px;line-height:1.6">${d.duplicadas.map(x=>`Duplicada: <b>${esc(x.ref)}</b> = ${esc(x.igual)} · ${esc(x.proveedor)} · ${eur(x.total)}`).join('<br>')}${d.duplicadas.length&&d.iva0.length?'<br>':''}${d.iva0.map(x=>`IVA 0%: <b>${esc(x.ref)}</b> · ${esc(x.proveedor)} · ${eur(x.total)}`).join('<br>')}</div></details>`:''}
+    <details style="margin-top:6px"><summary style="cursor:pointer;font-size:14px;font-weight:600">Texto para la gestoría</summary><textarea id="txt-gest" readonly style="width:100%;min-height:280px;margin-top:8px;background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:10px;padding:10px;font:13px/1.5 inherit">${esc(d.texto)}</textarea><button class="btn" style="margin-top:6px" onclick="navigator.clipboard.writeText(document.getElementById('txt-gest').value).then(()=>{this.textContent='✓ Copiado'})">Copiar texto</button></details>
+  </div>`;
+}
 async function excel(b){const t=b.textContent;b.disabled=true;b.textContent='Preparando…';
   try{const r=await fetch('/api/trimestre/excel?q='+document.getElementById('q').value,{headers:H});if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.error||'HTTP '+r.status);}
     const u=URL.createObjectURL(await r.blob());const a=document.createElement('a');a.href=u;a.download='Corp_'+document.getElementById('q').value+'_gestoria.xlsx';document.body.appendChild(a);a.click();a.remove();}
   catch(e){alert('No se pudo generar: '+e.message);}finally{b.disabled=false;b.textContent=t;}}
-cargar();
+cargar();cargarPunteo();
+document.getElementById('q').addEventListener('change',cargarPunteo);
 </script>
 </body></html>
