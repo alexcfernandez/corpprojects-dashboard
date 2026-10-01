@@ -223,6 +223,14 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
         if (g.length >= 2 && igual(-g.reduce((a, f) => a + f.importe, 0), r.total)) { grupo = g; break; }
       }
     }
+    if (!grupo) { // facturas quincenales (Bon Preu: día 16 y fin de mes): los pagos desde la factura anterior hasta esta
+      const ant = recibidas.filter(x => x.id !== r.id && x.total > 0 && norm(x.proveedor) === norm(r.proveedor) && x.fecha < r.fecha).map(x => x.fecha).sort().pop();
+      const desde = ant || new Date(Date.UTC(Number(r.fecha.slice(0, 4)), Number(r.fecha.slice(5, 7)) - 1, Number(r.fecha.slice(8, 10)) - 31)).toISOString().slice(0, 10);
+      for (const incluyeDia of [false, true]) {
+        const g = filas.filter(f => !f.estado && f.importe < 0 && nombraA(f.concepto, r.proveedor) && f.fecha > desde && (incluyeDia ? f.fecha <= r.fecha : f.fecha < r.fecha));
+        if (g.length >= 2 && igual(-g.reduce((a, f) => a + f.importe, 0), r.total)) { grupo = g; break; }
+      }
+    }
     if (!grupo) continue;
     for (const f of grupo) { f.estado = 'punteado'; f.confianza = 'media'; f.nota = `Incluida en la factura mensual ${r.refProveedor || r.numero}`; f.docs = [{ ref: r.numero, tercero: r.proveedor, total: r.total, fecha: r.fecha, refProveedor: r.refProveedor }]; }
     usadasRec.add(r.id);
