@@ -51,6 +51,16 @@ td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}
     </div>
     <div style="font-size:12px;color:var(--text3);margin-top:6px">Descomprime el ZIP y arrastra la carpeta a Drive. Si algún PDF no se pudo bajar, va apuntado en <i>_FALTAN.txt</i> dentro del ZIP.</div>
   </div>
+  <div class="card">
+    <h3>Extractos del trimestre (banco y tarjetas)</h3>
+    <div style="font-size:13.5px;color:var(--text2);line-height:1.6">Sube aquí el <b>CSV de Revolut</b>, los <b>Excel de las tarjetas de crédito</b> y el <b>Excel de la cuenta de Santander</b> (puedes elegir varios a la vez). Se reconocen solos y no se duplica nada si subes un archivo dos veces.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
+      <input type="file" id="ext-file" multiple accept=".csv,.xls,.xlsx" style="font-size:13px;color:var(--text2);max-width:100%">
+      <button class="btn" onclick="subirExtractos(this)">Subir</button>
+    </div>
+    <div id="ext-res" style="font-size:13px;margin-top:8px;line-height:1.6"></div>
+    <details style="margin-top:10px"><summary style="cursor:pointer;font-size:14px;font-weight:600">Tarjetas y quién lleva cada una</summary><div id="tarjetas" style="margin-top:8px"></div></details>
+  </div>
   <div id="punteo"></div>
   <div id="out"><div class="vacio">Cargando… (la primera vez tarda unos segundos: lee StelOrder)</div></div>
 </div>
@@ -102,16 +112,54 @@ async function bajar(b,url,nombre,txt){const t=b.textContent;b.disabled=true;b.t
     const fa=Number(r.headers.get('X-Fallos')||0);const u=URL.createObjectURL(await r.blob());const a=document.createElement('a');a.href=u;a.download=nombre.replace('.',`_${q}.`);document.body.appendChild(a);a.click();a.remove();
     if(fa)alert(`Ojo: ${fa} factura(s) no se pudieron descargar de StelOrder. Van apuntadas en _FALTAN.txt dentro del ZIP.`);}
   catch(e){alert('No se pudo: '+e.message);}finally{b.disabled=false;b.textContent=t;}}
+async function subirExtractos(b){
+  const fs=[...document.getElementById('ext-file').files];const out=document.getElementById('ext-res');if(!fs.length){out.textContent='Elige uno o varios archivos';return;}
+  b.disabled=true;out.innerHTML='';
+  for(const f of fs){const fd=new FormData();fd.append('file',f);
+    try{const r=await fetch('/api/trimestre/extracto',{method:'POST',headers:H,body:fd});const d=await r.json();if(!r.ok)throw new Error(d.error||'HTTP '+r.status);
+      out.innerHTML+=`<div class="ok">✓ ${esc(f.name)}: ${esc(d.tipo)} · ${d.nuevos} nuevos, ${d.repetidos} ya estaban${d.desde?` · del ${dt(d.desde)}/${String(d.desde).slice(0,4)} al ${dt(d.hasta)}/${String(d.hasta).slice(0,4)}`:''}</div>`;}
+    catch(e){out.innerHTML+=`<div class="mal">✗ ${esc(f.name)}: ${esc(e.message)}</div>`;}}
+  b.disabled=false;document.getElementById('ext-file').value='';cargarTarjetas();cargarPunteo();}
+async function cargarTarjetas(){
+  const el=document.getElementById('tarjetas');
+  try{const r=await fetch('/api/tarjetas',{headers:H});const l=await r.json();if(!r.ok)throw new Error(l.error);
+    el.innerHTML=`<div class="tw"><table><tr><th>Tarjeta</th><th>Banco</th><th>Quién la lleva</th><th>Movimientos subidos</th></tr>${l.map(t=>`<tr><td>…${esc(t.last4)}${t.etiqueta?` <span style="color:var(--text3)">${esc(t.etiqueta)}</span>`:''}</td><td>${esc(t.banco||'')}</td><td><input value="${esc(t.persona||'')}" data-t="${esc(t.last4)}" onchange="guardarPersona(this)" style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;color:var(--text);padding:5px 8px;font:inherit;font-size:13px;width:150px"></td><td>${t.nMovimientos?`${t.nMovimientos} · hasta ${dt(t.hasta)}/${String(t.hasta).slice(0,4)}`:'<span style="color:var(--text3)">—</span>'}</td></tr>`).join('')}</table></div>`;}
+  catch(e){el.innerHTML='<span class="mal">'+esc(e.message)+'</span>';}}
+async function guardarPersona(inp){try{const r=await fetch('/api/tarjetas/'+inp.dataset.t,{method:'POST',headers:{...H,'Content-Type':'application/json'},body:JSON.stringify({persona:inp.value})});if(!r.ok)throw 0;inp.style.borderColor='var(--green)';}catch(e){inp.style.borderColor='var(--red)';}}
+function marcarHecho(id,html){const el=document.getElementById('mv-'+id);if(!el)return;el.querySelector('.acc').innerHTML=html;el.style.opacity='.75';}
+const _MOV={};
+async function subirJustif(inp,id){
+  const f=inp.files[0];if(!f)return;const m=_MOV[id];const movTxt=JSON.stringify(m);const lab=inp.closest('label');lab.firstChild.textContent='Leyendo…';
+  const fd=new FormData();fd.append('file',f);fd.append('movId',m.id);fd.append('mov',movTxt);
+  try{const r=await fetch('/api/trimestre/justificar',{method:'POST',headers:H,body:fd});const d=await r.json();if(!r.ok)throw new Error(d.error||'HTTP '+r.status);
+    marcarHecho(m.id,d.cuadra===false?`<span class="reg">✓ Subida · ${esc(d.proveedor||'')} ${eur(d.total)}: el importe no coincide, revísala en Compras</span>`:`<span class="ok">✓ Factura subida${d.proveedor?' · '+esc(d.proveedor):''}${d.total!=null?' · '+eur(d.total):''}${d.cuadra?' · cuadra':''}</span> <a href="/compras#${esc(d.compraId)}" target="_blank" style="color:var(--blue);font-size:12px">ver en Compras</a>`);}
+  catch(e){alert('No se pudo subir: '+e.message);lab.firstChild.textContent='📷 Subir factura';}}
+async function decidir(b,id,decision){
+  const m=_MOV[id];const movTxt=JSON.stringify(m);const nota=decision==='personal'?'':(prompt('¿Por qué no lleva factura? (opcional)','')||'');
+  if(decision==='personal'&&!confirm(`¿Marcar ${eur(Math.abs(m.importe))} del ${dt(m.fecha)} como gasto personal? No contará como gasto de la empresa.`))return;
+  const fd=new FormData();fd.append('movId',m.id);fd.append('decision',decision);fd.append('nota',nota);fd.append('mov',movTxt);
+  try{const r=await fetch('/api/trimestre/justificar',{method:'POST',headers:H,body:fd});const d=await r.json();if(!r.ok)throw new Error(d.error||'HTTP '+r.status);
+    marcarHecho(m.id,`<span style="color:var(--text2)">${decision==='personal'?'Marcado como personal':'Sin factura (justificado)'}</span> <a href="#" style="color:var(--blue);font-size:12px" onclick="deshacer(event,'${esc(m.id)}')">deshacer</a>`);}
+  catch(e){alert(e.message);}}
+async function deshacer(ev,id){ev.preventDefault();try{await fetch('/api/trimestre/justificar/'+encodeURIComponent(id),{method:'DELETE',headers:H});cargarPunteo();}catch(e){}}
 async function cargarPunteo(){
   const el=document.getElementById('punteo');el.innerHTML='<div class="card"><h3>Punteo del banco</h3><div style="color:var(--text3)">Cruzando cada movimiento con su factura…</div></div>';
   let d;try{const r=await fetch('/api/trimestre/punteo?q='+document.getElementById('q').value,{headers:H});d=await r.json();if(!r.ok)throw new Error(d.error||'HTTP '+r.status);}catch(e){el.innerHTML='<div class="card mal">'+esc(e.message)+'</div>';return;}
-  if(!d.hayBanco){el.innerHTML='<div class="card"><h3>Punteo del banco</h3><div class="reg">No hay movimientos del banco de este trimestre en el dashboard. Sube el Excel de Santander en <b>Banco y gastos</b> y vuelve aquí.</div></div>';return;}
+  if(!d.hayBanco&&!d.hayTarjetas){el.innerHTML='<div class="card"><h3>Punteo del banco</h3><div class="reg">No hay movimientos de este trimestre. Sube arriba los extractos (cuenta de Santander, Revolut y tarjetas de crédito).</div></div>';return;}
   const R=d.resumen,B=d.b303;
   el.innerHTML=`<div class="card"><h3>Punteo del banco · cada movimiento con su factura</h3>
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px"><div style="flex:1;height:10px;background:var(--bg3);border-radius:6px;overflow:hidden"><div style="height:100%;width:${R.porcentaje}%;background:${R.porcentaje>=90?'var(--green)':R.porcentaje>=70?'var(--amber)':'var(--red)'}"></div></div><b>${R.porcentaje}%</b></div>
     <div style="font-size:13.5px;color:var(--text2);line-height:1.6">${R.movimientos} movimientos: <b class="ok">${R.punteados} con factura</b> · ${R.noRequiere} no la necesitan (nóminas, SS, impuestos, traspasos, tarjeta) · <b class="${R.revisar?'reg':''}">${R.revisar} a revisar</b> · <b class="${R.sinDocumento?'mal':''}">${R.sinDocumento} sin factura</b>${d.nSinPago?` · ${d.nSinPago} facturas del trimestre sin pago en esta cuenta (tarjetas, efectivo o pendientes)`:''}</div>
+    ${d.porOrigen&&d.porOrigen.length>1?`<div class="tw" style="margin-top:10px"><table><tr><th>Cuenta / tarjeta</th><th>Quién</th><th class="r">Movimientos</th><th class="r">Con factura</th><th class="r">Sin factura</th></tr>${d.porOrigen.map(o=>`<tr><td>${esc(o.origen)}</td><td>${esc(o.persona||'')}</td><td class="r">${o.n}</td><td class="r ok">${o.punteados}</td><td class="r ${o.sinDocumento?'mal':''}">${o.sinDocumento?o.sinDocumento+' · '+eur(o.importeSin):'—'}</td></tr>`).join('')}</table></div>`:''}
+    ${d.hayBanco?'':'<div class="reg" style="font-size:13px;margin-top:6px">Falta el extracto de la cuenta de Santander de este trimestre.</div>'}${d.hayTarjetas?'':'<div class="reg" style="font-size:13px;margin-top:6px">Faltan los extractos de Revolut y de las tarjetas de crédito: sin ellos, las compras con tarjeta no se comprueban una a una.</div>'}
     <div style="font-size:13.5px;margin-top:10px;line-height:1.6">303 orientativo: repercutido <b>${eur(B.repercutido)}</b> − soportado <b>${eur(B.soportadoCorregido)}</b>${B.dupIva?` <span style="color:var(--text3)">(sin ${eur(B.dupIva)} de duplicadas)</span>`:''} = <b>${eur(B.resultado)}</b>${B.iva0Recuperable?` · <span class="reg">posible IVA recuperable de facturas al 0%: ${eur(B.iva0Recuperable)}</span>`:''}</div>
-    ${d.revisar.length?`<details style="margin-top:10px"><summary style="cursor:pointer;font-size:14px;font-weight:600">Movimientos sin factura o a revisar (${d.revisar.length})</summary><div class="tw" style="margin-top:8px"><table><tr><th>Fecha</th><th>Concepto</th><th class="r">Importe</th><th>Nota</th></tr>${d.revisar.map(f=>`<tr><td>${dt(f.fecha)}</td><td style="white-space:normal;min-width:260px">${esc(f.concepto)}</td><td class="r ${f.estado==='sin_documento'?'mal':'reg'}">${eur(f.importe)}</td><td style="white-space:normal">${esc(f.nota||(f.estado==='sin_documento'?'Sin factura':'Revisar'))}</td></tr>`).join('')}</table></div></details>`:''}
+    ${(d.faltan||[]).length?`<div style="margin-top:14px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:6px">Facturas que faltan, por comercio</div>${d.faltan.map((g,gi)=>`<details class="falta" style="border-top:1px solid var(--border);padding:8px 0"><summary style="cursor:pointer;display:flex;gap:10px;align-items:center;list-style:none"><span style="flex:1;font-weight:600">${esc(g.comercio)}</span><span class="${g.cobros?'reg':'mal'}" style="white-space:nowrap">${g.cobros?'':'faltan '}${g.n} · ${eur(g.importe)}</span></summary>
+      <div style="margin-top:6px">${g.movs.map(m=>{_MOV[m.id]=m;return `<div class="mov" id="mv-${esc(m.id)}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 0;border-bottom:1px dashed var(--border);font-size:13.5px">
+        <span style="width:44px;color:var(--text3)">${dt(m.fecha)}</span><b style="width:84px;text-align:right">${eur(Math.abs(m.importe))}</b>
+        <span style="flex:1;min-width:140px;color:var(--text2)">${esc(m.persona||'')}${m.origen&&m.origen!=='Cuenta Santander'?` · ${esc(m.origen)}`:''}${m.nota?`<br><span style="font-size:12px;color:var(--text3)">${esc(m.nota)}</span>`:''}</span>
+        <span class="acc" style="display:flex;gap:6px;flex-wrap:wrap">${g.cobros?'':`<label class="btn" style="padding:6px 10px;font-size:12.5px">📷 Subir factura<input type="file" accept="image/*,application/pdf" style="display:none" onchange="subirJustif(this,'${esc(m.id)}')"></label><button class="btn" style="padding:6px 10px;font-size:12.5px" onclick="decidir(this,'${esc(m.id)}','personal')">Es personal</button>`}<button class="btn" style="padding:6px 10px;font-size:12.5px" onclick="decidir(this,'${esc(m.id)}','sin_factura')">No lleva factura</button></span>
+      </div>`;}).join('')}</div></details>`).join('')}</div>`:''}
+    ${(d.revisar||[]).filter(f=>f.estado==='revisar'&&(f.tipo==='efectivo'||f.tipo==='prestamo'||f.importe>0)).length?`<details style="margin-top:8px"><summary style="cursor:pointer;font-size:14px;font-weight:600">Otros a revisar (efectivo, préstamos, remesas)</summary><div class="tw" style="margin-top:8px"><table>${d.revisar.filter(f=>f.estado==='revisar'&&(f.tipo==='efectivo'||f.tipo==='prestamo'||f.importe>0)).map(f=>`<tr><td>${dt(f.fecha)}</td><td style="white-space:normal;min-width:240px">${esc(f.concepto)}</td><td class="r reg">${eur(f.importe)}</td><td style="white-space:normal">${esc(f.nota||'')}</td></tr>`).join('')}</table></div></details>`:''}
     ${(d.duplicadas.length||d.iva0.length)?`<details style="margin-top:6px"><summary style="cursor:pointer;font-size:14px;font-weight:600">Corregir en StelOrder (${d.duplicadas.length} duplicadas · ${d.iva0.length} con IVA 0% sospechoso)</summary><div style="font-size:13px;color:var(--text2);margin-top:8px;line-height:1.6">${d.duplicadas.map(x=>`Duplicada: <b>${esc(x.ref)}</b> = ${esc(x.igual)} · ${esc(x.proveedor)} · ${eur(x.total)}`).join('<br>')}${d.duplicadas.length&&d.iva0.length?'<br>':''}${d.iva0.map(x=>`IVA 0%: <b>${esc(x.ref)}</b> · ${esc(x.proveedor)} · ${eur(x.total)}`).join('<br>')}</div></details>`:''}
     <details style="margin-top:6px"><summary style="cursor:pointer;font-size:14px;font-weight:600">Texto para la gestoría</summary><textarea id="txt-gest" readonly style="width:100%;min-height:280px;margin-top:8px;background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:10px;padding:10px;font:13px/1.5 inherit">${esc(d.texto)}</textarea><button class="btn" style="margin-top:6px" onclick="navigator.clipboard.writeText(document.getElementById('txt-gest').value).then(()=>{this.textContent='✓ Copiado'})">Copiar texto</button></details>
   </div>`;
@@ -120,7 +168,7 @@ async function excel(b){const t=b.textContent;b.disabled=true;b.textContent='Pre
   try{const r=await fetch('/api/trimestre/excel?q='+document.getElementById('q').value,{headers:H});if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.error||'HTTP '+r.status);}
     const u=URL.createObjectURL(await r.blob());const a=document.createElement('a');a.href=u;a.download='Corp_'+document.getElementById('q').value+'_gestoria.xlsx';document.body.appendChild(a);a.click();a.remove();}
   catch(e){alert('No se pudo generar: '+e.message);}finally{b.disabled=false;b.textContent=t;}}
-cargar();cargarPunteo();
+cargar();cargarPunteo();cargarTarjetas();
 document.getElementById('q').addEventListener('change',cargarPunteo);
 </script>
 </body></html>

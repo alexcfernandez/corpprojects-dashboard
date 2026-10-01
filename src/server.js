@@ -1836,7 +1836,7 @@ app.get('/api/trimestre/punteo', requireAuthOficina, async (req, res) => {
     const b = t.borrador303(e, p);
     res.json({ q: p.q, label: p.label, hayBanco: p.hayBanco, resumen: p.resumen, b303: b, texto: t.textoGestoria(e, p, b),
       revisar: p.filas.filter(f => f.estado === 'revisar' || f.estado === 'sin_documento').map(f => ({ fecha: f.fecha, concepto: f.concepto, importe: f.importe, tipo: f.tipo, estado: f.estado, nota: f.nota || null })),
-      nSinPago: p.recibidasSinPago.length, duplicadas: p.avisos.duplicadas.map(d => ({ ref: d.duplicada.numero, igual: d.original.numero, proveedor: d.duplicada.proveedor, total: d.duplicada.total })),
+      nSinPago: p.recibidasSinPago.length, hayTarjetas: p.hayTarjetas, porOrigen: p.porOrigen, faltan: p.faltan, duplicadas: p.avisos.duplicadas.map(d => ({ ref: d.duplicada.numero, igual: d.original.numero, proveedor: d.duplicada.proveedor, total: d.duplicada.total })),
       iva0: p.avisos.iva0.map(r => ({ ref: r.numero, proveedor: r.proveedor, total: r.total })) });
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
@@ -1846,6 +1846,30 @@ app.get('/api/trimestre/paquete', requireAuthOficina, async (req, res) => {
     const { buf, nombre } = await require('./trimestre').paqueteGestoria(req.query.q || null);
     res.set('Content-Disposition', `attachment; filename="${nombre}"`).type('application/zip').send(buf);
   } catch (err) { res.status(400).json({ error: err.message }); }
+});
+// Extractos de tarjetas (Revolut CSV, tarjeta de crédito Santander) y de la cuenta: un solo botón.
+const uploadExtracto = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
+app.post('/api/trimestre/extracto', requireAuthOficina, uploadExtracto.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No llegó ningún archivo' });
+    res.json(await require('./tarjetas').importar(req.file.buffer, req.file.originalname));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/trimestre/justificar', requireAuthOficina, uploadExtracto.single('file'), async (req, res) => {
+  try {
+    const b = req.body || {}; const q = (await _quienPush(req)) || {};
+    let mov = {}; try { mov = JSON.parse(b.mov || '{}'); } catch (e) {}
+    res.json(await require('./trimestre').justificar({ movId: b.movId, archivo: req.file || null, decision: b.decision, nota: b.nota, mov, por: { kind: q.kind || 'admin', userId: String(q.userId || 'oficina'), name: q.name || 'Oficina' } }));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.delete('/api/trimestre/justificar/:movId', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./trimestre').deshacerJustificacion(req.params.movId)); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/tarjetas', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./tarjetas').listaTarjetas()); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/tarjetas/:last4', requireAuthOficina, express.json(), async (req, res) => {
+  try { res.json(await require('./tarjetas').setPersona(req.params.last4, (req.body || {}).persona)); } catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.get('/api/trimestre/resumen-emitidas', requireAuthOficina, async (req, res) => {
   try {

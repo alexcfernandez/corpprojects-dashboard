@@ -58,7 +58,7 @@ function tipoMovimiento(m) {
   if (cargo && (m.categoria === 'nomina' || /nomina|sueldo|paga extra|finiquito|liquidacio|a cuenta nomina|a cuenta paga/.test(n))) return { tipo: 'nomina', estado: 'no_requiere', nota: m.contraparte ? `Pago a ${m.contraparte}` : undefined };
   if (cargo && (m.categoria === 'seguro' || /seguros|reaseguros|occident|vidacaixa|mapfre|allianz|protect solutions|mutua|arag\b|axa\b|zurich|generali|liberty/.test(n))) return { tipo: 'seguro', estado: 'no_requiere', nota: 'Recibo de seguro (sin IVA): el recibo es el justificante' };
   if (cargo && (cod === '002' || cod === '100' || cod === '070' || /comision|cuota renov|mantenimiento cuenta|notificaciones sir/.test(n)) && !/tarjeta \d{8,}.*comision 0 00/.test(n)) return { tipo: 'comision_banco', estado: 'no_requiere', nota: 'Comisión del banco: el justificante es el extracto' };
-  if (!cargo && /devolucion|abono|retrocesion/.test(n)) return { tipo: 'devolucion', estado: null };
+  if (!cargo && /devolucion|abono|retrocesion|refund/.test(n)) return { tipo: 'devolucion', estado: null };
   if (!cargo && /remesa sepa|emision remesa/.test(n)) return { tipo: 'cobro', estado: 'revisar', nota: 'Remesa SEPA: cobro de varios recibos a la vez; ver el detalle de la remesa' };
   if (!cargo) return { tipo: 'cobro', estado: null };
   if (cod === '136' || /tarj|tarjeta|pago movil|compra internet|contactless/.test(n)) return { tipo: 'pago_tarjeta', estado: null };
@@ -95,7 +95,13 @@ function combinacion(cands, objetivo, max = 4) {
 function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
   const usadasRec = new Set(), usadasEm = new Set();
   const emPorNum = new Map(); emitidas.forEach(e => { const n = numFactura(e.numero); if (n != null) emPorNum.set(n, e); });
-  const filas = movimientos.map((m, i) => ({ i, ...m, importe: r2(m.importe), ...tipoMovimiento(m), docs: [], confianza: null }));
+  const filas = movimientos.map((m, i) => ({ i, ...m, importe: r2(m.importe), ...(m.fijo || tipoMovimiento(m)), docs: [], confianza: null }));
+  // Lo resuelto a mano manda: factura subida desde el punteo, o «es personal / no lleva factura».
+  for (const f of filas) {
+    const a = f.manual; if (!a) continue;
+    if (a.compraId) { f.estado = 'punteado'; f.confianza = 'manual'; f.docs = [{ ref: 'Compra subida', tercero: a.proveedor || '', total: a.total, compraId: a.compraId }]; f.nota = a.cuadra === false ? `Factura subida a mano (importe ${a.total} € distinto)` : 'Factura subida a mano'; }
+    else if (a.decision) { f.estado = 'no_requiere'; f.tipo = a.decision === 'personal' ? 'personal' : f.tipo; f.nota = (a.decision === 'personal' ? 'Gasto personal' : 'No lleva factura') + (a.nota ? `: ${a.nota}` : '') + (a.por ? ` (${a.por})` : ''); }
+  }
 
   // 1) COBROS con número de factura en el concepto
   for (const f of filas.filter(x => x.tipo === 'cobro')) {

@@ -224,18 +224,65 @@ async function todasRecibidas() {
 async function movimientosBanco(R) {
   const db = await getDB();
   const ms = await db.collection('bancoMovimientos').find({ fechaOperacion: { $gte: R.from, $lte: R.to } }).sort({ fechaOperacion: 1 }).toArray();
-  return ms.map(m => ({ id: String(m._id), fecha: m.fechaOperacion, concepto: m.concepto, importe: m.importe, saldo: m.saldo, codigo: m.codigo, categoria: m.categoria, contraparte: m.contraparte }));
+  return ms.map(m => ({ id: String(m._id), fecha: m.fechaOperacion, concepto: m.concepto, importe: m.importe, saldo: m.saldo, codigo: m.codigo, categoria: m.categoria, contraparte: m.contraparte, origen: 'Cuenta Santander', persona: m.categoria === 'nomina' ? m.contraparte : null }));
 }
 
 async function punteo(q) {
   const C = require('./conciliacion');
   const R = rango(q || trimestrePorDefecto());
-  const [movs, em, rec] = await Promise.all([movimientosBanco(R), todasEmitidas(), todasRecibidas()]);
+  const [movsBanco, movsTarjeta, em, rec] = await Promise.all([movimientosBanco(R), require('./tarjetas').movimientosPunteo(R).catch(() => []), todasEmitidas(), todasRecibidas()]);
+  const movs = [...movsBanco, ...movsTarjeta];
+  try {
+    const db = await getDB();
+    const man = await db.collection('punteoManual').find({ _id: { $in: movs.map(m => m.id) } }).toArray();
+    const porId = {}; man.forEach(x => { porId[x._id] = x; });
+    movs.forEach(m => { if (porId[m.id]) m.manual = porId[m.id]; });
+  } catch (e) {}
   const res = C.conciliar({ movimientos: movs, emitidas: em, recibidas: rec });
   const recTrim = rec.filter(r => enRango(r.fecha, R));
   const sinPago = recTrim.filter(r => !res.recibidasUsadas.has(r.id) && r.total > 0);
   const avisos = C.avisosRecibidas(recTrim);
-  return { ...R, resumen: res.resumen, filas: res.filas, recibidasSinPago: sinPago, avisos, hayBanco: movs.length > 0 };
+  const porOrigen = {};
+  for (const f of res.filas) { const o = (porOrigen[f.origen] = porOrigen[f.origen] || { origen: f.origen, persona: null, n: 0, punteados: 0, sinDocumento: 0, importeSin: 0 }); o.n++; if (f.estado === 'punteado') o.punteados++; if (f.estado === 'sin_documento' && f.importe < 0) { o.sinDocumento++; o.importeSin = r2(o.importeSin - f.importe); } if (f.persona && f.origen !== 'Cuenta Santander') o.persona = f.persona; }
+  // Lo que falta, agrupado por comercio (para buscar la factura y subirla desde aquí).
+  const grupos = {};
+  for (const f of res.filas.filter(x => x.estado === 'sin_documento' || (x.estado === 'revisar' && x.importe < 0 && x.tipo !== 'efectivo' && x.tipo !== 'prestamo'))) {
+    const k = f.importe > 0 ? 'Cobros sin factura identificada' : comercio(f.concepto);
+    const g = (grupos[k] = grupos[k] || { comercio: k, cobros: f.importe > 0, n: 0, importe: 0, movs: [] });
+    g.n++; g.importe = r2(g.importe + Math.abs(f.importe));
+    g.movs.push({ id: f.id, fecha: f.fecha, importe: f.importe, persona: f.persona || null, origen: f.origen || null, concepto: f.concepto, nota: f.nota || null });
+  }
+  const faltan = Object.values(grupos).sort((a, b) => (a.cobros - b.cobros) || b.importe - a.importe);
+  return { ...R, resumen: res.resumen, filas: res.filas, faltan, recibidasSinPago: sinPago, avisos, hayBanco: movsBanco.length > 0, hayTarjetas: movsTarjeta.length > 0, porOrigen: Object.values(porOrigen) };
+}
+
+// Nombre corto del comercio a partir del concepto (para agrupar «facturas a pedir»).
+function comercio(concepto) {
+  return String(concepto || '').replace(/^(compra internet en|pago movil en|compra|transaccion contactless|recibo|transferencia( inmediata)? a favor de)\s+/i, '')
+    .replace(/,?\s*(tarj\.?|tarjeta)\b.*$/i, '').replace(/\s*\(.*\)\s*$/, '').replace(/\s+(girona|gerona|salt|barcelona)\b.*$/i, '').trim().slice(0, 40) || '—';
+}
+
+// Resolver a mano un movimiento: subir su factura (va a Compras y queda casada) o decir que no lleva.
+async function justificar({ movId, archivo, decision, nota, mov = {}, por }) {
+  const db = await getDB();
+  if (!movId) throw new Error('Falta el movimiento');
+  if (archivo) {
+    const fecha = String(mov.fecha || '').split('-').reverse().join('/');
+    const notaC = `Factura del pago de ${Math.abs(Number(mov.importe) || 0).toFixed(2)} € del ${fecha} en ${comercio(mov.concepto)}${mov.persona ? ` (${mov.persona})` : ''} — subida desde el cierre del trimestre`;
+    const r = await require('./compras').crear({ fotos: [{ data: archivo.buffer, mimetype: archivo.mimetype }], destino: 'obra', origen: 'punteo', nota: notaC.slice(0, 300), subidaPor: por });
+    let total = null, proveedor = r.proveedor || null;
+    try { const c = await require('./compras').getCompra(r.id); total = c.total != null ? r2(c.total) : null; proveedor = c.proveedor || proveedor; } catch (e) {}
+    const cuadra = total == null ? null : Math.abs(total - Math.abs(Number(mov.importe) || 0)) < 0.02;
+    await db.collection('punteoManual').updateOne({ _id: String(movId) }, { $set: { compraId: r.id, proveedor, total, cuadra, decision: null, nota: null, por: por && por.name, at: new Date() } }, { upsert: true });
+    return { ok: true, compraId: r.id, proveedor, total, cuadra, leida: r.leida };
+  }
+  if (!['personal', 'sin_factura'].includes(decision)) throw new Error('Decisión no válida');
+  await db.collection('punteoManual').updateOne({ _id: String(movId) }, { $set: { decision, nota: String(nota || '').slice(0, 200) || null, compraId: null, por: por && por.name, at: new Date() } }, { upsert: true });
+  return { ok: true };
+}
+async function deshacerJustificacion(movId) {
+  await (await getDB()).collection('punteoManual').deleteOne({ _id: String(movId) });
+  return { ok: true };
 }
 
 // Borrador del 303 (orientativo: lo ajusta la gestoría).
@@ -246,25 +293,26 @@ function borrador303(e, p) {
   return { repercutido: rep, base: e.resumen.emitidas.base, nEmitidas: e.resumen.emitidas.n, soportado: sop, dupIva, soportadoCorregido: r2(sop - dupIva), iva0Recuperable: iva0, resultado: r2(rep - (sop - dupIva)) };
 }
 
-function hojaMovimientos(XLSX, p) {
+function hojaMovimientos(XLSX, p, filasMov, titulo) {
+  filasMov = filasMov || p.filas;
   const filas = [
-    [`Movimientos banco Q${p.n}`], [`CORP PROJECTS HOLDING SL — Movimientos bancarios ${p.n}T ${p.y}`], [`Cuenta ES35 0049 1807 36 2210700012 · ${p.from.split('-').reverse().join('/')}–${p.to.split('-').reverse().join('/')} · para Som Assessors`],
-    ['Fecha', 'Concepto', 'Cargo', 'Abono', 'Saldo', 'Qué es', 'Factura / documento', 'Proveedor / cliente', 'Estado', 'Nota'],
+    [`Movimientos ${titulo ? 'tarjetas' : 'banco'} Q${p.n}`], [`CORP PROJECTS HOLDING SL — ${titulo || 'Movimientos bancarios'} ${p.n}T ${p.y}`], [`${titulo ? 'Revolut Business y tarjetas de crédito Santander' : 'Cuenta ES35 0049 1807 36 2210700012'} · ${p.from.split('-').reverse().join('/')}–${p.to.split('-').reverse().join('/')} · para Som Assessors`],
+    ['Fecha', 'Concepto', 'Cargo', 'Abono', 'Saldo', 'Qué es', 'Factura / documento', 'Proveedor / cliente', 'Estado', 'Nota', 'Tarjeta / cuenta', 'Quién'],
   ];
   const TIPO = { cobro: 'Cobro', pago_tarjeta: 'Compra con tarjeta', recibo: 'Recibo domiciliado', pago_transferencia: 'Transferencia', nomina: 'Nómina', seguridad_social: 'Seguridad Social', impuestos: 'Impuestos', traspaso_propio: 'Traspaso propio', liquidacion_tarjeta: 'Liquidación tarjeta crédito', comision_banco: 'Comisión banco', efectivo: 'Efectivo', prestamo: 'Préstamo', devolucion: 'Devolución' };
   const EST = { punteado: '✓ Con factura', no_requiere: 'No lleva factura', revisar: 'REVISAR', sin_documento: 'SIN FACTURA' };
   let mes = null, c = 0, a = 0, TC = 0, TA = 0;
   const MES = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
   const cerrar = () => { if (mes) filas.push(['', `Subtotal ${MES[Number(mes) - 1]}`, r2(c), r2(a)]); };
-  for (const f of p.filas) {
+  for (const f of filasMov) {
     const m = f.fecha.slice(5, 7); if (m !== mes) { cerrar(); mes = m; c = 0; a = 0; }
     if (f.importe < 0) { c += f.importe; TC += f.importe; } else { a += f.importe; TA += f.importe; }
-    filas.push([f.fecha.split('-').reverse().join('/'), f.concepto, f.importe < 0 ? f.importe : null, f.importe > 0 ? f.importe : null, f.saldo, TIPO[f.tipo] || f.tipo, f.docs.map(d => d.ref + (d.refProveedor ? ` (${d.refProveedor})` : '')).join(' + '), [...new Set(f.docs.map(d => d.tercero))].join(' + '), EST[f.estado] || f.estado, f.nota || '']);
+    filas.push([f.fecha.split('-').reverse().join('/'), f.concepto, f.importe < 0 ? f.importe : null, f.importe > 0 ? f.importe : null, f.saldo, TIPO[f.tipo] || f.tipo, f.docs.map(d => d.ref + (d.refProveedor ? ` (${d.refProveedor})` : '')).join(' + '), [...new Set(f.docs.map(d => d.tercero))].join(' + '), EST[f.estado] || f.estado, f.nota || '', f.origen || '', f.persona || '']);
   }
   cerrar(); filas.push(['', 'TOTAL TRIMESTRE', r2(TC), r2(TA)]);
   const ws = XLSX.utils.aoa_to_sheet(filas);
   for (const k of Object.keys(ws)) { const cel = ws[k]; if (k[0] !== '!' && cel.t === 'n' && /^[C-E]\d+$/.test(k)) cel.z = '#,##0.00 "€"'; }
-  ws['!cols'] = [{ wch: 11 }, { wch: 70 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 22 }, { wch: 28 }, { wch: 30 }, { wch: 16 }, { wch: 40 }];
+  ws['!cols'] = [{ wch: 11 }, { wch: 70 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 22 }, { wch: 28 }, { wch: 30 }, { wch: 16 }, { wch: 40 }, { wch: 18 }, { wch: 16 }];
   return ws;
 }
 
@@ -335,7 +383,13 @@ async function paqueteGestoria(q) {
   const recTrim = (await todasRecibidas()).filter(r => enRango(r.fecha, R));
   const libro = (ws, nombre) => { const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, nombre); return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }); };
   const wbMov = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wbMov, hojaMovimientos(XLSX, p), `Banco Q${R.n}`);
+  const deBanco = p.filas.filter(f => f.origen === 'Cuenta Santander'), deTarjeta = p.filas.filter(f => f.origen !== 'Cuenta Santander');
+  XLSX.utils.book_append_sheet(wbMov, hojaMovimientos(XLSX, p, deBanco), `Banco Q${R.n}`);
+  if (deTarjeta.length) XLSX.utils.book_append_sheet(wbMov, hojaMovimientos(XLSX, p, deTarjeta, 'Movimientos de tarjetas'), `Tarjetas Q${R.n}`);
+  // Lista de facturas que hay que pedir, por comercio
+  const pedir = p.filas.filter(f => f.estado === 'sin_documento' && f.importe < 0).sort((a, b) => String(comercio(a.concepto)).localeCompare(comercio(b.concepto)) || a.fecha.localeCompare(b.fecha))
+    .map(f => ({ Comercio: comercio(f.concepto), Fecha: f.fecha, Importe: -f.importe, Quién: f.persona || '', 'Tarjeta / cuenta': f.origen || '', Concepto: f.concepto, Nota: f.nota || '' }));
+  XLSX.utils.book_append_sheet(wbMov, XLSX.utils.json_to_sheet(pedir.length ? pedir : [{ Comercio: 'Nada pendiente' }]), 'Facturas a pedir');
   const revisar = p.filas.filter(f => f.estado === 'revisar' || f.estado === 'sin_documento').map(f => ({ Fecha: f.fecha, Concepto: f.concepto, Importe: f.importe, Estado: f.estado === 'revisar' ? 'Revisar' : 'Sin factura', Nota: f.nota || '' }));
   XLSX.utils.book_append_sheet(wbMov, XLSX.utils.json_to_sheet(revisar.length ? revisar : [{ Concepto: 'Nada pendiente' }]), 'Para revisar');
   XLSX.utils.book_append_sheet(wbMov, XLSX.utils.json_to_sheet(p.recibidasSinPago.map(r => ({ Ref: r.numero, Proveedor: r.proveedor, 'Nº proveedor': r.refProveedor, Fecha: r.fecha, Total: r.total }))), 'Facturas sin pago en cuenta');
@@ -380,4 +434,4 @@ async function revisionDiaria({ forzarAviso = false } = {}) {
   return { q, nPendientes: e.nPendientes };
 }
 
-module.exports = { rango, trimestrePorDefecto, estado, excel, revisionDiaria, resumenEmitidasXlsx, zipEmitidas, punteo, paqueteGestoria, borrador303, textoGestoria };
+module.exports = { rango, trimestrePorDefecto, estado, excel, revisionDiaria, resumenEmitidasXlsx, zipEmitidas, punteo, paqueteGestoria, borrador303, textoGestoria, justificar, deshacerJustificacion, comercio };
