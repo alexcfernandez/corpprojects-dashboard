@@ -325,6 +325,7 @@ async function punteo(q) {
   // Cuenta corriente con cada empresa desde el principio (todos los trimestres): lo que entró y salió
   // por su cuenta, para saber quién debe a quién al final.
   const cuentasEmpresas = [];
+  const personalesMeses = [];
   try {
     const db = await getDB();
     const todos = await db.collection('punteoManual').find({ decision: 'tercero' }).sort({ fecha: 1 }).toArray();
@@ -338,11 +339,23 @@ async function punteo(q) {
       g.movs.push({ id: String(x._id), fecha: x.fecha, importe: imp, concepto: x.concepto, origen: x.origen || null, persona: x.persona || null, nota: x.nota || null, por: x.por || null, esteTrimestre: !!(x.fecha && x.fecha >= R.from && x.fecha <= R.to) });
     }
     cuentasEmpresas.push(...Object.values(acc));
+    // Gastos personales por persona y mes, desde el principio (no solo este trimestre).
+    const pers = await db.collection('punteoManual').find({ decision: 'personal' }).sort({ fecha: 1 }).toArray();
+    const pp = {};
+    for (const x of pers) {
+      const k = x.persona || 'Sin asignar', mes = String(x.fecha || '').slice(0, 7) || '—';
+      const g = (pp[k] = pp[k] || { persona: k, total: 0, n: 0, meses: {} });
+      const m = (g.meses[mes] = g.meses[mes] || { mes, total: 0, movs: [] });
+      const imp = -(Number(x.importe) || 0);
+      g.total = r2(g.total + imp); g.n++; m.total = r2(m.total + imp);
+      m.movs.push({ id: String(x._id), fecha: x.fecha, importe: x.importe, concepto: x.concepto, origen: x.origen || null, persona: x.persona || null, nota: x.nota || null, por: x.por || null });
+    }
+    personalesMeses.push(...Object.values(pp).map(g => ({ ...g, meses: Object.values(g.meses).sort((a, b) => b.mes.localeCompare(a.mes)) })).sort((a, b) => b.total - a.total));
   } catch (e) { console.warn('[Trimestre] cuentas con empresas:', e.message); }
   const porFacturar = res.filas.filter(x => x.manual && x.manual.decision === 'facturar').map(fila);
   const emitidasPendientes = em.filter(e => e.pendiente != null && e.pendiente > 0.01 && dias2(R.to, e.fecha) <= 400).sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 300)
     .map(e => ({ id: e.id, numero: e.numero, cliente: e.cliente, fecha: e.fecha, total: e.total, pendiente: e.pendiente }));
-  return { ...R, resumen: res.resumen, filas: res.filas, faltan, pendientesPago, extractoHasta, personales, deObra, sinFacturaOk, terceros, porFacturar, cuentasEmpresas, emitidasPendientes, recibidasSinPago: sinPago, avisos, hayBanco: movsBanco.length > 0, hayTarjetas: movsTarjeta.length > 0, porOrigen: Object.values(porOrigen) };
+  return { ...R, resumen: res.resumen, filas: res.filas, faltan, pendientesPago, extractoHasta, personales, deObra, sinFacturaOk, terceros, porFacturar, cuentasEmpresas, personalesMeses, emitidasPendientes, recibidasSinPago: sinPago, avisos, hayBanco: movsBanco.length > 0, hayTarjetas: movsTarjeta.length > 0, porOrigen: Object.values(porOrigen) };
 }
 
 // Nombre corto del comercio a partir del concepto (para agrupar «facturas a pedir»).
