@@ -1838,7 +1838,7 @@ app.get('/api/trimestre/punteo', requireAuthOficina, async (req, res) => {
     const filas = p.filas.map(f => ({ id: f.id, fecha: f.fecha, importe: f.importe, concepto: f.concepto, origen: f.origen || null, persona: f.persona || null, tipo: f.tipo, estado: f.estado, nota: f.nota || null, candidatas: f.candidatas || null, docs: (f.docs || []).map(d => ({ ref: d.ref, refProveedor: d.refProveedor, tercero: d.tercero, total: d.total })) }));
     res.json({ q: p.q, label: p.label, from: p.from, to: p.to, filas, hayBanco: p.hayBanco, resumen: p.resumen, b303: b, texto: t.textoGestoria(e, p, b),
       revisar: p.filas.filter(f => f.estado === 'revisar' || f.estado === 'sin_documento').map(f => ({ fecha: f.fecha, concepto: f.concepto, importe: f.importe, tipo: f.tipo, estado: f.estado, nota: f.nota || null })),
-      nSinPago: p.recibidasSinPago.length, hayTarjetas: p.hayTarjetas, porOrigen: p.porOrigen, faltan: p.faltan, personales: p.personales, deObra: p.deObra, sinFacturaOk: p.sinFacturaOk, terceros: p.terceros, cuentasEmpresas: p.cuentasEmpresas, personalesMeses: p.personalesMeses, porFacturar: p.porFacturar, emitidasPendientes: p.emitidasPendientes, pendientesPago: p.pendientesPago, extractoHasta: p.extractoHasta, duplicadas: p.avisos.duplicadas.map(d => ({ ref: d.duplicada.numero, igual: d.original.numero, proveedor: d.duplicada.proveedor, total: d.duplicada.total })),
+      nSinPago: p.recibidasSinPago.length, hayTarjetas: p.hayTarjetas, porOrigen: p.porOrigen, faltan: p.faltan, personales: p.personales, deObra: p.deObra, sinFacturaOk: p.sinFacturaOk, terceros: p.terceros, cuentasEmpresas: p.cuentasEmpresas, personalesMeses: p.personalesMeses, dietas: p.dietas, porFacturar: p.porFacturar, emitidasPendientes: p.emitidasPendientes, pendientesPago: p.pendientesPago, extractoHasta: p.extractoHasta, duplicadas: p.avisos.duplicadas.map(d => ({ ref: d.duplicada.numero, igual: d.original.numero, proveedor: d.duplicada.proveedor, total: d.duplicada.total })),
       iva0: p.avisos.iva0.map(r => ({ ref: r.numero, proveedor: r.proveedor, total: r.total })) });
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
@@ -1861,7 +1861,7 @@ app.post('/api/trimestre/justificar', requireAuthOficina, uploadExtracto.single(
   try {
     const b = req.body || {}; const q = (await _quienPush(req)) || {};
     let mov = {}; try { mov = JSON.parse(b.mov || '{}'); } catch (e) {}
-    res.json(await require('./trimestre').justificar({ movId: b.movId, archivo: req.file || null, decision: b.decision, nota: b.nota, obraId: b.obraId, extra: { empresa: b.empresa, facturaId: b.facturaId, vehiculoId: b.vehiculoId, categoria: b.categoria, recibidas: b.recibidas }, mov, por: { kind: q.kind || 'admin', userId: String(q.userId || 'oficina'), name: q.name || 'Oficina' } }));
+    res.json(await require('./trimestre').justificar({ movId: b.movId, archivo: req.file || null, decision: b.decision, nota: b.nota, obraId: b.obraId, extra: { empresa: b.empresa, facturaId: b.facturaId, vehiculoId: b.vehiculoId, categoria: b.categoria, recibidas: b.recibidas, personas: b.personas }, mov, por: { kind: q.kind || 'admin', userId: String(q.userId || 'oficina'), name: q.name || 'Oficina' } }));
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.post('/api/trimestre/justificar/:movId/confirmar', requireAuthOficina, express.json(), async (req, res) => {

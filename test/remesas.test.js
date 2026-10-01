@@ -64,3 +64,12 @@ test('Importes del formulario de Compras: punto decimal, coma decimal y miles', 
   assert.equal(nCant('1.250'), 1.25);
   assert.equal(nCant('0,5'), 0.5);
 });
+
+test('Comida de trabajo (dieta): no necesita factura y dice quién comió', () => {
+  const m = mov('m1', '2026-09-01', -40.96, 'Muriel');
+  m.manual = { decision: 'dieta', personas: ['Manolo', 'David'], obraRef: 'Alella' };
+  const f = conciliar({ emitidas: [], recibidas: [], movimientos: [m] }).filas[0];
+  assert.equal(f.estado, 'no_requiere');
+  assert.equal(f.tipo, 'dieta');
+  assert.match(f.nota, /Manolo, David · Alella/);
+});

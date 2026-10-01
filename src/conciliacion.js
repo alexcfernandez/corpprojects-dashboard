@@ -171,6 +171,7 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
     else if (a.decision === 'factura') { f.estado = 'punteado'; f.confianza = 'manual'; f.docs = [{ ref: a.facturaNumero, tercero: a.cliente || '', total: a.total }]; f.nota = 'Asignado a mano'; }
     else if (a.decision === 'facturar') { f.estado = 'revisar'; f.tipo = 'falta_emitir'; f.nota = `Falta emitir la factura${a.nota ? ': ' + a.nota : ''}`; }
     else if (a.decision === 'obra') { f.estado = 'punteado'; f.confianza = 'manual'; f.tipo = 'gasto_obra'; f.docs = [{ ref: 'Gasto de obra', tercero: a.obraRef || '' }]; f.nota = `Gasto de la obra «${a.obraRef || ''}» (sin factura${a.nota ? ': ' + a.nota : ''})`; }
+    else if (a.decision === 'dieta') { f.estado = 'no_requiere'; f.tipo = 'dieta'; f.nota = `Comida de trabajo (dieta): ${(a.personas || []).join(', ')}${a.obraRef ? ' · ' + a.obraRef : ''}${a.nota ? ' — ' + a.nota : ''}`; }
     else if (a.decision) { f.estado = 'no_requiere'; f.tipo = a.decision === 'personal' ? 'personal' : f.tipo; f.nota = (a.decision === 'personal' ? `Gasto personal${f.persona ? ' de ' + f.persona : ''}` : 'No lleva factura') + (a.nota ? `: ${a.nota}` : '') + (a.por ? ` (marcado por ${a.por})` : ''); }
   }
 

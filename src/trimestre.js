@@ -326,6 +326,7 @@ async function punteo(q) {
   // por su cuenta, para saber quién debe a quién al final.
   const cuentasEmpresas = [];
   const personalesMeses = [];
+  const dietas = [];
   try {
     const db = await getDB();
     const todos = await db.collection('punteoManual').find({ decision: 'tercero' }).sort({ fecha: 1 }).toArray();
@@ -351,11 +352,21 @@ async function punteo(q) {
       m.movs.push({ id: String(x._id), fecha: x.fecha, importe: x.importe, concepto: x.concepto, origen: x.origen || null, persona: x.persona || null, nota: x.nota || null, por: x.por || null });
     }
     personalesMeses.push(...Object.values(pp).map(g => ({ ...g, meses: Object.values(g.meses).sort((a, b) => b.mes.localeCompare(a.mes)) })).sort((a, b) => b.total - a.total));
+    // Comidas de trabajo (dietas) por mes, con lo que sale por persona y día.
+    const dts = await db.collection('punteoManual').find({ decision: 'dieta' }).sort({ fecha: 1 }).toArray();
+    const dm = {};
+    for (const x of dts) {
+      const mes = String(x.fecha || '').slice(0, 7) || '—';
+      const g = (dm[mes] = dm[mes] || { mes, total: 0, movs: [] });
+      g.total = r2(g.total - (Number(x.importe) || 0));
+      g.movs.push({ id: String(x._id), fecha: x.fecha, importe: x.importe, concepto: x.concepto, origen: x.origen || null, persona: x.persona || null, personas: x.personas || [], porPersona: x.porPersona || null, obraRef: x.obraRef || null, nota: x.nota || null, por: x.por || null, esteTrimestre: !!(x.fecha && x.fecha >= R.from && x.fecha <= R.to) });
+    }
+    dietas.push(...Object.values(dm).sort((a, b) => b.mes.localeCompare(a.mes)));
   } catch (e) { console.warn('[Trimestre] cuentas con empresas:', e.message); }
   const porFacturar = res.filas.filter(x => x.manual && x.manual.decision === 'facturar').map(fila);
   const emitidasPendientes = em.filter(e => e.pendiente != null && e.pendiente > 0.01 && dias2(R.to, e.fecha) <= 400).sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 300)
     .map(e => ({ id: e.id, numero: e.numero, cliente: e.cliente, fecha: e.fecha, total: e.total, pendiente: e.pendiente }));
-  return { ...R, resumen: res.resumen, filas: res.filas, faltan, pendientesPago, extractoHasta, personales, deObra, sinFacturaOk, terceros, porFacturar, cuentasEmpresas, personalesMeses, emitidasPendientes, recibidasSinPago: sinPago, avisos, hayBanco: movsBanco.length > 0, hayTarjetas: movsTarjeta.length > 0, porOrigen: Object.values(porOrigen) };
+  return { ...R, resumen: res.resumen, filas: res.filas, faltan, pendientesPago, extractoHasta, personales, deObra, sinFacturaOk, terceros, porFacturar, cuentasEmpresas, personalesMeses, dietas, emitidasPendientes, recibidasSinPago: sinPago, avisos, hayBanco: movsBanco.length > 0, hayTarjetas: movsTarjeta.length > 0, porOrigen: Object.values(porOrigen) };
 }
 
 // Nombre corto del comercio a partir del concepto (para agrupar «facturas a pedir»).
@@ -385,7 +396,7 @@ async function justificar({ movId, archivo, decision, nota, obraId, mov = {}, po
     await db.collection('punteoManual').updateOne({ _id: String(movId) }, { $set: { compraId: r.id, proveedor, total, cuadra, decision: null, nota: null, obraId: null, obraRef: null, por: por && por.name, at: new Date() } }, { upsert: true });
     return { ok: true, compraId: r.id, proveedor, total, cuadra, leida: r.leida };
   }
-  if (!['personal', 'sin_factura', 'obra', 'tercero', 'factura', 'facturas', 'facturar', 'vehiculo'].includes(decision)) throw new Error('Decisión no válida');
+  if (!['personal', 'sin_factura', 'obra', 'tercero', 'factura', 'facturas', 'facturar', 'vehiculo', 'dieta'].includes(decision)) throw new Error('Decisión no válida');
   const datosMov = { persona: mov.persona || null, concepto: String(mov.concepto || '').slice(0, 200), fecha: mov.fecha || null, importe: Number(mov.importe) || 0, origen: mov.origen || null };
   const set = { decision, nota: String(nota || '').slice(0, 200) || null, compraId: null, obraId: null, obraRef: null, empresa: null, facturaNumero: null, cliente: null, total: null, por: por && por.name, at: new Date(), ...datosMov };
   if (decision === 'tercero') set.empresa = String(extra.empresa || 'JustFly Executive').trim().slice(0, 80);
@@ -411,6 +422,22 @@ async function justificar({ movId, archivo, decision, nota, obraId, mov = {}, po
     set.facturaNumero = em.numero; set.cliente = em.cliente; set.total = em.total;
   }
   await quitarDeObra(db, movId); // si antes estaba en otra obra, se quita de allí
+  // Comida de trabajo autorizada (dieta): gasto de personal de la empresa. Quién comió y, si se dice, de qué
+  // obra (entonces cuenta en su coste). Exenta para el trabajador hasta 26,67 €/persona/día sin pernocta.
+  if (decision === 'dieta') {
+    let ps = extra.personas; try { if (typeof ps === 'string') ps = JSON.parse(ps); } catch (e) { ps = String(ps || '').split(','); }
+    set.personas = (Array.isArray(ps) ? ps : []).map(x => String(x).trim()).filter(Boolean).slice(0, 20);
+    if (!set.personas.length) throw new Error('Di quién comió');
+    set.porPersona = r2(Math.abs(datosMov.importe) / set.personas.length);
+    if (obraId && /^[a-f0-9]{24}$/.test(String(obraId))) {
+      const { ObjectId } = require('mongodb');
+      const o = await db.collection('obras').findOne({ _id: new ObjectId(String(obraId)) }, { projection: { reference: 1 } });
+      if (o) {
+        set.obraId = String(o._id); set.obraRef = o.reference;
+        await db.collection('obras').updateOne({ _id: o._id }, { $set: { updatedAt: new Date() }, $push: { materiales: { id: 'punteo-' + String(movId), concepto: `Comida de trabajo: ${set.personas.join(', ')} — ${comercio(datosMov.concepto)} (${String(datosMov.fecha || '').split('-').reverse().join('/')})`, importe: r2(Math.abs(datosMov.importe)), fecha: datosMov.fecha, origen: 'punteo', movId: String(movId), sinFactura: true, at: new Date() } } });
+      }
+    }
+  }
   if (decision === 'obra') {
     const { ObjectId } = require('mongodb');
     const o = obraId && /^[a-f0-9]{24}$/.test(String(obraId)) ? await db.collection('obras').findOne({ _id: new ObjectId(String(obraId)) }, { projection: { reference: 1 } }) : null;
@@ -532,6 +559,8 @@ function textoGestoria(e, p, b) {
   for (const g of (p.terceros || [])) lineas.push(`${n++}. Movimientos por cuenta de ${g.empresa} (sociedad vinculada) que han pasado por nuestra cuenta: entradas ${eur(g.entradas)}, pagos ${eur(g.salidas)}, saldo ${eur(g.saldo)}. No los he contado como ingreso ni gasto nuestro; dime cómo prefieres documentarlos (cuenta corriente entre sociedades, refacturación…). Detalle en la hoja «Por cuenta de otras empresas».`);
   if ((p.porFacturar || []).length) lineas.push(`${n++}. Cobros recibidos de los que aún tenemos que emitir factura: ${p.porFacturar.length} (${eur(p.porFacturar.reduce((s, m) => s + m.importe, 0))}). Están en la hoja «Facturas por emitir»; las emito antes de cerrar.`);
   if ((p.personales || []).length) lineas.push(`${n++}. Gastos personales pagados con tarjeta de la empresa (no son gasto de la empresa): ${p.personales.map(g => `${g.persona} ${eur(g.total)}`).join(', ')}. Detalle en la hoja «Gastos personales».`);
+  const dietasTrim = (p.dietas || []).flatMap(g => g.movs).filter(m => m.esteTrimestre);
+  if (dietasTrim.length) lineas.push(`${n++}. Comidas de trabajo pagadas por la empresa (dietas, trabajadores desplazados a obra): ${dietasTrim.length} (${eur(dietasTrim.reduce((s, m) => s - m.importe, 0))}). Detalle con quién comió en la hoja «Comidas y dietas».`);
   const bonpreu = p.filas.filter(f => f.estado === 'revisar' && /factura por mes/.test(f.nota || ''));
   if (bonpreu.length) lineas.push(`${n++}. Proveedores que facturan una vez al mes y no cuadran con lo pagado con tarjeta (${[...new Set(bonpreu.map(f => f.docs[0] && f.docs[0].tercero))].join(', ')}): la diferencia puede ser gasto personal. Señalado en el Excel.`);
   if (n === 1) lineas.push(`- Nada especial este trimestre.`);
@@ -557,6 +586,8 @@ async function paqueteGestoria(q) {
   XLSX.utils.book_append_sheet(wbMov, XLSX.utils.json_to_sheet(pedir.length ? pedir : [{ Comercio: 'Nada pendiente' }]), 'Facturas a pedir');
   const pers = p.personales.flatMap(g => g.movs.map(m => ({ Persona: g.persona, Fecha: m.fecha, Concepto: m.concepto, Importe: -m.importe, 'Tarjeta / cuenta': m.origen || '', Nota: m.nota || '', 'Marcado por': m.por || '' })));
   if (pers.length) XLSX.utils.book_append_sheet(wbMov, XLSX.utils.json_to_sheet(pers), 'Gastos personales');
+  const diet = (p.dietas || []).flatMap(g => g.movs).filter(m => m.esteTrimestre).map(m => ({ Fecha: m.fecha, Concepto: m.concepto, Importe: -m.importe, Personas: (m.personas || []).join(', '), 'Por persona': m.porPersona, Obra: m.obraRef || '', 'Tarjeta / cuenta': m.origen || '', Nota: m.nota || '' }));
+  if (diet.length) XLSX.utils.book_append_sheet(wbMov, XLSX.utils.json_to_sheet(diet), 'Comidas y dietas');
   const terc = p.terceros.flatMap(g => g.movs.map(m => ({ Empresa: g.empresa, Fecha: m.fecha, Concepto: m.concepto, Entrada: m.importe > 0 ? m.importe : null, Salida: m.importe < 0 ? -m.importe : null, Nota: m.nota || '' })));
   if (terc.length) XLSX.utils.book_append_sheet(wbMov, XLSX.utils.json_to_sheet(terc), 'Por cuenta de otras empresas');
   if (p.porFacturar.length) XLSX.utils.book_append_sheet(wbMov, XLSX.utils.json_to_sheet(p.porFacturar.map(m => ({ Fecha: m.fecha, Concepto: m.concepto, Importe: m.importe, 'A quién / obra': m.nota || '' }))), 'Facturas por emitir');
