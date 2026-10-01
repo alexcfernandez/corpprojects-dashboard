@@ -39,7 +39,16 @@ td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}
   <div class="bar">
     <select id="q" onchange="cargar()"></select>
     <button class="btn" onclick="cargar()">Actualizar</button>
-    <button class="btn p" onclick="excel(this)">⬇️ Excel para la gestoría</button>
+    <button class="btn p" onclick="excel(this)">⬇️ Excel de control</button>
+  </div>
+  <div class="card" style="font-size:13.5px;line-height:1.6">
+    <h3>Paquete para la gestoría (mismo formato que el 2º trimestre en Drive)</h3>
+    <div>Carpeta <b>PARA_GESTORIA_Q…</b>: <b>1</b> facturas emitidas (PDF por mes) · <b>2</b> facturas recibidas (ya se van guardando solas en Drive) · <b>3</b> resumen de emitidas · <b>5</b> extractos de tarjetas · <b>6</b> extracto del banco.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <button class="btn" onclick="bajar(this,'/api/trimestre/emitidas-zip','1_Facturas_emitidas.zip','Descargando los PDF de StelOrder… (1-2 min)')">⬇️ 1 · Facturas emitidas (ZIP)</button>
+      <button class="btn" onclick="bajar(this,'/api/trimestre/resumen-emitidas','3_Resumen_facturas_emitidas.xlsx','Preparando…')">⬇️ 3 · Resumen de emitidas (Excel)</button>
+    </div>
+    <div style="font-size:12px;color:var(--text3);margin-top:6px">Descomprime el ZIP y arrastra la carpeta a Drive. Si algún PDF no se pudo bajar, va apuntado en <i>_FALTAN.txt</i> dentro del ZIP.</div>
   </div>
   <div id="out"><div class="vacio">Cargando… (la primera vez tarda unos segundos: lee StelOrder)</div></div>
 </div>
@@ -86,6 +95,11 @@ async function cargar(){
   h+=tabla('Facturas y gastos recibidos',[['Fecha',r=>dt(r.fecha)],['Número',r=>esc(r.numero)+(r.refProveedor?' · '+esc(r.refProveedor):'')],['Proveedor',r=>esc(r.proveedor)],['Base',r=>eur(r.base),'r'],['IVA',r=>eur(r.iva),'r'],['Total',r=>eur(r.total),'r']],d.recibidas);
   el.innerHTML=h;
 }
+async function bajar(b,url,nombre,txt){const t=b.textContent;b.disabled=true;b.textContent=txt;
+  try{const q=document.getElementById('q').value;const r=await fetch(url+'?q='+q,{headers:H});if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.error||'HTTP '+r.status);}
+    const fa=Number(r.headers.get('X-Fallos')||0);const u=URL.createObjectURL(await r.blob());const a=document.createElement('a');a.href=u;a.download=nombre.replace('.',`_${q}.`);document.body.appendChild(a);a.click();a.remove();
+    if(fa)alert(`Ojo: ${fa} factura(s) no se pudieron descargar de StelOrder. Van apuntadas en _FALTAN.txt dentro del ZIP.`);}
+  catch(e){alert('No se pudo: '+e.message);}finally{b.disabled=false;b.textContent=t;}}
 async function excel(b){const t=b.textContent;b.disabled=true;b.textContent='Preparando…';
   try{const r=await fetch('/api/trimestre/excel?q='+document.getElementById('q').value,{headers:H});if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.error||'HTTP '+r.status);}
     const u=URL.createObjectURL(await r.blob());const a=document.createElement('a');a.href=u;a.download='Corp_'+document.getElementById('q').value+'_gestoria.xlsx';document.body.appendChild(a);a.click();a.remove();}

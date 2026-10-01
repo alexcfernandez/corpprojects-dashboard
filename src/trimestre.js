@@ -41,7 +41,7 @@ async function emitidas(R) {
     if (!enRango(o.date, R)) continue;
     const f = porId[id] || {};
     const total = o.total != null ? o.total : (f.totalAmount != null ? r2(f.totalAmount) : null);
-    out.push({ id, numero: o.number || f.number || id, fecha: String(o.date).slice(0, 10), cliente: f.client || '—', total, base: o.base, iva: o.iva, retencion: o.retencion, cobrado: f.paidAmount != null ? r2(f.paidAmount) : null, pdf: !!o.pdfPath });
+    out.push({ id, numero: o.number || f.number || id, fecha: String(o.date).slice(0, 10), cliente: f.client || '—', total, base: o.base, iva: o.iva, retencion: o.retencion, cobrado: f.paidAmount != null ? r2(f.paidAmount) : null, pdf: !!o.pdfPath, _pdfPath: o.pdfPath || null });
   }
   return out.sort((a, b) => a.fecha.localeCompare(b.fecha));
 }
@@ -109,7 +109,7 @@ async function estado(q) {
   const nPend = pen.porRevisar.length + pen.sinContabilidad.length + pen.correosSinAdjunto.length + pen.correosSinRevisar.length + (pen.banco && !pen.banco.cubre ? 1 : 0);
   return {
     ...R, generado: new Date(), resumen, nPendientes: nPend,
-    emitidas: emL, recibidas: recL, pendientes: pen,
+    emitidas: emL.map(({ _pdfPath, ...x }) => x), recibidas: recL, pendientes: pen,
     errores: { emitidas: Array.isArray(em) ? null : em.error, recibidas: Array.isArray(rec) ? null : rec.error },
   };
 }
@@ -141,6 +141,66 @@ async function excel(q) {
   return { buf: XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }), nombre: `Corp_${e.q}_gestoria.xlsx` };
 }
 
+// ── Paquete para la gestoría con el MISMO formato que el 2º trimestre (Drive) ──
+//   1_Facturas_emitidas/07_Julio/2026-FACTURA-FAC00950-Cliente.pdf  (ZIP)
+//   3_Resumen_facturas_emitidas_Q3.xlsx
+const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+const carpetaMes = f => { const m = Number(String(f).slice(5, 7)); return `${String(m).padStart(2, '0')}_${MESES[m - 1]}`; };
+const limpioArchivo = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9.\- ]+/g, '_').replace(/\s+/g, '_').replace(/_+/g, '_').slice(0, 80);
+
+async function resumenEmitidasXlsx(q) {
+  const XLSX = require('xlsx');
+  const R = rango(q || trimestrePorDefecto());
+  const em = (await emitidas(R)).sort((a, b) => a.fecha.localeCompare(b.fecha) || String(a.numero).localeCompare(String(b.numero)));
+  const filas = [
+    [`Facturas emitidas Q${R.n}`], [`CORP PROJECTS HOLDING SL — Facturas emitidas ${R.n}T ${R.y}`], ['CIF B09899253 · para Som Assessors'],
+    ['Referencia', 'Fecha', 'Cliente', 'Base', 'IVA', 'Total', 'Cobrado', 'Pendiente'],
+  ];
+  const sub = () => ({ base: 0, iva: 0, total: 0, cobrado: 0, pendiente: 0 });
+  let mesActual = null, s = sub(); const T = sub();
+  const cerrarMes = () => { if (mesActual) filas.push(['', '', `Subtotal ${MESES[Number(mesActual) - 1].toUpperCase()}`, r2(s.base), r2(s.iva), r2(s.total), r2(s.cobrado), r2(s.pendiente)]); };
+  for (const f of em) {
+    const m = f.fecha.slice(5, 7);
+    if (m !== mesActual) { cerrarMes(); mesActual = m; s = sub(); }
+    const pend = f.total != null && f.cobrado != null ? r2(f.total - f.cobrado) : null;
+    filas.push([f.numero, f.fecha, f.cliente, f.base, f.iva, f.total, f.cobrado, pend]);
+    for (const [k, v] of [['base', f.base], ['iva', f.iva], ['total', f.total], ['cobrado', f.cobrado], ['pendiente', pend]]) { s[k] += Number(v) || 0; T[k] += Number(v) || 0; }
+  }
+  cerrarMes();
+  filas.push(['', '', 'TOTAL TRIMESTRE', r2(T.base), r2(T.iva), r2(T.total), r2(T.cobrado), r2(T.pendiente)]);
+  const ws = XLSX.utils.aoa_to_sheet(filas);
+  for (const addr of Object.keys(ws)) { const c = ws[addr]; if (addr[0] !== '!' && c.t === 'n' && /^[D-H]\d+$/.test(addr)) c.z = '#,##0.00 "€"'; }
+  ws['!cols'] = [{ wch: 12 }, { wch: 11 }, { wch: 44 }, { wch: 13 }, { wch: 12 }, { wch: 13 }, { wch: 13 }, { wch: 13 }];
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, `Emitidas Q${R.n}`);
+  const faltanIva = em.filter(f => f.iva == null).length;
+  return { buf: XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }), nombre: `3_Resumen_facturas_emitidas_Q${R.n}.xlsx`, faltanIva };
+}
+
+// ZIP con los PDF oficiales de StelOrder, en carpetas por mes y con el nombre del 2º trimestre.
+async function zipEmitidas(q) {
+  const R = rango(q || trimestrePorDefecto());
+  const em = await emitidas(R);
+  const archivos = [], fallos = [];
+  const cola = em.slice();
+  async function trabajador() {
+    for (let f = cola.shift(); f; f = cola.shift()) {
+      if (!f._pdfPath) { fallos.push(`${f.numero} (sin PDF en StelOrder)`); continue; }
+      try {
+        const c = new AbortController(); const t = setTimeout(() => c.abort(), 25000);
+        const r = await fetch(f._pdfPath, { signal: c.signal }); clearTimeout(t);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const datos = Buffer.from(await r.arrayBuffer());
+        if (datos.slice(0, 4).toString() !== '%PDF') throw new Error('no es un PDF');
+        archivos.push({ nombre: `1_Facturas_emitidas/${carpetaMes(f.fecha)}/${R.y}-FACTURA-${limpioArchivo(f.numero)}-${limpioArchivo(f.cliente)}.pdf`, datos });
+      } catch (e) { fallos.push(`${f.numero} (${e.message})`); }
+    }
+  }
+  await Promise.all([trabajador(), trabajador(), trabajador()]);
+  if (fallos.length) archivos.push({ nombre: '1_Facturas_emitidas/_FALTAN.txt', datos: Buffer.from('No se pudieron descargar:\n' + fallos.join('\n') + '\n', 'utf8') });
+  archivos.sort((a, b) => a.nombre.localeCompare(b.nombre));
+  return { buf: require('./zip').crearZip(archivos), nombre: `1_Facturas_emitidas_Q${R.n}_${R.y}.zip`, n: archivos.length - (fallos.length ? 1 : 0), fallos };
+}
+
 // Cada mañana: se recalcula y se guarda; los lunes, resumen a oficina si hay pendientes
 // (mientras el trimestre está abierto o en los 20 días después de cerrarse).
 async function revisionDiaria({ forzarAviso = false } = {}) {
@@ -168,4 +228,4 @@ async function revisionDiaria({ forzarAviso = false } = {}) {
   return { q, nPendientes: e.nPendientes };
 }
 
-module.exports = { rango, trimestrePorDefecto, estado, excel, revisionDiaria };
+module.exports = { rango, trimestrePorDefecto, estado, excel, revisionDiaria, resumenEmitidasXlsx, zipEmitidas };
