@@ -322,10 +322,27 @@ async function punteo(q) {
     g.saldo = r2(g.entradas - g.salidas); g.movs.push(fila(f));
   }
   const terceros = Object.values(porEmpresa);
+  // Cuenta corriente con cada empresa desde el principio (todos los trimestres): lo que entró y salió
+  // por su cuenta, para saber quién debe a quién al final.
+  const cuentasEmpresas = [];
+  try {
+    const db = await getDB();
+    const todos = await db.collection('punteoManual').find({ decision: 'tercero' }).sort({ fecha: 1 }).toArray();
+    const acc = {};
+    for (const x of todos) {
+      const k = x.empresa || 'Otra empresa';
+      const g = (acc[k] = acc[k] || { empresa: k, entradas: 0, salidas: 0, saldo: 0, movs: [] });
+      const imp = Number(x.importe) || 0;
+      if (imp > 0) g.entradas = r2(g.entradas + imp); else g.salidas = r2(g.salidas - imp);
+      g.saldo = r2(g.entradas - g.salidas);
+      g.movs.push({ id: String(x._id), fecha: x.fecha, importe: imp, concepto: x.concepto, origen: x.origen || null, persona: x.persona || null, nota: x.nota || null, por: x.por || null, esteTrimestre: !!(x.fecha && x.fecha >= R.from && x.fecha <= R.to) });
+    }
+    cuentasEmpresas.push(...Object.values(acc));
+  } catch (e) { console.warn('[Trimestre] cuentas con empresas:', e.message); }
   const porFacturar = res.filas.filter(x => x.manual && x.manual.decision === 'facturar').map(fila);
   const emitidasPendientes = em.filter(e => e.pendiente != null && e.pendiente > 0.01 && dias2(R.to, e.fecha) <= 400).sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 300)
     .map(e => ({ id: e.id, numero: e.numero, cliente: e.cliente, fecha: e.fecha, total: e.total, pendiente: e.pendiente }));
-  return { ...R, resumen: res.resumen, filas: res.filas, faltan, pendientesPago, extractoHasta, personales, deObra, sinFacturaOk, terceros, porFacturar, emitidasPendientes, recibidasSinPago: sinPago, avisos, hayBanco: movsBanco.length > 0, hayTarjetas: movsTarjeta.length > 0, porOrigen: Object.values(porOrigen) };
+  return { ...R, resumen: res.resumen, filas: res.filas, faltan, pendientesPago, extractoHasta, personales, deObra, sinFacturaOk, terceros, porFacturar, cuentasEmpresas, emitidasPendientes, recibidasSinPago: sinPago, avisos, hayBanco: movsBanco.length > 0, hayTarjetas: movsTarjeta.length > 0, porOrigen: Object.values(porOrigen) };
 }
 
 // Nombre corto del comercio a partir del concepto (para agrupar «facturas a pedir»).
