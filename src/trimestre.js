@@ -253,7 +253,16 @@ async function punteo(q) {
     g.movs.push({ id: f.id, fecha: f.fecha, importe: f.importe, persona: f.persona || null, origen: f.origen || null, concepto: f.concepto, nota: f.nota || null });
   }
   const faltan = Object.values(grupos).sort((a, b) => (a.cobros - b.cobros) || b.importe - a.importe);
-  return { ...R, resumen: res.resumen, filas: res.filas, faltan, recibidasSinPago: sinPago, avisos, hayBanco: movsBanco.length > 0, hayTarjetas: movsTarjeta.length > 0, porOrigen: Object.values(porOrigen) };
+  const fila = f => ({ id: f.id, fecha: f.fecha, importe: f.importe, concepto: f.concepto, origen: f.origen || null, persona: f.persona || null, nota: f.manual && f.manual.nota || null, por: f.manual && f.manual.por || null, obraRef: f.manual && f.manual.obraRef || null });
+  const porPersona = {};
+  for (const f of res.filas.filter(x => x.manual && x.manual.decision === 'personal')) {
+    const k = f.persona || 'Sin asignar';
+    const g = (porPersona[k] = porPersona[k] || { persona: k, total: 0, movs: [] }); g.total = r2(g.total - f.importe); g.movs.push(fila(f));
+  }
+  const personales = Object.values(porPersona).sort((a, b) => b.total - a.total);
+  const deObra = res.filas.filter(x => x.manual && x.manual.decision === 'obra').map(fila);
+  const sinFacturaOk = res.filas.filter(x => x.manual && x.manual.decision === 'sin_factura').map(fila);
+  return { ...R, resumen: res.resumen, filas: res.filas, faltan, personales, deObra, sinFacturaOk, recibidasSinPago: sinPago, avisos, hayBanco: movsBanco.length > 0, hayTarjetas: movsTarjeta.length > 0, porOrigen: Object.values(porOrigen) };
 }
 
 // Nombre corto del comercio a partir del concepto (para agrupar «facturas a pedir»).
@@ -263,7 +272,7 @@ function comercio(concepto) {
 }
 
 // Resolver a mano un movimiento: subir su factura (va a Compras y queda casada) o decir que no lleva.
-async function justificar({ movId, archivo, decision, nota, mov = {}, por }) {
+async function justificar({ movId, archivo, decision, nota, obraId, mov = {}, por }) {
   const db = await getDB();
   if (!movId) throw new Error('Falta el movimiento');
   if (archivo) {
@@ -273,15 +282,32 @@ async function justificar({ movId, archivo, decision, nota, mov = {}, por }) {
     let total = null, proveedor = r.proveedor || null;
     try { const c = await require('./compras').getCompra(r.id); total = c.total != null ? r2(c.total) : null; proveedor = c.proveedor || proveedor; } catch (e) {}
     const cuadra = total == null ? null : Math.abs(total - Math.abs(Number(mov.importe) || 0)) < 0.02;
-    await db.collection('punteoManual').updateOne({ _id: String(movId) }, { $set: { compraId: r.id, proveedor, total, cuadra, decision: null, nota: null, por: por && por.name, at: new Date() } }, { upsert: true });
+    await quitarDeObra(db, movId); // la factura ya cuenta por Compras
+    await db.collection('punteoManual').updateOne({ _id: String(movId) }, { $set: { compraId: r.id, proveedor, total, cuadra, decision: null, nota: null, obraId: null, obraRef: null, por: por && por.name, at: new Date() } }, { upsert: true });
     return { ok: true, compraId: r.id, proveedor, total, cuadra, leida: r.leida };
   }
-  if (!['personal', 'sin_factura'].includes(decision)) throw new Error('Decisión no válida');
-  await db.collection('punteoManual').updateOne({ _id: String(movId) }, { $set: { decision, nota: String(nota || '').slice(0, 200) || null, compraId: null, por: por && por.name, at: new Date() } }, { upsert: true });
-  return { ok: true };
+  if (!['personal', 'sin_factura', 'obra'].includes(decision)) throw new Error('Decisión no válida');
+  const datosMov = { persona: mov.persona || null, concepto: String(mov.concepto || '').slice(0, 200), fecha: mov.fecha || null, importe: Number(mov.importe) || 0, origen: mov.origen || null };
+  const set = { decision, nota: String(nota || '').slice(0, 200) || null, compraId: null, obraId: null, obraRef: null, por: por && por.name, at: new Date(), ...datosMov };
+  await quitarDeObra(db, movId); // si antes estaba en otra obra, se quita de allí
+  if (decision === 'obra') {
+    const { ObjectId } = require('mongodb');
+    const o = obraId && /^[a-f0-9]{24}$/.test(String(obraId)) ? await db.collection('obras').findOne({ _id: new ObjectId(String(obraId)) }, { projection: { reference: 1 } }) : null;
+    if (!o) throw new Error('Elige la obra');
+    set.obraId = String(o._id); set.obraRef = o.reference;
+    // Cuenta como material de la obra (rentabilidad); se quita si se deshace.
+    await db.collection('obras').updateOne({ _id: o._id }, { $set: { updatedAt: new Date() }, $push: { materiales: { id: 'punteo-' + String(movId), concepto: `${comercio(datosMov.concepto)}${set.nota ? ' — ' + set.nota : ''} (tarjeta${datosMov.persona ? ' de ' + datosMov.persona : ''}, ${String(datosMov.fecha || '').split('-').reverse().join('/')})`, importe: r2(Math.abs(datosMov.importe)), fecha: datosMov.fecha, origen: 'punteo', movId: String(movId), sinFactura: true, at: new Date() } } });
+  }
+  await db.collection('punteoManual').updateOne({ _id: String(movId) }, { $set: set }, { upsert: true });
+  return { ok: true, obraRef: set.obraRef };
+}
+async function quitarDeObra(db, movId) {
+  await db.collection('obras').updateMany({ 'materiales.movId': String(movId) }, { $pull: { materiales: { movId: String(movId) } } }).catch(() => {});
 }
 async function deshacerJustificacion(movId) {
-  await (await getDB()).collection('punteoManual').deleteOne({ _id: String(movId) });
+  const db = await getDB();
+  await quitarDeObra(db, movId);
+  await db.collection('punteoManual').deleteOne({ _id: String(movId) });
   return { ok: true };
 }
 
@@ -367,6 +393,7 @@ function textoGestoria(e, p, b) {
     lineas.push(`${n++}. Cargos del banco sin factura localizada: ${sinDoc.length} (${eur(-sinDoc.reduce((s, f) => s + f.importe, 0))}), marcados «SIN FACTURA» en el Excel de movimientos:`);
     Object.entries(grupos).sort((a, b) => b[1].imp - a[1].imp).forEach(([k, g]) => lineas.push(`   - ${k}: ${g.n} (${eur(g.imp)})`));
   }
+  if ((p.personales || []).length) lineas.push(`${n++}. Gastos personales pagados con tarjeta de la empresa (no son gasto de la empresa): ${p.personales.map(g => `${g.persona} ${eur(g.total)}`).join(', ')}. Detalle en la hoja «Gastos personales».`);
   const bonpreu = p.filas.filter(f => f.estado === 'revisar' && /factura por mes/.test(f.nota || ''));
   if (bonpreu.length) lineas.push(`${n++}. Proveedores que facturan una vez al mes y no cuadran con lo pagado con tarjeta (${[...new Set(bonpreu.map(f => f.docs[0] && f.docs[0].tercero))].join(', ')}): la diferencia puede ser gasto personal. Señalado en el Excel.`);
   if (n === 1) lineas.push(`- Nada especial este trimestre.`);
@@ -390,6 +417,8 @@ async function paqueteGestoria(q) {
   const pedir = p.filas.filter(f => f.estado === 'sin_documento' && f.importe < 0).sort((a, b) => String(comercio(a.concepto)).localeCompare(comercio(b.concepto)) || a.fecha.localeCompare(b.fecha))
     .map(f => ({ Comercio: comercio(f.concepto), Fecha: f.fecha, Importe: -f.importe, Quién: f.persona || '', 'Tarjeta / cuenta': f.origen || '', Concepto: f.concepto, Nota: f.nota || '' }));
   XLSX.utils.book_append_sheet(wbMov, XLSX.utils.json_to_sheet(pedir.length ? pedir : [{ Comercio: 'Nada pendiente' }]), 'Facturas a pedir');
+  const pers = p.personales.flatMap(g => g.movs.map(m => ({ Persona: g.persona, Fecha: m.fecha, Concepto: m.concepto, Importe: -m.importe, 'Tarjeta / cuenta': m.origen || '', Nota: m.nota || '', 'Marcado por': m.por || '' })));
+  if (pers.length) XLSX.utils.book_append_sheet(wbMov, XLSX.utils.json_to_sheet(pers), 'Gastos personales');
   const revisar = p.filas.filter(f => f.estado === 'revisar' || f.estado === 'sin_documento').map(f => ({ Fecha: f.fecha, Concepto: f.concepto, Importe: f.importe, Estado: f.estado === 'revisar' ? 'Revisar' : 'Sin factura', Nota: f.nota || '' }));
   XLSX.utils.book_append_sheet(wbMov, XLSX.utils.json_to_sheet(revisar.length ? revisar : [{ Concepto: 'Nada pendiente' }]), 'Para revisar');
   XLSX.utils.book_append_sheet(wbMov, XLSX.utils.json_to_sheet(p.recibidasSinPago.map(r => ({ Ref: r.numero, Proveedor: r.proveedor, 'Nº proveedor': r.refProveedor, Fecha: r.fecha, Total: r.total }))), 'Facturas sin pago en cuenta');

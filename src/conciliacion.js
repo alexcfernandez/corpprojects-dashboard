@@ -100,7 +100,8 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
   for (const f of filas) {
     const a = f.manual; if (!a) continue;
     if (a.compraId) { f.estado = 'punteado'; f.confianza = 'manual'; f.docs = [{ ref: 'Compra subida', tercero: a.proveedor || '', total: a.total, compraId: a.compraId }]; f.nota = a.cuadra === false ? `Factura subida a mano (importe ${a.total} € distinto)` : 'Factura subida a mano'; }
-    else if (a.decision) { f.estado = 'no_requiere'; f.tipo = a.decision === 'personal' ? 'personal' : f.tipo; f.nota = (a.decision === 'personal' ? 'Gasto personal' : 'No lleva factura') + (a.nota ? `: ${a.nota}` : '') + (a.por ? ` (${a.por})` : ''); }
+    else if (a.decision === 'obra') { f.estado = 'punteado'; f.confianza = 'manual'; f.tipo = 'gasto_obra'; f.docs = [{ ref: 'Gasto de obra', tercero: a.obraRef || '' }]; f.nota = `Gasto de la obra «${a.obraRef || ''}» (sin factura${a.nota ? ': ' + a.nota : ''})`; }
+    else if (a.decision) { f.estado = 'no_requiere'; f.tipo = a.decision === 'personal' ? 'personal' : f.tipo; f.nota = (a.decision === 'personal' ? `Gasto personal${f.persona ? ' de ' + f.persona : ''}` : 'No lleva factura') + (a.nota ? `: ${a.nota}` : '') + (a.por ? ` (marcado por ${a.por})` : ''); }
   }
 
   // 1) COBROS con número de factura en el concepto
