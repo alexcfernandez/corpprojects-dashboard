@@ -242,7 +242,11 @@ async function recibidasPunteo(stel) {
       return Math.abs(r.total - c.total) < 0.02 && Math.abs(dias2(r.fecha, c.fecha)) <= 7 && pareceProv(c.proveedor, r.proveedor);
     });
     if (yaEsta) continue;
-    out.push({ id: 'c:' + String(c._id), compraId: String(c._id), numero: c.numero || 'Compra', refProveedor: c.numero || '', proveedor: c.proveedor || '', fecha: c.fecha, total: r2(c.total), base: c.base, iva: c.iva, pendienteStel: null, deCompras: true });
+    if (/corp\s*projects/i.test(c.proveedor || '')) continue;   // factura nuestra que llegó al correo: no es de proveedor
+    // Mismo nombre que en StelOrder («Oliveras» → «OLIVERAS DERIVATS I MATERIALS, SLU») para que el motor
+    // junte sus facturas con las de StelOrder al cuadrar un recibo.
+    const nombreStel = (stel.find(r => pareceProv(c.proveedor, r.proveedor)) || {}).proveedor;
+    out.push({ id: 'c:' + String(c._id), compraId: String(c._id), numero: c.numero || 'Compra', refProveedor: c.numero || '', proveedor: nombreStel || c.proveedor || '', fecha: c.fecha, total: r2(c.total), base: c.base, iva: c.iva, pendienteStel: null, deCompras: true });
   }
   return [...stel, ...out];
 }
