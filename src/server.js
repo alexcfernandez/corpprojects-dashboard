@@ -1836,7 +1836,7 @@ app.get('/api/trimestre/punteo', requireAuthOficina, async (req, res) => {
     const b = t.borrador303(e, p);
     res.json({ q: p.q, label: p.label, hayBanco: p.hayBanco, resumen: p.resumen, b303: b, texto: t.textoGestoria(e, p, b),
       revisar: p.filas.filter(f => f.estado === 'revisar' || f.estado === 'sin_documento').map(f => ({ fecha: f.fecha, concepto: f.concepto, importe: f.importe, tipo: f.tipo, estado: f.estado, nota: f.nota || null })),
-      nSinPago: p.recibidasSinPago.length, hayTarjetas: p.hayTarjetas, porOrigen: p.porOrigen, faltan: p.faltan, personales: p.personales, deObra: p.deObra, sinFacturaOk: p.sinFacturaOk, terceros: p.terceros, porFacturar: p.porFacturar, emitidasPendientes: p.emitidasPendientes, duplicadas: p.avisos.duplicadas.map(d => ({ ref: d.duplicada.numero, igual: d.original.numero, proveedor: d.duplicada.proveedor, total: d.duplicada.total })),
+      nSinPago: p.recibidasSinPago.length, hayTarjetas: p.hayTarjetas, porOrigen: p.porOrigen, faltan: p.faltan, personales: p.personales, deObra: p.deObra, sinFacturaOk: p.sinFacturaOk, terceros: p.terceros, porFacturar: p.porFacturar, emitidasPendientes: p.emitidasPendientes, pendientesPago: p.pendientesPago, extractoHasta: p.extractoHasta, duplicadas: p.avisos.duplicadas.map(d => ({ ref: d.duplicada.numero, igual: d.original.numero, proveedor: d.duplicada.proveedor, total: d.duplicada.total })),
       iva0: p.avisos.iva0.map(r => ({ ref: r.numero, proveedor: r.proveedor, total: r.total })) });
   } catch (err) { res.status(400).json({ error: err.message }); }
 });

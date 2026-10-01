@@ -220,7 +220,7 @@ async function todasEmitidas() {
 }
 async function todasRecibidas() {
   const fp = await require('./stelorder').getPurchaseInvoices();
-  return (fp || []).filter(x => x.date).map(x => ({ id: x.id, numero: x.number, refProveedor: x.extraReference || '', proveedor: x.supplier, fecha: String(x.date).slice(0, 10), total: r2(x.total), base: x.base, iva: x.iva }));
+  return (fp || []).filter(x => x.date).map(x => ({ id: x.id, numero: x.number, refProveedor: x.extraReference || '', proveedor: x.supplier, fecha: String(x.date).slice(0, 10), total: r2(x.total), base: x.base, iva: x.iva, pendienteStel: x.pending != null ? r2(x.pending) : null }));
 }
 async function movimientosBanco(R) {
   const db = await getDB();
@@ -241,7 +241,28 @@ async function punteo(q) {
   } catch (e) {}
   const res = C.conciliar({ movimientos: movs, emitidas: em, recibidas: rec });
   const recTrim = rec.filter(r => enRango(r.fecha, R));
-  const sinPago = recTrim.filter(r => !res.recibidasUsadas.has(r.id) && r.total > 0);
+  let sinPago = recTrim.filter(r => !res.recibidasUsadas.has(r.id) && r.total > 0);
+  // ¿Se pagaron DESPUÉS del trimestre? Se mira en los extractos ya subidos posteriores.
+  const hoyISO = new Date().toISOString().slice(0, 10);
+  const pagadasDespues = {};
+  if (sinPago.length && hoyISO > R.to) {
+    const Rpost = { from: new Date(Date.UTC(Number(R.to.slice(0, 4)), Number(R.to.slice(5, 7)) - 1, Number(R.to.slice(8, 10)) + 1)).toISOString().slice(0, 10), to: hoyISO };
+    const [b2, t2] = await Promise.all([movimientosBanco(Rpost), require('./tarjetas').movimientosPunteo(Rpost).catch(() => [])]);
+    if (b2.length || t2.length) {
+      const res2 = C.conciliar({ movimientos: [...b2, ...t2], emitidas: [], recibidas: sinPago });
+      for (const f of res2.filas) if (f.estado === 'punteado') for (const d of f.docs) pagadasDespues[d.ref] = f.fecha;
+    }
+  }
+  const fechasExtracto = [...movsBanco, ...movsTarjeta].map(m => m.fecha).filter(Boolean).sort();
+  const extractoHasta = fechasExtracto.length ? fechasExtracto[fechasExtracto.length - 1] : null;
+  const provs = {};
+  for (const r of sinPago) {
+    const g = (provs[r.proveedor] = provs[r.proveedor] || { proveedor: r.proveedor, total: 0, n: 0, facturas: [] });
+    const despues = pagadasDespues[r.numero] || null;
+    g.facturas.push({ numero: r.numero, refProveedor: r.refProveedor, fecha: r.fecha, total: r.total, pagadaDespues: despues, pendienteStel: r.pendienteStel });
+    if (!despues) { g.total = r2(g.total + r.total); g.n++; }
+  }
+  const pendientesPago = Object.values(provs).filter(g => g.n > 0 || g.facturas.length).sort((a, b) => b.total - a.total);
   const avisos = C.avisosRecibidas(recTrim);
   const porOrigen = {};
   for (const f of res.filas) { const o = (porOrigen[f.origen] = porOrigen[f.origen] || { origen: f.origen, persona: null, n: 0, punteados: 0, sinDocumento: 0, importeSin: 0 }); o.n++; if (f.estado === 'punteado') o.punteados++; if (f.estado === 'sin_documento' && f.importe < 0) { o.sinDocumento++; o.importeSin = r2(o.importeSin - f.importe); } if (f.persona && f.origen !== 'Cuenta Santander') o.persona = f.persona; }
@@ -274,7 +295,7 @@ async function punteo(q) {
   const porFacturar = res.filas.filter(x => x.manual && x.manual.decision === 'facturar').map(fila);
   const emitidasPendientes = em.filter(e => e.pendiente != null && e.pendiente > 0.01 && dias2(R.to, e.fecha) <= 400).sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 300)
     .map(e => ({ id: e.id, numero: e.numero, cliente: e.cliente, fecha: e.fecha, total: e.total, pendiente: e.pendiente }));
-  return { ...R, resumen: res.resumen, filas: res.filas, faltan, personales, deObra, sinFacturaOk, terceros, porFacturar, emitidasPendientes, recibidasSinPago: sinPago, avisos, hayBanco: movsBanco.length > 0, hayTarjetas: movsTarjeta.length > 0, porOrigen: Object.values(porOrigen) };
+  return { ...R, resumen: res.resumen, filas: res.filas, faltan, pendientesPago, extractoHasta, personales, deObra, sinFacturaOk, terceros, porFacturar, emitidasPendientes, recibidasSinPago: sinPago, avisos, hayBanco: movsBanco.length > 0, hayTarjetas: movsTarjeta.length > 0, porOrigen: Object.values(porOrigen) };
 }
 
 // Nombre corto del comercio a partir del concepto (para agrupar «facturas a pedir»).
