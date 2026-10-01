@@ -138,7 +138,13 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
   // Lo resuelto a mano manda: factura subida desde el punteo, o «es personal / no lleva factura».
   for (const f of filas) {
     const a = f.manual; if (!a) continue;
-    if (a.compraId) { usadasRec.add('c:' + a.compraId); f.estado = 'punteado'; f.confianza = 'manual'; f.docs = [{ ref: 'Compra subida', tercero: a.proveedor || '', total: a.total, compraId: a.compraId }]; f.nota = a.cuadra === false ? `Factura subida a mano (importe ${a.total} € distinto)` : 'Factura subida a mano'; }
+    if (a.compraId) { usadasRec.add('c:' + a.compraId); f.estado = 'punteado'; f.confianza = 'manual'; f.docs = [{ ref: 'Compra subida', tercero: a.proveedor || '', total: a.total, compraId: a.compraId }]; f.nota = a.cuadra === false ? `Factura subida a mano (importe ${a.total} € distinto)` : 'Factura subida a mano'; 
+      // La misma factura suele estar también en StelOrder (llegó por correo / n8n): esa queda pagada con este
+      // pago, para que no salga en «sin pago encontrado». Mismo proveedor, mismo importe y fechas cercanas.
+      const imp = a.total != null ? Math.abs(a.total) : Math.abs(f.importe);
+      const gemela = recibidas.find(r => !String(r.id).startsWith('c:') && !usadasRec.has(r.id) && Math.abs(Math.abs(r.total) - imp) < 0.03 && Math.abs(dias(f.fecha, r.fecha)) <= 60 && nombraA(`${f.concepto} ${a.proveedor || ''}`, r.proveedor));
+      if (gemela) { usadasRec.add(gemela.id); f.docs = [{ ref: gemela.numero, tercero: gemela.proveedor, total: gemela.total, fecha: gemela.fecha, refProveedor: gemela.refProveedor, compraId: a.compraId }]; }
+    }
     else if (a.decision === 'vehiculo') { f.estado = 'punteado'; f.confianza = 'manual'; f.tipo = 'gasto_vehiculo'; f.docs = [{ ref: 'Gasto de vehículo', tercero: a.vehiculoNombre || '' }]; f.nota = `Gasto del vehículo ${a.vehiculoNombre || ''} (${a.categoria || 'otros'}, sin factura)`; }
     else if (a.decision === 'tercero') { f.estado = 'no_requiere'; f.tipo = 'por_cuenta_tercero'; f.nota = `Por cuenta de ${a.empresa || 'otra empresa'}${a.nota ? ': ' + a.nota : ''}`; }
     else if (a.decision === 'facturas' && Array.isArray(a.recibidas)) {
