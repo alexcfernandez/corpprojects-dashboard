@@ -357,7 +357,7 @@ function startScheduler() {
     .catch(e => console.error('[Fichaje] resumen oficina:', e.message)), { timezone: 'Europe/Madrid' });
   // Caché caliente: lo que usa la portada (facturas, pedidos, compras) se refresca solo cada
   // 10 min, así el primero que entra por la mañana no espera a StelOrder.
-  const calentar = async () => { try { const st = require('./stelorder'); await Promise.allSettled([st.getSummary(), st.getMonthlyBilling(6), st.getPurchaseInvoices(), st.getPendingInvoices ? st.getPendingInvoices() : null, require('./stelorder').getWorkEstimates ? require('./stelorder').getWorkEstimates() : null]); } catch (e) {} };
+  const calentar = async () => { try { const st = require('./stelorder'); await Promise.allSettled([st.getSummary(), st.getMonthlyBilling(6), st.getPurchaseInvoices(), st.getPendingInvoices ? st.getPendingInvoices() : null, require('./stelorder').getWorkEstimates ? require('./stelorder').getWorkEstimates() : null]); await require('./trimestre').mapaPagos().catch(() => {}); } catch (e) {} };   // + cruce de pagos para el buscador del cierre
   setTimeout(calentar, 30000);
   cron.schedule('*/10 6-21 * * *', calentar, { timezone: 'Europe/Madrid' });
   // Compras por foto: si a las 18:00 quedan compras sin revisar, WhatsApp + push a oficina.

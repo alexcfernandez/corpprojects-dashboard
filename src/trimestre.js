@@ -371,6 +371,7 @@ const dias2 = (a, b) => Math.round((new Date(a + 'T12:00:00Z') - new Date(b + 'T
 
 // Resolver a mano un movimiento: subir su factura (va a Compras y queda casada) o decir que no lleva.
 async function justificar({ movId, archivo, decision, nota, obraId, mov = {}, por, extra = {} }) {
+  olvidarMapaPagos();
   const db = await getDB();
   if (!movId) throw new Error('Falta el movimiento');
   if (archivo) {
@@ -439,6 +440,7 @@ async function quitarDeObra(db, movId) {
   await db.collection('obras').updateMany({ 'materiales.movId': String(movId) }, { $pull: { materiales: { movId: String(movId) } } }).catch(() => {});
 }
 async function deshacerJustificacion(movId) {
+  olvidarMapaPagos();
   const db = await getDB();
   await quitarDeObra(db, movId);
   await db.collection('punteoManual').deleteOne({ _id: String(movId) });
@@ -602,6 +604,37 @@ async function revisionDiaria({ forzarAviso = false } = {}) {
   return { q, nPendientes: e.nPendientes };
 }
 
+// Mapa de pagos de TODO el histórico: qué movimiento (cuenta, tarjeta, Revolut) paga o cobra cada factura.
+// Se calcula cruzando todos los extractos a la vez; caché de 5 min (se borra al resolver algo a mano).
+let _mapa = null, _mapaAt = 0;
+function olvidarMapaPagos() { _mapa = null; }
+async function mapaPagos() {
+  if (_mapa && Date.now() - _mapaAt < 5 * 60 * 1000) return _mapa;
+  const C = require('./conciliacion');
+  const R = { from: '2000-01-01', to: '2100-12-31' };
+  const [movsBanco, movsTarjeta, em, recStel] = await Promise.all([movimientosBanco(R), require('./tarjetas').movimientosPunteo(R).catch(() => []), todasEmitidas(), todasRecibidas()]);
+  const rec = await recibidasPunteo(recStel).catch(() => recStel);
+  const movs = [...movsBanco, ...movsTarjeta];
+  const db = await getDB();
+  const man = await db.collection('punteoManual').find({}).toArray();
+  const porId = {}; man.forEach(x => { porId[x._id] = x; });
+  movs.forEach(m => { if (porId[m.id]) m.manual = porId[m.id]; });
+  const res = C.conciliar({ movimientos: movs, emitidas: em, recibidas: rec });
+  const porDoc = new Map(), porMov = new Map();
+  for (const f of res.filas) {
+    porMov.set(f.id, { estado: f.estado, nota: f.nota || null, persona: f.persona || null, docs: (f.docs || []).map(d => ({ ref: d.ref, refProveedor: d.refProveedor || null, tercero: d.tercero || null, total: d.total })) });
+    if (f.estado !== 'punteado') continue;
+    const pago = { movId: f.id, fecha: f.fecha, importe: f.importe, origen: f.origen || 'Cuenta Santander', persona: f.persona || null, concepto: f.concepto, nota: f.nota || null, conOtras: (f.docs || []).length > 1 ? f.docs.length - 1 : 0 };
+    for (const d of f.docs || []) for (const k of [d.ref, d.compraId]) {
+      if (!k || k === 'Compra subida') continue;
+      const l = porDoc.get(String(k)) || []; if (!l.some(x => x.movId === f.id)) l.push(pago); porDoc.set(String(k), l);
+    }
+  }
+  _mapa = { porDoc, porMov, desde: movs.map(m => m.fecha).filter(Boolean).sort()[0] || null };
+  _mapaAt = Date.now();
+  return _mapa;
+}
+
 // Buscador del cierre: todo lo que hay de un proveedor, cliente o persona (o de un importe), en cualquier fecha.
 // Movimientos de banco y tarjetas + facturas recibidas (StelOrder y Compras) + facturas emitidas.
 async function buscar(texto) {
@@ -612,7 +645,9 @@ async function buscar(texto) {
   // «163,71» / «163.71» → busca también por importe (±1 céntimo)
   const imp = /^-?\d{1,3}(\.\d{3})*(,\d{1,2})?$|^-?\d+([.,]\d{1,2})?$/.test(t) ? Math.abs(Number(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t)) : null;
   const casa = (txt, importe) => (imp != null && Math.abs(Math.abs(Number(importe) || 0) - imp) < 0.015) || palabras.every(w => n(txt).includes(w));
-  const rx = palabras.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  // Sin acentos: «ruben» encuentra «Rubén» en el concepto del banco.
+  const AC = { a: '[aàáâä]', e: '[eèéêë]', i: '[iìíîï]', o: '[oòóôö]', u: '[uùúûü]', n: '[nñ]', c: '[cç]' };
+  const rx = palabras.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/[aeiounc]/g, ch => AC[ch] || ch)).join('|');
   const db = await getDB();
   const filtroMov = imp != null ? { $or: [{ importe: imp }, { importe: -imp }] } : { concepto: { $regex: rx, $options: 'i' } };
   const [bm, tm, rec, em, cs] = await Promise.all([
@@ -637,12 +672,16 @@ async function buscar(texto) {
   cs.forEach(c => { if (citada(c.numero)) nombres.add(n(c.proveedor)); });
   const deNombre = prov => nombres.has(n(prov));
   const casaDoc = (txt, importe, prov, ...nums) => casa(txt, importe) || deNombre(prov) || nums.some(citada);
+  // Cómo se pagó / cobró cada cosa (cruce de TODO el histórico, no solo del trimestre).
+  const M = await mapaPagos().catch(e => { console.warn('[Trimestre] mapa de pagos:', e.message); return null; });
+  const pagosDe = (...claves) => { if (!M) return null; for (const k of claves) if (k && M.porDoc.has(String(k))) return M.porDoc.get(String(k)); return []; };
+  movimientos.forEach(m => { const f = M && M.porMov.get(m.id); if (f) { m.estado = f.estado; m.docs = f.docs; m.nota = f.nota || null; m.persona = f.persona || null; } });
   return {
     texto: t, importe: imp, movimientos, relacionados: [...nombres].filter(x => !palabras.every(w => x.includes(w))),
-    recibidas: rec.filter(r => casaDoc(`${r.proveedor} ${r.numero} ${r.refProveedor}`, r.total, r.proveedor, r.refProveedor, r.numero)).sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 60),
-    compras: cs.filter(c => casaDoc(`${c.proveedor} ${c.numero} ${c.obraRef || ''}`, c.total, c.proveedor, c.numero)).slice(0, 40).map(c => ({ id: String(c._id), proveedor: c.proveedor, numero: c.numero, fecha: c.fecha || (c.createdAt && c.createdAt.toISOString().slice(0, 10)), total: c.total, tipo: c.tipo, estado: c.estado, obraRef: c.obraRef || null, destino: c.destino })),
-    emitidas: em.filter(e => casa(`${e.cliente} ${e.numero}`, e.total)).sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 40).map(e => ({ id: e.id, numero: e.numero, cliente: e.cliente, fecha: e.fecha, total: e.total, pendiente: e.pendiente })),
+    recibidas: rec.filter(r => casaDoc(`${r.proveedor} ${r.numero} ${r.refProveedor}`, r.total, r.proveedor, r.refProveedor, r.numero)).sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 60).map(r => ({ ...r, pagos: pagosDe(r.numero) })),
+    compras: cs.filter(c => casaDoc(`${c.proveedor} ${c.numero} ${c.obraRef || ''}`, c.total, c.proveedor, c.numero)).slice(0, 40).map(c => ({ id: String(c._id), proveedor: c.proveedor, numero: c.numero, fecha: c.fecha || (c.createdAt && c.createdAt.toISOString().slice(0, 10)), total: c.total, tipo: c.tipo, estado: c.estado, obraRef: c.obraRef || null, destino: c.destino, pagos: pagosDe(String(c._id), c.numero) })),
+    emitidas: em.filter(e => casa(`${e.cliente} ${e.numero}`, e.total)).sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 40).map(e => ({ id: e.id, numero: e.numero, cliente: e.cliente, fecha: e.fecha, total: e.total, pendiente: e.pendiente, pagos: pagosDe(e.numero) })),
   };
 }
 
-module.exports = { rango, trimestrePorDefecto, estado, excel, revisionDiaria, resumenEmitidasXlsx, zipEmitidas, punteo, paqueteGestoria, borrador303, textoGestoria, justificar, deshacerJustificacion, comercio, confirmarDesdePunteo, buscar, recibidasPunteo };
+module.exports = { rango, trimestrePorDefecto, estado, excel, revisionDiaria, resumenEmitidasXlsx, zipEmitidas, punteo, paqueteGestoria, borrador303, textoGestoria, justificar, deshacerJustificacion, comercio, confirmarDesdePunteo, buscar, recibidasPunteo, mapaPagos };

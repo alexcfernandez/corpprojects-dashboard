@@ -14,7 +14,15 @@
 //   revisar       → hay que mirarlo (efectivo, préstamo, varias facturas posibles…)
 //   sin_documento → pago o cobro sin factura encontrada
 
-const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+// norm y clavesTercero se llaman millones de veces con los mismos textos al cruzar todo el histórico:
+// se recuerdan (caché acotada).
+const _normC = new Map();
+const norm = s => {
+  const k = String(s || '');
+  let v = _normC.get(k);
+  if (v === undefined) { v = k.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); if (_normC.size > 50000) _normC.clear(); _normC.set(k, v); }
+  return v;
+};
 const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
 const dias = (a, b) => Math.round((new Date(a + 'T12:00:00Z') - new Date(b + 'T12:00:00Z')) / 86400000);
 const igual = (a, b) => Math.abs(r2(a) - r2(b)) < 0.015;
@@ -36,7 +44,14 @@ const ALIAS = [
   [/digi spain/, ['digi']],
 ];
 const STOP = new Set(['sl', 'slu', 's l', 'sa', 'sau', 'scs', 'sll', 'cb', 'girona', 'gerona', 'grup', 'grupo', 'the', 'del', 'de', 'la', 'el', 'els', 'les', 'i', 'y', 'servicios', 'servicio', 'materials', 'materiales']);
+const _clavesC = new Map();
 function clavesTercero(nombre) {
+  const k = String(nombre || '');
+  if (_clavesC.has(k)) return _clavesC.get(k);
+  const v = _clavesTercero(k); if (_clavesC.size > 20000) _clavesC.clear(); _clavesC.set(k, v);
+  return v;
+}
+function _clavesTercero(nombre) {
   const n = norm(nombre);
   const out = new Set();
   for (const [re, ks] of ALIAS) if (re.test(n)) ks.forEach(k => out.add(k));
@@ -189,10 +204,16 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
       parejas.push({ f, r, score: (nombre ? 100 : 0) + 50 - Math.min(Math.abs(d), 50), nombre });
     }
   }
+  const proveedores = [...new Set(recibidas.map(r => r.proveedor).filter(Boolean))];
+  const _otro = new Map();
+  const nombraOtro = (concepto, prov) => { const k = concepto + '|' + prov; if (!_otro.has(k)) _otro.set(k, proveedores.some(x => norm(x) !== norm(prov) && nombraA(concepto, x))); return _otro.get(k); };
   parejas.sort((a, b) => b.score - a.score);
   for (const p of parejas) {
     if (p.f.estado || usadasRec.has(p.r.id)) continue;
-    // Sin el nombre en el concepto, solo si es el único candidato libre con ese importe
+    // Sin el nombre en el concepto, solo si es el único candidato libre con ese importe… y nunca si la
+    // concepto nombra a OTRO proveedor conocido (pago a Rubén Esteban casaba con Davemar por el importe).
+    // Un nombre desconocido sí vale: «Recibo Gerard Codina» es el coworking Cossi.
+    if (!p.nombre && /a favor de|transferencia|recibo /i.test(p.f.concepto) && nombraOtro(p.f.concepto, p.r.proveedor)) continue;   // (en compras con tarjeta el pueblo confunde)
     if (!p.nombre) {
       const otros = parejas.filter(q => q.f === p.f && q.r.id !== p.r.id && !usadasRec.has(q.r.id));
       if (otros.length) continue;

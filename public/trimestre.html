@@ -224,25 +224,34 @@ async function buscarAhora(){
   const tit=(t,n)=>`<div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin:12px 0 4px">${t} (${n})</div>`;
   const enTrim=f=>f>=_RANGO.from&&f<=_RANGO.to;
   const estadoMov=m=>{const f=_FILAS[m.id];
-    if(!f)return `<span style="color:var(--text3);font-size:12px">${enTrim(m.fecha)?'':'otro trimestre'}</span>`;
+    if(!f){ // otro trimestre: el estado viene del cruce de todo el histórico
+      if(m.estado==='punteado')return `<span class="ok" style="font-size:12.5px">✓ ${esc((m.docs||[]).map(x=>[x.tercero,x.refProveedor||x.ref].filter(Boolean).join(' ')).join(' + ')||'con factura')}</span> <span style="color:var(--text3);font-size:11.5px">otro trimestre</span>`;
+      if(m.estado==='no_requiere')return `<span style="color:var(--text3);font-size:12.5px">${esc(m.nota||'no necesita factura')} · otro trimestre</span>`;
+      return `<span class="reg" style="font-size:12.5px">sin factura</span> <span style="color:var(--text3);font-size:11.5px">otro trimestre</span>`;}
     if(f.estado==='punteado')return `<span class="ok" style="font-size:12.5px">✓ ${esc((f.docs||[]).map(x=>[x.tercero,x.refProveedor||x.ref].filter(Boolean).join(' ')).join(' + ')||'con factura')}</span>`;
     if(f.estado==='no_requiere')return `<span style="color:var(--text3);font-size:12.5px">${esc(f.nota||'no necesita factura')}</span>`;
     return null;};
   const movs=d.movimientos.map(m=>{const e=estadoMov(m);
     if(e===null)return filaFalta(_FILAS[m.id],_FILAS[m.id].importe>0);
     return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 0;border-bottom:1px dashed var(--border);font-size:13.5px"><span style="width:74px;color:var(--text3)">${esc(m.fecha.split('-').reverse().join('/'))}</span><b style="width:84px;text-align:right;${m.importe>0?'color:var(--green)':''}">${eur(Math.abs(m.importe))}</b><span style="flex:1;min-width:160px;color:var(--text2);font-size:12.5px">${esc(m.concepto)}${m.origen!=='Cuenta Santander'?' · '+esc(m.origen):''}</span>${e}</div>`;}).join('');
-  const docFila=(f,a,b,c,extra)=>`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 0;border-bottom:1px dashed var(--border);font-size:13.5px"><span style="width:74px;color:var(--text3)">${esc(String(f||'').split('-').reverse().join('/'))}</span><b style="width:84px;text-align:right">${eur(a)}</b><span style="flex:1;min-width:160px">${b} <span style="color:var(--text3);font-size:12.5px">${c}</span></span>${extra||''}</div>`;
-  const rec=d.recibidas.map(r=>docFila(r.fecha,r.total,esc(r.proveedor),esc([r.refProveedor,r.numero].filter(Boolean).join(' · ')),r.pendienteStel==null?'':r.pendienteStel>0.01?`<span class="reg" style="font-size:12.5px">pendiente ${eur(r.pendienteStel)}</span>`:'<span class="ok" style="font-size:12.5px">pagada</span>')).join('');
-  const com=d.compras.map(c=>docFila(c.fecha,c.total,esc(c.proveedor||'sin proveedor'),esc([c.numero,c.tipo,c.obraRef?'🏗️ '+c.obraRef:''].filter(Boolean).join(' · ')),`<a href="/compras#${esc(c.id)}" target="_blank" style="font-size:12.5px;color:var(--blue)">${c.estado==='por_revisar'?'por revisar →':'ver →'}</a>`)).join('');
-  const emi=d.emitidas.map(e=>docFila(e.fecha,e.total,esc(e.cliente),esc(e.numero),e.pendiente>0.01?`<span class="reg" style="font-size:12.5px">por cobrar ${eur(e.pendiente)}</span>`:'<span class="ok" style="font-size:12.5px">cobrada</span>')).join('');
+  // Cómo se pagó (o cobró): desplegable con cada movimiento del banco / tarjeta / Revolut que lo salda.
+  const quienPago=p=>p.origen==='Cuenta Santander'?'Cuenta Santander':`${esc(p.origen)}${p.persona?' · tarjeta de '+esc(p.persona):''}`;
+  const detPagos=(pagos,cobro,extraTxt)=>`<div style="margin:2px 0 8px 82px;padding:8px 12px;background:var(--bg3);border-radius:8px;font-size:12.5px;line-height:1.6">${(pagos||[]).length?pagos.map(p=>`<div>${cobro?'💶 Cobrada':'💳 Pagada'} el <b>${esc(p.fecha.split('-').reverse().join('/'))}</b> · ${eur(Math.abs(p.importe))} · ${quienPago(p)}${p.conOtras?` · <span style="color:var(--text3)">en el mismo ${cobro?'cobro':'pago'} van ${p.conOtras} factura${p.conOtras>1?'s':''} más</span>`:''}<br><span style="color:var(--text3)">${esc(p.concepto)}${p.nota?' — '+esc(p.nota):''}</span></div>`).join(''):`<div style="color:var(--text2)">No hay ${cobro?'cobro':'pago'} en la cuenta, las tarjetas ni Revolut que case con esta factura.</div>`}${extraTxt?`<div style="color:var(--text3);margin-top:4px">${extraTxt}</div>`:''}</div>`;
+  const docFila=(f,a,b,c,extra,det)=>`<details style="border-bottom:1px dashed var(--border)"><summary style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 0;font-size:13.5px;cursor:pointer;list-style:none"><span style="width:74px;color:var(--text3)">${esc(String(f||'').split('-').reverse().join('/'))}</span><b style="width:84px;text-align:right">${eur(a)}</b><span style="flex:1;min-width:160px">${b} <span style="color:var(--text3);font-size:12.5px">${c}</span></span>${extra||''}<span style="color:var(--text3);font-size:11px">▾</span></summary>${det||''}</details>`;
+  const estadoRec=(pagos,pendStel)=>(pagos||[]).length?'<span class="ok" style="font-size:12.5px">✓ pagada</span>':pendStel!=null&&pendStel<=0.01?'<span style="color:var(--text3);font-size:12.5px">StelOrder: pagada (no hay pago en las cuentas)</span>':'<span class="reg" style="font-size:12.5px">sin pago encontrado</span>';
+  const rec=d.recibidas.map(r=>docFila(r.fecha,r.total,esc(r.proveedor),esc([r.refProveedor,r.numero].filter(Boolean).join(' · ')),estadoRec(r.pagos,r.pendienteStel),
+    detPagos(r.pagos,false,(r.pagos||[]).length&&r.pendienteStel>0.01?'En StelOrder sigue como pendiente: márcala allí como pagada.':''))).join('');
+  const com=d.compras.map(c=>docFila(c.fecha,c.total,esc(c.proveedor||'sin proveedor'),esc([c.numero,c.tipo,c.obraRef?'🏗️ '+c.obraRef:''].filter(Boolean).join(' · ')),`${estadoRec(c.pagos,null)} <a href="/compras#${esc(c.id)}" target="_blank" onclick="event.stopPropagation()" style="font-size:12.5px;color:var(--blue)">${c.estado==='por_revisar'?'por revisar →':c.estado==='archivo'?'archivo →':'ver →'}</a>`,detPagos(c.pagos,false,''))).join('');
+  const emi=d.emitidas.map(e=>docFila(e.fecha,e.total,'<span style="color:var(--text3);font-size:12px">Cliente</span> '+esc(e.cliente),esc(e.numero),(e.pagos||[]).length?'<span class="ok" style="font-size:12.5px">✓ cobrada</span>':e.pendiente>0.01?`<span class="reg" style="font-size:12.5px">por cobrar ${eur(e.pendiente)}</span>`:'<span style="color:var(--text3);font-size:12.5px">StelOrder: cobrada (no hay cobro en las cuentas)</span>',
+    detPagos(e.pagos,true,''))).join('');
   const nada=!d.movimientos.length&&!d.recibidas.length&&!d.compras.length&&!d.emitidas.length;
   el.innerHTML=`<div style="border:1px solid var(--border2);border-radius:12px;padding:6px 14px 12px;margin-top:8px;background:var(--bg2)">
     ${d.relacionados&&d.relacionados.length?`<div style="font-size:12.5px;color:var(--text2);margin-top:8px">También incluye: <b>${d.relacionados.map(esc).join(', ')}</b> (sus facturas aparecen citadas en estos pagos)</div>`:''}
     ${nada?'<div style="color:var(--text3);padding:10px 0">Nada encontrado.</div>':''}
     ${d.movimientos.length?tit('Pagos y cobros en banco y tarjetas',d.movimientos.length)+movs:''}
-    ${d.recibidas.length?tit('Facturas recibidas en StelOrder',d.recibidas.length)+rec:''}
+    ${d.recibidas.length?tit('Facturas recibidas en StelOrder · lo que paga Corp',d.recibidas.length)+rec:''}
     ${d.compras.length?tit('Documentos en Compras',d.compras.length)+com:''}
-    ${d.emitidas.length?tit('Facturas emitidas',d.emitidas.length)+emi:''}
+    ${d.emitidas.length?tit('Facturas emitidas · lo que cobra Corp a sus clientes',d.emitidas.length)+emi:''}
     <div style="text-align:right;margin-top:8px"><button class="btn" style="padding:5px 10px;font-size:12px" onclick="document.getElementById('buscador').value='';buscarAhora()">Cerrar búsqueda</button></div></div>`;
 }
 // Fila de un movimiento sin factura, con sus botones (en «faltan» y en el buscador).
