@@ -34,7 +34,18 @@ function limpiarWorker(w) { if (!w || !w.id) return null; return { id: String(w.
 async function getDB() { return require('./db').getDB(); }
 const oid = id => { try { return new ObjectId(String(id)); } catch (e) { throw new Error('Compra no encontrada'); } };
 const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\b(s\.?l\.?u?|s\.?a\.?u?|s\.?c\.?p\.?|sl|sa)\b\.?/g, '').replace(/[^a-z0-9ñç]+/g, ' ').trim();
-const n2 = v => { const n = Number(String(v ?? '').replace(/\./g, '').replace(',', '.')); return Number.isFinite(n) ? Math.round(n * 100) / 100 : null; };
+// Importe escrito a mano o devuelto por el formulario: «1.234,56», «1234,56», «399.78» (número JS), «1.234».
+// Antes se quitaban TODOS los puntos y «399.78» se guardaba como 39978.
+// Cantidades (1.250 m³, 0,5 h): el punto y la coma son siempre decimales.
+const nCant = v => { const n = Number(String(v ?? '').trim().replace(',', '.')); return String(v ?? '').trim() && Number.isFinite(n) ? Math.round(n * 1000) / 1000 : null; };
+function n2(v) {
+  let t = String(v ?? '').trim().replace(/\s|€/g, '');
+  if (!t) return null;
+  if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');          // coma decimal: los puntos son miles
+  else if (/^-?\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');      // «1.234» / «12.500»: miles
+  const n = Number(t);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
+}
 const num = v => { const n = Number(v); return Number.isFinite(n) ? Math.round(n * 100) / 100 : null; };
 
 // ── LECTURA CON IA ───────────────────────────────────────────────
@@ -282,17 +293,17 @@ async function editar(id, data, por) {
   if ('numero' in data) set.numero = String(data.numero || '').trim().slice(0, 60) || null;
   if ('fecha' in data) set.fecha = /^\d{4}-\d{2}-\d{2}$/.test(String(data.fecha || '')) ? data.fecha : null;
   for (const k of ['base', 'iva', 'total']) if (k in data) set[k] = n2(data[k]);
-  if ('lineas' in data && Array.isArray(data.lineas)) set.lineas = data.lineas.slice(0, 120).map(l => ({ descripcion: String(l.descripcion || '').trim().slice(0, 200), cantidad: n2(l.cantidad), unidad: String(l.unidad || '').trim().slice(0, 12) || null, precio: n2(l.precio), importe: n2(l.importe), talla: String(l.talla || '').trim().slice(0, 12) || null })).filter(l => l.descripcion);
+  if ('lineas' in data && Array.isArray(data.lineas)) set.lineas = data.lineas.slice(0, 120).map(l => ({ descripcion: String(l.descripcion || '').trim().slice(0, 200), cantidad: nCant(l.cantidad), unidad: String(l.unidad || '').trim().slice(0, 12) || null, precio: n2(l.precio), importe: n2(l.importe), talla: String(l.talla || '').trim().slice(0, 12) || null })).filter(l => l.descripcion);
   if ('albaranesRef' in data) set.albaranesRef = (Array.isArray(data.albaranesRef) ? data.albaranesRef : String(data.albaranesRef || '').split(/[,\s;]+/)).map(x => String(x).trim()).filter(Boolean).slice(0, 60);
   if ('nota' in data) set.nota = String(data.nota || '').trim().slice(0, 300) || null;
   if ('categoria' in data) set.categoria = data.categoria ? String(data.categoria).trim().toLowerCase() : null;
   if ('destino' in data) { if (!DESTINOS.includes(data.destino)) throw new Error('Destino no válido'); set.destino = data.destino; }
   if ('paraWorker' in data) set.paraWorker = limpiarWorker(data.paraWorker);
-  // Vehículo (furgoneta/coche de Llaves y herramientas): sus gastos se ven en /vehiculos.
+  // Vehículo de la flota (/vehiculos): sus gastos se ven en su ficha.
   if ('vehiculoId' in data) {
     set.vehiculoId = null; set.vehiculoNombre = null;
     if (data.vehiculoId && /^[a-f0-9]{24}$/.test(String(data.vehiculoId))) {
-      const v = await db.collection('activos').findOne({ _id: new ObjectId(String(data.vehiculoId)), tipo: 'vehiculo' }, { projection: { nombre: 1, matricula: 1 } });
+      const v = await db.collection('vehiculos').findOne({ _id: new ObjectId(String(data.vehiculoId)) }, { projection: { nombre: 1, matricula: 1 } });
       if (v) { set.vehiculoId = String(v._id); set.vehiculoNombre = v.nombre + (v.matricula ? ` (${v.matricula})` : ''); }
     }
   }
@@ -592,4 +603,4 @@ async function resumenPendientes({ dryRun = false } = {}) {
   return { pendientes: pend.length, enviado: ok > 0 };
 }
 
-module.exports = { TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };
+module.exports = { n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };

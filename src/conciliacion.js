@@ -92,6 +92,45 @@ function combinacion(cands, objetivo, max = 4) {
   return mejor;
 }
 
+// Fecha de factura que cita el concepto del banco («Fecha Factura: 17/08/2026», recibos de Saltoki).
+function fechaCitada(concepto) {
+  const m = String(concepto || '').match(/fecha factura:?\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/i);
+  return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : null;
+}
+// Tramo seguido de facturas (ordenadas por fecha) que sume el objetivo, con tolerancia de céntimos.
+// Se prefiere el que empieza antes (las más viejas se pagan primero).
+// Con 1-2 documentos se toleran 3 céntimos de redondeo; con más, 1 céntimo como mucho.
+const tolDe = n => (n <= 2 ? 0.03 : 0.015);
+function tramo(cands, objetivo) {
+  for (let i = 0; i < cands.length; i++) {
+    let suma = 0;
+    for (let j = i; j < cands.length && j - i < 15; j++) {
+      suma += cands[j].total;
+      if (Math.abs(suma - objetivo) <= Math.max(tolDe(j - i + 1), 0.02)) return cands.slice(i, j + 1);   // tramo seguido: hasta 2 cént. aunque sean muchas
+    }
+  }
+  return null;
+}
+// Cualquier combinación (abonos incluidos) que sume el objetivo: hasta 5 documentos de 14 candidatos como mucho
+// (con más, alguna combinación cuadraría por casualidad).
+// Con poda por lo que aún se puede sumar o restar, y un tope de pasos para no colgarse.
+function combinacionAmplia(cands, objetivo, max = 5) {
+  const tol = 0.03;
+  const l = cands.slice(0, 14);
+  const pos = new Array(l.length + 1).fill(0), neg = new Array(l.length + 1).fill(0);
+  for (let i = l.length - 1; i >= 0; i--) { pos[i] = pos[i + 1] + Math.max(l[i].total, 0); neg[i] = neg[i + 1] + Math.min(l[i].total, 0); }
+  let mejor = null, pasos = 0;
+  (function rec(i, suma, sel) {
+    if (mejor || ++pasos > 300000) return;
+    if (sel.length && Math.abs(suma - objetivo) <= tolDe(sel.length)) { mejor = sel.slice(); return; }
+    if (i >= l.length || sel.length >= max) return;
+    if (suma + pos[i] < objetivo - tol || suma + neg[i] > objetivo + tol) return;
+    sel.push(l[i]); rec(i + 1, suma + l[i].total, sel); sel.pop();
+    rec(i + 1, suma, sel);
+  })(0, 0, []);
+  return mejor;
+}
+
 function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
   const usadasRec = new Set(), usadasEm = new Set();
   const emPorNum = new Map(); emitidas.forEach(e => { const n = numFactura(e.numero); if (n != null) emPorNum.set(n, e); });
@@ -102,6 +141,12 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
     if (a.compraId) { f.estado = 'punteado'; f.confianza = 'manual'; f.docs = [{ ref: 'Compra subida', tercero: a.proveedor || '', total: a.total, compraId: a.compraId }]; f.nota = a.cuadra === false ? `Factura subida a mano (importe ${a.total} € distinto)` : 'Factura subida a mano'; }
     else if (a.decision === 'vehiculo') { f.estado = 'punteado'; f.confianza = 'manual'; f.tipo = 'gasto_vehiculo'; f.docs = [{ ref: 'Gasto de vehículo', tercero: a.vehiculoNombre || '' }]; f.nota = `Gasto del vehículo ${a.vehiculoNombre || ''} (${a.categoria || 'otros'}, sin factura)`; }
     else if (a.decision === 'tercero') { f.estado = 'no_requiere'; f.tipo = 'por_cuenta_tercero'; f.nota = `Por cuenta de ${a.empresa || 'otra empresa'}${a.nota ? ': ' + a.nota : ''}`; }
+    else if (a.decision === 'facturas' && Array.isArray(a.recibidas)) {
+      const dif = r2(-f.importe - (a.total || 0));
+      f.estado = 'punteado'; f.confianza = 'manual'; f.docs = a.recibidas.map(r => ({ ref: r.ref, tercero: r.tercero, total: r.total, fecha: r.fecha, refProveedor: r.refProveedor }));
+      f.nota = `${a.recibidas.length} factura${a.recibidas.length > 1 ? 's' : ''} elegida${a.recibidas.length > 1 ? 's' : ''} a mano` + (Math.abs(dif) >= 0.02 ? ` (faltan ${dif.toFixed(2)} € de facturas)` : '');
+      a.recibidas.forEach(r => usadasRec.add(r.id));
+    }
     else if (a.decision === 'factura') { f.estado = 'punteado'; f.confianza = 'manual'; f.docs = [{ ref: a.facturaNumero, tercero: a.cliente || '', total: a.total }]; f.nota = 'Asignado a mano'; }
     else if (a.decision === 'facturar') { f.estado = 'revisar'; f.tipo = 'falta_emitir'; f.nota = `Falta emitir la factura${a.nota ? ': ' + a.nota : ''}`; }
     else if (a.decision === 'obra') { f.estado = 'punteado'; f.confianza = 'manual'; f.tipo = 'gasto_obra'; f.docs = [{ ref: 'Gasto de obra', tercero: a.obraRef || '' }]; f.nota = `Gasto de la obra «${a.obraRef || ''}» (sin factura${a.nota ? ': ' + a.nota : ''})`; }
@@ -131,6 +176,9 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
       const anticipo = /proforma|a compte|a cuenta|anticipo|bestreta|pagament a compte/.test(norm(f.concepto));
       const ventana = f.tipo === 'pago_tarjeta' ? (d >= -5 && d <= 20) : (d >= (anticipo ? -60 : -10) && d <= 120);
       if (!ventana) continue;
+      // El recibo cita la fecha de su factura («Fecha Factura: 24/08/2026»): no vale otra de otro mes por el mismo importe.
+      const fCit = fechaCitada(f.concepto);
+      if (fCit && !(dias(fCit, r.fecha) >= 0 && dias(fCit, r.fecha) <= 10)) continue;
       const nombre = nombraA(f.concepto, r.proveedor);
       parejas.push({ f, r, score: (nombre ? 100 : 0) + 50 - Math.min(Math.abs(d), 50), nombre });
     }
@@ -204,16 +252,47 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
     facts.forEach(x => usadasRec.add(x.id));
   }
 
-  // 3) PAGOS de varias facturas del mismo proveedor (transferencias o recibos agrupados)
-  for (const f of filas.filter(x => !x.estado && x.importe < 0 && x.tipo !== 'pago_tarjeta')) {
-    const cands = recibidas.filter(r => !usadasRec.has(r.id) && r.total > 0 && nombraA(f.concepto, r.proveedor) && dias(f.fecha, r.fecha) >= -10 && dias(f.fecha, r.fecha) <= 150)
-      .sort((a, b) => b.fecha.localeCompare(a.fecha));
-    const combo = cands.length >= 2 ? combinacion(cands, -f.importe) : null;
-    if (combo && combo.length > 1) {
-      f.estado = 'punteado'; f.confianza = 'media'; f.nota = `Paga ${combo.length} facturas juntas`;
+  // 3) RECIBOS y transferencias que pagan VARIAS facturas del mismo proveedor (remesas: Oliveras cobra el 25
+  //    lo del mes anterior, Saltoki junta albarán + abono…). Cuentan los abonos (facturas en negativo).
+  //    Del recibo más antiguo al más nuevo, para que cada uno se lleve las facturas más viejas; primero un
+  //    tramo seguido de facturas (lo normal en una remesa) y, si no, cualquier combinación. Tolera céntimos.
+  //    Si no cuadra, se deja la cuenta hecha: qué facturas hay pendientes de ese proveedor y cuánto falta.
+  const grupales = filas.filter(x => !x.estado && x.importe < 0 && x.tipo !== 'pago_tarjeta').sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
+  for (const f of grupales) {
+    // Si el recibo cita la fecha de la factura («Fecha Factura: 17/08/2026», Saltoki), solo las de esa semana.
+    const fCit = fechaCitada(f.concepto);
+    // Las que StelOrder ya da por pagadas (pendiente 0) no entran: se pagaron en otro trimestre.
+    const todas = recibidas.filter(r => !usadasRec.has(r.id) && Math.abs(r.total) > 0.005 && !(r.pendienteStel != null && Math.abs(r.pendienteStel) < 0.01) && nombraA(f.concepto, r.proveedor) && dias(f.fecha, r.fecha) >= -7 && dias(f.fecha, r.fecha) <= 150
+      && (!fCit || (dias(fCit, r.fecha) >= 0 && dias(fCit, r.fecha) <= 10)));
+    // Cada proveedor por separado («Sant Narcis» puede nombrar a más de uno): el de más facturas candidatas primero.
+    const porProv = {}; todas.forEach(r => { (porProv[r.proveedor] = porProv[r.proveedor] || []).push(r); });
+    const grupos = Object.values(porProv).sort((a, b) => b.length - a.length).map(g => g.sort((a, b) => String(a.fecha).localeCompare(String(b.fecha))));
+    const cands = grupos[0] || [];
+    if (!cands.length) continue;
+    const objetivo = -f.importe;
+    let combo = null;
+    for (const g of grupos) {
+      // Combinación libre solo entre las 14 más cercanas al recibo (las de los últimos ~2,5 meses).
+      const cerca = g.length <= 14 ? g : g.filter(r => dias(f.fecha, r.fecha) <= 75).slice(-14);
+      combo = tramo(g, objetivo) || combinacionAmplia(cerca, objetivo);
+      if (combo) break;
+    }
+    if (combo && !(combo.length === 1 && igual(combo[0].total, objetivo))) {
+      const suma = r2(combo.reduce((a, r) => a + r.total, 0));
+      const dif = r2(objetivo - suma);
+      f.estado = 'punteado'; f.confianza = 'media';
+      f.nota = (combo.length > 1 ? `Paga ${combo.filter(r => r.total > 0).length} factura${combo.filter(r => r.total > 0).length > 1 ? 's' : ''}${combo.some(r => r.total < 0) ? ' menos ' + combo.filter(r => r.total < 0).length + ' abono' + (combo.filter(r => r.total < 0).length > 1 ? 's' : '') : ''} juntas` : 'Factura') + (Math.abs(dif) >= 0.005 ? ` (diferencia de ${Math.round(Math.abs(dif) * 100)} cént.)` : '');
       f.docs = combo.map(r => ({ ref: r.numero, tercero: r.proveedor, total: r.total, fecha: r.fecha, refProveedor: r.refProveedor }));
       combo.forEach(r => usadasRec.add(r.id));
+      continue;
     }
+    // Sin cuadre: la cuenta con ese proveedor, para elegir a mano o ver cuánto falta por llegar.
+    const antes = cands.filter(r => dias(f.fecha, r.fecha) >= 0);
+    const pendiente = r2(antes.reduce((a, r) => a + r.total, 0));
+    f.candidatas = cands.slice(-30).map(r => ({ id: r.id, ref: r.numero, refProveedor: r.refProveedor, tercero: r.proveedor, total: r.total, fecha: r.fecha }));
+    f.nota = pendiente < objetivo - 0.02
+      ? `De ${cands[0].proveedor} hay ${antes.length} factura${antes.length === 1 ? '' : 's'} sin pagar por ${pendiente.toFixed(2)} €: faltan facturas por ${(objetivo - pendiente).toFixed(2)} €`
+      : `De ${cands[0].proveedor} hay ${antes.length} facturas sin pagar por ${pendiente.toFixed(2)} €, pero ninguna combinación da ${objetivo.toFixed(2)} €`;
   }
 
   // 4) COBROS sin número: misma cantidad que una factura emitida libre, y a poder ser el cliente en el concepto

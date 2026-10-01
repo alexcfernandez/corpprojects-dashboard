@@ -270,9 +270,10 @@ async function punteo(q) {
   const grupos = {};
   for (const f of res.filas.filter(x => x.estado === 'sin_documento' || (x.estado === 'revisar' && x.importe < 0 && x.tipo !== 'efectivo' && x.tipo !== 'prestamo'))) {
     const k = f.importe > 0 ? 'Cobros sin factura identificada' : comercio(f.concepto);
-    const g = (grupos[k] = grupos[k] || { comercio: k, cobros: f.importe > 0, n: 0, importe: 0, movs: [] });
+    const gk = k.toLowerCase();
+    const g = (grupos[gk] = grupos[gk] || { comercio: k, cobros: f.importe > 0, n: 0, importe: 0, movs: [] });
     g.n++; g.importe = r2(g.importe + Math.abs(f.importe));
-    g.movs.push({ id: f.id, fecha: f.fecha, importe: f.importe, persona: f.persona || null, origen: f.origen || null, concepto: f.concepto, nota: f.nota || null });
+    g.movs.push({ id: f.id, fecha: f.fecha, importe: f.importe, persona: f.persona || null, origen: f.origen || null, concepto: f.concepto, nota: f.nota || null, candidatas: f.candidatas || null });
   }
   const faltan = Object.values(grupos).sort((a, b) => (a.cobros - b.cobros) || b.importe - a.importe);
   const fila = f => ({ id: f.id, fecha: f.fecha, importe: f.importe, concepto: f.concepto, origen: f.origen || null, persona: f.persona || null, nota: f.manual && f.manual.nota || null, por: f.manual && f.manual.por || null, obraRef: f.manual && f.manual.obraRef || null });
@@ -300,8 +301,11 @@ async function punteo(q) {
 
 // Nombre corto del comercio a partir del concepto (para agrupar «facturas a pedir»).
 function comercio(concepto) {
-  return String(concepto || '').replace(/^(compra internet en|pago movil en|compra|transaccion contactless|recibo|transferencia( inmediata)? a favor de)\s+/i, '')
-    .replace(/,?\s*(tarj\.?|tarjeta)\b.*$/i, '').replace(/\s*\(.*\)\s*$/, '').replace(/\s+(girona|gerona|salt|barcelona)\b.*$/i, '').trim().slice(0, 40) || '—';
+  // Solo el nombre del comercio o persona: sin «Concepto…», «Nº Recibo…» ni «Ref. Mandato…», que cambian
+  // en cada pago y separaban en grupos distintos los pagos a la misma persona (Rachid, Oliveras…).
+  return String(concepto || '').replace(/^(compra internet en|pago movil en|compra|transaccion contactless|recibo|transferencia( inmediata)? (a favor de|de))\s+/i, '')
+    .replace(/[,.:]?\s+(concepto|n[º°o]\.?\s*recibo|ref\.?\s*mandato)\b.*$/i, '')
+    .replace(/,?\s*(tarj\.?|tarjeta)\b.*$/i, '').replace(/\s*\(.*\)\s*$/, '').replace(/\s+(girona|gerona|salt|barcelona)\b.*$/i, '').trim().slice(0, 40).replace(/[\s,.;:\-]+$/, '') || '—';
 }
 
 const dias2 = (a, b) => Math.round((new Date(a + 'T12:00:00Z') - new Date(b + 'T12:00:00Z')) / 86400000);
@@ -321,16 +325,25 @@ async function justificar({ movId, archivo, decision, nota, obraId, mov = {}, po
     await db.collection('punteoManual').updateOne({ _id: String(movId) }, { $set: { compraId: r.id, proveedor, total, cuadra, decision: null, nota: null, obraId: null, obraRef: null, por: por && por.name, at: new Date() } }, { upsert: true });
     return { ok: true, compraId: r.id, proveedor, total, cuadra, leida: r.leida };
   }
-  if (!['personal', 'sin_factura', 'obra', 'tercero', 'factura', 'facturar', 'vehiculo'].includes(decision)) throw new Error('Decisión no válida');
+  if (!['personal', 'sin_factura', 'obra', 'tercero', 'factura', 'facturas', 'facturar', 'vehiculo'].includes(decision)) throw new Error('Decisión no válida');
   const datosMov = { persona: mov.persona || null, concepto: String(mov.concepto || '').slice(0, 200), fecha: mov.fecha || null, importe: Number(mov.importe) || 0, origen: mov.origen || null };
   const set = { decision, nota: String(nota || '').slice(0, 200) || null, compraId: null, obraId: null, obraRef: null, empresa: null, facturaNumero: null, cliente: null, total: null, por: por && por.name, at: new Date(), ...datosMov };
   if (decision === 'tercero') set.empresa = String(extra.empresa || 'JustFly Executive').trim().slice(0, 80);
   if (decision === 'vehiculo') {
     const { ObjectId } = require('mongodb');
-    const v = extra.vehiculoId && /^[a-f0-9]{24}$/.test(String(extra.vehiculoId)) ? await db.collection('activos').findOne({ _id: new ObjectId(String(extra.vehiculoId)), tipo: 'vehiculo' }, { projection: { nombre: 1, matricula: 1 } }) : null;
+    const v = extra.vehiculoId && /^[a-f0-9]{24}$/.test(String(extra.vehiculoId)) ? await db.collection('vehiculos').findOne({ _id: new ObjectId(String(extra.vehiculoId)) }, { projection: { nombre: 1, matricula: 1 } }) : null;
     if (!v) throw new Error('Elige el vehículo');
     set.vehiculoId = String(v._id); set.vehiculoNombre = v.nombre + (v.matricula ? ` (${v.matricula})` : '');
     set.categoria = extra.categoria || require('./vehiculos').sugerirCategoria(datosMov.concepto);
+  }
+  // Recibo que paga varias facturas de proveedor, elegidas a mano en el cierre.
+  if (decision === 'facturas') {
+    let ids = extra.recibidas; try { if (typeof ids === 'string') ids = JSON.parse(ids); } catch (e) { ids = []; }
+    ids = (Array.isArray(ids) ? ids : []).map(String).slice(0, 40);
+    const rec = (await todasRecibidas()).filter(r => ids.includes(String(r.id)));
+    if (!rec.length) throw new Error('Elige al menos una factura');
+    set.recibidas = rec.map(r => ({ id: r.id, ref: r.numero, refProveedor: r.refProveedor, tercero: r.proveedor, total: r.total, fecha: r.fecha }));
+    set.total = r2(rec.reduce((a, r) => a + r.total, 0));
   }
   if (decision === 'factura') {
     const em = (await todasEmitidas()).find(e => String(e.id) === String(extra.facturaId) || e.numero === extra.facturaId);
@@ -530,4 +543,47 @@ async function revisionDiaria({ forzarAviso = false } = {}) {
   return { q, nPendientes: e.nPendientes };
 }
 
-module.exports = { rango, trimestrePorDefecto, estado, excel, revisionDiaria, resumenEmitidasXlsx, zipEmitidas, punteo, paqueteGestoria, borrador303, textoGestoria, justificar, deshacerJustificacion, comercio, confirmarDesdePunteo };
+// Buscador del cierre: todo lo que hay de un proveedor, cliente o persona (o de un importe), en cualquier fecha.
+// Movimientos de banco y tarjetas + facturas recibidas (StelOrder y Compras) + facturas emitidas.
+async function buscar(texto) {
+  const t = String(texto || '').trim();
+  if (t.length < 2) return { texto: t, movimientos: [], recibidas: [], compras: [], emitidas: [] };
+  const n = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const palabras = n(t).split(/\s+/).filter(Boolean);
+  // «163,71» / «163.71» → busca también por importe (±1 céntimo)
+  const imp = /^-?\d{1,3}(\.\d{3})*(,\d{1,2})?$|^-?\d+([.,]\d{1,2})?$/.test(t) ? Math.abs(Number(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t)) : null;
+  const casa = (txt, importe) => (imp != null && Math.abs(Math.abs(Number(importe) || 0) - imp) < 0.015) || palabras.every(w => n(txt).includes(w));
+  const rx = palabras.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  const db = await getDB();
+  const filtroMov = imp != null ? { $or: [{ importe: imp }, { importe: -imp }] } : { concepto: { $regex: rx, $options: 'i' } };
+  const [bm, tm, rec, em, cs] = await Promise.all([
+    db.collection('bancoMovimientos').find(filtroMov).sort({ fechaOperacion: -1 }).limit(300).toArray(),
+    db.collection('tarjetaMovimientos').find(filtroMov).sort({ fecha: -1 }).limit(300).toArray(),
+    todasRecibidas().catch(() => []),
+    todasEmitidas().catch(() => []),
+    db.collection('compras').find({ estado: { $ne: 'descartada' } }).project({ proveedor: 1, numero: 1, fecha: 1, total: 1, tipo: 1, estado: 1, obraRef: 1, destino: 1, origen: 1, createdAt: 1 }).sort({ createdAt: -1 }).limit(2000).toArray(),
+  ]);
+  const movimientos = [
+    ...bm.filter(m => casa(m.concepto, m.importe)).map(m => ({ id: String(m._id), fecha: m.fechaOperacion, importe: m.importe, concepto: m.concepto, origen: 'Cuenta Santander' })),
+    ...tm.filter(m => casa(m.concepto, m.importe) && !/declined|reverted|failed/i.test(m.estado || '')).map(m => ({ id: String(m._id), fecha: m.fecha, importe: m.importe, concepto: m.concepto, origen: m.fuente === 'revolut' ? `Revolut${m.tarjeta ? ' …' + m.tarjeta : ''}` : `Crédito …${m.tarjeta}` })),
+  ].sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 80);
+  // Nombres relacionados: si un pago cita un nº de factura («IN2608-0063»), esa factura entra y su proveedor
+  // también (Rachid factura como «9electric»: buscando «rachid» salen también sus facturas de 9electric).
+  const dig = x => String(x || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+  const refs = new Set();
+  movimientos.forEach(m => (String(m.concepto).match(/[a-z]{0,4}\d[\d\/\-]{4,}\d/gi) || []).forEach(x => { if (dig(x).length >= 6) refs.add(dig(x)); }));
+  const citada = num => { const d = dig(num); return d.length >= 6 && [...refs].some(r => r === d || (Math.min(r.length, d.length) >= 8 && (r.endsWith(d) || d.endsWith(r)))); };
+  const nombres = new Set();
+  rec.forEach(r => { if (citada(r.refProveedor) || citada(r.numero)) nombres.add(n(r.proveedor)); });
+  cs.forEach(c => { if (citada(c.numero)) nombres.add(n(c.proveedor)); });
+  const deNombre = prov => nombres.has(n(prov));
+  const casaDoc = (txt, importe, prov, ...nums) => casa(txt, importe) || deNombre(prov) || nums.some(citada);
+  return {
+    texto: t, importe: imp, movimientos, relacionados: [...nombres].filter(x => !palabras.every(w => x.includes(w))),
+    recibidas: rec.filter(r => casaDoc(`${r.proveedor} ${r.numero} ${r.refProveedor}`, r.total, r.proveedor, r.refProveedor, r.numero)).sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 60),
+    compras: cs.filter(c => casaDoc(`${c.proveedor} ${c.numero} ${c.obraRef || ''}`, c.total, c.proveedor, c.numero)).slice(0, 40).map(c => ({ id: String(c._id), proveedor: c.proveedor, numero: c.numero, fecha: c.fecha || (c.createdAt && c.createdAt.toISOString().slice(0, 10)), total: c.total, tipo: c.tipo, estado: c.estado, obraRef: c.obraRef || null, destino: c.destino })),
+    emitidas: em.filter(e => casa(`${e.cliente} ${e.numero}`, e.total)).sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 40).map(e => ({ id: e.id, numero: e.numero, cliente: e.cliente, fecha: e.fecha, total: e.total, pendiente: e.pendiente })),
+  };
+}
+
+module.exports = { rango, trimestrePorDefecto, estado, excel, revisionDiaria, resumenEmitidasXlsx, zipEmitidas, punteo, paqueteGestoria, borrador303, textoGestoria, justificar, deshacerJustificacion, comercio, confirmarDesdePunteo, buscar };
