@@ -313,7 +313,7 @@ async function justificar({ movId, archivo, decision, nota, obraId, mov = {}, po
   if (archivo) {
     const fecha = String(mov.fecha || '').split('-').reverse().join('/');
     const notaC = `Factura del pago de ${Math.abs(Number(mov.importe) || 0).toFixed(2)} € del ${fecha} en ${comercio(mov.concepto)}${mov.persona ? ` (${mov.persona})` : ''} — subida desde el cierre del trimestre`;
-    const r = await require('./compras').crear({ fotos: [{ data: archivo.buffer, mimetype: archivo.mimetype }], destino: 'obra', origen: 'punteo', nota: notaC.slice(0, 300), subidaPor: por });
+    const r = await require('./compras').crear({ fotos: [{ data: archivo.buffer, mimetype: archivo.mimetype }], destino: 'obra', origen: 'punteo', nota: notaC.slice(0, 300), subidaPor: por, silencioso: por && por.kind === 'admin' });
     let total = null, proveedor = r.proveedor || null;
     try { const c = await require('./compras').getCompra(r.id); total = c.total != null ? r2(c.total) : null; proveedor = c.proveedor || proveedor; } catch (e) {}
     const cuadra = total == null ? null : Math.abs(total - Math.abs(Number(mov.importe) || 0)) < 0.02;
@@ -341,6 +341,19 @@ async function justificar({ movId, archivo, decision, nota, obraId, mov = {}, po
   }
   await db.collection('punteoManual').updateOne({ _id: String(movId) }, { $set: set }, { upsert: true });
   return { ok: true, obraRef: set.obraRef };
+}
+// La factura subida cuadra con el pago: se elige obra o gasto general y queda confirmada (→ StelOrder).
+async function confirmarDesdePunteo(movId, { obraId, categoria }, por) {
+  const db = await getDB();
+  const pm = await db.collection('punteoManual').findOne({ _id: String(movId) });
+  if (!pm || !pm.compraId) throw new Error('Primero sube la factura');
+  const compras = require('./compras');
+  if (obraId) await compras.editar(pm.compraId, { destino: 'obra', obraId }, por);
+  else if (categoria) await compras.editar(pm.compraId, { destino: 'general', categoria, obraId: null }, por);
+  else throw new Error('Elige la obra o la categoría');
+  const c = await compras.revisar(pm.compraId, por);
+  await db.collection('punteoManual').updateOne({ _id: String(movId) }, { $set: { confirmada: true, obraRef: c.obraRef || null, categoria: c.categoria || null } });
+  return { ok: true, obraRef: c.obraRef || null, categoria: c.categoria || null, enviadaStel: !!c.enviadaStel };
 }
 async function quitarDeObra(db, movId) {
   await db.collection('obras').updateMany({ 'materiales.movId': String(movId) }, { $pull: { materiales: { movId: String(movId) } } }).catch(() => {});
@@ -509,4 +522,4 @@ async function revisionDiaria({ forzarAviso = false } = {}) {
   return { q, nPendientes: e.nPendientes };
 }
 
-module.exports = { rango, trimestrePorDefecto, estado, excel, revisionDiaria, resumenEmitidasXlsx, zipEmitidas, punteo, paqueteGestoria, borrador303, textoGestoria, justificar, deshacerJustificacion, comercio };
+module.exports = { rango, trimestrePorDefecto, estado, excel, revisionDiaria, resumenEmitidasXlsx, zipEmitidas, punteo, paqueteGestoria, borrador303, textoGestoria, justificar, deshacerJustificacion, comercio, confirmarDesdePunteo };

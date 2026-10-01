@@ -1862,6 +1862,10 @@ app.post('/api/trimestre/justificar', requireAuthOficina, uploadExtracto.single(
     res.json(await require('./trimestre').justificar({ movId: b.movId, archivo: req.file || null, decision: b.decision, nota: b.nota, obraId: b.obraId, extra: { empresa: b.empresa, facturaId: b.facturaId }, mov, por: { kind: q.kind || 'admin', userId: String(q.userId || 'oficina'), name: q.name || 'Oficina' } }));
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
+app.post('/api/trimestre/justificar/:movId/confirmar', requireAuthOficina, express.json(), async (req, res) => {
+  try { const q = (await _quienPush(req)) || {}; res.json(await require('./trimestre').confirmarDesdePunteo(req.params.movId, req.body || {}, q.name || 'Oficina')); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.delete('/api/trimestre/justificar/:movId', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./trimestre').deshacerJustificacion(req.params.movId)); } catch (err) { res.status(400).json({ error: err.message }); }
 });

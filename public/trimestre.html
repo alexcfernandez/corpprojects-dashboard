@@ -134,13 +134,22 @@ async function cargarTarjetas(){
   catch(e){el.innerHTML='<span class="mal">'+esc(e.message)+'</span>';}}
 async function guardarPersona(inp){try{const r=await fetch('/api/tarjetas/'+inp.dataset.t,{method:'POST',headers:{...H,'Content-Type':'application/json'},body:JSON.stringify({persona:inp.value})});if(!r.ok)throw 0;inp.style.borderColor='var(--green)';}catch(e){inp.style.borderColor='var(--red)';}}
 function movHecho(m,acc){return `<div class="mov" id="mv-${esc(m.id)}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 0;border-bottom:1px dashed var(--border);font-size:13.5px"><span style="width:44px;color:var(--text3)">${dt(m.fecha)}</span><b style="width:84px;text-align:right">${eur(Math.abs(m.importe))}</b><span style="flex:1;min-width:160px;color:var(--text2)">${esc(m.concepto||'')}${m.origen&&m.origen!=='Cuenta Santander'?` · <span style="color:var(--text3)">${esc(m.origen)}</span>`:''}${m.nota?`<br><span style="font-size:12px;color:var(--text3)">${esc(m.nota)}</span>`:''}</span><span class="acc" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${acc}</span></div>`;}
-let _obras=null,_picker=null,_pickerMov=null;
+let _obras=null,_picker=null,_pickerMov=null,_pickerCb=null;
+async function elegirObra(cb){_pickerCb=cb;_pickerMov='__cb';await esDeObra('__cb');}
+const CATS=['material','combustible','herramientas','subcontrata','gestoria','seguros','suministros','alquiler','otros'];
+function pedirDestino(mid,d){
+  marcarHecho(mid,`<span class="ok">✓ ${esc(d.proveedor||'Factura')} · ${eur(d.total)} · cuadra.</span> <span style="color:var(--text2)">¿De qué es?</span> <button class="btn bt" onclick="destinoObra('${esc(mid)}')">🏗️ Obra…</button><select class="btn bt" onchange="destinoGeneral('${esc(mid)}',this.value)"><option value="">Gasto general…</option>${CATS.map(c=>`<option>${c}</option>`).join('')}</select> <a href="/compras#${esc(d.compraId)}" target="_blank" style="color:var(--blue);font-size:12px">ver</a>`);}
+async function confirmarDestino(mid,body){try{const r=await fetch('/api/trimestre/justificar/'+encodeURIComponent(mid)+'/confirmar',{method:'POST',headers:{...H,'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok)throw new Error(d.error||'HTTP '+r.status);
+  marcarHecho(mid,`<span class="ok">✓ Confirmada${d.obraRef?' · 🏗️ '+esc(d.obraRef):d.categoria?' · '+esc(d.categoria):''}${d.enviadaStel?' · enviada a StelOrder':''}</span>`);}catch(e){alert('No se pudo confirmar: '+e.message+'\nPuedes terminarla en Compras.');}}
+function destinoObra(mid){elegirObra(o=>confirmarDestino(mid,{obraId:o.id||o._id}));}
+function destinoGeneral(mid,cat){if(cat)confirmarDestino(mid,{categoria:cat});}
 async function esDeObra(id){
   _pickerMov=id;
   if(!window.CPObra){await new Promise((ok,ko)=>{const sc=document.createElement('script');sc.src='/obra-picker.js?v=2';sc.onload=ok;sc.onerror=ko;document.head.appendChild(sc);});}
   if(!_obras){try{const r=await fetch('/api/obras/selector',{headers:H});_obras=await r.json();}catch(e){alert('No se pudieron cargar las obras');return;}}
   if(!_picker){const c=document.createElement('div');c.style.display='none';document.body.appendChild(c);
-    _picker=CPObra.crear(c,{obras:_obras,titulo:'¿De qué obra es este gasto?',onChange:async o=>{if(!o||!_pickerMov)return;const mid=_pickerMov;_pickerMov=null;
+    _picker=CPObra.crear(c,{obras:_obras,titulo:'¿De qué obra es?',onChange:async o=>{if(!o||!_pickerMov)return;const mid=_pickerMov;_pickerMov=null;
+      if(mid==='__cb'){const cb=_pickerCb;_pickerCb=null;_picker.set('');if(cb)cb(o);return;}
       const m=_MOV[mid];const nota=prompt('¿Qué se compró? (opcional, p. ej. «cubo y productos de limpieza»)','')||'';
       const fd=new FormData();fd.append('movId',mid);fd.append('decision','obra');fd.append('obraId',o.id||o._id);fd.append('nota',nota);fd.append('mov',JSON.stringify(m));
       try{const r=await fetch('/api/trimestre/justificar',{method:'POST',headers:H,body:fd});const dd=await r.json();if(!r.ok)throw new Error(dd.error||'HTTP '+r.status);marcarHecho(mid,`<span class="ok">🏗️ ${esc(dd.obraRef||'')}</span> <a href="#" style="color:var(--blue);font-size:12px" onclick="deshacer(event,'${esc(mid)}')">deshacer</a>`);setTimeout(cargarPunteo,800);}
@@ -166,6 +175,7 @@ async function subirJustif(inp,id){
   const f=inp.files[0];if(!f)return;const m=_MOV[id];const movTxt=JSON.stringify(m);const lab=inp.closest('label');lab.firstChild.textContent='Leyendo…';
   const fd=new FormData();fd.append('file',f);fd.append('movId',m.id);fd.append('mov',movTxt);
   try{const r=await fetch('/api/trimestre/justificar',{method:'POST',headers:H,body:fd});const d=await r.json();if(!r.ok)throw new Error(d.error||'HTTP '+r.status);
+    if(d.cuadra===true){pedirDestino(m.id,d);return;}
     marcarHecho(m.id,d.cuadra===false?`<span class="reg">✓ Subida · ${esc(d.proveedor||'')} ${eur(d.total)}: el importe no coincide, revísala en Compras</span>`:`<span class="ok">✓ Factura subida${d.proveedor?' · '+esc(d.proveedor):''}${d.total!=null?' · '+eur(d.total):''}${d.cuadra?' · cuadra':''}</span> <a href="/compras#${esc(d.compraId)}" target="_blank" style="color:var(--blue);font-size:12px">ver en Compras</a>`);}
   catch(e){alert('No se pudo subir: '+e.message);lab.firstChild.textContent='📷 Subir factura';}}
 async function decidir(b,id,decision){
