@@ -415,6 +415,7 @@ async function justificar({ movId, archivo, decision, nota, obraId, mov = {}, po
     if (!rec.length) throw new Error('Elige al menos una factura');
     set.recibidas = rec.map(r => ({ id: r.id, ref: r.numero, refProveedor: r.refProveedor, tercero: r.proveedor, total: r.total, fecha: r.fecha }));
     set.total = r2(rec.reduce((a, r) => a + r.total, 0));
+    set.parcial = extra.parcial === true || extra.parcial === '1' || extra.parcial === 'true';   // anticipo o resto: otra transferencia paga el resto
   }
   if (decision === 'factura') {
     const em = (await todasEmitidas()).find(e => String(e.id) === String(extra.facturaId) || e.numero === extra.facturaId);
@@ -686,7 +687,7 @@ async function buscar(texto) {
     db.collection('tarjetaMovimientos').find(filtroMov).sort({ fecha: -1 }).limit(300).toArray(),
     todasRecibidas().catch(() => []),
     todasEmitidas().catch(() => []),
-    db.collection('compras').find({ estado: { $ne: 'descartada' } }).project({ proveedor: 1, numero: 1, fecha: 1, total: 1, tipo: 1, estado: 1, obraRef: 1, destino: 1, origen: 1, createdAt: 1 }).sort({ createdAt: -1 }).limit(2000).toArray(),
+    db.collection('compras').find({ estado: { $ne: 'descartada' } }).project({ proveedor: 1, numero: 1, fecha: 1, total: 1, tipo: 1, estado: 1, obraRef: 1, destino: 1, origen: 1, createdAt: 1, duplicadoDe: 1 }).sort({ createdAt: -1 }).limit(2000).toArray(),
   ]);
   const movimientos = [
     ...bm.filter(m => casa(m.concepto, m.importe)).map(m => ({ id: String(m._id), fecha: m.fechaOperacion, importe: m.importe, concepto: m.concepto, origen: 'Cuenta Santander' })),
@@ -702,7 +703,25 @@ async function buscar(texto) {
   rec.forEach(r => { if (citada(r.refProveedor) || citada(r.numero)) nombres.add(n(r.proveedor)); });
   cs.forEach(c => { if (citada(c.numero)) nombres.add(n(c.proveedor)); });
   const deNombre = prov => nombres.has(n(prov));
+  // La misma factura en StelOrder (por su nº de proveedor): sus pagos valen para la compra.
+  const gemelaRec = c => { const d = dig(c.numero); if (d.length < 4) return null; return rec.find(x => dig(x.refProveedor) === d && Math.abs(Math.abs(x.total) - Math.abs(c.total || 0)) < 0.05) || null; };
+  const gemelaStel = c => { const r = gemelaRec(c); return r ? r.numero : null; };
+  // «prefer» (nombre comercial en Compras) trae también a «PREFORMADOS ESPINOSA RUIZ» (razón social en StelOrder).
+  cs.filter(c => casa(`${c.proveedor} ${c.numero}`, c.total)).forEach(c => { const r = gemelaRec(c); if (r) nombres.add(n(r.proveedor)); });
   const casaDoc = (txt, importe, prov, ...nums) => casa(txt, importe) || deNombre(prov) || nums.some(citada);
+  // Segunda pasada: movimientos del banco a nombre de los relacionados (razón social de StelOrder).
+  const extraNombres = [...nombres].filter(x => !palabras.every(w => x.includes(w)));
+  if (extraNombres.length && imp == null) {
+    const claves = extraNombres.map(x => (x.match(/[a-z0-9]{4,}/g) || []).filter(w => !/^(sociedad|girona|limitada)$/.test(w)).slice(0, 2).join('.{0,3}')).filter(Boolean);
+    if (claves.length) {
+      const rx2 = claves.map(k => k.replace(/[aeiounc]/g, ch => AC[ch] || ch)).join('|');
+      const ya = new Set(movimientos.map(m => m.id));
+      const [b2, t2] = await Promise.all([db.collection('bancoMovimientos').find({ concepto: { $regex: rx2, $options: 'i' } }).sort({ fechaOperacion: -1 }).limit(100).toArray(), db.collection('tarjetaMovimientos').find({ concepto: { $regex: rx2, $options: 'i' } }).sort({ fecha: -1 }).limit(100).toArray()]);
+      b2.filter(m => !ya.has(String(m._id))).forEach(m => movimientos.push({ id: String(m._id), fecha: m.fechaOperacion, importe: m.importe, concepto: m.concepto, origen: 'Cuenta Santander' }));
+      t2.filter(m => !ya.has(String(m._id)) && !/declined|reverted|failed/i.test(m.estado || '')).forEach(m => movimientos.push({ id: String(m._id), fecha: m.fecha, importe: m.importe, concepto: m.concepto, origen: m.fuente === 'revolut' ? `Revolut${m.tarjeta ? ' …' + m.tarjeta : ''}` : `Crédito …${m.tarjeta}` }));
+      movimientos.sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+    }
+  }
   // Cómo se pagó / cobró cada cosa (cruce de TODO el histórico, no solo del trimestre).
   const M = await mapaPagos().catch(e => { console.warn('[Trimestre] mapa de pagos:', e.message); return null; });
   const pagosDe = (...claves) => { if (!M) return null; for (const k of claves) if (k && M.porDoc.has(String(k))) return M.porDoc.get(String(k)); return []; };
@@ -710,7 +729,7 @@ async function buscar(texto) {
   return {
     texto: t, importe: imp, movimientos, relacionados: [...nombres].filter(x => !palabras.every(w => x.includes(w))),
     recibidas: rec.filter(r => casaDoc(`${r.proveedor} ${r.numero} ${r.refProveedor}`, r.total, r.proveedor, r.refProveedor, r.numero)).sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 60).map(r => ({ ...r, pagos: pagosDe(r.numero) })),
-    compras: cs.filter(c => casaDoc(`${c.proveedor} ${c.numero} ${c.obraRef || ''}`, c.total, c.proveedor, c.numero)).slice(0, 40).map(c => ({ id: String(c._id), proveedor: c.proveedor, numero: c.numero, fecha: c.fecha || (c.createdAt && c.createdAt.toISOString().slice(0, 10)), total: c.total, tipo: c.tipo, estado: c.estado, obraRef: c.obraRef || null, destino: c.destino, pagos: pagosDe(String(c._id), c.numero) })),
+    compras: cs.filter(c => casaDoc(`${c.proveedor} ${c.numero} ${c.obraRef || ''}`, c.total, c.proveedor, c.numero)).slice(0, 40).map(c => ({ id: String(c._id), proveedor: c.proveedor, numero: c.numero, fecha: c.fecha || (c.createdAt && c.createdAt.toISOString().slice(0, 10)), total: c.total, tipo: c.tipo, estado: c.estado, obraRef: c.obraRef || null, destino: c.destino, duplicada: !!c.duplicadoDe, pagos: pagosDe(String(c._id), c.numero, gemelaStel(c)) })),
     emitidas: em.filter(e => casa(`${e.cliente} ${e.numero}`, e.total)).sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 40).map(e => ({ id: e.id, numero: e.numero, cliente: e.cliente, fecha: e.fecha, total: e.total, pendiente: e.pendiente, pagos: pagosDe(e.numero) })),
   };
 }

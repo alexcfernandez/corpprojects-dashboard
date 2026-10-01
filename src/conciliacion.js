@@ -165,7 +165,8 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
     else if (a.decision === 'facturas' && Array.isArray(a.recibidas)) {
       const dif = r2(-f.importe - (a.total || 0));
       f.estado = 'punteado'; f.confianza = 'manual'; f.docs = a.recibidas.map(r => ({ ref: r.ref, tercero: r.tercero, total: r.total, fecha: r.fecha, refProveedor: r.refProveedor }));
-      f.nota = `${a.recibidas.length} factura${a.recibidas.length > 1 ? 's' : ''} elegida${a.recibidas.length > 1 ? 's' : ''} a mano` + (Math.abs(dif) >= 0.02 ? ` (faltan ${dif.toFixed(2)} € de facturas)` : '');
+      f.nota = a.parcial ? `Pago parcial de ${a.recibidas.map(r => r.refProveedor || r.ref).join(' + ')}${a.nota ? ' — ' + a.nota : ''}`
+        : `${a.recibidas.length} factura${a.recibidas.length > 1 ? 's' : ''} elegida${a.recibidas.length > 1 ? 's' : ''} a mano` + (Math.abs(dif) >= 0.02 ? ` (faltan ${dif.toFixed(2)} € de facturas)` : '');
       a.recibidas.forEach(r => usadasRec.add(r.id));
     }
     else if (a.decision === 'factura') { f.estado = 'punteado'; f.confianza = 'manual'; f.docs = [{ ref: a.facturaNumero, tercero: a.cliente || '', total: a.total }]; f.nota = 'Asignado a mano'; }

@@ -1861,7 +1861,7 @@ app.post('/api/trimestre/justificar', requireAuthOficina, uploadExtracto.single(
   try {
     const b = req.body || {}; const q = (await _quienPush(req)) || {};
     let mov = {}; try { mov = JSON.parse(b.mov || '{}'); } catch (e) {}
-    res.json(await require('./trimestre').justificar({ movId: b.movId, archivo: req.file || null, decision: b.decision, nota: b.nota, obraId: b.obraId, extra: { empresa: b.empresa, facturaId: b.facturaId, vehiculoId: b.vehiculoId, categoria: b.categoria, recibidas: b.recibidas, personas: b.personas }, mov, por: { kind: q.kind || 'admin', userId: String(q.userId || 'oficina'), name: q.name || 'Oficina' } }));
+    res.json(await require('./trimestre').justificar({ movId: b.movId, archivo: req.file || null, decision: b.decision, nota: b.nota, obraId: b.obraId, extra: { empresa: b.empresa, facturaId: b.facturaId, vehiculoId: b.vehiculoId, categoria: b.categoria, recibidas: b.recibidas, personas: b.personas, parcial: b.parcial }, mov, por: { kind: q.kind || 'admin', userId: String(q.userId || 'oficina'), name: q.name || 'Oficina' } }));
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.post('/api/trimestre/justificar/:movId/confirmar', requireAuthOficina, express.json(), async (req, res) => {
