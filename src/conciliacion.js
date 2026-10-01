@@ -219,13 +219,19 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
   // 2c) FACTURA MENSUAL que agrupa varias compras con tarjeta (Bon Preu, Amazon…): la suma de los
   //     pagos a ese proveedor en el periodo de la factura coincide con su total.
   for (const r of recibidas.filter(x => !usadasRec.has(x.id) && x.total > 0)) {
-    const pagos = filas.filter(f => !f.estado && f.importe < 0 && nombraA(f.concepto, r.proveedor) && dias(r.fecha, f.fecha) >= -3 && dias(r.fecha, f.fecha) <= 35);
+    // Cada canal por separado: la factura de Esclat es la gasolina pagada con la app desde la cuenta,
+    // no las compras de súper hechas con una tarjeta de Revolut.
+    const canales = [...new Set(filas.filter(f => !f.estado && f.importe < 0 && nombraA(f.concepto, r.proveedor)).map(f => f.origen || ''))];
+    let grupo = null;
+    for (const canal of canales) {
+    const deCanal = f => (f.origen || '') === canal;
+    const pagos = filas.filter(f => !f.estado && f.importe < 0 && deCanal(f) && nombraA(f.concepto, r.proveedor) && dias(r.fecha, f.fecha) >= -3 && dias(r.fecha, f.fecha) <= 35);
     if (pagos.length < 2) continue;
     const tot = r2(-pagos.reduce((a, f) => a + f.importe, 0));
-    let grupo = igual(tot, r.total) ? pagos : null;
+    grupo = igual(tot, r.total) ? pagos : null;
     if (!grupo) { // pagos del mismo mes natural que la factura, o del mes anterior si la factura es de principios de mes
       for (const mes of [r.fecha.slice(0, 7), new Date(Date.UTC(Number(r.fecha.slice(0, 4)), Number(r.fecha.slice(5, 7)) - 2, 1)).toISOString().slice(0, 7)]) {
-        const g = filas.filter(f => !f.estado && f.importe < 0 && f.fecha.slice(0, 7) === mes && nombraA(f.concepto, r.proveedor));
+        const g = filas.filter(f => !f.estado && f.importe < 0 && deCanal(f) && f.fecha.slice(0, 7) === mes && nombraA(f.concepto, r.proveedor));
         if (g.length >= 2 && igual(-g.reduce((a, f) => a + f.importe, 0), r.total)) { grupo = g; break; }
       }
     }
@@ -233,9 +239,11 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
       const ant = recibidas.filter(x => x.id !== r.id && x.total > 0 && norm(x.proveedor) === norm(r.proveedor) && x.fecha < r.fecha).map(x => x.fecha).sort().pop();
       const desde = ant || new Date(Date.UTC(Number(r.fecha.slice(0, 4)), Number(r.fecha.slice(5, 7)) - 1, Number(r.fecha.slice(8, 10)) - 31)).toISOString().slice(0, 10);
       for (const incluyeDia of [false, true]) {
-        const g = filas.filter(f => !f.estado && f.importe < 0 && nombraA(f.concepto, r.proveedor) && f.fecha > desde && (incluyeDia ? f.fecha <= r.fecha : f.fecha < r.fecha));
+        const g = filas.filter(f => !f.estado && f.importe < 0 && deCanal(f) && nombraA(f.concepto, r.proveedor) && f.fecha > desde && (incluyeDia ? f.fecha <= r.fecha : f.fecha < r.fecha));
         if (g.length >= 2 && igual(-g.reduce((a, f) => a + f.importe, 0), r.total)) { grupo = g; break; }
       }
+    }
+    if (grupo) break;
     }
     if (!grupo) continue;
     for (const f of grupo) { f.estado = 'punteado'; f.confianza = 'media'; f.nota = `Incluida en la factura mensual ${r.refProveedor || r.numero}`; f.docs = [{ ref: r.numero, tercero: r.proveedor, total: r.total, fecha: r.fecha, refProveedor: r.refProveedor }]; }
@@ -248,7 +256,7 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
   for (const f of filas.filter(x => !x.estado && x.tipo === 'pago_tarjeta')) {
     const r = recibidas.find(x => x.total > 0 && nombraA(f.concepto, x.proveedor));
     if (!r) continue;
-    const k = `${norm(r.proveedor)}|${f.fecha.slice(0, 7)}`;
+    const k = `${norm(r.proveedor)}|${f.fecha.slice(0, 7)}|${f.origen || ''}`;
     (porProvMes.get(k) || porProvMes.set(k, { proveedor: r.proveedor, mes: f.fecha.slice(0, 7), pagos: [] }).get(k)).pagos.push(f);
   }
   for (const g of porProvMes.values()) {
@@ -256,6 +264,10 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
     const fin = new Date(Date.UTC(Number(g.mes.slice(0, 4)), Number(g.mes.slice(5, 7)), 5)).toISOString().slice(0, 10);
     const facts = recibidas.filter(x => !usadasRec.has(x.id) && x.total > 0 && norm(x.proveedor) === norm(g.proveedor) && x.fecha >= g.mes + '-01' && x.fecha <= fin);
     if (!facts.length) continue;
+    // Solo quien factura por mes (1-2 facturas): Obramat o Leroy hacen una factura por compra y sus pagos
+    // sueltos no se juntan en un bloque.
+    const delMes = recibidas.filter(x => x.total > 0 && norm(x.proveedor) === norm(g.proveedor) && x.fecha >= g.mes + '-01' && x.fecha <= fin).length;
+    if (facts.length > 2 || delMes > 2) continue;   // contando también las ya casadas
     const pagado = r2(-g.pagos.reduce((a, f) => a + f.importe, 0)), facturado = r2(facts.reduce((a, x) => a + x.total, 0));
     const dif = r2(pagado - facturado);
     for (const f of g.pagos) {
