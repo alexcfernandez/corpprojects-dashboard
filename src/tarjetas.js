@@ -116,7 +116,9 @@ async function guardar(movs, tipo, nombre) {
   await sembrarTarjetas();
   let nuevos = 0, repetidos = 0;
   for (const m of movs) {
-    const r = await db.collection('tarjetaMovimientos').updateOne({ huella: m.huella }, { $setOnInsert: { ...m, importadoEl: new Date(), archivo: nombre || null }, $set: { estado: m.estado } }, { upsert: true });
+    // «estado» va solo en $set (cambia: Autorizado → Liquidado); repetirlo en $setOnInsert da conflicto en Mongo.
+    const { estado, ...resto } = m;
+    const r = await db.collection('tarjetaMovimientos').updateOne({ huella: m.huella }, { $setOnInsert: { ...resto, importadoEl: new Date(), archivo: nombre || null }, $set: { estado: estado == null ? null : estado } }, { upsert: true });
     if (r.upsertedCount) nuevos++; else repetidos++;
   }
   const fechas = movs.map(m => m.fecha).filter(Boolean).sort();
