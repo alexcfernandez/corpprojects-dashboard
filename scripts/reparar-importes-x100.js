@@ -22,9 +22,14 @@ function arreglar(c) {
     // y también cuadren divididos (PREFER: 82989 = 68586 + 14403 → 829,89 = 685,86 + 144,03).
     const enteros = [c.total, c.base, c.iva].every(Number.isInteger) && c.iva !== 0 && c.base !== 0;   // con IVA 0 (intracomunitaria) no
     if (coherente(c.total, c.base, c.iva) && !enteros) return null;
+    // Puede haber más de una lectura coherente (94,38 = 78 + 16,38 y 943,80 = 780 + 163,80: las dos valen).
+    // Decide el importe que se pagó en el banco si se conoce; si no, solo si hay una única lectura.
+    const sols = [];
     for (const T of opciones(c.total)) for (const B of opciones(c.base)) for (const I of opciones(c.iva))
-      if (!(T === c.total && B === c.base && I === c.iva) && coherente(T, B, I)) return { total: T, base: B, iva: I };
-    return null;
+      if (!(T === c.total && B === c.base && I === c.iva) && coherente(T, B, I) && !sols.some(x => x.total === T)) sols.push({ total: T, base: B, iva: I });
+    if (!sols.length) return null;
+    if (c.pagado != null) { const m = sols.find(x => Math.abs(Math.abs(x.total) - Math.abs(c.pagado)) < 0.03); return m || { ambigua: sols.map(x => x.total) }; }
+    return sols.length === 1 ? sols[0] : { ambigua: sols.map(x => x.total) };
   }
   // Sin desglose (avisos de cargo): si el documento lista su propio total como línea, todo va ×100.
   if (Number.isInteger(c.total) && Math.abs(c.total) >= 100 && (c.lineas || []).some(l => l.importe === c.total))
@@ -62,8 +67,13 @@ function lineas(ls, base, total) {
   const db = await getDB();
   const cs = await db.collection('compras').find({ estado: { $ne: 'descartada' }, reparacionX100: { $exists: false } }).project({ fotos: 0 }).toArray();
   for (const c of cs) {
+    // Pista del banco: el pago con el que se casó en el cierre, o la nota «Factura del pago de 943.80 €…».
+    const pm = await db.collection('punteoManual').findOne({ compraId: String(c._id) });
+    const nota = String(c.nota || '').match(/pago de ([\d.]+) €/);
+    c.pagado = pm && pm.total != null ? pm.total : (nota ? Number(nota[1]) : null);
     let nuevo = arreglar(c);
     if (!nuevo) continue;
+    if (nuevo.ambigua) { console.log('?', c.proveedor, c.numero, c.total, `(puede ser ${nuevo.ambigua.join(' o ')} €: revisar a mano con la factura)`); continue; }
     let L;
     if (nuevo.lineasX100) { L = { ok: true, ls: (c.lineas || []).map(l => ({ ...l, importe: Number.isInteger(l.importe) ? r2(l.importe / 100) : l.importe })) }; delete nuevo.lineasX100; }
     else L = lineas(c.lineas, nuevo.base, nuevo.total);
