@@ -100,6 +100,9 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
   for (const f of filas) {
     const a = f.manual; if (!a) continue;
     if (a.compraId) { f.estado = 'punteado'; f.confianza = 'manual'; f.docs = [{ ref: 'Compra subida', tercero: a.proveedor || '', total: a.total, compraId: a.compraId }]; f.nota = a.cuadra === false ? `Factura subida a mano (importe ${a.total} € distinto)` : 'Factura subida a mano'; }
+    else if (a.decision === 'tercero') { f.estado = 'no_requiere'; f.tipo = 'por_cuenta_tercero'; f.nota = `Por cuenta de ${a.empresa || 'otra empresa'}${a.nota ? ': ' + a.nota : ''}`; }
+    else if (a.decision === 'factura') { f.estado = 'punteado'; f.confianza = 'manual'; f.docs = [{ ref: a.facturaNumero, tercero: a.cliente || '', total: a.total }]; f.nota = 'Asignado a mano'; }
+    else if (a.decision === 'facturar') { f.estado = 'revisar'; f.tipo = 'falta_emitir'; f.nota = `Falta emitir la factura${a.nota ? ': ' + a.nota : ''}`; }
     else if (a.decision === 'obra') { f.estado = 'punteado'; f.confianza = 'manual'; f.tipo = 'gasto_obra'; f.docs = [{ ref: 'Gasto de obra', tercero: a.obraRef || '' }]; f.nota = `Gasto de la obra «${a.obraRef || ''}» (sin factura${a.nota ? ': ' + a.nota : ''})`; }
     else if (a.decision) { f.estado = 'no_requiere'; f.tipo = a.decision === 'personal' ? 'personal' : f.tipo; f.nota = (a.decision === 'personal' ? `Gasto personal${f.persona ? ' de ' + f.persona : ''}` : 'No lleva factura') + (a.nota ? `: ${a.nota}` : '') + (a.por ? ` (marcado por ${a.por})` : ''); }
   }
@@ -249,7 +252,8 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
   for (const f of filas) if (!f.estado) {
     f.estado = 'sin_documento';
     const n = norm(f.concepto);
-    if (f.tipo === 'cobro') f.nota = 'Cobro sin factura identificada';
+    if (/airways|aviation|air solutions|aero|jet |flight|aviacion|justfly/.test(n)) f.nota = '¿Es por cuenta de JustFly? (aviación) Márcalo «Otra empresa»';
+    else if (f.tipo === 'cobro') f.nota = 'Cobro sin factura identificada';
     else if (ONLINE.test(n)) f.nota = 'Servicio online: descargar la factura de su web';
     else if (GASOLINA.test(n)) f.nota = 'Gasolina: pedir factura (ticket con CIF) en la gasolinera';
     else if (COMIDA.test(n)) f.nota = 'Comida/dieta: guardar ticket si es de trabajo';

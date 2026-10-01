@@ -214,7 +214,8 @@ async function todasEmitidas() {
   const porId = {}; (facturas || []).forEach(f => { porId[String(f.id)] = f; });
   return Object.entries(mapa || {}).filter(([, o]) => o.date).map(([id, o]) => {
     const f = porId[id] || {};
-    return { id, numero: o.number || f.number || id, fecha: String(o.date).slice(0, 10), cliente: f.client || '—', total: o.total != null ? o.total : (f.totalAmount != null ? r2(f.totalAmount) : 0), base: o.base, iva: o.iva };
+    const total = o.total != null ? o.total : (f.totalAmount != null ? r2(f.totalAmount) : 0);
+    return { id, numero: o.number || f.number || id, fecha: String(o.date).slice(0, 10), cliente: f.client || '—', total, base: o.base, iva: o.iva, pendiente: f.paidAmount != null ? r2(total - f.paidAmount) : null };
   });
 }
 async function todasRecibidas() {
@@ -262,7 +263,18 @@ async function punteo(q) {
   const personales = Object.values(porPersona).sort((a, b) => b.total - a.total);
   const deObra = res.filas.filter(x => x.manual && x.manual.decision === 'obra').map(fila);
   const sinFacturaOk = res.filas.filter(x => x.manual && x.manual.decision === 'sin_factura').map(fila);
-  return { ...R, resumen: res.resumen, filas: res.filas, faltan, personales, deObra, sinFacturaOk, recibidasSinPago: sinPago, avisos, hayBanco: movsBanco.length > 0, hayTarjetas: movsTarjeta.length > 0, porOrigen: Object.values(porOrigen) };
+  const porEmpresa = {};
+  for (const f of res.filas.filter(x => x.manual && x.manual.decision === 'tercero')) {
+    const k = f.manual.empresa || 'Otra empresa';
+    const g = (porEmpresa[k] = porEmpresa[k] || { empresa: k, entradas: 0, salidas: 0, saldo: 0, movs: [] });
+    if (f.importe > 0) g.entradas = r2(g.entradas + f.importe); else g.salidas = r2(g.salidas - f.importe);
+    g.saldo = r2(g.entradas - g.salidas); g.movs.push(fila(f));
+  }
+  const terceros = Object.values(porEmpresa);
+  const porFacturar = res.filas.filter(x => x.manual && x.manual.decision === 'facturar').map(fila);
+  const emitidasPendientes = em.filter(e => e.pendiente != null && e.pendiente > 0.01 && dias2(R.to, e.fecha) <= 400).sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 300)
+    .map(e => ({ id: e.id, numero: e.numero, cliente: e.cliente, fecha: e.fecha, total: e.total, pendiente: e.pendiente }));
+  return { ...R, resumen: res.resumen, filas: res.filas, faltan, personales, deObra, sinFacturaOk, terceros, porFacturar, emitidasPendientes, recibidasSinPago: sinPago, avisos, hayBanco: movsBanco.length > 0, hayTarjetas: movsTarjeta.length > 0, porOrigen: Object.values(porOrigen) };
 }
 
 // Nombre corto del comercio a partir del concepto (para agrupar «facturas a pedir»).
@@ -271,8 +283,10 @@ function comercio(concepto) {
     .replace(/,?\s*(tarj\.?|tarjeta)\b.*$/i, '').replace(/\s*\(.*\)\s*$/, '').replace(/\s+(girona|gerona|salt|barcelona)\b.*$/i, '').trim().slice(0, 40) || '—';
 }
 
+const dias2 = (a, b) => Math.round((new Date(a + 'T12:00:00Z') - new Date(b + 'T12:00:00Z')) / 86400000);
+
 // Resolver a mano un movimiento: subir su factura (va a Compras y queda casada) o decir que no lleva.
-async function justificar({ movId, archivo, decision, nota, obraId, mov = {}, por }) {
+async function justificar({ movId, archivo, decision, nota, obraId, mov = {}, por, extra = {} }) {
   const db = await getDB();
   if (!movId) throw new Error('Falta el movimiento');
   if (archivo) {
@@ -286,9 +300,15 @@ async function justificar({ movId, archivo, decision, nota, obraId, mov = {}, po
     await db.collection('punteoManual').updateOne({ _id: String(movId) }, { $set: { compraId: r.id, proveedor, total, cuadra, decision: null, nota: null, obraId: null, obraRef: null, por: por && por.name, at: new Date() } }, { upsert: true });
     return { ok: true, compraId: r.id, proveedor, total, cuadra, leida: r.leida };
   }
-  if (!['personal', 'sin_factura', 'obra'].includes(decision)) throw new Error('Decisión no válida');
+  if (!['personal', 'sin_factura', 'obra', 'tercero', 'factura', 'facturar'].includes(decision)) throw new Error('Decisión no válida');
   const datosMov = { persona: mov.persona || null, concepto: String(mov.concepto || '').slice(0, 200), fecha: mov.fecha || null, importe: Number(mov.importe) || 0, origen: mov.origen || null };
-  const set = { decision, nota: String(nota || '').slice(0, 200) || null, compraId: null, obraId: null, obraRef: null, por: por && por.name, at: new Date(), ...datosMov };
+  const set = { decision, nota: String(nota || '').slice(0, 200) || null, compraId: null, obraId: null, obraRef: null, empresa: null, facturaNumero: null, cliente: null, total: null, por: por && por.name, at: new Date(), ...datosMov };
+  if (decision === 'tercero') set.empresa = String(extra.empresa || 'JustFly Executive').trim().slice(0, 80);
+  if (decision === 'factura') {
+    const em = (await todasEmitidas()).find(e => String(e.id) === String(extra.facturaId) || e.numero === extra.facturaId);
+    if (!em) throw new Error('Esa factura no está en StelOrder');
+    set.facturaNumero = em.numero; set.cliente = em.cliente; set.total = em.total;
+  }
   await quitarDeObra(db, movId); // si antes estaba en otra obra, se quita de allí
   if (decision === 'obra') {
     const { ObjectId } = require('mongodb');
@@ -393,6 +413,8 @@ function textoGestoria(e, p, b) {
     lineas.push(`${n++}. Cargos del banco sin factura localizada: ${sinDoc.length} (${eur(-sinDoc.reduce((s, f) => s + f.importe, 0))}), marcados «SIN FACTURA» en el Excel de movimientos:`);
     Object.entries(grupos).sort((a, b) => b[1].imp - a[1].imp).forEach(([k, g]) => lineas.push(`   - ${k}: ${g.n} (${eur(g.imp)})`));
   }
+  for (const g of (p.terceros || [])) lineas.push(`${n++}. Movimientos por cuenta de ${g.empresa} (sociedad vinculada) que han pasado por nuestra cuenta: entradas ${eur(g.entradas)}, pagos ${eur(g.salidas)}, saldo ${eur(g.saldo)}. No los he contado como ingreso ni gasto nuestro; dime cómo prefieres documentarlos (cuenta corriente entre sociedades, refacturación…). Detalle en la hoja «Por cuenta de otras empresas».`);
+  if ((p.porFacturar || []).length) lineas.push(`${n++}. Cobros recibidos de los que aún tenemos que emitir factura: ${p.porFacturar.length} (${eur(p.porFacturar.reduce((s, m) => s + m.importe, 0))}). Están en la hoja «Facturas por emitir»; las emito antes de cerrar.`);
   if ((p.personales || []).length) lineas.push(`${n++}. Gastos personales pagados con tarjeta de la empresa (no son gasto de la empresa): ${p.personales.map(g => `${g.persona} ${eur(g.total)}`).join(', ')}. Detalle en la hoja «Gastos personales».`);
   const bonpreu = p.filas.filter(f => f.estado === 'revisar' && /factura por mes/.test(f.nota || ''));
   if (bonpreu.length) lineas.push(`${n++}. Proveedores que facturan una vez al mes y no cuadran con lo pagado con tarjeta (${[...new Set(bonpreu.map(f => f.docs[0] && f.docs[0].tercero))].join(', ')}): la diferencia puede ser gasto personal. Señalado en el Excel.`);
@@ -419,6 +441,9 @@ async function paqueteGestoria(q) {
   XLSX.utils.book_append_sheet(wbMov, XLSX.utils.json_to_sheet(pedir.length ? pedir : [{ Comercio: 'Nada pendiente' }]), 'Facturas a pedir');
   const pers = p.personales.flatMap(g => g.movs.map(m => ({ Persona: g.persona, Fecha: m.fecha, Concepto: m.concepto, Importe: -m.importe, 'Tarjeta / cuenta': m.origen || '', Nota: m.nota || '', 'Marcado por': m.por || '' })));
   if (pers.length) XLSX.utils.book_append_sheet(wbMov, XLSX.utils.json_to_sheet(pers), 'Gastos personales');
+  const terc = p.terceros.flatMap(g => g.movs.map(m => ({ Empresa: g.empresa, Fecha: m.fecha, Concepto: m.concepto, Entrada: m.importe > 0 ? m.importe : null, Salida: m.importe < 0 ? -m.importe : null, Nota: m.nota || '' })));
+  if (terc.length) XLSX.utils.book_append_sheet(wbMov, XLSX.utils.json_to_sheet(terc), 'Por cuenta de otras empresas');
+  if (p.porFacturar.length) XLSX.utils.book_append_sheet(wbMov, XLSX.utils.json_to_sheet(p.porFacturar.map(m => ({ Fecha: m.fecha, Concepto: m.concepto, Importe: m.importe, 'A quién / obra': m.nota || '' }))), 'Facturas por emitir');
   const revisar = p.filas.filter(f => f.estado === 'revisar' || f.estado === 'sin_documento').map(f => ({ Fecha: f.fecha, Concepto: f.concepto, Importe: f.importe, Estado: f.estado === 'revisar' ? 'Revisar' : 'Sin factura', Nota: f.nota || '' }));
   XLSX.utils.book_append_sheet(wbMov, XLSX.utils.json_to_sheet(revisar.length ? revisar : [{ Concepto: 'Nada pendiente' }]), 'Para revisar');
   XLSX.utils.book_append_sheet(wbMov, XLSX.utils.json_to_sheet(p.recibidasSinPago.map(r => ({ Ref: r.numero, Proveedor: r.proveedor, 'Nº proveedor': r.refProveedor, Fecha: r.fecha, Total: r.total }))), 'Facturas sin pago en cuenta');
