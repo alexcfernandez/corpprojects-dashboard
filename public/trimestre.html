@@ -251,9 +251,23 @@ function filaFalta(m,cobros){_MOV[m.id]=m;const g={cobros};return `<div class="m
         <span style="flex:1;min-width:160px;color:var(--text2)">${esc(m.persona||'')}${m.origen&&m.origen!=='Cuenta Santander'?` · ${esc(m.origen)}`:''}<br><span style="font-size:12px;color:var(--text3)">${esc(m.concepto||'')}${m.nota?' — '+esc(m.nota):''}</span></span>
         <span class="acc" style="display:flex;gap:6px;flex-wrap:wrap">${g.cobros?`<button class="btn bt" onclick="elegirFactura('${esc(m.id)}')">🧾 Es de la factura…</button><button class="btn bt" onclick="hayQueFacturar('${esc(m.id)}')">✍️ Hay que facturar</button><button class="btn bt" onclick="otraEmpresa('${esc(m.id)}')">🔁 Otra empresa</button><button class="btn bt" onclick="decidir(this,'${esc(m.id)}','sin_factura')">No es una venta</button>`:`${(m.candidatas||[]).length?`<button class="btn bt" style="border-color:var(--blue);color:var(--blue)" onclick="elegirFacturas('${esc(m.id)}')">🧾 Elegir sus facturas (${m.candidatas.length})</button>`:''}<label class="btn bt">📷 Subir factura<input type="file" accept="image/*,application/pdf" style="display:none" onchange="subirJustif(this,'${esc(m.id)}')"></label><button class="btn bt" onclick="esDeObra('${esc(m.id)}')">🏗️ Es de obra</button><button class="btn bt" onclick="sinFacturaVehiculo('${esc(m.id)}')">🚐 Vehículo</button><button class="btn bt" onclick="decidir(this,'${esc(m.id)}','personal')">Es personal</button><button class="btn bt" onclick="otraEmpresa('${esc(m.id)}')">🔁 Otra empresa</button><button class="btn bt" onclick="decidir(this,'${esc(m.id)}','sin_factura')">No lleva factura</button>`}</span>
       </div>`;}
+// Nombre estable de un desplegable (sin los importes ni contadores, que cambian al resolver).
+function claveDet(dt){const su=dt.querySelector('summary');if(!su)return '';const sp=su.querySelector('span');return ((sp&&sp.style.flex)?sp.textContent:su.textContent).replace(/\(.*?\)/g,'').replace(/[\d.,]+\s*€?/g,'').trim();}
 async function cargarPunteo(){
-  const el=document.getElementById('punteo');el.innerHTML='<div class="card"><h3>Punteo del banco</h3><div style="color:var(--text3)">Cruzando cada movimiento con su factura…</div></div>';
-  let d;try{const r=await fetch('/api/trimestre/punteo?q='+document.getElementById('q').value,{headers:H});d=await r.json();if(!r.ok)throw new Error(d.error||'HTTP '+r.status);}catch(e){el.innerHTML='<div class="card mal">'+esc(e.message)+'</div>';return;}
+  const el=document.getElementById('punteo');
+  // Al recargar tras resolver algo: sin borrar la pantalla, y luego se reabren los grupos y se vuelve al mismo sitio.
+  const refresco=!!document.getElementById('buscador');
+  const abiertos=new Set([...el.querySelectorAll('details[open]')].map(claveDet));const y=window.scrollY;
+  const qBus=refresco?document.getElementById('buscador').value:'';
+  if(!refresco)el.innerHTML='<div class="card"><h3>Punteo del banco</h3><div style="color:var(--text3)">Cruzando cada movimiento con su factura…</div></div>';
+  let d;try{const r=await fetch('/api/trimestre/punteo?q='+document.getElementById('q').value,{headers:H});d=await r.json();if(!r.ok)throw new Error(d.error||'HTTP '+r.status);}catch(e){if(refresco){alert('No se pudo actualizar: '+e.message);return;}el.innerHTML='<div class="card mal">'+esc(e.message)+'</div>';return;}
+  try{pintarPunteo(el,d);}finally{
+    if(refresco){el.querySelectorAll('details').forEach(dt=>{if(abiertos.has(claveDet(dt)))dt.open=true;});
+      if(qBus){const b=document.getElementById('buscador');b.value=qBus;buscarAhora();}
+      window.scrollTo(0,y);}
+  }
+}
+function pintarPunteo(el,d){
   if(!d.hayBanco&&!d.hayTarjetas){el.innerHTML='<div class="card"><h3>Punteo del banco</h3><div class="reg">No hay movimientos de este trimestre. Sube arriba los extractos (cuenta de Santander, Revolut y tarjetas de crédito).</div></div>';return;}
   const R=d.resumen,B=d.b303;_emPend=d.emitidasPendientes||[];_FILAS={};(d.filas||[]).forEach(f=>{_FILAS[f.id]=f;});_RANGO={from:d.from,to:d.to};
   el.innerHTML=`<div class="card"><h3>Punteo del banco · cada movimiento con su factura</h3>
@@ -281,6 +295,6 @@ async function excel(b){const t=b.textContent;b.disabled=true;b.textContent='Pre
     const u=URL.createObjectURL(await r.blob());const a=document.createElement('a');a.href=u;a.download='Corp_'+document.getElementById('q').value+'_gestoria.xlsx';document.body.appendChild(a);a.click();a.remove();}
   catch(e){alert('No se pudo generar: '+e.message);}finally{b.disabled=false;b.textContent=t;}}
 cargar();cargarPunteo();cargarTarjetas();
-document.getElementById('q').addEventListener('change',cargarPunteo);
+document.getElementById('q').addEventListener('change',()=>{document.getElementById('punteo').innerHTML='';cargarPunteo();});
 </script>
 </body></html>
