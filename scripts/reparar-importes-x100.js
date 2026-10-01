@@ -18,9 +18,12 @@ function arreglar(c) {
   if (![c.total, c.base, c.iva].some(v => Number.isInteger(v) && Math.abs(v) >= 10)) return null;
   const conDesglose = c.base != null && c.iva != null && !(c.base === 0 && c.iva === 0);
   if (conDesglose) {
-    if (coherente(c.total, c.base, c.iva)) return null;             // tal cual ya cuadra: no está afectada
+    // Tal cual ya cuadra → no está afectada, salvo que los tres sean enteros (una factura real casi nunca)
+    // y también cuadren divididos (PREFER: 82989 = 68586 + 14403 → 829,89 = 685,86 + 144,03).
+    const enteros = [c.total, c.base, c.iva].every(Number.isInteger) && c.iva !== 0 && c.base !== 0;   // con IVA 0 (intracomunitaria) no
+    if (coherente(c.total, c.base, c.iva) && !enteros) return null;
     for (const T of opciones(c.total)) for (const B of opciones(c.base)) for (const I of opciones(c.iva))
-      if (coherente(T, B, I)) return { total: T, base: B, iva: I };
+      if (!(T === c.total && B === c.base && I === c.iva) && coherente(T, B, I)) return { total: T, base: B, iva: I };
     return null;
   }
   // Sin desglose (avisos de cargo): si el documento lista su propio total como línea, todo va ×100.

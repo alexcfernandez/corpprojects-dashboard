@@ -421,15 +421,10 @@ async function procesarEmail(gmail, messageId) {
     // ese correo ya sigue su camino de siempre. Desactivable con EMAIL_COMPRAS=0.
     if (clasificacion.categoria === 'FACTURA_PROVEEDOR' && process.env.EMAIL_COMPRAS !== '0') {
       try {
-        const docs = adjuntos.filter(a => /pdf$/i.test(a.mimeType || '') || /^image\//i.test(a.mimeType || '') || /\.(pdf|jpe?g|png)$/i.test(a.filename || '')).slice(0, 4);
-        if (docs.length) {
-          const fotos = [];
-          for (const a of docs) { const buf = await getAttachment(messageId, a.attachmentId); if (buf && buf.length && buf.length < 12 * 1024 * 1024) fotos.push({ data: buf, mimetype: /pdf/i.test(a.mimeType || '') || /\.pdf$/i.test(a.filename || '') ? 'application/pdf' : (a.mimeType || 'image/jpeg') }); }
-          if (fotos.length) {
-            const r = await require('./compras').crear({ fotos, destino: 'obra', origen: 'email', gmailId: messageId, email: { de, asunto, fecha }, nota: `Correo: ${asunto}`.slice(0, 300), subidaPor: { kind: 'email', userId: 'email', name: (remitente && remitente.nombre) || de.replace(/<.*>/, '').trim() || 'correo' } });
-            await db.collection('emails').updateOne({ gmailId: messageId }, { $set: { compraId: r.id } });
-            console.log(`[Email] → compra ${r.id} en la cola (${r.tipoTxt}${r.proveedor ? ' ' + r.proveedor : ''})`);
-          }
+        const ids = await comprasDesdeCorreo(messageId, adjuntos, { de, asunto, fecha });
+        if (ids.length) {
+          await db.collection('emails').updateOne({ gmailId: messageId }, { $set: { compraId: ids[0], compraIds: ids } });
+          console.log(`[Email] → ${ids.length} compra(s) en la cola`);
         }
       } catch (e) { console.warn('[Email] compra desde correo:', e.message); }
     }
@@ -455,6 +450,58 @@ async function procesarEmail(gmail, messageId) {
   } finally {
     await client.close();
   }
+}
+
+// ── Correo → Compras ──────────────────────────────────────────────
+// Cada PDF adjunto es una factura distinta (Weber manda a veces dos en un correo); si no hay PDF,
+// las fotos juntas son UN documento (páginas). Se ignoran las imágenes pequeñas (logos de la firma).
+function documentosDeAdjuntos(adjuntos) {
+  const esPdf = a => /pdf$/i.test(a.mimeType || '') || /\.pdf$/i.test(a.filename || '');
+  const pdfs = adjuntos.filter(esPdf).slice(0, 6);
+  if (pdfs.length) return pdfs.map(a => [a]);
+  const fotos = adjuntos.filter(a => (/^image\//i.test(a.mimeType || '') || /\.(jpe?g|png)$/i.test(a.filename || '')) && !(a.size && a.size < 15000)).slice(0, 4);
+  return fotos.length ? [fotos] : [];
+}
+async function comprasDesdeCorreo(messageId, adjuntos, { de, asunto, fecha }, { estadoInicial = null, silencioso = false } = {}) {
+  const ids = [];
+  for (const grupo of documentosDeAdjuntos(adjuntos)) {
+    const fotos = [];
+    for (const a of grupo) {
+      const buf = await getAttachment(messageId, a.attachmentId);
+      if (buf && buf.length && buf.length < 12 * 1024 * 1024) fotos.push({ data: buf, mimetype: /pdf/i.test(a.mimeType || '') || /\.pdf$/i.test(a.filename || '') ? 'application/pdf' : (a.mimeType || 'image/jpeg') });
+    }
+    if (!fotos.length) continue;
+    const r = await require('./compras').crear({ fotos, destino: 'obra', origen: 'email', gmailId: messageId, email: { de, asunto, fecha }, nota: `Correo: ${asunto}`.slice(0, 300), subidaPor: { kind: 'email', userId: 'email', name: 'Correo' }, estadoInicial, silencioso });
+    if (r && r.id) ids.push(r.id);
+  }
+  return ids;
+}
+
+// Recupera las facturas de proveedor que llegaron al correo ANTES de que el correo entrara en Compras
+// (23/9/2026): quedan en «archivo», sin avisos, para que el cierre del trimestre las cruce con el banco.
+async function recuperarFacturasCorreo({ desde, hasta, dryRun = true, limite = 200 } = {}) {
+  const { db, client } = await getDB();
+  try {
+    const q = { categoria: 'FACTURA_PROVEEDOR', tieneAdjuntos: true, compraId: { $exists: false } };
+    if (desde || hasta) q.fecha = { ...(desde ? { $gte: new Date(desde) } : {}), ...(hasta ? { $lte: new Date(hasta + 'T23:59:59Z') } : {}) };
+    const lista = await db.collection('emails').find(q).sort({ fecha: 1 }).limit(limite).toArray();
+    const hechos = [];
+    for (const e of lista) {
+      const docs = documentosDeAdjuntos(e.adjuntos || []);
+      if (!docs.length) { hechos.push({ fecha: e.fecha, asunto: e.asunto, nada: 'sin PDF ni foto' }); continue; }
+      if (dryRun) { hechos.push({ fecha: e.fecha, de: e.de, asunto: e.asunto, documentos: docs.length }); continue; }
+      try {
+        // los adjuntos guardados no llevan attachmentId: se vuelven a pedir a Gmail
+        const gmail = getGmailClient();
+        const msg = await gmail.users.messages.get({ userId: 'me', id: e.gmailId, format: 'full' });
+        const ids = await comprasDesdeCorreo(e.gmailId, extractAttachments(msg.data.payload), { de: e.de, asunto: e.asunto, fecha: e.fecha }, { estadoInicial: 'archivo', silencioso: true });
+        await db.collection('emails').updateOne({ _id: e._id }, { $set: { compraId: ids[0] || null, compraIds: ids, recuperadaAt: new Date() } });
+        hechos.push({ fecha: e.fecha, asunto: e.asunto, compras: ids.length });
+        console.log(`[Email] recuperada: ${e.asunto} → ${ids.length}`);
+      } catch (err) { hechos.push({ fecha: e.fecha, asunto: e.asunto, error: err.message }); }
+    }
+    return { total: lista.length, dryRun, hechos };
+  } finally { await client.close(); }
 }
 
 // ── Poll principal ────────────────────────────────────────────────
@@ -637,4 +684,4 @@ function intentCorreo(texto) {
   return null;
 }
 
-module.exports = { pollEmails, enviarRespuesta, getGmailClient, diagnosticoIA, reclasificarPendientes, usoIAHoy, listAttachments, getAttachment, reenviarAdjuntoOCR, esGestoria, emailsRecientes, seccionCorreo, resumenCorreo, intentCorreo };
+module.exports = { pollEmails, recuperarFacturasCorreo, documentosDeAdjuntos, enviarRespuesta, getGmailClient, diagnosticoIA, reclasificarPendientes, usoIAHoy, listAttachments, getAttachment, reenviarAdjuntoOCR, esGestoria, emailsRecientes, seccionCorreo, resumenCorreo, intentCorreo };

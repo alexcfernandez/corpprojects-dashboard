@@ -222,6 +222,30 @@ async function todasRecibidas() {
   const fp = await require('./stelorder').getPurchaseInvoices();
   return (fp || []).filter(x => x.date).map(x => ({ id: x.id, numero: x.number, refProveedor: x.extraReference || '', proveedor: x.supplier, fecha: String(x.date).slice(0, 10), total: r2(x.total), base: x.base, iva: x.iva, pendienteStel: x.pending != null ? r2(x.pending) : null }));
 }
+// Facturas para el punteo: las de StelOrder + las de Compras (correo, fotos, archivo) que NO estén ya en
+// StelOrder. Así lo que llega al correo se cruza con el banco aunque nadie lo haya pasado a StelOrder.
+// Misma factura = mismo nº (solo dígitos) o mismo importe ±2 cént. con fechas a ≤7 días y proveedor parecido.
+async function recibidasPunteo(stel) {
+  const db = await getDB();
+  const dig = x => String(x || '').replace(/\D/g, '');
+  const n = x => String(x || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const palabra = x => (n(x).match(/[a-z0-9]{4,}/g) || []).filter(w => !/^(s\.?l|sociedad|girona|distribucions?|materials?|derivats?)$/.test(w));
+  const pareceProv = (a, b) => { const pa = palabra(a), pb = palabra(b); return pa.some(w => pb.includes(w)); };
+  const cs = await db.collection('compras').find({ estado: { $ne: 'descartada' }, tipo: { $in: ['factura', 'devolucion', 'ticket'] }, total: { $ne: null }, fecha: { $ne: null }, duplicadoDe: null })
+    .project({ proveedor: 1, numero: 1, fecha: 1, total: 1, base: 1, iva: 1, estado: 1 }).toArray();
+  const out = [];
+  for (const c of cs) {
+    const dc = dig(c.numero);
+    const yaEsta = stel.some(r => {
+      const dr = dig(r.refProveedor);
+      if (dc.length >= 4 && dr.length >= 4 && (dc === dr || (Math.min(dc.length, dr.length) >= 5 && (dc.endsWith(dr) || dr.endsWith(dc)))) && (pareceProv(c.proveedor, r.proveedor) || Math.abs(r.total - c.total) < 0.05)) return true;
+      return Math.abs(r.total - c.total) < 0.02 && Math.abs(dias2(r.fecha, c.fecha)) <= 7 && pareceProv(c.proveedor, r.proveedor);
+    });
+    if (yaEsta) continue;
+    out.push({ id: 'c:' + String(c._id), compraId: String(c._id), numero: c.numero || 'Compra', refProveedor: c.numero || '', proveedor: c.proveedor || '', fecha: c.fecha, total: r2(c.total), base: c.base, iva: c.iva, pendienteStel: null, deCompras: true });
+  }
+  return [...stel, ...out];
+}
 async function movimientosBanco(R) {
   const db = await getDB();
   const ms = await db.collection('bancoMovimientos').find({ fechaOperacion: { $gte: R.from, $lte: R.to } }).sort({ fechaOperacion: 1 }).toArray();
@@ -231,7 +255,8 @@ async function movimientosBanco(R) {
 async function punteo(q) {
   const C = require('./conciliacion');
   const R = rango(q || trimestrePorDefecto());
-  const [movsBanco, movsTarjeta, em, rec] = await Promise.all([movimientosBanco(R), require('./tarjetas').movimientosPunteo(R).catch(() => []), todasEmitidas(), todasRecibidas()]);
+  const [movsBanco, movsTarjeta, em, recStel] = await Promise.all([movimientosBanco(R), require('./tarjetas').movimientosPunteo(R).catch(() => []), todasEmitidas(), todasRecibidas()]);
+  const rec = await recibidasPunteo(recStel).catch(e => { console.warn('[Trimestre] compras en el punteo:', e.message); return recStel; });
   const movs = [...movsBanco, ...movsTarjeta];
   try {
     const db = await getDB();
@@ -263,7 +288,7 @@ async function punteo(q) {
     if (!despues) { g.total = r2(g.total + r.total); g.n++; }
   }
   const pendientesPago = Object.values(provs).filter(g => g.n > 0 || g.facturas.length).sort((a, b) => b.total - a.total);
-  const avisos = C.avisosRecibidas(recTrim);
+  const avisos = C.avisosRecibidas(recTrim.filter(r => !r.deCompras));   // duplicados / IVA 0 %: solo lo de StelOrder
   const porOrigen = {};
   for (const f of res.filas) { const o = (porOrigen[f.origen] = porOrigen[f.origen] || { origen: f.origen, persona: null, n: 0, punteados: 0, sinDocumento: 0, importeSin: 0 }); o.n++; if (f.estado === 'punteado') o.punteados++; if (f.estado === 'sin_documento' && f.importe < 0) { o.sinDocumento++; o.importeSin = r2(o.importeSin - f.importe); } if (f.persona && f.origen !== 'Cuenta Santander') o.persona = f.persona; }
   // Lo que falta, agrupado por comercio (para buscar la factura y subirla desde aquí).
@@ -340,7 +365,7 @@ async function justificar({ movId, archivo, decision, nota, obraId, mov = {}, po
   if (decision === 'facturas') {
     let ids = extra.recibidas; try { if (typeof ids === 'string') ids = JSON.parse(ids); } catch (e) { ids = []; }
     ids = (Array.isArray(ids) ? ids : []).map(String).slice(0, 40);
-    const rec = (await todasRecibidas()).filter(r => ids.includes(String(r.id)));
+    const rec = (await recibidasPunteo(await todasRecibidas())).filter(r => ids.includes(String(r.id)));
     if (!rec.length) throw new Error('Elige al menos una factura');
     set.recibidas = rec.map(r => ({ id: r.id, ref: r.numero, refProveedor: r.refProveedor, tercero: r.proveedor, total: r.total, fecha: r.fecha }));
     set.total = r2(rec.reduce((a, r) => a + r.total, 0));
@@ -586,4 +611,4 @@ async function buscar(texto) {
   };
 }
 
-module.exports = { rango, trimestrePorDefecto, estado, excel, revisionDiaria, resumenEmitidasXlsx, zipEmitidas, punteo, paqueteGestoria, borrador303, textoGestoria, justificar, deshacerJustificacion, comercio, confirmarDesdePunteo, buscar };
+module.exports = { rango, trimestrePorDefecto, estado, excel, revisionDiaria, resumenEmitidasXlsx, zipEmitidas, punteo, paqueteGestoria, borrador303, textoGestoria, justificar, deshacerJustificacion, comercio, confirmarDesdePunteo, buscar, recibidasPunteo };

@@ -5,7 +5,7 @@
 // lo confirma. Un documento = un registro en `compras`; sus fotos en `comprasFotos`.
 //
 //   compra = {
-//     empresaId, estado: por_revisar | revisada | descartada,
+//     empresaId, estado: por_revisar | revisada | descartada | archivo (recuperada del correo, solo para cuadrar),
 //     tipo: albaran | factura | ticket | devolucion | otro,
 //     proveedor, proveedorNorm, nif, numero, fecha (YYYY-MM-DD), base, iva, total,
 //     lineas: [{descripcion, cantidad, unidad, precio, importe}], albaranesRef: ['4471', …],
@@ -179,7 +179,9 @@ async function buscarDuplicado(db, doc) {
 
 // ── ALTA (trabajador u oficina) ──────────────────────────────────
 // fotos: [{data: Buffer, mimetype}]. Devuelve lo que se le confirma al que la sube.
-async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaPor, origen, gmailId, email, soloSiDocumento = false, grupo = null, silencioso = false }) {
+// estadoInicial 'archivo': factura recuperada del correo solo para cuadrar el banco (no entra en la cola
+// «por revisar», ni en costes de obra ni precios; se puede confirmar después desde Compras).
+async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaPor, origen, gmailId, email, soloSiDocumento = false, grupo = null, silencioso = false, estadoInicial = null }) {
   if (!fotos || !fotos.length) throw new Error('Haz al menos una foto del documento');
   const db = await getDB();
   let obraRef = null;
@@ -193,7 +195,7 @@ async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaP
   if (dest === 'varias') varias = true; else varias = false;
   const now = new Date();
   const doc = {
-    empresaId: EMPRESA, estado: 'por_revisar', tipo: 'otro', destino: dest, paraWorker: pw,
+    empresaId: EMPRESA, estado: estadoInicial === 'archivo' ? 'archivo' : 'por_revisar', tipo: 'otro', destino: dest, paraWorker: pw,
     proveedor: null, proveedorNorm: null, nif: null, numero: null, fecha: null, base: null, iva: null, total: null, lineas: [], albaranesRef: [], obraPista: null,
     obraId: obraId ? String(obraId) : null, obraRef: obraId ? obraRef : null, varias: !!varias, reparto: [], categoria: dest === 'herramientas' ? 'herramientas' : dest === 'ropa' ? 'ropa' : null,
     nota: String(nota || '').trim().slice(0, 300) || null, subidaPor: subidaPor || null, nFotos: fotos.length,

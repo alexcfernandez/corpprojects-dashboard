@@ -138,7 +138,7 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
   // Lo resuelto a mano manda: factura subida desde el punteo, o «es personal / no lleva factura».
   for (const f of filas) {
     const a = f.manual; if (!a) continue;
-    if (a.compraId) { f.estado = 'punteado'; f.confianza = 'manual'; f.docs = [{ ref: 'Compra subida', tercero: a.proveedor || '', total: a.total, compraId: a.compraId }]; f.nota = a.cuadra === false ? `Factura subida a mano (importe ${a.total} € distinto)` : 'Factura subida a mano'; }
+    if (a.compraId) { usadasRec.add('c:' + a.compraId); f.estado = 'punteado'; f.confianza = 'manual'; f.docs = [{ ref: 'Compra subida', tercero: a.proveedor || '', total: a.total, compraId: a.compraId }]; f.nota = a.cuadra === false ? `Factura subida a mano (importe ${a.total} € distinto)` : 'Factura subida a mano'; }
     else if (a.decision === 'vehiculo') { f.estado = 'punteado'; f.confianza = 'manual'; f.tipo = 'gasto_vehiculo'; f.docs = [{ ref: 'Gasto de vehículo', tercero: a.vehiculoNombre || '' }]; f.nota = `Gasto del vehículo ${a.vehiculoNombre || ''} (${a.categoria || 'otros'}, sin factura)`; }
     else if (a.decision === 'tercero') { f.estado = 'no_requiere'; f.tipo = 'por_cuenta_tercero'; f.nota = `Por cuenta de ${a.empresa || 'otra empresa'}${a.nota ? ': ' + a.nota : ''}`; }
     else if (a.decision === 'facturas' && Array.isArray(a.recibidas)) {
