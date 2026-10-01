@@ -84,6 +84,23 @@ function matchTrabajador(from) {
 }
 function esTrabajador(from) { return !!matchTrabajador(from); }
 
+// Cualquier persona de la plantilla (o autónomo) con su teléfono en la ficha, activa.
+// Así el bot reconoce a todos los que reciben el enlace de fichar, no solo a los 5 de la lista.
+let _plantillaCache = null, _plantillaAt = 0;
+async function trabajadorPorNumero(from) {
+  const dig = ultimos9(normalizarNumero(from));
+  if (!dig || esOwner(from)) return null;
+  try {
+    if (!_plantillaCache || Date.now() - _plantillaAt > 60 * 1000) {
+      const { getUsers, normalizeRole } = require('./users');
+      _plantillaCache = (await getUsers(false)).filter(u => u.role !== 'client' && ['tecnico', 'encargado', 'oficina'].includes(normalizeRole(u.role)));
+      _plantillaAt = Date.now();
+    }
+    const u = _plantillaCache.find(x => [x.whatsapp, x.telefono].some(t => t && ultimos9(normalizarNumero(t)) === dig));
+    return u ? { userId: String(u._id), name: u.name, role: u.role, autonomo: !!(u.autonomo && u.autonomo.activo) } : null;
+  } catch (e) { return null; }
+}
+
 // Igual que esTrabajador PERO respeta la baja del dashboard: si a ese número lo
 // dieron de BAJA (users.active=false), pierde el acceso al bot aunque su número
 // siga en la lista. Así, dar de baja en el dashboard = fuera del bot, sin tocar
@@ -327,7 +344,7 @@ module.exports = {
   // identidad
   esOwner, resolverIdentidad, normalizarNumero, ultimos9, ownersConfigurados,
   // trabajadores (solo presencia)
-  esTrabajador, esTrabajadorActivo, matchTrabajador, TRABAJADORES_WA,
+  esTrabajador, esTrabajadorActivo, matchTrabajador, TRABAJADORES_WA, trabajadorPorNumero,
   // clasificación
   clasificarAccion,
   // PIN + confirmación de dinero

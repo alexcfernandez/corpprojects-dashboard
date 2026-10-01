@@ -130,6 +130,8 @@ async function enviarUno(to, body, opts = {}) {
     const r = await _dispatch(to, prefijo + partes[i], opts);
     ok = ok && r;
   }
+  // Registro de conversaciones (Dashboard → Conversaciones). Nunca rompe el envío.
+  require('./waLog').registrar({ dir: 'out', canal: canalActivo(opts.canal), numero: to, texto: body, ok }).catch(() => {});
   return ok;
 }
 

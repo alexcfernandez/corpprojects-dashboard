@@ -510,10 +510,18 @@ async function procesarWhatsApp(from, body, media = {}) {
   const canal = media.canal;
   const responder = (msg) => enviarWhatsApp(from, msg, canal);
 
-  // Webhook abierto SOLO al owner y a los 5 trabajadores autorizados (por número).
-  // La capa de acceso decide luego el rol; aquí solo filtramos quién puede entrar.
+  // Todo lo que entra queda registrado (Dashboard → Conversaciones), con las fotos del puente.
+  registrarEntradaWa(from, body, media);
+
+  // Webhook abierto SOLO al dueño y a la plantilla (por número). Un trabajador NUNCA
+  // pasa por los flujos del dueño (facturas a StelOrder, presupuestos, menús): va a su modo.
   const acceso = require('./acceso');
-  if (!(acceso.esOwner(from) || await acceso.esTrabajadorActivo(from))) {
+  const esDueno = acceso.esOwner(from);
+  if (!esDueno) {
+    const trab = await acceso.trabajadorPorNumero(from);
+    if (trab || await acceso.esTrabajadorActivo(from)) {
+      return procesarTrabajador(from, body, media, trab || { userId: null, name: acceso.matchTrabajador(from) || '' }, responder);
+    }
     return responder('🔒 Este asistente es privado.');
   }
 
@@ -581,6 +589,70 @@ async function procesarWhatsApp(from, body, media = {}) {
 
   const reply = await asistente.responderConsulta(texto, from, imagenes);
   return responder(prefijo + reply);
+}
+
+function registrarEntradaWa(from, body, media = {}) {
+  try {
+    const items = [...(media.fotos || []), ...(media.pdf ? [media.pdf] : []), ...((media.numMedia > 0 && /audio/i.test(media.mediaType || '')) ? [{ url: media.mediaUrl, type: media.mediaType }] : [])]
+      .map(m => { const mp = mediaPuente(m.url); return { type: (m.type || '').split(';')[0], name: m.name || null, buf: mp ? mp.buf : null }; });
+    require('./waLog').registrar({ dir: 'in', canal: media.canal || null, numero: from, texto: body, media: items }).catch(() => {});
+  } catch (e) {}
+}
+
+// ── MODO TRABAJADOR ───────────────────────────────────────────────
+// Lo que un trabajador manda al bot: tickets/albaranes → Compras (la oficina los revisa);
+// fotos que no son documentos (el portal, la calle…) → se le explica que no hacen falta y
+// se le da su enlace de fichar; texto o voz → acuse y se pasa a la oficina. Sin menús del dueño.
+const PALABRAS_FICHAJE = /\b(fich\w*|entrada|empie\w*|empez\w*|llegad\w*|llegu[eé]|estoy (en|aqu[ií])|ubicaci[oó]n|enlace|link|no (me )?(funciona|va|abre|deja)|no puedo|salida|termin\w*|pausa|jornada)\b/i;
+async function procesarTrabajador(from, body, media, trab, responder) {
+  const nombre = String(trab.name || '').trim().split(/\s+/)[0] || '';
+  const nombreCap = nombre ? nombre.charAt(0).toUpperCase() + nombre.slice(1) : '';
+  let texto = String(body || '').trim();
+  let enlace = null;
+  if (trab.userId && !trab.autonomo) { try { enlace = await require('./fichajeAvisos').enlacePersonal(trab.userId); } catch (e) {} }
+  const lineaFichar = enlace ? `\n\nPara fichar, abre tu enlace y pulsa *Empiezo* (y *Termino la jornada* al acabar):\n${enlace}` : '';
+
+  // Nota de voz → texto
+  if (!texto && (media.numMedia || 0) > 0 && /audio/i.test(media.mediaType || '')) {
+    try {
+      const t = await transcribirAudio(media.mediaUrl, media.mediaType, '');
+      if (t === null) return responder('🎙️ He recibido tu audio. ¿Me lo escribes, por favor?');
+      if (!t) return responder('🎙️ No he oído nada claro en el audio. ¿Me lo repites o me lo escribes?');
+      texto = t;
+    } catch (e) { return responder('🎙️ No he conseguido entender el audio. ¿Me lo escribes?'); }
+  }
+
+  // Fotos / PDF → Compras si son documentos de compra
+  const docs = [...(media.fotos || []), ...(media.pdf ? [media.pdf] : [])];
+  if (docs.length) {
+    const guardadas = []; let noDoc = 0, fallos = 0;
+    for (const m of docs) {
+      try {
+        const buf = await _bajarMedia(m.url, 30000);
+        const r = await require('./compras').crear({
+          fotos: [{ data: buf, mimetype: String(m.type || 'image/jpeg').split(';')[0] }], destino: 'obra', origen: 'whatsapp-trabajador',
+          nota: texto ? texto.slice(0, 300) : 'Enviada por WhatsApp', soloSiDocumento: true,
+          subidaPor: { kind: 'worker', userId: trab.userId || String(from), name: trab.name || String(from) },
+        });
+        if (r && r.noEsDocumento) noDoc++; else if (r && r.id) guardadas.push(r);
+      } catch (e) { fallos++; console.error('[WhatsApp] compra de trabajador:', e.message); }
+    }
+    const partes = [];
+    if (guardadas.length) partes.push(`🧾 Recibido${guardadas.length > 1 ? ' (' + guardadas.length + ')' : ''}: ${guardadas.map(g => [g.tipoTxt || 'documento', g.proveedor].filter(Boolean).join(' de ')).join(', ')}. Lo revisa la oficina.${texto ? '' : ' Si es de una obra concreta, dime cuál (p. ej. «es de Rutlla»).'}`);
+    if (noDoc) partes.push(`📸 Gracias${nombreCap ? ', ' + nombreCap : ''}. Para fichar no hace falta mandar fotos del sitio: basta con tu enlace.` + lineaFichar);
+    if (fallos && !partes.length) partes.push('📎 He recibido tu archivo pero no lo he podido abrir. ¿Me lo mandas otra vez?');
+    return responder(partes.join('\n\n') || '📎 Recibido.');
+  }
+
+  if (!texto) return responder(`Hola${nombreCap ? ' ' + nombreCap : ''} 👋` + lineaFichar);
+
+  // Texto → a la oficina (por WhatsApp si hay destino configurado; siempre queda en Conversaciones)
+  try {
+    const dest = String(process.env.FICHAJE_AVISOS_TO || process.env.WHATSAPP_TO || '').split(',').map(x => x.trim()).filter(Boolean);
+    const aviso = `👷 *${trab.name || from}* escribe al bot:\n"${texto.slice(0, 300)}"\n\nLo ves entero en Conversaciones: https://dashboard.corpprojects.es/conversaciones`;
+    for (const d of dest) await require('./notifications').sendWhatsAppTo(d, aviso);
+  } catch (e) {}
+  return responder(`Gracias${nombreCap ? ', ' + nombreCap : ''} 🙏, se lo paso a la oficina.` + (PALABRAS_FICHAJE.test(texto) ? lineaFichar : ''));
 }
 
 // Transcribe una nota de voz de WhatsApp (descarga de Twilio + STT compatible OpenAI).
@@ -1743,6 +1815,20 @@ app.post('/api/autonomos/cuadre', requireAuthOficina, express.json(), async (req
     if (!b.userId || !b.mes) return res.status(400).json({ error: 'Faltan userId y mes' });
     res.json(await require('./autonomos').guardarCuadre(b.userId, b.mes, b, q.name));
   } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// ── Conversaciones de WhatsApp (todas): lista, hilo y fotos ──
+app.get('/api/conversaciones', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./waLog').conversaciones({ dias: req.query.dias })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/conversaciones/media/:id', requireAuthOficina, async (req, res) => {
+  try { const m = await require('./waLog').media(req.params.id); if (!m) return res.sendStatus(404); res.type(m.type).set('Cache-Control', 'private, max-age=86400').send(m.buf); }
+  catch (err) { res.sendStatus(404); }
+});
+app.get('/api/conversaciones/:numero', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./waLog').hilo(req.params.numero, { dias: req.query.dias })); }
+  catch (err) { res.status(400).json({ error: err.message }); }
 });
 
 // ── Grupos de WhatsApp que ve el puente: activar/desactivar la escucha ──
@@ -3624,6 +3710,7 @@ app.delete('/api/pagos/:id', requireAuth, async (req, res) => {
 app.get('/informe-presencia', (req, res) => res.sendFile(path.join(__dirname, '../public/informe-presencia.html')));
 app.get('/sitios', (req, res) => res.sendFile(path.join(__dirname, '../public/sitios.html')));
 app.get('/diag', (req, res) => res.sendFile(path.join(__dirname, '../public/diag.html')));
+app.get('/conversaciones', (req, res) => res.sendFile(path.join(__dirname, '../public/conversaciones.html')));
 app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
 app.get('/fichar', (req, res) => res.sendFile(path.join(__dirname, '../public/fichar.html')));
 app.get('/fichajes', (req, res) => res.sendFile(path.join(__dirname, '../public/fichajes.html')));
