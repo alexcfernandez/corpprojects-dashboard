@@ -27,8 +27,8 @@ const TIPO_TXT = { albaran: 'Albarán', factura: 'Factura', ticket: 'Ticket', de
 // Para qué es la compra: una obra · varias obras (oficina reparte) · herramientas para un
 // trabajador (al confirmar se dan de alta en Llaves y herramientas y se le entregan) ·
 // ropa de trabajo para un trabajador · otro gasto general (con categoría).
-const DESTINOS = ['obra', 'varias', 'herramientas', 'ropa', 'almacen', 'general'];
-const DESTINO_TXT = { obra: 'Obra', varias: 'Varias obras', herramientas: 'Herramientas', ropa: 'Ropa de trabajo', almacen: 'Stock de almacén', general: 'Gasto general' };
+const DESTINOS = ['obra', 'varias', 'herramientas', 'ropa', 'almacen', 'general', 'vehiculo'];
+const DESTINO_TXT = { obra: 'Obra', varias: 'Varias obras', herramientas: 'Herramientas', ropa: 'Ropa de trabajo', almacen: 'Stock de almacén', general: 'Gasto general', vehiculo: 'Vehículo' };
 function limpiarWorker(w) { if (!w || !w.id) return null; return { id: String(w.id), name: String(w.name || '').trim().slice(0, 80) }; }
 
 async function getDB() { return require('./db').getDB(); }
@@ -288,6 +288,14 @@ async function editar(id, data, por) {
   if ('categoria' in data) set.categoria = data.categoria ? String(data.categoria).trim().toLowerCase() : null;
   if ('destino' in data) { if (!DESTINOS.includes(data.destino)) throw new Error('Destino no válido'); set.destino = data.destino; }
   if ('paraWorker' in data) set.paraWorker = limpiarWorker(data.paraWorker);
+  // Vehículo (furgoneta/coche de Llaves y herramientas): sus gastos se ven en /vehiculos.
+  if ('vehiculoId' in data) {
+    set.vehiculoId = null; set.vehiculoNombre = null;
+    if (data.vehiculoId && /^[a-f0-9]{24}$/.test(String(data.vehiculoId))) {
+      const v = await db.collection('activos').findOne({ _id: new ObjectId(String(data.vehiculoId)), tipo: 'vehiculo' }, { projection: { nombre: 1, matricula: 1 } });
+      if (v) { set.vehiculoId = String(v._id); set.vehiculoNombre = v.nombre + (v.matricula ? ` (${v.matricula})` : ''); }
+    }
+  }
   let destFinal = set.destino || c.destino || (c.varias ? 'varias' : 'obra');
   // Sin destino explícito: categoría y sin obra ⇒ gasto general; reparto de varias ⇒ varias
   if (!('destino' in data)) {
@@ -351,6 +359,7 @@ async function revisar(id, por, { enviarStel = true, herramientas = null, almace
   if (dest === 'obra' && !c.obraId) throw new Error('Elige la obra (o cambia el destino: varias obras, herramientas, ropa o gasto general)');
   if (dest === 'varias' && !(c.reparto || []).length) throw new Error('Reparte el importe entre las obras');
   if (dest === 'general' && !c.categoria) throw new Error('Pon la categoría del gasto general');
+  if (dest === 'vehiculo' && !c.vehiculoId) throw new Error('Elige el vehículo');
   if (dest === 'almacen' && !(Array.isArray(almacen) && almacen.length) && !(c.almacenCreado || []).length) throw new Error('Marca qué líneas entran en el almacén');
   const set = { estado: 'revisada', revisadaPor: por || '', revisadaAt: new Date(), updatedAt: new Date() };
   // ALMACÉN: cada línea marcada entra como existencias (se agrupa por nombre; precio medio).

@@ -1859,7 +1859,7 @@ app.post('/api/trimestre/justificar', requireAuthOficina, uploadExtracto.single(
   try {
     const b = req.body || {}; const q = (await _quienPush(req)) || {};
     let mov = {}; try { mov = JSON.parse(b.mov || '{}'); } catch (e) {}
-    res.json(await require('./trimestre').justificar({ movId: b.movId, archivo: req.file || null, decision: b.decision, nota: b.nota, obraId: b.obraId, extra: { empresa: b.empresa, facturaId: b.facturaId }, mov, por: { kind: q.kind || 'admin', userId: String(q.userId || 'oficina'), name: q.name || 'Oficina' } }));
+    res.json(await require('./trimestre').justificar({ movId: b.movId, archivo: req.file || null, decision: b.decision, nota: b.nota, obraId: b.obraId, extra: { empresa: b.empresa, facturaId: b.facturaId, vehiculoId: b.vehiculoId, categoria: b.categoria }, mov, por: { kind: q.kind || 'admin', userId: String(q.userId || 'oficina'), name: q.name || 'Oficina' } }));
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.post('/api/trimestre/justificar/:movId/confirmar', requireAuthOficina, express.json(), async (req, res) => {
@@ -1868,6 +1868,14 @@ app.post('/api/trimestre/justificar/:movId/confirmar', requireAuthOficina, expre
 });
 app.delete('/api/trimestre/justificar/:movId', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./trimestre').deshacerJustificacion(req.params.movId)); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+// ── Vehículos: lista (para elegir) y gastos por vehículo ──
+app.get('/api/vehiculos', requireAuth, async (req, res) => {
+  try { const v = require('./vehiculos'); res.json({ vehiculos: await v.lista(), categorias: v.CATEGORIAS, sugerida: req.query.texto ? v.sugerirCategoria(req.query.texto) : null }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/vehiculos/resumen', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./vehiculos').resumen({ anio: req.query.anio })); } catch (err) { res.status(500).json({ error: err.message }); }
 });
 app.get('/api/tarjetas', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./tarjetas').listaTarjetas()); } catch (err) { res.status(500).json({ error: err.message }); }
@@ -3784,6 +3792,7 @@ app.get('/sitios', (req, res) => res.sendFile(path.join(__dirname, '../public/si
 app.get('/diag', (req, res) => res.sendFile(path.join(__dirname, '../public/diag.html')));
 app.get('/conversaciones', (req, res) => res.sendFile(path.join(__dirname, '../public/conversaciones.html')));
 app.get('/trimestre', (req, res) => res.sendFile(path.join(__dirname, '../public/trimestre.html')));
+app.get('/vehiculos', (req, res) => res.sendFile(path.join(__dirname, '../public/vehiculos.html')));
 app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
 app.get('/fichar', (req, res) => res.sendFile(path.join(__dirname, '../public/fichar.html')));
 app.get('/fichajes', (req, res) => res.sendFile(path.join(__dirname, '../public/fichajes.html')));

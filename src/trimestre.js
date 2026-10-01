@@ -321,10 +321,17 @@ async function justificar({ movId, archivo, decision, nota, obraId, mov = {}, po
     await db.collection('punteoManual').updateOne({ _id: String(movId) }, { $set: { compraId: r.id, proveedor, total, cuadra, decision: null, nota: null, obraId: null, obraRef: null, por: por && por.name, at: new Date() } }, { upsert: true });
     return { ok: true, compraId: r.id, proveedor, total, cuadra, leida: r.leida };
   }
-  if (!['personal', 'sin_factura', 'obra', 'tercero', 'factura', 'facturar'].includes(decision)) throw new Error('Decisión no válida');
+  if (!['personal', 'sin_factura', 'obra', 'tercero', 'factura', 'facturar', 'vehiculo'].includes(decision)) throw new Error('Decisión no válida');
   const datosMov = { persona: mov.persona || null, concepto: String(mov.concepto || '').slice(0, 200), fecha: mov.fecha || null, importe: Number(mov.importe) || 0, origen: mov.origen || null };
   const set = { decision, nota: String(nota || '').slice(0, 200) || null, compraId: null, obraId: null, obraRef: null, empresa: null, facturaNumero: null, cliente: null, total: null, por: por && por.name, at: new Date(), ...datosMov };
   if (decision === 'tercero') set.empresa = String(extra.empresa || 'JustFly Executive').trim().slice(0, 80);
+  if (decision === 'vehiculo') {
+    const { ObjectId } = require('mongodb');
+    const v = extra.vehiculoId && /^[a-f0-9]{24}$/.test(String(extra.vehiculoId)) ? await db.collection('activos').findOne({ _id: new ObjectId(String(extra.vehiculoId)), tipo: 'vehiculo' }, { projection: { nombre: 1, matricula: 1 } }) : null;
+    if (!v) throw new Error('Elige el vehículo');
+    set.vehiculoId = String(v._id); set.vehiculoNombre = v.nombre + (v.matricula ? ` (${v.matricula})` : '');
+    set.categoria = extra.categoria || require('./vehiculos').sugerirCategoria(datosMov.concepto);
+  }
   if (decision === 'factura') {
     const em = (await todasEmitidas()).find(e => String(e.id) === String(extra.facturaId) || e.numero === extra.facturaId);
     if (!em) throw new Error('Esa factura no está en StelOrder');
@@ -343,17 +350,18 @@ async function justificar({ movId, archivo, decision, nota, obraId, mov = {}, po
   return { ok: true, obraRef: set.obraRef };
 }
 // La factura subida cuadra con el pago: se elige obra o gasto general y queda confirmada (→ StelOrder).
-async function confirmarDesdePunteo(movId, { obraId, categoria }, por) {
+async function confirmarDesdePunteo(movId, { obraId, categoria, vehiculoId }, por) {
   const db = await getDB();
   const pm = await db.collection('punteoManual').findOne({ _id: String(movId) });
   if (!pm || !pm.compraId) throw new Error('Primero sube la factura');
   const compras = require('./compras');
-  if (obraId) await compras.editar(pm.compraId, { destino: 'obra', obraId }, por);
+  if (vehiculoId) await compras.editar(pm.compraId, { destino: 'vehiculo', vehiculoId, categoria: categoria || null, obraId: null }, por);
+  else if (obraId) await compras.editar(pm.compraId, { destino: 'obra', obraId }, por);
   else if (categoria) await compras.editar(pm.compraId, { destino: 'general', categoria, obraId: null }, por);
   else throw new Error('Elige la obra o la categoría');
   const c = await compras.revisar(pm.compraId, por);
   await db.collection('punteoManual').updateOne({ _id: String(movId) }, { $set: { confirmada: true, obraRef: c.obraRef || null, categoria: c.categoria || null } });
-  return { ok: true, obraRef: c.obraRef || null, categoria: c.categoria || null, enviadaStel: !!c.enviadaStel };
+  return { ok: true, obraRef: c.obraRef || null, vehiculo: c.vehiculoNombre || null, categoria: c.categoria || null, enviadaStel: !!c.enviadaStel };
 }
 async function quitarDeObra(db, movId) {
   await db.collection('obras').updateMany({ 'materiales.movId': String(movId) }, { $pull: { materiales: { movId: String(movId) } } }).catch(() => {});

@@ -100,6 +100,7 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
   for (const f of filas) {
     const a = f.manual; if (!a) continue;
     if (a.compraId) { f.estado = 'punteado'; f.confianza = 'manual'; f.docs = [{ ref: 'Compra subida', tercero: a.proveedor || '', total: a.total, compraId: a.compraId }]; f.nota = a.cuadra === false ? `Factura subida a mano (importe ${a.total} € distinto)` : 'Factura subida a mano'; }
+    else if (a.decision === 'vehiculo') { f.estado = 'punteado'; f.confianza = 'manual'; f.tipo = 'gasto_vehiculo'; f.docs = [{ ref: 'Gasto de vehículo', tercero: a.vehiculoNombre || '' }]; f.nota = `Gasto del vehículo ${a.vehiculoNombre || ''} (${a.categoria || 'otros'}, sin factura)`; }
     else if (a.decision === 'tercero') { f.estado = 'no_requiere'; f.tipo = 'por_cuenta_tercero'; f.nota = `Por cuenta de ${a.empresa || 'otra empresa'}${a.nota ? ': ' + a.nota : ''}`; }
     else if (a.decision === 'factura') { f.estado = 'punteado'; f.confianza = 'manual'; f.docs = [{ ref: a.facturaNumero, tercero: a.cliente || '', total: a.total }]; f.nota = 'Asignado a mano'; }
     else if (a.decision === 'facturar') { f.estado = 'revisar'; f.tipo = 'falta_emitir'; f.nota = `Falta emitir la factura${a.nota ? ': ' + a.nota : ''}`; }
