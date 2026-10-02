@@ -79,7 +79,7 @@ const tok=localStorage.getItem('cp_token')||localStorage.getItem('cpWT');
 let estadoTab='por_revisar', obras=[], workers=[], cur=null, pick=null, _blobs=[];
 const DEST_TXT={obra:'🏗️ Una obra',varias:'🏗️🏗️ Varias obras (repartir)',herramientas:'🔧 Herramientas para un trabajador',ropa:'👕 Ropa de trabajo para un trabajador',almacen:'📦 Stock de almacén (se va sacando por obras)',general:'🏢 Otro gasto general',vehiculo:'🚐 Un vehículo (taller, gasolina, seguro…)'};
 const TIPO_TXT={albaran:'Albarán',factura:'Factura',ticket:'Ticket',devolucion:'Devolución',otro:'Documento'};
-const CATS=['material','combustible','herramientas','subcontrata','gestoria','seguros','suministros','alquiler','otros'];
+const CATS=['material','combustible','herramientas','subcontrata','comisiones','gestoria','seguros','suministros','alquiler','otros'];   // comisiones: CINC cobra el 10 % de los trabajos que nos pasa
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function eur(v){return v==null?'—':Number(v).toLocaleString('es-ES',{style:'currency',currency:'EUR'});}
 function fh(d){return d?new Date(d).toLocaleString('es-ES',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';}
@@ -110,7 +110,14 @@ async function cargar(){
       <div class="imp">${eur(c.total)}</div></div>`).join('');
     l.forEach(c=>cargarFoto(c._id,0,document.querySelector('.th[data-id="'+c._id+'"]')));
   }catch(e){el.innerHTML='<div class="empty">❌ '+esc(e.message)+'</div>';}}
-async function cargarFoto(id,i,img){try{const r=await fetch(`/api/compras/${id}/foto/${i}`,{headers:{'Authorization':'Bearer '+tok}});if(!r.ok)return;const b=await r.blob();if(!/^image\//.test(b.type)){img.style.display='none';return;}const u=URL.createObjectURL(b);_blobs.push(u);img.src=u;}catch(e){}}
+// Foto o PDF (lo que llega por correo suele ser PDF): en la ficha el PDF se ve ahí mismo; en la lista, un icono.
+async function cargarFoto(id,i,img){try{if(!img)return;const r=await fetch(`/api/compras/${id}/foto/${i}`,{headers:{'Authorization':'Bearer '+tok}});if(!r.ok)return;const b=await r.blob();
+  const u=URL.createObjectURL(b);_blobs.push(u);
+  if(/pdf/i.test(b.type)){
+    if(img.classList.contains('th')){const d=document.createElement('div');d.className='th';d.style.cssText='display:flex;align-items:center;justify-content:center;font-size:22px;background:var(--bg3)';d.textContent='📄';img.replaceWith(d);return;}
+    const w=document.createElement('div');w.innerHTML=`<iframe src="${u}#view=FitH" style="width:100%;height:75vh;border:1px solid var(--border);border-radius:10px;background:#fff"></iframe><a href="${u}" target="_blank" style="display:inline-block;margin-top:6px;font-size:13px;color:var(--blue)">Abrir el PDF en otra pestaña ↗</a>`;img.replaceWith(w);return;}
+  if(!/^image\//.test(b.type)){img.style.display='none';return;}
+  img.src=u;}catch(e){}}
 
 // ── DETALLE ──
 async function abrir(id){
@@ -161,6 +168,8 @@ async function abrir(id){
   for(let i=0;i<(c.nFotos||1);i++)cargarFoto(c._id,i,v.querySelector('#fotos img[data-i="'+i+'"]'));
   pick=CPObra.crear(document.getElementById('obra-pick'),{obras,value:c.obraId||'',vacio:'— Sin obra (gasto general) —',placeholder:'Elegir obra…',titulo:'¿De qué obra es la compra?',crear:crearObra,onChange:()=>pintarGasto()});
   document.getElementById('f-tipo').addEventListener('change',e=>{document.getElementById('f-albs').style.display=e.target.value==='factura'?'':'none';const b=document.querySelector('.acciones .btn.ok');if(b)b.textContent='✅ Confirmar'+(['factura','ticket'].includes(e.target.value)?' y enviar a StelOrder':'');});
+  // CINC (administrador de fincas) cobra un 10 % de los trabajos que nos pasa: se propone gasto general · comisiones.
+  if(!rev&&!c.categoria&&/\bcinc\b/i.test(c.proveedor||'')&&(!c.obraId)&&!(c.reparto||[]).length){const fd=document.getElementById('f-dest');if(fd){fd.value='general';}setTimeout(()=>{const fc=document.getElementById('f-cat');if(fc)fc.value='comisiones';},0);}
   onDest(true);window.scrollTo(0,0);
 }
 function volver(){cur=null;document.getElementById('vista-det').style.display='none';document.getElementById('vista-lista').style.display='';cargar();}
