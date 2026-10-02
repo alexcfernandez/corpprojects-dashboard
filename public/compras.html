@@ -246,7 +246,7 @@ function sumaCasar(){if(!_prop)return;const sel=[...document.querySelectorAll('.
   document.getElementById('casar-suma').innerHTML=`${sel.length} albaranes · suman <b>${eur(suma)}</b>${dif!=null?' · diferencia con la base: <b style="color:'+(Math.abs(dif)>0.5?'var(--amber)':'var(--green)')+'">'+eur(dif)+'</b>'+(Math.abs(dif)>0.5?(dif>0?' — falta algún albarán o hay portes/otros conceptos':' — sobra algún albarán o hay un abono'):' ✓'):''}${sel.some(x=>x.sinImporte)?' · <span style="color:var(--amber)">hay albaranes sin importe: en la obra contarán 0</span>':''}`;}
 async function confirmarCasar(){const ids=[...document.querySelectorAll('.ck-alb:checked')].map(c=>_prop.albaranes[+c.dataset.i].id);if(!ids.length){toast('Marca algún albarán','warn');return;}
   try{cur=await api('POST','/api/compras/'+cur._id+'/casar',{albaranes:ids});toast('🔗 Casada con '+ids.length+' albaranes','ok');abrir(cur._id);}catch(e){toast(e.message,'error');}}
-async function descasar(){if(!confirm('¿Soltar los albaranes de esta factura?'))return;try{cur=await api('POST','/api/compras/'+cur._id+'/descasar',{});toast('Descasada','ok');abrir(cur._id);}catch(e){toast(e.message,'error');}}
+async function descasar(){if(!(await CPDialog.confirmar('¿Soltar los albaranes de esta factura?',{ok:'Soltar'})))return;try{cur=await api('POST','/api/compras/'+cur._id+'/descasar',{});toast('Descasada','ok');abrir(cur._id);}catch(e){toast(e.message,'error');}}
 
 async function guardar(silencio){try{const {_herramientas,_almacen,_enviarStel,...d}=leerForm();cur=await api('PUT','/api/compras/'+cur._id,d);if(!silencio)toast('Guardado','ok');return true;}catch(e){toast(e.message,'error');return false;}}
 async function confirmar(){if(!(await guardar(true)))return;
@@ -259,9 +259,9 @@ async function confirmar(){if(!(await guardar(true)))return;
   let txt=['factura','ticket'].includes(d.tipo)&&d._enviarStel?'Se da por revisada y se envía a StelOrder (contabilidad).':'Se da por revisada'+(['email','whatsapp'].includes(cur.origen)?' (sin reenviar a StelOrder).':'. Los albaranes y devoluciones se quedan solo en el dashboard (no van a StelOrder).');
   if(d._almacen.length)txt+=`\n\nEntran en el almacén: ${d._almacen.map(l=>l.nombre+' ×'+l.cantidad+(l.recogida?' ♻️':'')).join(', ')}.`;
   if(d._herramientas.length)txt+=`\n\nAdemás se dan de alta ${d._herramientas.reduce((a,h)=>a+Math.min(30,Math.max(1,Math.round(h.cantidad))),0)} ${d.destino==='ropa'?'prenda(s)':'herramienta(s)'} en Llaves y herramientas, ${d.paraWorker?'entregadas a '+d.paraWorker.name:'en oficina (sin entregar todavía)'}.`;
-  if(!confirm(txt+' ¿Seguimos?'))return;
+  if(!(await CPDialog.confirmar(txt+' ¿Seguimos?',{ok:'Seguir'})))return;
   try{cur=await api('POST','/api/compras/'+cur._id+'/revisar',{herramientas:d._herramientas,almacen:d._almacen,enviarStel:d._enviarStel});const it=cur.itvActualizada;toast(it&&!it.yaEstaba?`✅ Revisada · 🚐 ITV de ${it.vehiculo} al día: próxima el ${it.proxima.split('-').reverse().join('/')}`:'✅ Revisada','ok');abrir(cur._id);}catch(e){toast(e.message,'error');}}
-async function descartar(){const m=prompt('Motivo (lo verá quien la subió): p. ej. «foto repetida», «no es una compra»');if(m===null)return;
+async function descartar(){const m=await CPDialog.pedir('¿Por qué la descartas? (lo verá quien la subió)',{opciones:['Foto repetida','Ya estaba subida','No es una compra','Foto ilegible'],ok:'Descartar'});if(m===null)return;
   try{await api('POST','/api/compras/'+cur._id+'/descartar',{motivo:m});toast('Descartada','ok');volver();}catch(e){toast(e.message,'error');}}
 async function accion(a){const b=[...document.querySelectorAll('.acciones .btn')];const rel=b.find(x=>/Volver a leer/.test(x.textContent));try{b.forEach(x=>x.disabled=true);if(a==='releer'){if(rel)rel.innerHTML='<span class="spinner"></span> Leyendo el documento… (10-30 s)';toast('🤖 La IA está leyendo el documento, espera unos segundos…','ok');}
   cur=await api('POST','/api/compras/'+cur._id+'/'+a,{});toast(a==='releer'?'🤖 Releída: revisa los datos':'Reabierta','ok');abrir(cur._id);}catch(e){toast(e.message,'error');abrir(cur._id);}}
@@ -276,5 +276,6 @@ async function avisoPush(){const el=document.getElementById('push-aviso');if(!el
   await cargarObras();cargar();avisoPush();if(/^#[0-9a-f]{24}$/.test(location.hash))abrir(location.hash.slice(1));
   const id=new URLSearchParams(location.search).get('id');if(id){history.replaceState(null,'',location.pathname);abrir(id);}})();
 </script>
+<script src="/dialogo.js"></script>
 </body>
 </html>

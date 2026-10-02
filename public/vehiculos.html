@@ -105,8 +105,8 @@ async function cargarFlota(){
 }
 
 async function nuevo(){
-  const nombre=prompt('Nombre del vehículo (p. ej. «Furgoneta Jose» o «Berlingo blanca»):');if(nombre===null)return;
-  const matricula=prompt('Matrícula:')||'';
+  const nombre=await CPDialog.pedir('Nombre del vehículo',{placeholder:'p. ej. Furgoneta Jose o Berlingo blanca'});if(nombre===null)return;
+  const matricula=(await CPDialog.pedir('Matrícula',{placeholder:'1234ABC'}))||'';
   try{const v=await api('POST','/api/vehiculos',{nombre,matricula});toast('Vehículo creado. Completa su ficha.');abrir(String(v._id));}catch(e){toast(e.message);}
 }
 
@@ -195,9 +195,9 @@ async function verDoc(id){
   const w=window.open('','_blank');
   try{const r=await fetch('/api/vehiculos/docs/'+id,{headers:H});if(!r.ok)throw new Error('HTTP '+r.status);const u=URL.createObjectURL(await r.blob());if(w)w.location=u;else location.href=u;}catch(e){if(w)w.close();toast(e.message);}
 }
-async function borrarDoc(id){if(!confirm('¿Borrar este documento?'))return;try{await api('DELETE','/api/vehiculos/docs/'+id);abrir(cur.vehiculo.id);}catch(e){toast(e.message);}}
+async function borrarDoc(id){if(!(await CPDialog.confirmar('¿Borrar este documento?',{ok:'Borrar',peligro:true})))return;try{await api('DELETE','/api/vehiculos/docs/'+id);abrir(cur.vehiculo.id);}catch(e){toast(e.message);}}
 async function darBaja(){
-  if(!confirm('¿Dar de baja '+cur.vehiculo.nombre+'?'))return;
+  if(!(await CPDialog.confirmar('¿Dar de baja '+cur.vehiculo.nombre+'?',{ok:'Dar de baja',peligro:true})))return;
   try{await api('POST','/api/vehiculos/'+cur.vehiculo.id+'/baja',{motivo:V('b-motivo'),fecha:V('b-fecha'),precioVenta:V('b-precio'),nota:V('b-nota')});toast('Dado de baja');abrir(cur.vehiculo.id);}catch(e){toast(e.message);}
 }
 async function reactivar(){try{await api('POST','/api/vehiculos/'+cur.vehiculo.id+'/reactivar');abrir(cur.vehiculo.id);}catch(e){toast(e.message);}}
@@ -249,4 +249,5 @@ async function cargarMapa(){
 
 if(/^#[0-9a-f]{24}$/.test(location.hash))abrir(location.hash.slice(1));else cargarFlota();
 </script>
+<script src="/dialogo.js"></script>
 </body></html>

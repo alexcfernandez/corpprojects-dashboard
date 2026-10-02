@@ -160,7 +160,7 @@ async function esDeObra(id){
   if(!_picker){const c=document.createElement('div');c.style.display='none';document.body.appendChild(c);
     _picker=CPObra.crear(c,{obras:_obras,titulo:'¿De qué obra es?',onChange:async o=>{if(!o||!_pickerMov)return;const mid=_pickerMov;_pickerMov=null;
       if(mid==='__cb'){const cb=_pickerCb;_pickerCb=null;_picker.set('');if(cb)cb(o);return;}
-      const m=_MOV[mid];const nota=prompt('¿Qué se compró? (opcional, p. ej. «cubo y productos de limpieza»)','')||'';
+      const m=_MOV[mid];const nota=(await CPDialog.pedir('¿Qué se compró? (opcional)',{placeholder:'p. ej. cubo y productos de limpieza'}))||'';
       const fd=new FormData();fd.append('movId',mid);fd.append('decision','obra');fd.append('obraId',o.id||o._id);fd.append('nota',nota);fd.append('mov',JSON.stringify(m));
       try{const r=await fetch('/api/trimestre/justificar',{method:'POST',headers:H,body:fd});const dd=await r.json();if(!r.ok)throw new Error(dd.error||'HTTP '+r.status);marcarHecho(mid,`<span class="ok">🏗️ ${esc(dd.obraRef||'')}</span> <a href="#" style="color:var(--blue);font-size:12px" onclick="deshacer(event,'${esc(mid)}')">deshacer</a>`);setTimeout(cargarPunteo,800);}
       catch(e){alert(e.message);}_picker.set('');}});}
@@ -168,9 +168,9 @@ async function esDeObra(id){
 let _emPend=[];
 async function enviarDecision(mid,campos){const m=_MOV[mid];const fd=new FormData();fd.append('movId',mid);fd.append('mov',JSON.stringify(m));Object.entries(campos).forEach(([k,v])=>fd.append(k,v));
   const r=await fetch('/api/trimestre/justificar',{method:'POST',headers:H,body:fd});const d=await r.json();if(!r.ok)throw new Error(d.error||'HTTP '+r.status);return d;}
-async function otraEmpresa(mid){const emp=prompt('¿Por cuenta de qué empresa? (entra o sale dinero que es suyo)','JustFly Executive');if(!emp)return;const nota=prompt('Nota (opcional, p. ej. «pago a proveedor del vuelo de X»)','')||'';
+async function otraEmpresa(mid){const emp=await CPDialog.pedir('¿Por cuenta de qué empresa? (entra o sale dinero que es suyo)',{valor:'JustFly Executive',opciones:['JustFly Executive']});if(!emp)return;const nota=(await CPDialog.pedir('Nota (opcional)',{placeholder:'p. ej. pago a proveedor del vuelo de X'}))||'';
   try{await enviarDecision(mid,{decision:'tercero',empresa:emp,nota});marcarHecho(mid,`<span style="color:var(--text2)">🔁 ${esc(emp)}</span>`);setTimeout(cargarPunteo,700);}catch(e){alert(e.message);}}
-async function hayQueFacturar(mid){const nota=prompt('¿A quién hay que facturar y de qué? (p. ej. «Claudia — obra Can Pedretes, certificación»)','');if(nota===null)return;
+async function hayQueFacturar(mid){const nota=await CPDialog.pedir('¿A quién hay que facturar y de qué?',{placeholder:'p. ej. Claudia — obra Can Pedretes, certificación'});if(nota===null)return;
   try{await enviarDecision(mid,{decision:'facturar',nota});marcarHecho(mid,`<span class="reg">✍️ Por facturar</span>`);setTimeout(cargarPunteo,700);}catch(e){alert(e.message);}}
 function elegirFactura(mid){const m=_MOV[mid];const imp=Math.abs(m.importe);
   const ov=document.createElement('div');ov.className='pk-ov';ov.innerHTML=`<div class="pk"><div style="display:flex;align-items:center;padding:12px 14px 0"><b style="flex:1">¿De qué factura es este cobro de ${eur(imp)}?</b><button class="btn" style="padding:4px 10px" onclick="this.closest('.pk-ov').remove()">×</button></div><input placeholder="Buscar cliente o número…" autofocus><div class="l"></div></div>`;
@@ -192,7 +192,7 @@ function elegirFacturas(mid){const m=_MOV[mid];const imp=Math.abs(m.importe);con
     sum.innerHTML=`${l.length} elegida${l.length===1?'':'s'}: <b>${eur(t)}</b> · `+(Math.abs(dif)<0.03?'<b class="ok">✓ cuadra</b>':dif>0?`<b class="reg">faltan ${eur(dif)}</b> <span style="color:var(--text3);font-size:12px">(factura que no ha llegado: súbela después)</span>`:`<b class="mal">sobran ${eur(-dif)}</b>`);
     bt.disabled=!l.length;};
   ov.querySelector('.l').onchange=pinta;pinta();
-  bt.onclick=async()=>{const l=sel();const t=l.reduce((a,r)=>a+r.total,0);if(!par.checked&&Math.abs(imp-t)>=0.03&&!confirm(`No cuadra (${eur(imp-t)} de diferencia). ¿Guardar igualmente?`))return;
+  bt.onclick=async()=>{const l=sel();const t=l.reduce((a,r)=>a+r.total,0);if(!par.checked&&Math.abs(imp-t)>=0.03&&!(await CPDialog.confirmar(`No cuadra (${eur(imp-t)} de diferencia). ¿Guardar igualmente?`,{ok:'Guardar'})))return;
     bt.disabled=true;try{await enviarDecision(mid,{decision:'facturas',recibidas:JSON.stringify(l.map(r=>r.id)),parcial:par.checked?'1':''});ov.remove();marcarHecho(mid,`<span class="ok">✓ ${l.length} factura${l.length>1?'s':''}</span>`);setTimeout(cargarPunteo,700);}catch(e){bt.disabled=false;alert(e.message);}};
 }
 // Comida de trabajo autorizada (dieta): quién comió, de qué obra (opcional) y nota.
@@ -225,8 +225,8 @@ async function subirJustif(inp,id){
     marcarHecho(m.id,d.cuadra===false?`<span class="reg">✓ Subida · ${esc(d.proveedor||'')} ${eur(d.total)}: el importe no coincide, revísala en Compras</span>`:`<span class="ok">✓ Factura subida${d.proveedor?' · '+esc(d.proveedor):''}${d.total!=null?' · '+eur(d.total):''}${d.cuadra?' · cuadra':''}</span> <a href="/compras#${esc(d.compraId)}" target="_blank" style="color:var(--blue);font-size:12px">ver en Compras</a>`);}
   catch(e){alert('No se pudo subir: '+e.message);lab.firstChild.textContent='📷 Subir factura';}}
 async function decidir(b,id,decision){
-  const m=_MOV[id];const movTxt=JSON.stringify(m);const nota=decision==='personal'?'':(prompt('¿Por qué no lleva factura? (opcional)','')||'');
-  if(decision==='personal'&&!confirm(`¿Marcar ${eur(Math.abs(m.importe))} del ${dt(m.fecha)} como gasto personal${m.persona?' de '+m.persona:''}? No contará como gasto de la empresa y quedará en su lista de gastos personales.`))return;
+  const m=_MOV[id];const movTxt=JSON.stringify(m);const nota=decision==='personal'?'':((await CPDialog.pedir('¿Por qué no lleva factura? (opcional)',{opciones:['Ticket perdido','Parking','Peaje','Propina']}))||'');
+  if(decision==='personal'&&!(await CPDialog.confirmar(`¿Marcar ${eur(Math.abs(m.importe))} del ${dt(m.fecha)} como gasto personal${m.persona?' de '+m.persona:''}? No contará como gasto de la empresa y quedará en su lista de gastos personales.`)))return;
   const fd=new FormData();fd.append('movId',m.id);fd.append('decision',decision);fd.append('nota',nota);fd.append('mov',movTxt);
   try{const r=await fetch('/api/trimestre/justificar',{method:'POST',headers:H,body:fd});const d=await r.json();if(!r.ok)throw new Error(d.error||'HTTP '+r.status);
     marcarHecho(m.id,`<span style="color:var(--text2)">${decision==='personal'?'Personal'+(m.persona?' de '+esc(m.persona):''):'Sin factura (justificado)'}</span> <a href="#" style="color:var(--blue);font-size:12px" onclick="deshacer(event,'${esc(m.id)}')">deshacer</a>`);setTimeout(cargarPunteo,800);}
@@ -332,4 +332,5 @@ async function excel(b){const t=b.textContent;b.disabled=true;b.textContent='Pre
 cargar();cargarPunteo();cargarTarjetas();
 document.getElementById('q').addEventListener('change',()=>{document.getElementById('punteo').innerHTML='';cargarPunteo();});
 </script>
+<script src="/dialogo.js"></script>
 </body></html>

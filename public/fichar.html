@@ -392,7 +392,7 @@ function getGPS(){return new Promise(res=>{
 function accionPrincipal(){const est=estadoDe(_estado);marcar(est==='fuera'?'entrada':est==='dentro'?'pausa_inicio':'pausa_fin');}
 // Añade una marca (registro legal: no se edita ni se borra). Guarda ubicación si hay consentimiento.
 async function marcar(tipo){
-  if(tipo==='salida'&&!confirm('¿Terminar la jornada de hoy?'))return;
+  if(tipo==='salida'&&!(await CPDialog.confirmar('¿Terminar la jornada de hoy?',{ok:'Terminar'})))return;
   // La hora que vale si no hay cobertura es la del momento de PULSAR (antes de buscar el GPS).
   const pulsado=new Date().toISOString(),opId=nuevoOpId();
   const btn=document.getElementById('fichar-btn'),fin=document.getElementById('terminar-btn');
@@ -699,5 +699,6 @@ function mostrarBienvenida(nombre){const ov=document.createElement('div');ov.sty
   if(ok)loadWorkers();else{await loadWorkers();showPage('login');}
   sincronizar();})();
 </script>
+<script src="/dialogo.js"></script>
 </body>
 </html>
