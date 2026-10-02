@@ -145,8 +145,16 @@ async function reactivar(id, por) {
 const _addM = (f, meses) => { const d = new Date(f + 'T12:00:00Z'); d.setUTCMonth(d.getUTCMonth() + meses); return d.toISOString().slice(0, 10); };
 function proximaItv(v, fechaItv) {
   const tipo = v.tipo || 'furgoneta';
-  const mat = fechaOk(v.fechaMatriculacion);
+  // Sin fecha de matriculación: año aproximado por la 1.ª letra de la matrícula (serie 0000-BBB, desde 2000).
+  const ANIO_LETRA = { B: 2000, C: 2002, D: 2004, F: 2006, G: 2008, H: 2011, J: 2014, K: 2016, L: 2018, M: 2022, N: 2024 };
+  const m = String(v.matricula || '').toUpperCase().match(/^\d{4}([BCDFGHJKLMN])/);
+  const mat = fechaOk(v.fechaMatriculacion) || (m ? `${ANIO_LETRA[m[1]]}-01-01` : null);
+  const estimada = !fechaOk(v.fechaMatriculacion) && !!m;
   if (!mat) return { proxima: _addM(fechaItv, 12), regla: 'sin fecha de matriculación: 1 año (ponla en la ficha para afinar)' };
+  const r = _proximaPorEdad(tipo, mat, fechaItv);
+  return estimada ? { ...r, regla: r.regla + ` (edad aproximada por la matrícula, de ~${mat.slice(0, 4)}; pon la fecha de matriculación para afinar)` } : r;
+}
+function _proximaPorEdad(tipo, mat, fechaItv) {
   const edad = (new Date(fechaItv + 'T12:00:00Z') - new Date(mat + 'T12:00:00Z')) / (365.25 * 86400000);
   const aniv = n => _addM(mat, n * 12);
   const min = (a, b) => (a < b ? a : b);
