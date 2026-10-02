@@ -240,7 +240,7 @@
         const tooltip     = est
           ? (numObras > 1
               ? `${est.label} — ${entry.obras.map(o=>o.clientName+' ('+o.horas+'h)').join(', ')}${tieneEquipo?' · '+entry.equipo.length+' personas':''}`
-              : `${est.label}${entry.clientName?' — '+entry.clientName:''}${tieneEquipo?' · '+entry.equipo.length+' personas':''}`)
+              : `${est.label}${entry.clientName?' — '+entry.clientName:''}${tieneEquipo?' · '+entry.equipo.length+' personas':''}`) + (entry?.horasFichadas!=null?` · ${entry.horas} h (fichó ${entry.horasFichadas} h)`:'')
           : weekend ? 'Fin de semana' : 'Sin registrar';
 
         html += `<div
@@ -252,6 +252,7 @@
           <div style="font-size:8px;line-height:1;display:flex;gap:1px">
             ${entry?.revisar ? `<span title="Revisar: ${(entry.revisarMotivo||'').replace(/"/g,'&quot;')}">⚠️</span>` : ''}
             ${entry?.tieneParte ? '<span title="Tiene parte">📋</span>' : ''}
+            ${entry?.avisoHoras==='sin_salida' ? '<span title="No fichó la salida: se cuentan 8 h">⏱️</span>' : entry?.avisoHoras==='corta' ? `<span title="Jornada corta: fichó ${entry.horasFichadas} h">⏱️</span>` : ''}
             ${entry?.obraDichaPorTrabajador ? `<span title="El trabajador dice que estuvo en ${String(entry.obraDichaPorTrabajador).replace(/"/g,'&quot;')}${(entry.equipoDichoPorTrabajador||[]).length?' con '+entry.equipoDichoPorTrabajador.join(', '):''} (tú le pusiste otra)">❓</span>` : ''}
             ${entry?.obraElegidaPorTrabajador ? '<span title="La obra la eligió él al fichar">📲</span>' : ''}
             ${entry?.obraPorCompanero ? `<span title="Le apuntó ${String(entry.obraPorCompanero).replace(/"/g,'&quot;')} (iban juntos)">🤝</span>` : ''}
@@ -344,6 +345,7 @@
           <div style="margin-bottom:12px">
             <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Cliente / Obra · Horas</div>
             <div id="p-obras-rows">${_obrasModal.map((o,i)=>_obraRowHtml(o,i)).join('')}</div>
+            ${entry?.autoFromFichaje && !entry?.horasManual ? `<div style="font-size:11.5px;color:var(--text3);margin:4px 0 6px">⏱️ Las horas las pone el fichaje al terminar (mínimo 8 h si hace la jornada)${entry?.horasFichadas!=null?` · fichó ${entry.horasFichadas} h`:''}. Si solo pones la obra, deja las horas como están.</div>` : (entry?.horasManual ? '<div style="font-size:11.5px;color:var(--text3);margin:4px 0 6px">✍️ Horas puestas a mano: el fichaje ya no las cambia.</div>' : '')}
             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px">
               <button type="button" onclick="CP.Presencia._addObraRow()"
                 style="background:none;border:1px dashed var(--border2);border-radius:8px;color:var(--text2);cursor:pointer;padding:6px 12px;font-size:12px;font-family:'Inter',sans-serif">+ Añadir obra</button>

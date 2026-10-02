@@ -192,6 +192,8 @@ async function avisarSalidasOlvidadas({ dryRun = false } = {}) {
     const nPush = await _pushWorker(d.userId, { title: 'Tu jornada sigue abierta', body: `Empezaste a las ${_hhmm(inicio)}. Si ya has acabado, pulsa «Termino la jornada».`, url: '/fichar', tag: 'fichaje-abierto' });
     const okWa = to ? await _enviar(to, texto) : false;
     if (okWa || nPush) await avisos.markAlertSent(clave, fecha);
+    // En Presencia cuenta la jornada completa con aviso «no fichó la salida» (al corregirla se recalcula).
+    try { await require('./attendance').jornadaSinSalida(String(d.userId), fecha); } catch (e) { console.warn('[FichajeAvisos] jornada sin salida:', e.message); }
     out.push({ name: d.userName, to: to || null, whatsapp: !!okWa, push: nPush });
   }
   return { fecha, avisos: out };

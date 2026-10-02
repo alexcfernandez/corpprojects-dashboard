@@ -36,7 +36,8 @@ if (!JWT_SECRET) {
 }
 
 app.set('trust proxy', 1);
-app.use(helmet({ contentSecurityPolicy: false }));
+// referrerPolicy: OpenStreetMap exige saber desde qué web se piden los mapas (con «no-referrer» los bloquea).
+app.use(helmet({ contentSecurityPolicy: false, referrerPolicy: { policy: 'strict-origin-when-cross-origin' } }));
 
 // ── INSTRUMENTACIÓN DE TRÁFICO ────────────────────────────────────
 // Cuenta peticiones y BYTES de respuesta por ruta (agrupando ids) para localizar

@@ -231,7 +231,7 @@ async function cargarMapa(){
     3. Vuelve aquí: cada vehículo se enlaza solo por su matrícula (o pon su id de Quartix en la ficha).</div></div>`;mapa=null;return;}
   const con=d.puntos.filter(p=>p.posicion&&p.posicion.lat!=null);
   if(!mapa){el.innerHTML=`<div class="bar"><button class="btn peq" onclick="cargarMapa()">↻ Actualizar</button><span id="m-act" style="font-size:12px;color:var(--text3)"></span></div><div id="mapa"></div><div id="m-lista"></div>`;
-    mapa=L.map('mapa').setView([41.98,2.82],9);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(mapa);mapa._capa=L.layerGroup().addTo(mapa);}
+    mapa=L.map('mapa').setView([41.98,2.82],9);L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,referrerPolicy:'strict-origin-when-cross-origin',attribution:'© OpenStreetMap'}).addTo(mapa);mapa._capa=L.layerGroup().addTo(mapa);}
   setTimeout(()=>mapa.invalidateSize(),50);
   mapa._capa.clearLayers();
   const pts=[];

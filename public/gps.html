@@ -67,7 +67,7 @@ function horaTxt(x){ if(!x) return ''; try{ return new Date(x).toLocaleString('e
 function hoy(){ document.getElementById('fecha').value=new Date().toLocaleDateString('en-CA',{timeZone:'Europe/Madrid'}); cargar(); }
 function mueveDia(n){ const f=document.getElementById('fecha'); const d=new Date(f.value||new Date()); d.setDate(d.getDate()+n); f.value=d.toISOString().slice(0,10); cargar(); }
 function initMap(){ map=L.map('map',{zoomControl:true}).setView([41.98,2.82],13); // Girona por defecto
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map); }
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,referrerPolicy:'strict-origin-when-cross-origin',attribution:'© OpenStreetMap'}).addTo(map); }
 async function cargar(){
   const fecha=document.getElementById('fecha').value;
   try{
