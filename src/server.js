@@ -1604,6 +1604,10 @@ app.get('/api/compras', async (req, res) => {
     res.json(await require('./compras').lista({ estado: req.query.estado, desde: req.query.desde, hasta: req.query.hasta, limit: req.query.limit })); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
+// Factura de comisiones de CINC: cada línea vs nuestra factura (10 % de la base, cobrada, no repetida).
+app.get('/api/compras/:id/comisiones-cinc', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./comisionesCinc').revisar(req.params.id)); } catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/compras/:id', async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').getCompra(req.params.id)); }
   catch (err) { res.status(404).json({ error: err.message }); }
