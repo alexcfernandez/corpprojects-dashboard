@@ -67,6 +67,16 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .firma-box .btn{margin-top:10px;padding:13px;font-size:15px}
 .link-btn{display:block;width:100%;background:none;border:none;color:var(--text2);font-family:inherit;font-size:14px;text-decoration:underline;cursor:pointer;padding:16px 8px;margin-top:6px}
 textarea.obra-sel{resize:vertical;line-height:1.4}
+.obra-pista{font-size:13px;color:var(--text2);margin-top:8px;text-align:left}
+.obra-ask{background:var(--bg3);border:1px solid rgba(77,156,248,.35);border-radius:14px;padding:14px;text-align:left}
+.obra-ask .t{font-weight:700;font-size:16px;margin-bottom:10px}.obra-ask .t2{font-weight:600;font-size:14px;margin:14px 0 8px}
+.obra-ask .opt{display:block;width:100%;text-align:left;padding:13px 14px;margin-bottom:8px;border-radius:12px;border:1px solid var(--border2);background:var(--bg2);color:var(--text);font-size:15px;font-family:inherit;cursor:pointer}
+.obra-ask .opt.on{border-color:var(--blue);background:rgba(77,156,248,.15);font-weight:600}
+.obra-ask .opt small{display:block;color:var(--text3);font-size:12px;font-weight:400;margin-top:2px}
+.obra-ask .chips{display:flex;flex-wrap:wrap;gap:8px}
+.obra-ask .cc{padding:9px 13px;border-radius:100px;border:1px solid var(--border2);background:var(--bg2);color:var(--text);font-size:14px;font-family:inherit;cursor:pointer}
+.obra-ask .cc.on{border-color:var(--green);background:rgba(34,196,135,.15);color:var(--green);font-weight:600}
+.obra-cambiar{background:none;border:none;color:var(--blue);font-size:13px;margin-left:8px;cursor:pointer;font-family:inherit}
 .corr{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:11px 14px;margin-bottom:7px;font-size:14px}
 .corr .top{display:flex;justify-content:space-between;gap:10px;font-variant-numeric:tabular-nums}
 .corr .mot{color:var(--text3);font-size:12px;margin-top:4px}
@@ -287,7 +297,7 @@ async function cargar(){
   let r;try{r=await fetchT('/api/fichaje/estado',{headers:authH()},12000);}
   catch(e){_sinRed=true;render(estadoLocal());renderOffline();return;} // sin cobertura
   _sinRed=false;
-  try{const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');pintar(d);cargarCorrecciones();avisoFirmaPendiente();avisoPush();menuTrabajador();if(colaTodos().length)sincronizar();}catch(e){toast(e.message,'error');}}
+  try{const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');await cargarDia();pintar(d);cargarCorrecciones();avisoFirmaPendiente();avisoPush();menuTrabajador();if(colaTodos().length)sincronizar();}catch(e){toast(e.message,'error');}}
 let _estado=null,_obras=null;
 const escH=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function estadoDe(d){return d?(d.estado||(d.dentro?'dentro':'fuera')):'fuera';}
@@ -295,20 +305,59 @@ function estadoDe(d){return d?(d.estado||(d.dentro?'dentro':'fuera')):'fuera';}
 async function cargarObras(){if(_obras)return _obras;
   try{const r=await fetch('/api/campo/obras',{headers:authH()});if(r.ok){_obras=await r.json();lsSet('cpObras',_obras);return _obras;}}catch(e){}
   return lsGet('cpObras',[]);} // sin cobertura: las últimas que se vieron
-let _obraPick=null;
+let _obraPick=null,_dia=null;
+// En qué obra está hoy y con quién: lo que oficina le puso, su último día y las obras de los compañeros.
+async function cargarDia(){try{const r=await fetchT('/api/fichaje/obra-dia',{headers:authH()},10000);if(r.ok){_dia=await r.json();lsSet('cpDia',_dia);return _dia;}}catch(e){}
+  const c=lsGet('cpDia',null);_dia=c&&c.fecha===new Date().toLocaleDateString('en-CA',{timeZone:'Europe/Madrid'})?c:null;return _dia;}
 async function renderObra(est,obraId){
-  const w=document.getElementById('obra-wrap');const obras=await cargarObras();
+  const w=document.getElementById('obra-wrap');const obras=await cargarObras();const dia=_dia||{};
+  const abierta=id=>!!id&&obras.some(o=>o.id===id&&o.grupo==='abierta');
   if(est==='fuera'){
     if(_obraPick&&w.firstChild){_obraPick.setObras(obras);return;} // no pisar lo que esté eligiendo
     const last=localStorage.getItem('cpObra')||'';
-    w.innerHTML='<label class="obra-lbl">¿En qué obra estás hoy?</label><div id="obra-pick"></div>';
-    // Selector único: busca por nombre, calle o mote. Solo se propone la última si sigue ABIERTA.
-    _obraPick=CPObra.crear(document.getElementById('obra-pick'),{obras,value:obras.some(o=>o.id===last&&o.grupo==='abierta')?last:'',vacio:'— Sin obra / otra —',placeholder:'Elegir obra…',titulo:'¿En qué obra estás hoy?'});
+    // Propuesta: la que oficina le puso hoy → la de su último día → la última que eligió (si siguen abiertas).
+    const pro=(dia.hoy&&dia.hoy.obraId)||(dia.ultima&&abierta(dia.ultima.obraId)?dia.ultima.obraId:'')||(abierta(last)?last:'');
+    const pista=dia.hoy?(dia.hoy.puestaPor==='oficina'?`📌 Oficina te ha puesto hoy en <b>${escH(dia.hoy.nombre)}</b>`:`Hoy: <b>${escH(dia.hoy.nombre)}</b>`):(dia.ultima?`Tu último día estuviste en <b>${escH(dia.ultima.nombre)}</b>`:'');
+    w.innerHTML='<label class="obra-lbl">¿En qué obra estás hoy?</label><div id="obra-pick"></div>'+(pista?`<div class="obra-pista">${pista}</div>`:'');
+    _obraPick=CPObra.crear(document.getElementById('obra-pick'),{obras,value:pro,vacio:'— Sin obra / otra —',placeholder:'Elegir obra…',titulo:'¿En qué obra estás hoy?'});
   }else{
     _obraPick=null;
-    const o=obras.find(x=>x.id===obraId);
-    w.innerHTML=o?`<div class="obra-chip">🏗️ ${escH(o.reference)}</div>`:'';
+    const h=dia.hoy||(obraId&&obras.find(x=>x.id===obraId)?{nombre:obras.find(x=>x.id===obraId).reference,equipo:[]}:null);
+    if(h)w.innerHTML=`<div class="obra-chip">🏗️ ${escH(h.nombre)}${(h.equipo||[]).length?' · con '+escH(h.equipo.join(', ')):''}</div>${h.puestaPor&&h.puestaPor!=='ti'&&h.puestaPor!=='oficina'?`<div class="obra-pista">Te ha apuntado ${escH(h.puestaPor)}</div>`:''}<div><button class="obra-cambiar" onclick="preguntarObra()">Cambiar obra o compañeros</button></div>`;
+    else preguntarObra();   // ha empezado sin decir la obra: se le pregunta aquí mismo
   }
+}
+// Tarjeta «¿En qué obra estás hoy? · ¿Vas con alguien?» (un toque).
+function preguntarObra(){
+  const w=document.getElementById('obra-wrap');const dia=_dia||{};const obras=_obras||lsGet('cpObras',[]);
+  const abierta=id=>!!id&&obras.some(o=>o.id===id&&o.grupo==='abierta');
+  const opts=[];const vistas=new Set();
+  if(dia.hoy&&dia.hoy.obraId){opts.push({id:dia.hoy.obraId,nombre:dia.hoy.nombre,sub:dia.hoy.puestaPor==='oficina'?'Te la ha puesto oficina':'La de hoy'});vistas.add(dia.hoy.obraId);}
+  if(dia.ultima&&abierta(dia.ultima.obraId)&&!vistas.has(dia.ultima.obraId)){opts.push({id:dia.ultima.obraId,nombre:dia.ultima.nombre,sub:'Igual que tu último día'});vistas.add(dia.ultima.obraId);}
+  (dia.companeros||[]).filter(c=>c.obra&&c.obra.obraId).forEach(c=>{if(vistas.has(c.obra.obraId)){const o=opts.find(x=>x.id===c.obra.obraId);if(o)o.con=(o.con||[]).concat(c.id);return;}vistas.add(c.obra.obraId);opts.push({id:c.obra.obraId,nombre:c.obra.nombre,sub:'',con:[c.id]});});
+  opts.forEach(o=>{if(o.con&&o.con.length){const ns=o.con.map(id=>(dia.companeros.find(c=>c.id===id)||{}).nombre).filter(Boolean);o.sub=(o.sub?o.sub+' · ':'')+'Está '+ns.join(', ');}});
+  let elegida=opts[0]?{obraId:opts[0].id,nombre:opts[0].nombre}:null;const con=new Set();
+  if(opts[0]&&opts[0].con)opts[0].con.forEach(id=>con.add(id));
+  const comps=(dia.companeros||[]).slice(0,14);
+  w.innerHTML=`<div class="obra-ask"><div class="t">¿En qué obra estás hoy?</div>
+    <div class="opts">${opts.map((o,i)=>`<button class="opt${i===0?' on':''}" data-i="${i}">🏗️ ${escH(o.nombre)}${o.sub?`<small>${escH(o.sub)}</small>`:''}</button>`).join('')}<button class="opt otra">🔎 Otra obra…</button></div>
+    <div id="obra-pick-ask" style="display:none;margin-bottom:8px"></div>
+    ${comps.length?`<div class="t2">¿Vas con alguien?</div><div class="chips">${comps.map(c=>`<button class="cc" data-id="${escH(c.id)}">${escH(c.nombre.split(' ')[0])}${c.haFichado?'':' <span style="opacity:.6">·no ha fichado</span>'}</button>`).join('')}</div>`:''}
+    <button class="fichar-btn entrada" id="obra-guardar" style="margin-top:14px;padding:14px;font-size:16px">Guardar</button></div>`;
+  const pintaChips=()=>w.querySelectorAll('.cc').forEach(b=>b.classList.toggle('on',con.has(b.dataset.id)));pintaChips();
+  w.querySelectorAll('.opt[data-i]').forEach(b=>b.onclick=()=>{const o=opts[Number(b.dataset.i)];elegida={obraId:o.id,nombre:o.nombre};w.querySelectorAll('.opt').forEach(x=>x.classList.toggle('on',x===b));document.getElementById('obra-pick-ask').style.display='none';(o.con||[]).forEach(id=>con.add(id));pintaChips();});
+  w.querySelector('.opt.otra').onclick=()=>{w.querySelectorAll('.opt').forEach(x=>x.classList.toggle('on',x.classList.contains('otra')));elegida=null;const c=document.getElementById('obra-pick-ask');c.style.display='block';
+    if(!c.firstChild){const p=CPObra.crear(c,{obras,value:'',vacio:'— Elige —',placeholder:'Buscar obra…',titulo:'¿En qué obra estás hoy?',onChange:o=>{elegida=o?{obraId:o.id,nombre:o.reference}:null;}});c._p=p;}};
+  w.querySelectorAll('.cc').forEach(b=>b.onclick=()=>{con.has(b.dataset.id)?con.delete(b.dataset.id):con.add(b.dataset.id);pintaChips();});
+  document.getElementById('obra-guardar').onclick=async ev=>{const btn=ev.target;
+    if(!elegida){const c=document.getElementById('obra-pick-ask');const v=c&&c._p&&c._p.value;const o=v&&obras.find(x=>x.id===v);if(o)elegida={obraId:o.id,nombre:o.reference};}
+    if(!elegida){toast('Elige la obra','error');return;}
+    btn.disabled=true;btn.textContent='Guardando…';
+    try{const r=await fetchT('/api/fichaje/obra-dia',{method:'POST',headers:authH({'Content-Type':'application/json'}),body:JSON.stringify({obraId:elegida.obraId,companeros:[...con]})},12000);const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');
+      localStorage.setItem('cpObra',elegida.obraId||'');
+      toast(d.respetada?`Anotado. Oficina te tenía en ${d.respetada}: lo revisará`:`🏗️ ${d.obra}${d.companerosPuestos&&d.companerosPuestos.length?' · también '+d.companerosPuestos.join(', '):''}`,'ok');
+      await cargarDia();renderObra(estadoDe(_estado),_estado&&_estado.obraId);}
+    catch(e){toast(e.message||'No se pudo guardar','error');btn.disabled=false;btn.textContent='Guardar';}};
 }
 function render(d){
   _estado=d;
@@ -363,7 +412,7 @@ async function marcar(tipo){
     if(!r.ok)throw new Error(d.error||'Error');
     _sinRed=false;
     document.getElementById('obra-wrap').innerHTML='';_obraPick=null; // forzar re-render del bloque de obra
-    pintar(d);
+    pintar(d);cargarDia().then(()=>renderObra(estadoDe(_estado),_estado&&_estado.obraId));
     toast(({entrada:'✅ Jornada empezada',pausa_inicio:'⏸ En pausa',pausa_fin:'▶ De vuelta',salida:'👋 Jornada terminada'})[d.accion]||'Hecho','ok');}
   catch(e){btn.textContent=txt;toast(e.message,'error');cargar();}
   finally{btn.disabled=false;fin.disabled=false;}}

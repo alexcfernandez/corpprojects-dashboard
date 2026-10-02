@@ -1414,6 +1414,18 @@ app.post('/api/fichaje/fichar', async (req, res) => {
     res.json(await require('./fichajeMarcas').marcar(w.workerId, w.workerName, b.tipo || 'entrada', { loc, obraId: b.obraId, opId: b.opId, offline: b.offline === true, horaDispositivo: b.horaDispositivo })); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+// En qué obra está hoy (y con quién): propuesta al fichar y guardar → su Presencia del día.
+app.get('/api/fichaje/obra-dia', async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return;
+    res.json(await require('./obraDelDia').sugerencias(w.workerId, require('./fichajeMarcas').fechaHoy())); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/fichaje/obra-dia', async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return;
+    const b = req.body || {};
+    res.json(await require('./obraDelDia').guardar(w.workerId, w.workerName, require('./fichajeMarcas').fechaHoy(), { obraId: b.obraId, nombreLibre: b.nombreLibre, companeros: b.companeros })); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 // Consentimiento GPS del trabajador (leer estado / firmar).
 app.get('/api/fichaje/consent', async (req, res) => {
   try { const w = await _worker(req, res); if (!w) return;

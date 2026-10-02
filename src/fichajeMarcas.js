@@ -187,6 +187,8 @@ async function marcar(userId, userName, tipo, { loc, obraId, opId, offline, hora
     if (tipo === 'entrada') {
       const previas = await db.collection(COL).countDocuments({ empresaId: EMPRESA, userId: String(userId), fecha, tipo: 'entrada' });
       if (previas === 1) await require('./attendance').marcarPresenciaFichaje(String(userId), userName, fecha);
+      // La obra elegida al fichar pasa a su presencia del día (antes se quedaba solo en la marca).
+      if (obraId) await require('./obraDelDia').guardar(String(userId), userName, fecha, { obraId });
     }
   } catch (e) { console.warn('[FichajeMarcas] presencia:', e.message); }
 

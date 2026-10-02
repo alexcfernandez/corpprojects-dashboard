@@ -252,6 +252,9 @@
           <div style="font-size:8px;line-height:1;display:flex;gap:1px">
             ${entry?.revisar ? `<span title="Revisar: ${(entry.revisarMotivo||'').replace(/"/g,'&quot;')}">⚠️</span>` : ''}
             ${entry?.tieneParte ? '<span title="Tiene parte">📋</span>' : ''}
+            ${entry?.obraDichaPorTrabajador ? `<span title="El trabajador dice que estuvo en ${String(entry.obraDichaPorTrabajador).replace(/"/g,'&quot;')}${(entry.equipoDichoPorTrabajador||[]).length?' con '+entry.equipoDichoPorTrabajador.join(', '):''} (tú le pusiste otra)">❓</span>` : ''}
+            ${entry?.obraElegidaPorTrabajador ? '<span title="La obra la eligió él al fichar">📲</span>' : ''}
+            ${entry?.obraPorCompanero ? `<span title="Le apuntó ${String(entry.obraPorCompanero).replace(/"/g,'&quot;')} (iban juntos)">🤝</span>` : ''}
             ${tieneEquipo ? '<span title="Con ayudantes">👥</span>' : ''}
           </div>
         </div>`;
