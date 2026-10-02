@@ -125,6 +125,7 @@ async function abrir(id){
   document.getElementById('vista-lista').style.display='none';const v=document.getElementById('vista-det');v.style.display='block';
   const c=cur, ia=c.ia||{}, rev=c.estado==='revisada'||c.estado==='descartada';   // las de «archivo» se pueden completar y confirmar
   const avisos=[];
+  if(c.itvActualizada&&!c.itvActualizada.yaEstaba)avisos.push(`<div class="aviso ok">🚐 ITV apuntada en la ficha de ${esc(c.itvActualizada.vehiculo)}: pasada el ${c.itvActualizada.ultima.split('-').reverse().join('/')}, próxima el <b>${c.itvActualizada.proxima.split('-').reverse().join('/')}</b> <span style="color:var(--text3)">(${esc(c.itvActualizada.regla||'')})</span></div>`);
   if(c.estado==='archivo')avisos.push(`<div class="aviso">🗄️ Factura recuperada del correo para cuadrar el banco. No cuenta en ninguna obra hasta que la confirmes.</div>`);
   if(!ia.ok)avisos.push(`<div class="aviso err">🤖 La IA no ha podido leer este documento${ia.error?' ('+esc(ia.error)+')':''}${ia.intentoAt?' · último intento '+fh(ia.intentoAt):''}. Rellénalo a mano o pulsa «Volver a leer».</div>`);
   else if(ia.error&&ia.intentoAt&&(!ia.releidaAt||new Date(ia.intentoAt)>new Date(ia.releidaAt)))avisos.push(`<div class="aviso">🤖 El último «Volver a leer» (${fh(ia.intentoAt)}) falló: ${esc(ia.error)}. Se mantienen los datos anteriores.</div>`);
@@ -156,7 +157,7 @@ async function abrir(id){
       <div id="d-quien" style="display:none"><label class="f" id="quien-lbl">¿Para quién?</label><select id="f-quien" ${rev?'disabled':''}><option value="">— Nadie todavía (queda en oficina) —</option>${workers.map(w=>`<option value="${esc(w.id)}" ${c.paraWorker&&c.paraWorker.id===String(w.id)?'selected':''}>${esc(w.name)}</option>`).join('')}</select>
         <div id="d-herr" style="display:none;font-size:12.5px;color:var(--text2);line-height:1.5;margin-top:6px">${rev?((c.activosCreados||[]).length?'✅ Dadas de alta en Llaves y herramientas: '+c.activosCreados.map(a=>esc(a.codigo)+' '+esc(a.nombre)).join(', '):''):'Al confirmar, las líneas marcadas se dan de alta en <b>Llaves y herramientas</b>, tantas unidades como diga la cantidad (4 × pantalón = 4 prendas; el importe se reparte por unidad): entregadas a esa persona, o en oficina si no eliges a nadie (se reparten después desde allí).'}</div></div>
       <div id="d-alm" style="display:none;font-size:12.5px;color:var(--text2);line-height:1.5;margin-top:6px">${rev?((c.almacenCreado||[]).length?'📦 En el almacén: '+c.almacenCreado.map(a=>esc(a.nombre)+' ×'+a.cantidad).join(', ')+' · <a href="/almacen" style="color:var(--blue)">ver almacén</a>':''):'Al confirmar, las líneas marcadas 📦 entran en el <b>almacén</b> con su cantidad y precio (se agrupan por nombre). Marca <b>♻️</b> en las que luego hay que recoger (big bags, contenedores).'}</div>
-      <div id="d-veh" style="display:none"><label class="f">¿De qué vehículo?</label><select id="f-veh" ${rev?'disabled':''}><option value="">— elige —</option></select><label class="f">Tipo de gasto</label><select id="f-vcat" ${rev?'disabled':''}></select><div style="font-size:12px;color:var(--text3);margin-top:4px">Los vehículos se dan de alta en Llaves y herramientas. El gasto de cada uno se ve en <a href="/vehiculos" style="color:var(--blue)">Gastos por vehículo</a>.</div></div>
+      <div id="d-veh" style="display:none"><label class="f">¿De qué vehículo?</label><select id="f-veh" ${rev?'disabled':''}><option value="">— elige —</option></select><label class="f">Tipo de gasto</label><select id="f-vcat" ${rev?'disabled':''}></select><div style="font-size:12px;color:var(--text3);margin-top:4px">Los vehículos se dan de alta en <a href="/vehiculos" style="color:var(--blue)">🚐 Vehículos</a>, donde se ve lo que cuesta cada uno. Si es la ITV, al confirmar se apunta en su ficha con la próxima fecha. <a href="/vehiculos" style="color:var(--blue)">Ir a vehículos</a>.</div></div>
       <div id="gasto" style="display:none"><label class="f">Categoría del gasto</label><select id="f-cat" ${rev?'disabled':''}><option value="">— elige —</option>${CATS.map(k=>`<option value="${k}" ${c.categoria===k?'selected':''}>${k}</option>`).join('')}</select></div>
       <label class="f">Líneas (${(c.lineas||[]).length})</label>
       <div style="max-height:260px;overflow:auto"><table id="lineas"><thead><tr><th class="hcol" style="width:28px;display:none">🔧</th><th>Descripción</th><th style="width:60px">Cant.</th><th style="width:50px">Ud</th><th class="tcol" style="width:56px;display:none">Talla</th><th class="rcol" style="width:34px;display:none" title="Hay que recogerlo después (big bag, contenedor)">♻️</th><th style="width:80px">Importe</th></tr></thead><tbody>${(c.lineas||[]).map(l=>`<tr><td class="hcol" style="display:none"><input type="checkbox" checked style="width:18px;height:18px" ${rev?'disabled':''}></td><td><input value="${esc(l.descripcion)}" ${rev?'disabled':''}></td><td><input value="${l.cantidad??''}" ${rev?'disabled':''}></td><td><input value="${esc(l.unidad||'')}" ${rev?'disabled':''}></td><td class="tcol" style="display:none"><input value="${esc(l.talla||'')}" placeholder="M" ${rev?'disabled':''}></td><td class="rcol" style="display:none"><input type="checkbox" style="width:18px;height:18px" ${/big ?bag|saca|contenedor|cuba/i.test(l.descripcion||'')?'checked':''} ${rev?'disabled':''}></td><td><input value="${l.importe??''}" ${rev?'disabled':''}></td></tr>`).join('')}</tbody></table></div>
@@ -169,6 +170,7 @@ async function abrir(id){
   for(let i=0;i<(c.nFotos||1);i++)cargarFoto(c._id,i,v.querySelector('#fotos img[data-i="'+i+'"]'));
   pick=CPObra.crear(document.getElementById('obra-pick'),{obras,value:c.obraId||'',vacio:'— Sin obra (gasto general) —',placeholder:'Elegir obra…',titulo:'¿De qué obra es la compra?',crear:crearObra,onChange:()=>pintarGasto()});
   document.getElementById('f-tipo').addEventListener('change',e=>{document.getElementById('f-albs').style.display=e.target.value==='factura'?'':'none';const b=document.querySelector('.acciones .btn.ok');if(b)b.textContent='✅ Confirmar'+(['factura','ticket'].includes(e.target.value)?' y enviar a StelOrder':'');});
+  if(!rev&&!c.vehiculoId)detectarVehiculo(c);
   // CINC (administrador de fincas) cobra un 10 % de los trabajos que nos pasa: se propone gasto general · comisiones.
   if(!rev&&!c.categoria&&/\bcinc\b/i.test(c.proveedor||'')&&(!c.obraId)&&!(c.reparto||[]).length){const fd=document.getElementById('f-dest');if(fd){fd.value='general';}setTimeout(()=>{const fc=document.getElementById('f-cat');if(fc)fc.value='comisiones';},0);}
   onDest(true);window.scrollTo(0,0);
@@ -187,6 +189,17 @@ function zoom(img){const z=document.createElement('div');z.className='zoom';z.in
 function pintarGasto(){}
 function destSel(){return document.getElementById('f-dest').value;}
 let _veh=null;
+// Si el documento cita la matrícula de uno de nuestros vehículos (ITV, taller, seguro…), se propone ese vehículo.
+async function detectarVehiculo(c){try{
+  const txt=[c.ia&&c.ia.aviso,c.obraPista,c.nota,c.proveedor,...(c.lineas||[]).map(l=>l.descripcion)].filter(Boolean).join(' ').toUpperCase().replace(/[\s\-]/g,'');
+  if(!/\d{4}[A-Z]{3}|[A-Z]{1,2}\d{4}[A-Z]{1,2}/.test(txt))return;
+  if(!_veh){const r=await fetch('/api/vehiculos?texto='+encodeURIComponent(c.proveedor||''),{headers:{Authorization:'Bearer '+localStorage.getItem('cp_token')}});_veh=await r.json();}
+  const v=(_veh.vehiculos||[]).find(x=>x.matricula&&txt.includes(String(x.matricula).toUpperCase().replace(/[\s\-]/g,'')));
+  if(!v||cur!==c)return;
+  const fd=document.getElementById('f-dest');if(!fd)return;fd.value='vehiculo';onDest();
+  setTimeout(()=>{const sv=document.getElementById('f-veh');if(sv)sv.value=v.id;},300);
+  toast(`🚐 Matrícula ${v.matricula}: ${v.nombre}`,'ok');
+}catch(e){}}
 async function cargarVehiculos(){const sv=document.getElementById('f-veh'),sc=document.getElementById('f-vcat');if(!sv)return;
   try{if(!_veh){const r=await fetch('/api/vehiculos?texto='+encodeURIComponent(cur.proveedor||''),{headers:{Authorization:'Bearer '+localStorage.getItem('cp_token')}});_veh=await r.json();}
     sv.innerHTML='<option value="">— elige —</option>'+_veh.vehiculos.map(v=>`<option value="${v.id}" ${cur.vehiculoId===v.id?'selected':''}>${esc(v.nombre)}${v.matricula?' · '+esc(v.matricula):''}</option>`).join('')+(_veh.vehiculos.length?'':'<option value="" disabled>No hay vehículos: dalos de alta en 🚐 Vehículos</option>');
@@ -247,7 +260,7 @@ async function confirmar(){if(!(await guardar(true)))return;
   if(d._almacen.length)txt+=`\n\nEntran en el almacén: ${d._almacen.map(l=>l.nombre+' ×'+l.cantidad+(l.recogida?' ♻️':'')).join(', ')}.`;
   if(d._herramientas.length)txt+=`\n\nAdemás se dan de alta ${d._herramientas.reduce((a,h)=>a+Math.min(30,Math.max(1,Math.round(h.cantidad))),0)} ${d.destino==='ropa'?'prenda(s)':'herramienta(s)'} en Llaves y herramientas, ${d.paraWorker?'entregadas a '+d.paraWorker.name:'en oficina (sin entregar todavía)'}.`;
   if(!confirm(txt+' ¿Seguimos?'))return;
-  try{cur=await api('POST','/api/compras/'+cur._id+'/revisar',{herramientas:d._herramientas,almacen:d._almacen,enviarStel:d._enviarStel});toast('✅ Revisada','ok');abrir(cur._id);}catch(e){toast(e.message,'error');}}
+  try{cur=await api('POST','/api/compras/'+cur._id+'/revisar',{herramientas:d._herramientas,almacen:d._almacen,enviarStel:d._enviarStel});const it=cur.itvActualizada;toast(it&&!it.yaEstaba?`✅ Revisada · 🚐 ITV de ${it.vehiculo} al día: próxima el ${it.proxima.split('-').reverse().join('/')}`:'✅ Revisada','ok');abrir(cur._id);}catch(e){toast(e.message,'error');}}
 async function descartar(){const m=prompt('Motivo (lo verá quien la subió): p. ej. «foto repetida», «no es una compra»');if(m===null)return;
   try{await api('POST','/api/compras/'+cur._id+'/descartar',{motivo:m});toast('Descartada','ok');volver();}catch(e){toast(e.message,'error');}}
 async function accion(a){const b=[...document.querySelectorAll('.acciones .btn')];const rel=b.find(x=>/Volver a leer/.test(x.textContent));try{b.forEach(x=>x.disabled=true);if(a==='releer'){if(rel)rel.innerHTML='<span class="spinner"></span> Leyendo el documento… (10-30 s)';toast('🤖 La IA está leyendo el documento, espera unos segundos…','ok');}

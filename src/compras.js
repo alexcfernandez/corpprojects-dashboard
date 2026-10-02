@@ -427,6 +427,11 @@ async function revisar(id, por, { enviarStel = true, herramientas = null, almace
       set.enviadaStel = { ok: !!r.ok, at: new Date(), detalle: r.reply || null };
     } catch (e) { set.enviadaStel = { ok: false, at: new Date(), detalle: e.message }; }
   }
+  // Factura de ITV de un vehículo: su ficha queda con la última ITV (fecha de la factura) y la próxima calculada.
+  if ((set.destino || c.destino) === 'vehiculo' && (set.categoria || c.categoria) === 'itv' && (set.vehiculoId || c.vehiculoId) && c.fecha) {
+    try { const r = await require('./vehiculos').registrarItv(set.vehiculoId || c.vehiculoId, c.fecha, { origen: [c.proveedor, c.numero].filter(Boolean).join(' '), por }); if (r) set.itvActualizada = r; }
+    catch (e) { console.warn('[Compras] ITV del vehículo:', e.message); }
+  }
   await db.collection(COL).updateOne({ _id: c._id }, { $set: set });
   // Cierra el aviso al trabajador con lo que ha pasado (push, sin importes)
   try {

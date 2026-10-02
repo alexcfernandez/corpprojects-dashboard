@@ -34,7 +34,7 @@ const DOCS = { ficha_tecnica: 'Ficha técnica', permiso: 'Permiso de circulació
 function sugerirCategoria(texto) {
   const n = norm(texto);
   if (/neumat|pneumat|euromaster|confort auto/.test(n)) return 'neumaticos';
-  if (/\bitv\b|inspeccion tecnica|applus|sgs/.test(n)) return 'itv';
+  if (/\bitv\b|inspeccion tecnica|applus|sgs|controlauto|prevencontrol|revisions de vehicles|itevelesa|veiasa/.test(n)) return 'itv';
   if (/seguro|assegur|mapfre|allianz|axa|generali|mutua|admiral|linea directa|occident/.test(n)) return 'seguro';
   if (/gasolin|petroprix|petrem|repsol|cepsa|galp|esclatoil|bp |shell|carburant|e\.?s\.? |estacio de servei|ballenoil|plenoil/.test(n)) return 'combustible';
   if (/peaje|autopista|autopistes|parking|aparcament|estacioname|via-?t/.test(n)) return 'peajes';
@@ -134,6 +134,42 @@ async function reactivar(id, por) {
   const db = await getDB();
   await db.collection('vehiculos').updateOne({ _id: _oid(id) }, { $set: { estado: 'activo', actualizado: new Date(), actualizadoPor: por || '' }, $unset: { baja: '' } });
   return { ok: true };
+}
+
+// ── ITV ──
+// Próxima ITV según el RD 920/2017 (edad desde la 1.ª matriculación):
+//   · furgoneta / camión ligero (N1 ≤ 3.500 kg): 2 años exenta; de 2 a 6 cada 2 años; de 6 a 10 anual; > 10 cada 6 meses.
+//   · coche particular (M1): 4 años exenta; de 4 a 10 cada 2 años; > 10 anual.
+//   · moto: 4 años exenta; luego cada 2 años.
+// Sin fecha de matriculación no se sabe la edad: se pone 1 año (mejor avisar antes que tarde).
+const _addM = (f, meses) => { const d = new Date(f + 'T12:00:00Z'); d.setUTCMonth(d.getUTCMonth() + meses); return d.toISOString().slice(0, 10); };
+function proximaItv(v, fechaItv) {
+  const tipo = v.tipo || 'furgoneta';
+  const mat = fechaOk(v.fechaMatriculacion);
+  if (!mat) return { proxima: _addM(fechaItv, 12), regla: 'sin fecha de matriculación: 1 año (ponla en la ficha para afinar)' };
+  const edad = (new Date(fechaItv + 'T12:00:00Z') - new Date(mat + 'T12:00:00Z')) / (365.25 * 86400000);
+  const aniv = n => _addM(mat, n * 12);
+  const min = (a, b) => (a < b ? a : b);
+  if (tipo === 'coche') {
+    if (edad < 10) return { proxima: min(_addM(fechaItv, 24), aniv(10) > fechaItv ? aniv(10) : _addM(fechaItv, 24)), regla: 'coche de menos de 10 años: cada 2 años' };
+    return { proxima: _addM(fechaItv, 12), regla: 'coche de más de 10 años: anual' };
+  }
+  if (tipo === 'moto') return { proxima: _addM(fechaItv, 24), regla: 'moto: cada 2 años' };
+  // furgoneta, camión ligero y resto
+  if (edad < 6) return { proxima: min(_addM(fechaItv, 24), aniv(6) > fechaItv ? aniv(6) : _addM(fechaItv, 24)), regla: 'furgoneta de menos de 6 años: cada 2 años' };
+  if (edad < 10) return { proxima: min(_addM(fechaItv, 12), aniv(10) > fechaItv ? aniv(10) : _addM(fechaItv, 12)), regla: 'furgoneta de 6 a 10 años: anual' };
+  return { proxima: _addM(fechaItv, 6), regla: 'furgoneta de más de 10 años: cada 6 meses' };
+}
+// Factura de ITV confirmada en Compras → la ficha del vehículo queda al día (última y próxima).
+async function registrarItv(id, fechaItv, { origen = '', por = '' } = {}) {
+  const f = fechaOk(fechaItv); if (!f) return null;
+  const db = await getDB();
+  const v = await db.collection('vehiculos').findOne({ _id: _oid(id) });
+  if (!v) return null;
+  if (v.itv && v.itv.ultima && v.itv.ultima >= f) return { yaEstaba: true, ultima: v.itv.ultima, proxima: v.itv.proxima || null, vehiculo: v.nombre };
+  const { proxima, regla } = proximaItv(v, f);
+  await db.collection('vehiculos').updateOne({ _id: v._id }, { $set: { 'itv.ultima': f, 'itv.proxima': proxima, 'itv.notas': `Pasada el ${f.split('-').reverse().join('/')}${origen ? ' (' + origen + ')' : ''} · ${regla}`, actualizado: new Date(), actualizadoPor: por || '' } });
+  return { ultima: f, proxima, regla, vehiculo: v.nombre, matricula: v.matricula || '' };
 }
 
 // ── DOCUMENTOS ──
@@ -295,4 +331,4 @@ async function revisarVencimientos({ dryRun = false, hoy = new Date() } = {}) {
   return { avisos: hechos, dryRun };
 }
 
-module.exports = { CATEGORIAS, TIPOS, FORMAS, MOTIVOS_BAJA, DOCS, sugerirCategoria, limpiar, crear, editar, asignarConductor, darDeBaja, reactivar, subirDocumento, documentos, documento, borrarDocumento, lista, flota, ficha, gastos, resumen, diasHasta, claveAviso, avisosPendientes, revisarVencimientos, matNorm };
+module.exports = { CATEGORIAS, TIPOS, FORMAS, MOTIVOS_BAJA, DOCS, sugerirCategoria, limpiar, crear, editar, asignarConductor, darDeBaja, reactivar, subirDocumento, documentos, documento, borrarDocumento, lista, flota, ficha, gastos, resumen, diasHasta, claveAviso, avisosPendientes, revisarVencimientos, matNorm, proximaItv, registrarItv };
