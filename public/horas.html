@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Horas fichadas — Corp Projects</title><link rel="stylesheet" href="/tool-theme.css">
+<meta name="theme-color" content="#4d9cf8">
+<style>*{box-sizing:border-box;margin:0;padding:0}:root{--bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.15);--text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;--green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 18px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:5}
+.logo{width:32px;height:32px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;flex-shrink:0}
+.hbtn{margin-left:auto;background:none;border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:6px 12px;font-size:13px;text-decoration:none;white-space:nowrap}
+.wrap{max-width:1100px;margin:0 auto;padding:16px}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.btn,input,select{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;color:var(--text);padding:8px 12px;font:inherit;font-size:14px;cursor:pointer}
+.btn.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:14px}
+.kp{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:12px 14px}.kp .l{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em}.kp .v{font-size:24px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}.kp .s{font-size:12px;color:var(--text3);margin-top:2px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:14px;overflow:auto}
+h3{font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+table{width:100%;border-collapse:collapse;font-size:13.5px}th{text-align:left;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;padding:6px;border-bottom:1px solid var(--border2);white-space:nowrap}
+td{padding:7px 6px;border-bottom:1px solid var(--border);vertical-align:top}td.r,th.r{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+tr.clic{cursor:pointer}tr.clic:hover td{background:var(--bg3)}
+.menos{color:var(--amber)}.mas{color:var(--green)}.av{font-size:11.5px;color:var(--amber);border:1px solid rgba(245,158,11,.4);border-radius:20px;padding:1px 7px;white-space:nowrap}
+.dia td{background:var(--bg3);font-weight:600;font-size:12.5px;color:var(--text2)}
+.nota{font-size:12px;color:var(--text3);line-height:1.6;margin-top:6px}
+.vacio{padding:30px;text-align:center;color:var(--text3)}
+</style></head>
+<body><script>try{if(localStorage.getItem("cp_theme")==="light")document.body.classList.add("light");}catch(e){}</script>
+<div class="header"><div class="logo">CP</div><div><div style="font-weight:700">Horas fichadas y a facturar</div><div style="font-size:12px;color:var(--text2)">Lo real de cada día y el mínimo de 8 h por jornada</div></div><a class="hbtn" href="/">← Dashboard</a></div>
+<div class="wrap">
+  <div class="bar">
+    <button class="btn" data-p="semana" onclick="preset('semana')">Esta semana</button>
+    <button class="btn" data-p="semanaPasada" onclick="preset('semanaPasada')">Semana pasada</button>
+    <button class="btn" data-p="mes" onclick="preset('mes')">Este mes</button>
+    <button class="btn" data-p="mesPasado" onclick="preset('mesPasado')">Mes pasado</button>
+    <input type="date" id="desde" onchange="cargar()"> <input type="date" id="hasta" onchange="cargar()">
+    <select id="filtro" onchange="pintar()"><option value="">Todos</option></select>
+    <button class="btn" onclick="csv()">⬇︎ Excel</button>
+  </div>
+  <div id="out"><div class="vacio">Cargando…</div></div>
+</div>
+<script>
+const tok=localStorage.getItem('cp_token');const H={'Authorization':'Bearer '+tok};
+const esc=x=>String(x==null?'':x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const h=v=>v==null?'—':(Math.round(v*100)/100).toLocaleString('es-ES',{maximumFractionDigits:2})+' h';
+const iso=d=>d.toLocaleDateString('en-CA',{timeZone:'Europe/Madrid'});
+const DIAS=['dom','lun','mar','mié','jue','vie','sáb'];
+let D=null;
+function preset(p){const hoy=new Date(iso(new Date())+'T12:00:00');let a,b;
+  const lunes=d=>{const x=new Date(d);x.setDate(x.getDate()-((x.getDay()+6)%7));return x;};
+  if(p==='semana'){a=lunes(hoy);b=hoy;}else if(p==='semanaPasada'){a=lunes(hoy);a.setDate(a.getDate()-7);b=new Date(a);b.setDate(b.getDate()+6);}
+  else if(p==='mes'){a=new Date(hoy.getFullYear(),hoy.getMonth(),1,12);b=hoy;}else{a=new Date(hoy.getFullYear(),hoy.getMonth()-1,1,12);b=new Date(hoy.getFullYear(),hoy.getMonth(),0,12);}
+  document.getElementById('desde').value=iso(a);document.getElementById('hasta').value=iso(b);
+  document.querySelectorAll('.btn[data-p]').forEach(x=>x.classList.toggle('on',x.dataset.p===p));cargar();}
+async function cargar(){const el=document.getElementById('out');if(!tok){el.innerHTML='<div class="vacio">Abre esta página desde el dashboard.</div>';return;}
+  el.innerHTML='<div class="vacio">Cargando…</div>';
+  try{const r=await fetch(`/api/presencia/horas?desde=${document.getElementById('desde').value}&hasta=${document.getElementById('hasta').value}`,{headers:H});D=await r.json();if(!r.ok)throw new Error(D.error||'HTTP '+r.status);}
+  catch(e){el.innerHTML='<div class="vacio" style="color:var(--red)">'+esc(e.message)+'</div>';return;}
+  const f=document.getElementById('filtro');const v=f.value;
+  f.innerHTML='<option value="">Todos</option><optgroup label="Obra">'+D.porObra.map(o=>`<option value="o:${esc(o.obra)}">${esc(o.obra)}</option>`).join('')+'</optgroup><optgroup label="Trabajador">'+D.porTrabajador.map(t=>`<option value="t:${esc(t.userId)}">${esc(t.nombre)}</option>`).join('')+'</optgroup>';
+  f.value=v;pintar();}
+function filtrar(){const v=document.getElementById('filtro').value;if(!v)return D.filas;
+  if(v.startsWith('o:'))return D.filas.filter(f=>(f.obras.length?f.obras:['Sin obra']).includes(v.slice(2)));return D.filas.filter(f=>f.userId===v.slice(2));}
+const dif=x=>x==null?'':`<span class="${x<-0.05?'menos':x>0.05?'mas':''}">${x>0?'+':''}${h(x)}</span>`;
+function pintar(){const el=document.getElementById('out');const T=D.totales,m=D.minimo;const filas=filtrar();
+  const real=filas.filter(f=>f.real!=null).reduce((a,f)=>a+f.real,0),fact=filas.reduce((a,f)=>a+f.facturar,0);
+  const porDia={};filas.forEach(f=>{(porDia[f.fecha]=porDia[f.fecha]||[]).push(f);});
+  el.innerHTML=`<div class="cards">
+    <div class="kp"><div class="l">Días trabajados</div><div class="v">${filas.length}</div><div class="s">${filas.filter(f=>f.real!=null).length} con fichaje</div></div>
+    <div class="kp"><div class="l">Fichado real</div><div class="v">${h(real)}</div><div class="s">lo que marcaron</div></div>
+    <div class="kp"><div class="l">A facturar</div><div class="v" style="color:var(--blue)">${h(fact)}</div><div class="s">mínimo ${m} h por día, o lo real si es más</div></div>
+    <div class="kp"><div class="l">Por debajo / encima de ${m} h</div><div class="v"><span class="menos">${filas.filter(f=>f.real!=null&&f.real<m-0.05).length}</span> / <span class="mas">${filas.filter(f=>f.real!=null&&f.real>m+0.05).length}</span></div><div class="s">días</div></div></div>
+  ${document.getElementById('filtro').value?'':`<div class="card"><h3>Por obra · para facturar</h3><table><tr><th>Obra</th><th class="r">Días-persona</th><th class="r">Fichado real</th><th class="r">A facturar</th><th class="r">Diferencia</th><th></th></tr>
+    ${D.porObra.map(o=>`<tr class="clic" onclick="ver('o:${esc(o.obra).replace(/'/g,"\\'")}')"><td><b>${esc(o.obra)}</b></td><td class="r">${o.dias}</td><td class="r">${h(o.real)}</td><td class="r"><b>${h(o.facturar)}</b></td><td class="r">${dif(o.facturar-o.real)}</td><td>${o.sinFichaje?`<span class="av">${o.sinFichaje} día${o.sinFichaje>1?'s':''} sin fichaje</span>`:''}</td></tr>`).join('')}</table>
+    <div class="nota">Si un día tiene varias obras, se reparte según las horas de cada una. «Diferencia» = lo que se factura de más por el mínimo de ${m} h.</div></div>
+  <div class="card"><h3>Por trabajador</h3><table><tr><th>Trabajador</th><th class="r">Días</th><th class="r">Fichado real</th><th class="r">Media real/día</th><th class="r">A facturar</th><th class="r">Días &lt; ${m} h</th><th class="r">Días &gt; ${m} h</th><th></th></tr>
+    ${D.porTrabajador.map(t=>{const dc=filas.filter(f=>f.userId===t.userId&&f.real!=null).length;return `<tr class="clic" onclick="ver('t:${esc(t.userId)}')"><td><b>${esc(t.nombre)}</b></td><td class="r">${t.dias}</td><td class="r">${h(t.real)}</td><td class="r">${dc?h(t.real/dc):'—'}</td><td class="r"><b>${h(t.facturar)}</b></td><td class="r ${t.diasMenos?'menos':''}">${t.diasMenos}</td><td class="r ${t.diasMas?'mas':''}">${t.diasMas}</td><td>${t.sinSalida?`<span class="av">${t.sinSalida} sin salida</span>`:''}</td></tr>`;}).join('')}</table></div>`}
+  <div class="card"><h3>Día a día</h3>${filas.length?`<table><tr><th>Trabajador</th><th>Obra</th><th>Entrada – salida</th><th class="r">Fichado real</th><th class="r">A facturar</th><th class="r">vs ${m} h</th><th></th></tr>
+    ${Object.entries(porDia).map(([d,fs])=>{const dt=new Date(d+'T12:00:00');return `<tr class="dia"><td colspan="7">${DIAS[dt.getDay()]} ${d.split('-').reverse().join('/')} · ${fs.length} persona${fs.length>1?'s':''} · real ${h(fs.filter(f=>f.real!=null).reduce((a,f)=>a+f.real,0))} · a facturar ${h(fs.reduce((a,f)=>a+f.facturar,0))}</td></tr>`+fs.map(f=>`<tr><td>${esc(f.nombre)}</td><td>${esc(f.obras.join(' + ')||'—')}</td><td style="white-space:nowrap;color:var(--text2)">${f.entrada?`${f.entrada} – ${f.salida||'…'}`:'—'}${f.pausas?` <span style="color:var(--text3);font-size:12px">(${f.pausas} pausa${f.pausas>1?'s':''})</span>`:''}</td><td class="r">${h(f.real)}</td><td class="r"><b>${h(f.facturar)}</b>${f.horasManual?' <span title="Horas puestas a mano en Presencia">✍️</span>':''}</td><td class="r">${dif(f.diferencia)}</td><td>${f.aviso?`<span class="av">${esc(f.aviso)}</span>`:''}</td></tr>`).join('');}).join('')}</table>`:'<div class="vacio">Nada en estas fechas.</div>'}
+    <div class="nota">«Fichado real» sale del fichaje (sin pausas). «A facturar» = mínimo ${m} h por día trabajado, o lo fichado si es más; si en Presencia escribiste las horas a mano (✍️), esas. Las correcciones pendientes cuentan cuando las apruebes en Fichajes.</div></div>`;}
+function ver(v){document.getElementById('filtro').value=v;pintar();window.scrollTo(0,0);}
+function csv(){if(!D)return;const filas=filtrar();const L=[['Fecha','Trabajador','Obra','Entrada','Salida','Fichado real (h)','A facturar (h)','vs mínimo','Aviso']];
+  filas.slice().reverse().forEach(f=>L.push([f.fecha,f.nombre,f.obras.join(' + '),f.entrada||'',f.salida||'',f.real==null?'':String(f.real).replace('.',','),String(f.facturar).replace('.',','),f.diferencia==null?'':String(f.diferencia).replace('.',','),f.aviso||'']));
+  const txt='\ufeff'+L.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(';')).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'text/csv'}));a.download=`horas_${D.desde}_${D.hasta}.csv`;a.click();}
+preset('semana');
+</script>
+</body></html>

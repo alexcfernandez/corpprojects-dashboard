@@ -1455,6 +1455,11 @@ app.get('/api/fichaje/mios', async (req, res) => {
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 // Portada del dashboard: quién está hoy en obra ahora mismo (fichaje + presencia).
+// Horas por día: real fichado vs a facturar (mínimo 8 h por día trabajado), por obra y trabajador.
+app.get('/api/presencia/horas', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./horasFacturables').informe({ desde: req.query.desde, hasta: req.query.hasta })); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/fichaje/hoy', requireAuth, async (req, res) => {
   try {
     const fm = require('./fichajeMarcas'); const hoy = fm.fechaHoy();
@@ -3854,6 +3859,7 @@ app.delete('/api/pagos/:id', requireAuth, async (req, res) => {
 
 // ── Rutas HTML ────────────────────────────────────────────────────
 app.get('/informe-presencia', (req, res) => res.sendFile(path.join(__dirname, '../public/informe-presencia.html')));
+app.get('/horas', (req, res) => res.sendFile(path.join(__dirname, '../public/horas.html')));
 app.get('/sitios', (req, res) => res.sendFile(path.join(__dirname, '../public/sitios.html')));
 app.get('/diag', (req, res) => res.sendFile(path.join(__dirname, '../public/diag.html')));
 app.get('/conversaciones', (req, res) => res.sendFile(path.join(__dirname, '../public/conversaciones.html')));

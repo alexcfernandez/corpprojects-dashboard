@@ -64,6 +64,7 @@
           <button class="btn bgh" onclick="CP.Presencia.nextSumMonth()">Siguiente →</button>
           <button class="btn bg2" onclick="CP.Presencia.exportCSV()">📥 CSV</button>
           <button class="btn bp" onclick="CP.Presencia.openReport()">📄 Informe PDF</button>
+          <button class="btn bp" onclick="location.href='/horas'">⏱️ Horas fichadas / a facturar</button>
         </div>
         <div id="p-sum-metrics" class="metrics-row"></div>
         <div class="card"><div class="card-title">Días por trabajador</div><div id="p-sum-table">Cargando...</div></div>
