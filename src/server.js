@@ -994,7 +994,7 @@ app.post('/api/cobros/gestion', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.get('/api/families',           requireAuth, async (req,res) => res.json(await getFamiliesSummary()));
-app.get('/api/families/list',      requireAuth, async (req,res) => { const {list} = await getAccountCategories(); res.json(list); });
+app.get('/api/families/list',      requireAuth, async (req,res) => { try { const {list} = await getAccountCategories(); res.json(list); } catch (e) { res.status(503).json({ error: 'StelOrder no responde ahora mismo: ' + e.message }); } });
 
 // Vaciar la caché de StelOrder bajo demanda (botón "Actualizar" del dashboard)
 app.post('/api/stelorder/refresh', requireAuth, (req,res) => { clearCache(); res.json({ ok:true, message:'Datos actualizados desde StelOrder' }); });

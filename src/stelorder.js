@@ -41,7 +41,10 @@ function getAlertLevel(days) {
   return 'ok';
 }
 
-async function fetchAllPages(endpoint, extraParams = '') {
+// estricto: si StelOrder falla (403 por límite, timeout…), LANZA en vez de devolver lo que haya. Así la caché
+// no guarda una lista vacía o a medias durante horas (pasó el 2/10: todo «Sin familia») y sigue sirviendo
+// lo último bueno.
+async function fetchAllPages(endpoint, extraParams = '', { estricto = false } = {}) {
   const all = [];
   let start = 0;
   const limit = 500;
@@ -77,6 +80,7 @@ async function fetchAllPages(endpoint, extraParams = '') {
       await new Promise(r => setTimeout(r, 1100));
     } catch (err) {
       console.error(`[StelOrder] Error ${endpoint} start=${start}:`, err.response?.status, err.message);
+      if (estricto) throw new Error(`StelOrder ${endpoint}: ${err.response?.status || ''} ${err.message}`.trim());
       break;
     }
   }
@@ -128,7 +132,7 @@ async function _getAccountCategories() {
     return { list: cats, map };
   } catch (err) {
     console.error('[StelOrder] Error accountCategories:', err.message);
-    return { list: [], map: {} };
+    throw err;   // la caché se queda con las familias de antes (no guarda «ninguna» 6 h)
   }
 }
 async function getAccountCategories() {
@@ -137,7 +141,7 @@ async function getAccountCategories() {
 
 async function _getClients() {
   const { list: cats, map: familyMap } = await getAccountCategories();
-  const d = await fetchAllPages('/clients');
+  const d = await fetchAllPages('/clients', '', { estricto: true });
   console.log(`[StelOrder] Clientes: ${d.length}`);
   return { clients: d, clientMap: buildClientMap(d, familyMap), families: cats, familyMap };
 }
@@ -147,7 +151,7 @@ async function getClients() {
 
 async function getWorkEstimates() {
   return cached('workEstimates', TTL.workEstimates, async () => {
-    const d = await fetchAllPages('/workEstimates');
+    const d = await fetchAllPages('/workEstimates', '', { estricto: true });
     console.log(`[StelOrder] WorkEstimates: ${d.length}`);
     return d;
   });
@@ -158,7 +162,7 @@ async function getDocumentStates() { return cached('documentStates', TTL.documen
 async function getAllReceipts() {
   return cached('receipts', TTL.receipts, async () => {
     console.log('[StelOrder] Cargando recibos con paginación...');
-    const all = await fetchAllPages('/ordinaryInvoiceReceipts', '&sort=original-element-id:desc');
+    const all = await fetchAllPages('/ordinaryInvoiceReceipts', '&sort=original-element-id:desc', { estricto: true });
     console.log(`[StelOrder] Total recibos: ${all.length}`);
     return all;
   });
@@ -186,7 +190,7 @@ function importesDoc(o) {
 // Cacheada. Devuelve un mapa por id → { date (emisión), pdfPath, number }.
 async function getAllOrdinaryInvoices() {
   return cached('ordinaryInvoices', TTL.receipts, async () => {
-    const list = await fetchAllPages('/ordinaryInvoices');
+    const list = await fetchAllPages('/ordinaryInvoices', '', { estricto: true });
     const map = {};
     let sample = null;
     (list || []).forEach(o => {
@@ -807,7 +811,7 @@ async function getMonthlyBilling(months = 6) {
 // ── COMPRAS: proveedores, facturas de proveedor y gastos ──────────────────
 async function getSuppliers() {
   return cached('suppliers', TTL.suppliers, async () => {
-    const raw = await fetchAllPages('/suppliers');
+    const raw = await fetchAllPages('/suppliers', '', { estricto: true });
     const supplierMap = {};
     const suppliers = (raw || []).filter(x => !x.deleted).map(x => {
       const name = (x['legal-name'] && x['legal-name'] !== 'null') ? x['legal-name']
@@ -823,7 +827,7 @@ async function getSuppliers() {
 
 async function getPurchaseInvoices() {
   return cached('purchases', TTL.purchases, async () => {
-    const [raw, { supplierMap }] = await Promise.all([fetchAllPages('/purchaseInvoices'), getSuppliers()]);
+    const [raw, { supplierMap }] = await Promise.all([fetchAllPages('/purchaseInvoices', '', { estricto: true }), getSuppliers()]);
     const list = (raw || []).filter(x => !x.deleted).map(x => {
       const sup = supplierMap[String(x['account-id'] || '')] || {};
       const total = Number(x['total-amount']) || 0;
