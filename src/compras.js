@@ -235,11 +235,15 @@ async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaP
 }
 // Lo que ve quien la sube: tipo, proveedor, número, nº de líneas y calidad. SIN importes.
 function resumenParaTrabajador(c) {
-  const r = { id: String(c._id), estado: c.estado, tipo: c.tipo, tipoTxt: TIPO_TXT[c.tipo] || 'Documento', proveedor: c.proveedor, numero: c.numero, fecha: c.fecha, nLineas: (c.lineas || []).length, obraRef: c.obraRef, varias: !!c.varias, destino: c.destino || (c.varias ? 'varias' : 'obra'), destinoTxt: DESTINO_TXT[c.destino] || (c.varias ? 'Varias obras' : 'Obra'), paraWorker: c.paraWorker || null, nFotos: c.nFotos, createdAt: c.createdAt, leida: !!(c.ia && c.ia.ok), calidad: c.ia && c.ia.calidad || null, duplicado: !!c.duplicadoDe };
+  const r = { id: String(c._id), estado: c.estado, tipo: c.tipo, tipoTxt: TIPO_TXT[c.tipo] || 'Documento', proveedor: c.proveedor, numero: c.numero, fecha: c.fecha, nLineas: (c.lineas || []).length, obraRef: c.obraRef, varias: !!c.varias, destino: c.destino || (c.varias ? 'varias' : 'obra'), destinoTxt: DESTINO_TXT[c.destino] || (c.varias ? 'Varias obras' : 'Obra'), paraWorker: c.paraWorker || null, nFotos: c.nFotos, createdAt: c.createdAt, leida: !!(c.ia && c.ia.ok), calidad: c.ia && c.ia.calidad || null, duplicado: !!c.duplicadoDe, motivoDescarte: c.estado === 'descartada' ? (c.descarteMotivo || 'sin motivo') : null };
+  // Repetir la foto solo si de verdad falta algo: borrosa, ilegible, o cortada justo donde iba un dato clave.
+  const faltaDato = c.total == null || !c.numero || !c.proveedor;
+  r.repetir = c.estado !== 'revisada' && (!r.leida || ['borroso', 'no_es_documento'].includes(r.calidad) || (r.calidad === 'cortado' && faltaDato) || (c.estado === 'descartada' && /foto|ilegible|borros|cortad|no se ve|repet/i.test(c.descarteMotivo || '')));
   // Mensaje para la pantalla del móvil
   if (!r.leida) r.mensaje = 'Guardada. La IA no ha podido leerla ahora; oficina la revisará a mano.';
   else if (r.calidad === 'no_es_documento') r.mensaje = 'No parece un albarán ni una factura. Si lo es, repite la foto más de cerca.';
-  else if (r.calidad === 'borroso' || r.calidad === 'cortado') r.mensaje = `Guardada, pero la foto sale ${r.calidad === 'borroso' ? 'borrosa' : 'cortada'}. Si puedes, repítela con más luz y el papel entero.`;
+  else if (r.calidad === 'borroso' || (r.calidad === 'cortado' && r.repetir)) r.mensaje = `Hay que repetir esta foto: sale ${r.calidad === 'borroso' ? 'borrosa' : 'cortada y falta información'}.`;
+  else if (r.calidad === 'cortado') r.mensaje = 'Guardada y leída. La foto sale algo cortada: la próxima, que salga el papel entero.';
   else if (r.duplicado) r.mensaje = 'Guardada. Parece que este documento ya se había subido; oficina lo comprobará.';
   else r.mensaje = 'Guardada y leída. Oficina la revisará.';
   return r;
@@ -444,6 +448,23 @@ async function descartar(id, por, motivo) {
   const c = await db.collection(COL).findOne({ _id: oid(id), empresaId: EMPRESA });
   if (!c) throw new Error('Compra no encontrada');
   await db.collection(COL).updateOne({ _id: c._id }, { $set: { estado: 'descartada', descartadaPor: por || '', descartadaAt: new Date(), descarteMotivo: String(motivo || '').trim().slice(0, 200) || null, updatedAt: new Date() } });
+  // WhatsApp al trabajador: qué se descartó, por qué y, si es la foto, que la repita (con el enlace).
+  try {
+    if (c.subidaPor && c.subidaPor.kind === 'worker' && c.subidaPor.userId) {
+      const u = await db.collection('users').findOne({ _id: oid(c.subidaPor.userId) }, { projection: { name: 1, whatsapp: 1, telefono: 1 } }).catch(() => null);
+      const d = String((u && (u.whatsapp || u.telefono)) || '').replace(/\D/g, '');
+      const tel = d ? (d.length === 9 ? '+34' + d : '+' + d.replace(/^00/, '')) : null;
+      if (tel) {
+        const nom = String((u && u.name) || c.subidaPor.name || '').split(/\s+/)[0];
+        const doc = `${(TIPO_TXT[c.tipo] || 'documento').toLowerCase()}${c.proveedor ? ' de ' + c.proveedor : ''} del ${new Date(c.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric' })}`;
+        const foto = /foto|ilegible|borros|cortad|no se ve|repet/i.test(String(motivo || ''));
+        const base = String(process.env.DASHBOARD_URL || 'https://dashboard.corpprojects.es').replace(/\/$/, '');
+        await require('./notifications').sendWhatsAppTo(tel, foto
+          ? `Hola ${nom} 📸 La foto del ${doc} no se puede leer (${String(motivo).trim()}). ¿Puedes repetirla?\n\n✅ El papel entero dentro de la foto, plano sobre una superficie, con buena luz y sin sombras ni bolsas encima.\n\n${base}/compra`
+          : `Hola ${nom}, se ha descartado el ${doc}${motivo ? ': ' + String(motivo).trim() : ''}.`);
+      }
+    }
+  } catch (e) { console.warn('[Compras] aviso de descarte:', e.message); }
   try {
     if (c.subidaPor && c.subidaPor.kind === 'worker') await require('./push').sendToWorker(c.subidaPor.userId, { title: 'Compra descartada', body: `${TIPO_TXT[c.tipo]}${c.proveedor ? ' de ' + c.proveedor : ''}${motivo ? ': ' + String(motivo).slice(0, 80) : ''}. Si hace falta, vuelve a hacer la foto.`, url: '/compra', tag: 'compra-descartada' });
   } catch (e) {}
