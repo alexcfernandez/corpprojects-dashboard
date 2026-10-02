@@ -156,6 +156,7 @@ async function requireAuthOficina(req, res, next) {
       const w = await require('./partes').verifyWorkerToken(token);
       if (!w) return res.status(401).json({ error: 'Token expirado' });
       req.oficina = { workerId: w.workerId, workerName: w.workerName, role: w.workerRole || 'worker' };
+      if (!rolPuedeOficina(users.normalizeRole(w.workerRole || 'tecnico'), req)) return res.status(403).json({ error: 'Solo oficina' });
       return next();
     } catch { return res.status(401).json({ error: 'Token inválido' }); }
   }
@@ -164,9 +165,23 @@ async function requireAuthOficina(req, res, next) {
     const role = req.user.role || 'owner';           // JWT antiguo sin rol = Dueño
     req.oficina = { admin: role === 'owner' || role === 'oficina', role,
                     name: req.user.name || 'Dueño', uid: req.user.uid || null };
+    if (!rolPuedeOficina(users.normalizeRole(role), req)) return res.status(403).json({ error: 'Solo oficina' });
     return next();
   }
   catch { return res.status(401).json({ error: 'Token inválido' }); }
+}
+// Quién entra en cada ruta «de oficina». Dueño y oficina: todo. El resto (técnico, encargado) solo lo
+// operativo sin dinero: llaves/herramientas, mediciones y el selector de obras/clientes; el encargado,
+// además, presupuestos y catálogo (sin coste ni margen). Cierre, facturas, vehículos, tarjetas,
+// conversaciones, autónomos, horas, enlaces de fichaje… solo dueño/oficina.
+const OFICINA_LIBRE = ['/api/activos', '/api/mediciones', '/api/oficina/'];
+const OFICINA_ENCARGADO = ['/api/presupuestos', '/api/partidas', '/api/materiales'];
+function rolPuedeOficina(rol, req) {
+  if (users.canSeeMoney(rol)) return true;
+  const url = String(req.originalUrl || req.url || '').split('?')[0];
+  if (OFICINA_LIBRE.some(p => url.startsWith(p))) return true;
+  if (rol === 'encargado' && OFICINA_ENCARGADO.some(p => url.startsWith(p))) return true;
+  return false;
 }
 
 // ── Candado de DINERO para técnicos ─────────────────────────────────
@@ -180,7 +195,7 @@ app.use(['/api/presupuestos', '/api/partidas', '/api/materiales', '/api/facturas
   if (token.startsWith('w_')) {
     try {
       const w = await require('./partes').verifyWorkerToken(token);
-      if (w && w.workerRole === 'tech') {
+      if (w && users.normalizeRole(w.workerRole || 'tecnico') === 'tecnico') {   // 'tech' y 'tecnico' (y sin rol)
         return res.status(403).json({ error: 'Solo oficina: los técnicos no acceden a presupuestos, catálogo ni facturas' });
       }
     } catch { /* si falla la verificación, que decida el auth del endpoint */ }
@@ -229,7 +244,8 @@ function sinCostePres(p) {
   return out;
 }
 function sinCostePartidas(items) { return (items || []).map(p => { const { coste, costeManual, receta, ...r } = p; return r; }); }
-const MONEY_PREFIXES = ['/api/summary','/api/inicio','/api/invoices','/api/estimates','/api/cobros','/api/pagos','/api/families','/api/comunidades','/api/obras','/api/informes','/api/banco'];
+const MONEY_PREFIXES = ['/api/summary','/api/inicio','/api/invoices','/api/estimates','/api/cobros','/api/pagos','/api/families','/api/comunidades','/api/obras','/api/informes','/api/banco',
+  '/api/bank','/api/invoice/','/api/trabajadores','/api/colaboradores','/api/proyectos','/api/partes/resumen','/api/attendance/summary','/api/debug','/api/diag/stel','/api/users'];
 app.use(MONEY_PREFIXES, async (req, res, next) => {
   const token = (req.headers.authorization || '').replace('Bearer ', '');
   if (!token) return next(); // sin token → que responda el auth del endpoint (401)
@@ -3012,13 +3028,17 @@ app.delete('/api/mediciones/:id', requireAuthOficina, async (req, res) => {
 // ── PARTES DE TRABAJO ─────────────────────────────────────────────
 const partes = require('./partes');
 
-app.post('/api/partes/worker-login', async (req, res) => {
+// Freno a probar PINs (4 cifras): 10 intentos fallidos cada 15 min por IP y trabajador.
+const pinLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, skipSuccessfulRequests: true, standardHeaders: true, legacyHeaders: false,
+  keyGenerator: (req) => `${req.ip}|${(req.body && req.body.workerId) || ''}`, message: { error: 'Demasiados intentos. Espera 15 minutos.' } });
+app.post('/api/partes/worker-login', pinLimiter, async (req, res) => {
   try {
     const { workerId, pin } = req.body;
+    if (!pin || !String(pin).trim()) return res.status(401).json({ error: 'PIN incorrecto' });   // nunca vale un PIN vacío
     const { getUsers } = require('./users');
     const allUsers = await getUsers(false);
     const user = allUsers.find(u => String(u._id) === workerId || u.id === workerId);
-    if (user && user.pin === pin) {
+    if (user && user.pin && String(user.pin) === String(pin)) {
       const crypto = require('crypto');
       const token = `w_${crypto.randomBytes(16).toString('hex')}`;
       const { db, client } = await getDB();
@@ -3049,13 +3069,18 @@ app.get('/api/partes/workers', async (req, res) => {
     // como los nuevos (tecnico/encargado/oficina/owner).
     const CAMPO = ['owner', 'oficina', 'encargado', 'tecnico'];
     const techs = allUsers.filter(u => u.role !== 'client' && CAMPO.includes(normalizeRole(u.role)));
+    // El coste/hora (y el rol) solo para quien ve dinero (dueño/oficina): esta lista la carga también la
+    // pantalla de login de los trabajadores, sin sesión.
+    const rol = await roleDeToken((req.headers.authorization || '').replace('Bearer ', '')).catch(() => null);
+    const conDinero = rol && users.canSeeMoney(rol);
+    const fila = (id, name, color, role, coste) => ({ id, name, color: color || '#4d9cf8', ...(conDinero ? { role, costeHora: coste || 15 } : {}) });
     if (techs.length > 0) {
-      res.json(techs.map(u => ({ id: String(u._id), name: u.name, color: u.color || '#4d9cf8', role: u.role, costeHora: u.costeHora || 15 })));
+      res.json(techs.map(u => fila(String(u._id), u.name, u.color, u.role, u.costeHora)));
     } else {
-      res.json(partes.WORKERS.map(w => ({ id: w.id, name: w.name, color: '#4d9cf8', costeHora: w.costeHora || 15 })));
+      res.json(partes.WORKERS.map(w => fila(w.id, w.name, null, null, w.costeHora)));
     }
   } catch(err) {
-    res.json(partes.WORKERS.map(w => ({ id: w.id, name: w.name, color: '#4d9cf8', costeHora: w.costeHora || 15 })));
+    res.json(partes.WORKERS.map(w => ({ id: w.id, name: w.name, color: '#4d9cf8' })));
   }
 });
 
