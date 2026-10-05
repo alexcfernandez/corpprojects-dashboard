@@ -437,6 +437,8 @@ async function revisar(id, por, { enviarStel = true, herramientas = null, almace
     catch (e) { console.warn('[Compras] ITV del vehículo:', e.message); }
   }
   await db.collection(COL).updateOne({ _id: c._id }, { $set: set });
+  // CINC: sus comisiones mal cobradas quedan apuntadas en Reclamaciones (en segundo plano: tarda unos segundos).
+  if (/\bcinc\b/i.test(c.proveedor || '') && c.tipo !== 'devolucion') require('./reclamaciones').desdeCinc(String(c._id), por).catch(e => console.warn('[Compras] reclamación CINC:', e.message));
   // Gasolinera: cada tiquet queda unido a su línea y vehículo (y se aprende el nombre que tenía en la app Esclat).
   if (dest === 'vehiculo' && (c.lineas || []).some(l => l.vehiculoId)) { try { await require('./repostajes').alConfirmar(c); } catch (e) { console.warn('[Compras] repostajes:', e.message); } }
   // Cierra el aviso al trabajador con lo que ha pasado (push, sin importes)

@@ -1656,7 +1656,24 @@ app.get('/api/compras/:id/lineas-vehiculo', requireAuthOficina, async (req, res)
   try { res.json(await require('./repostajes').propuestaLineas(await require('./compras').getCompra(req.params.id))); } catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.get('/api/compras/:id/comisiones-cinc', requireAuthOficina, async (req, res) => {
-  try { res.json(await require('./comisionesCinc').revisar(req.params.id)); } catch (err) { res.status(400).json({ error: err.message }); }
+  try { res.json(await require('./reclamaciones').desdeCinc(req.params.id, await _porVeh(req))); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+// Reclamaciones: lo que CINC nos ha cobrado mal y está pendiente de que lo arregle (abono).
+app.get('/api/reclamaciones', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./reclamaciones').lista()); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/reclamaciones/texto', requireAuthOficina, async (req, res) => {
+  try { const R = require('./reclamaciones'); res.json(R.textoReclamacion((await R.lista()).reclamaciones, { formato: req.query.formato })); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/reclamaciones/cinc/revisar-todas', requireAuthOficina, async (req, res) => {
+  req.setTimeout && req.setTimeout(300000);
+  try { res.json(await require('./reclamaciones').revisarTodasCinc(await _porVeh(req))); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/reclamaciones/marcar-reclamadas', requireAuthOficina, async (req, res) => {
+  try { const b = req.body || {}; res.json(await require('./reclamaciones').marcarReclamadas(b.ids, b.fecha, await _porVeh(req))); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/reclamaciones/:id/estado', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./reclamaciones').cambiarEstado(req.params.id, req.body || {}, await _porVeh(req))); } catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.get('/api/compras/:id', async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').getCompra(req.params.id)); }
