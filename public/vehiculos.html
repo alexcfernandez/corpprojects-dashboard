@@ -94,6 +94,7 @@ async function cargarFlota(){
   const l=F.vehiculos.filter(v=>bajas?v.estado==='baja':v.estado==='activo');
   const avisos=bajas?[]:l.filter(v=>['itv','seguro','revision'].some(k=>v.dias[k]!=null&&v.dias[k]<=30));
   el.innerHTML=(bajas?'':`<div class="bar"><button class="btn pri" onclick="nuevo()">+ Nuevo vehículo</button><span style="font-size:13px;color:var(--text2)">${l.length} en la flota · gasto ${F.anio}: <b style="color:var(--text)">${eur(l.reduce((a,v)=>a+v.gastoAnio,0))}</b></span></div>`)
+   +(bajas?'':'<div id="repost"></div>')
    +(avisos.length?`<div class="card" style="border-color:rgba(245,158,11,.4)"><b style="color:var(--amber)">⚠️ Vencimientos próximos</b><div class="nota" style="color:var(--text2)">${avisos.length} vehículo${avisos.length>1?'s':''} con ITV, seguro o revisión en menos de 30 días. Se avisa por WhatsApp al conductor (ITV y revisión) y a la oficina a los 30, 15, 7, 1 y 0 días.</div></div>`:'')
    +(l.length?l.map(v=>{
       const docs=v.docsTipos||{};const faltan=['ficha_tecnica','permiso','seguro'].filter(t=>!docs[t]).map(t=>F.docs[t]);
@@ -102,7 +103,23 @@ async function cargarFlota(){
         ${bajas?'':`<div class="chips">${chip('ITV',v.dias.itv,v.itv&&v.itv.proxima)}${chip('Seguro',v.dias.seguro,v.seguro&&v.seguro.vencimiento)}${v.revision&&v.revision.proximaFecha?chip('Revisión',v.dias.revision,v.revision.proximaFecha):''}${v.quartixId?'<span class="chip ok">GPS</span>':''}</div>
         ${faltan.length?`<div class="falta">Falta subir: ${faltan.join(', ')}</div>`:''}`}</div>`;}).join('')
      :`<div class="vacio">${bajas?'No hay vehículos dados de baja.':'Aún no hay vehículos. Pulsa «+ Nuevo vehículo» y da de alta cada furgoneta y coche con su matrícula.'}</div>`);
+  if(!bajas)cargarRepostajes(l);
 }
+// ── REPOSTAJES (correo de Esclat en cada repostaje + capturas de su app) ──
+let _repHash=(/^#repostaje=([0-9a-f]{24})$/.exec(location.hash)||[])[1]||null;
+async function cargarRepostajes(vs){const el=document.getElementById('repost');if(!el)return;let p=[];try{p=await api('GET','/api/vehiculos/repostajes/pendientes');}catch(e){}
+  const hm=v=>v?String(v).slice(0,5):'';
+  el.innerHTML=`<div class="card" ${p.length?'style="border-color:rgba(77,156,248,.45)"':''}><b>⛽ Repostajes ${p.length?`por asignar (${p.length})`:''}</b>
+    <div class="nota" style="color:var(--text2)">Cada repostaje con la app de Esclat manda un correo con el importe y la hora; el programa te pregunta de qué vehículo es y luego le pide los km a quien lo lleva. Con eso, la factura de Esclat se reparte sola por vehículo en Compras.</div>
+    ${p.map(r=>`<div class="rp" id="rp-${r.id}" style="border-top:1px solid var(--border);padding:8px 0;margin-top:6px${r.id===_repHash?';background:rgba(77,156,248,.12);border-radius:8px;padding:8px':''}"><div><b>${eur(r.importe)}</b> · ${fmtF(r.fecha)} ${hm(r.hora)} · <span style="color:var(--text3)">${esc(r.establecimiento||r.alias||'')}${r.alias&&r.establecimiento?' · app: «'+esc(r.alias)+'»':''}</span></div>
+      <div class="chips">${vs.map(v=>`<button class="chip" style="cursor:pointer" onclick="asignarRep('${r.id}','${v.id}',this)">${esc(v.nombre)}</button>`).join('')}</div></div>`).join('')||'<div style="color:var(--text3);font-size:13.5px;margin-top:6px">Ninguno pendiente.</div>'}
+    <div class="bar" style="margin:10px 0 0"><label class="btn peq" style="cursor:pointer">📱 Capturas de la app Esclat<input type="file" accept="image/*,application/pdf" multiple style="display:none" onchange="subirCapturas(this)"></label><button class="btn peq" onclick="recuperarCorreos(this)">📧 Traer los correos desde septiembre</button></div></div>`;
+  if(_repHash){const x=document.getElementById('rp-'+_repHash);if(x)x.scrollIntoView({block:'center'});_repHash=null;history.replaceState(null,'',location.pathname);}}
+async function asignarRep(id,vid,b){b.disabled=true;try{const r=await api('POST','/api/vehiculos/repostajes/'+id+'/asignar',{vehiculoId:vid});toast(`✅ ${r.vehiculo}`+(r.pedidoKm?` · le pedimos los km a ${r.conductor}`:r.conductor?'':' (sin conductor: no se piden km)'));const x=document.getElementById('rp-'+id);if(x)x.remove();}catch(e){toast(e.message);b.disabled=false;}}
+async function subirCapturas(inp){const fs=[...inp.files];if(!fs.length)return;const fd=new FormData();fs.forEach(f=>fd.append('capturas',f));toast('🤖 Leyendo las capturas… (10-30 s)');
+  try{const d=await api('POST','/api/vehiculos/repostajes/capturas',fd);toast(`📱 ${d.leidos} tiquet(s) leídos${d.sinVehiculo.length?' · no sé cuál es: '+d.sinVehiculo.join(', ')+' (pon ese nombre en su ficha)':''}`);cargarFlota();}
+  catch(e){toast(e.message);}finally{inp.value='';}}
+async function recuperarCorreos(b){const t=b.textContent;b.disabled=true;b.textContent='Buscando en el correo…';try{const d=await api('POST','/api/vehiculos/repostajes/recuperar-correo',{desde:'2026-09-01'});toast(`📧 ${d.correos} correos de repostaje · ${d.nuevos} nuevos`);cargarFlota();}catch(e){toast(e.message);}finally{b.disabled=false;b.textContent=t;}}
 
 async function nuevo(){
   const nombre=await CPDialog.pedir('Nombre del vehículo',{placeholder:'p. ej. Furgoneta Jose o Berlingo blanca'});if(nombre===null)return;
@@ -116,8 +133,16 @@ async function abrir(id){
   const el=document.getElementById('v-ficha');el.innerHTML='<div class="vacio">Cargando…</div>';
   if(!workers.length){try{workers=await (await fetch('/api/partes/workers')).json();}catch(e){workers=[];}}
   try{cur=await api('GET','/api/vehiculos/'+id);}catch(e){el.innerHTML='<div class="vacio" style="color:var(--red)">'+esc(e.message)+'</div>';return;}
-  pintarFicha();
+  pintarFicha();cargarKm(id);
 }
+async function cargarKm(id){const el=document.getElementById('km-blq');if(!el)return;let d;try{d=await api('GET','/api/vehiculos/'+id+'/km');}catch(e){el.innerHTML='<div style="color:var(--red)">'+esc(e.message)+'</div>';return;}
+  const v=cur.vehiculo,n=x=>Number(x).toLocaleString('es-ES');
+  el.innerHTML=(d.km?`<div class="chips" style="margin-top:0"><span class="chip">${n(d.km)} km del ${fmtF(d.desde)} al ${fmtF(d.hasta)}</span><span class="chip ok">${String(d.eurKm.toFixed(2)).replace('.',',')} €/km</span>${d.l100?`<span class="chip">${String(d.l100).replace('.',',')} L/100 km</span>`:''}<span class="chip">gasto ${eur(d.gasto)} (combustible ${eur(d.combustible)})</span></div>`
+      :`<div class="nota" style="margin-top:0">Con dos lecturas de km sale lo que cuesta por km. Las apunta quien lo lleva desde su app al repostar y una vez a la semana.</div>`)
+   +`<div class="bar" style="margin:10px 0 0"><input id="km-n" type="number" inputmode="numeric" placeholder="km que marca${v.km?' (último '+n(v.km)+')':''}" style="max-width:220px"><button class="btn" onclick="apuntarKm()">Apuntar km</button></div>`
+   +(d.lecturas.length?`<details><summary>Lecturas de km (${d.lecturas.length})</summary><table>${d.lecturas.map(l=>`<tr><td style="color:var(--text3)">${fmtF(l.fecha)}</td><td class="r">${n(l.km)} km</td><td style="color:var(--text3)">${esc(l.por||l.origen||'')}</td></tr>`).join('')}</table></details>`:'')
+   +(d.repostajes.length?`<details><summary>Repostajes (${d.repostajes.length})</summary><table>${d.repostajes.map(r=>`<tr><td style="color:var(--text3);white-space:nowrap">${fmtF(r.fecha)} ${r.hora||''}</td><td>${esc(r.quien||r.alias||({esclat_email:'correo Esclat',esclat_app:'app Esclat',factura:'factura'})[r.origen]||'')}${r.ticket?' · <span style="color:var(--text3)">'+esc(r.ticket)+'</span>':''}</td><td class="r">${r.litros?String(r.litros).replace('.',',')+' L':''}</td><td class="r">${r.importe!=null?eur(r.importe)+(r.conIva?' <span style="color:var(--text3);font-size:11px">IVA incl.</span>':''):''}</td><td class="r">${r.km?n(r.km)+' km':''}</td><td>${r.enFactura?'✓':''}</td></tr>`).join('')}</table></details>`:'');}
+async function apuntarKm(){const k=V('km-n');if(!k)return;try{await api('POST','/api/vehiculos/'+cur.vehiculo.id+'/km',{km:k});toast('✅ Km apuntados');cargarKm(cur.vehiculo.id);}catch(e){toast(e.message);}}
 function sel(id,opts,val,vacio){return `<select id="${id}">${vacio!=null?`<option value="">${vacio}</option>`:''}${Object.entries(opts).map(([k,t])=>`<option value="${esc(k)}" ${String(val||'')===k?'selected':''}>${esc(t)}</option>`).join('')}</select>`;}
 function inp(id,val,tipo='text',ph=''){return `<input id="${id}" type="${tipo}" value="${esc(val==null?'':val)}" placeholder="${esc(ph)}" ${tipo==='number'?'step="any" inputmode="decimal"':''}>`;}
 function campo(lbl,html){return `<div><label>${lbl}</label>${html}</div>`;}
@@ -140,7 +165,7 @@ function pintarFicha(){
     ${campo('Nombre',inp('f-nombre',v.nombre))}${campo('Matrícula',inp('f-matricula',v.matricula))}${campo('Tipo',sel('f-tipo',cur.tipos,v.tipo))}
     ${campo('Marca',inp('f-marca',v.marca))}${campo('Modelo',inp('f-modelo',v.modelo))}${campo('Combustible',sel('f-combustible',comb,v.combustible,'—'))}
     ${campo('Nº de bastidor',inp('f-bastidor',v.bastidor))}${campo('Fecha de matriculación',inp('f-fechaMatriculacion',v.fechaMatriculacion,'date'))}${campo('Km actuales',inp('f-km',v.km,'number'))}
-    ${campo('Impuesto circulación (€/año)',inp('f-ivtm',v.ivtm,'number'))}${campo('Id en Quartix (GPS)',inp('f-quartixId',v.quartixId,'text','se enlaza solo por matrícula'))}
+    ${campo('Impuesto circulación (€/año)',inp('f-ivtm',v.ivtm,'number'))}${campo('Id en Quartix (GPS)',inp('f-quartixId',v.quartixId,'text','se enlaza solo por matrícula'))}${campo('Nombre en la app Esclat',inp('f-aliasEsclat',(v.aliasEsclat||[]).join(', '),'text','p. ej. Citroën berlingo'))}
   </div></div>
 
   <h3>ITV</h3>
@@ -167,6 +192,9 @@ function pintarFicha(){
     <div class="nota">Foto o PDF. Se guardan en la ficha para tenerlos a mano si piden la documentación o hay un parte.</div>
   </div>
 
+  <h3>Kilómetros y combustible</h3>
+  <div class="card" id="km-blq"><div style="color:var(--text3);font-size:14px">Cargando…</div></div>
+
   <h3>Gastos ${anioAct}</h3>
   <div class="card">${g&&g.gastos.length?bloqueGastos(g,cur.categorias,false):'<div style="color:var(--text3);font-size:14px">Sin gastos este año. En Compras, destino «🚐 Un vehículo»; en el cierre del trimestre, «🚐 Vehículo».</div>'}</div>
 
@@ -176,7 +204,7 @@ function pintarFicha(){
 }
 const V=id=>{const e=document.getElementById(id);return e?e.value:undefined;};
 async function guardar(){
-  const b={};['nombre','matricula','tipo','marca','modelo','combustible','bastidor','fechaMatriculacion','km','ivtm','quartixId','formaCompra','fechaAlta','precioCompra','cuotaMensual','finContrato','proveedorCompra','notas'].forEach(k=>b[k]=V('f-'+k));
+  const b={};['nombre','matricula','tipo','marca','modelo','combustible','bastidor','fechaMatriculacion','km','ivtm','quartixId','formaCompra','fechaAlta','precioCompra','cuotaMensual','finContrato','proveedorCompra','notas','aliasEsclat'].forEach(k=>b[k]=V('f-'+k));
   b.itv={proxima:V('f-itv-proxima'),ultima:V('f-itv-ultima'),notas:V('f-itv-notas')};
   b.seguro={};['compania','poliza','modalidad','precioAnual','vencimiento','telefonoAsistencia'].forEach(k=>b.seguro[k]=V('f-se-'+k));
   b.revision={proximaFecha:V('f-rv-proximaFecha'),proximaKm:V('f-rv-proximaKm'),notas:V('f-rv-notas')};

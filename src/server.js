@@ -1443,6 +1443,22 @@ app.post('/api/fichaje/obra-dia', async (req, res) => {
     res.json(await require('./obraDelDia').guardar(w.workerId, w.workerName, require('./fichajeMarcas').fechaHoy(), { obraId: b.obraId, nombreLibre: b.nombreLibre, companeros: b.companeros })); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+// Vehículos en la app de fichar: repostajes y km (solo nombre y matrícula, nada de dinero de la empresa).
+app.get('/api/fichaje/vehiculos', async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return; res.json(await require('./repostajes').paraTrabajador(w.workerId)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/fichaje/repostaje', async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return; const b = req.body || {};
+    if (b.km == null || b.km === '') return res.status(400).json({ error: 'Pon los km que marca la furgoneta' });
+    res.json(await require('./repostajes').registrar({ vehiculoId: b.vehiculoId, km: b.km, importe: b.importe, litros: b.litros, workerId: w.workerId, workerName: w.workerName, origen: 'trabajador' })); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/fichaje/km', async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return; const b = req.body || {};
+    res.json(await require('./repostajes').apuntarKm(b.vehiculoId, b.km, { origen: 'trabajador', por: w.workerName, workerId: w.workerId, repostajeId: b.repostajeId })); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 // Sus documentos y nóminas en la app (solo si oficina lo ha activado en Documentación del personal).
 app.get('/api/fichaje/mis-docs', async (req, res) => {
   try { const w = await _worker(req, res); if (!w) return; res.json(await require('./personalDocs').misDocs(w.workerId)); }
@@ -1635,6 +1651,10 @@ app.get('/api/compras', async (req, res) => {
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 // Factura de comisiones de CINC: cada línea vs nuestra factura (10 % de la base, cobrada, no repetida).
+// Factura de gasolinera: de qué vehículo es cada línea (tiquet de la app Esclat, correo del repostaje, combustible).
+app.get('/api/compras/:id/lineas-vehiculo', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./repostajes').propuestaLineas(await require('./compras').getCompra(req.params.id))); } catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/compras/:id/comisiones-cinc', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./comisionesCinc').revisar(req.params.id)); } catch (err) { res.status(400).json({ error: err.message }); }
 });
@@ -1948,6 +1968,28 @@ app.get('/api/vehiculos/gps', requireAuthOficina, async (req, res) => {
 });
 app.get('/api/vehiculos/gps/diag', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./quartix').diagnostico()); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+// Repostajes y km: capturas de la app Bonpreu Esclat (la IA lee tiquet → vehículo), km a mano.
+const uploadCapturas = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024, files: 10 } });
+app.post('/api/vehiculos/repostajes/capturas', requireAuthOficina, uploadCapturas.array('capturas', 10), async (req, res) => {
+  req.setTimeout && req.setTimeout(180000);
+  try { res.json(await require('./repostajes').guardarCapturas(req.files || [], await _porVeh(req))); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/vehiculos/repostajes/pendientes', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./repostajes').pendientes()); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/vehiculos/repostajes/recuperar-correo', requireAuthOficina, async (req, res) => {
+  req.setTimeout && req.setTimeout(180000);
+  try { res.json(await require('./repostajes').recuperarCorreos({ desde: (req.body || {}).desde || '2026-09-01' })); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/vehiculos/repostajes/:rid/asignar', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./repostajes').asignar(req.params.rid, (req.body || {}).vehiculoId, await _porVeh(req))); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/vehiculos/:id/km', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./repostajes').resumenKm(req.params.id)); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/vehiculos/:id/km', requireAuthOficina, async (req, res) => {
+  try { const b = req.body || {}; res.json(await require('./repostajes').apuntarKm(req.params.id, b.km, { fecha: b.fecha, origen: 'oficina', por: await _porVeh(req) })); } catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.post('/api/vehiculos', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./vehiculos').crear(req.body || {}, await _porVeh(req))); } catch (err) { res.status(400).json({ error: err.message }); }

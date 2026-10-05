@@ -68,6 +68,7 @@ function limpiar(d = {}) {
   }
   if (d.revision && typeof d.revision === 'object') o.revision = { proximaFecha: fechaOk(d.revision.proximaFecha), proximaKm: num(d.revision.proximaKm), notas: txt(d.revision.notas, 300) };
   if ('ivtm' in d) o.ivtm = num(d.ivtm);
+  if ('aliasEsclat' in d) o.aliasEsclat = (Array.isArray(d.aliasEsclat) ? d.aliasEsclat : String(d.aliasEsclat || '').split(/[,;\n]+/)).map(x => txt(x, 60)).filter(Boolean).slice(0, 10);
   return o;
 }
 
@@ -245,17 +246,37 @@ async function ficha(id, { anio } = {}) {
   return { vehiculo: _publico(v), documentos: docs, gastos: res.vehiculos[0] || null, tipos: TIPOS, formas: FORMAS, motivosBaja: MOTIVOS_BAJA, docsTipos: DOCS, combustibles: COMBUSTIBLES, categorias: CATEGORIAS };
 }
 
+// Una compra de vehículo da un gasto por vehículo: si sus líneas tienen vehículo (factura de gasolinera con
+// repostajes de varias furgonetas), cada uno se lleva lo de sus líneas; el resto va al vehículo de la compra.
+const _esLitro = l => /^l(t|ts|itros?)?$/i.test(String(l.unidad || '').trim()) || /\bLT\b|litros/i.test(l.descripcion || '');
+function _gastosCompra(c) {
+  const g0 = { vehiculoId: c.vehiculoId, fecha: c.fecha || (c.createdAt && c.createdAt.toISOString().slice(0, 10)), concepto: [c.proveedor, c.numero].filter(Boolean).join(' nº '), categoria: c.categoria && CATEGORIAS[c.categoria] ? c.categoria : sugerirCategoria(c.proveedor), importe: r2(c.base != null ? c.base : c.total), conFactura: true, compraId: String(c._id), porRevisar: c.estado !== 'revisada' };
+  const ls = (c.lineas || []).filter(l => l.vehiculoId);
+  const litrosDe = arr => r2(arr.filter(_esLitro).reduce((a, l) => a + (Number(l.cantidad) || 0), 0)) || null;
+  if (!ls.length) return c.vehiculoId ? [{ ...g0, litros: litrosDe(c.lineas || []) }] : [];
+  const porV = {};
+  for (const l of ls) (porV[l.vehiculoId] = porV[l.vehiculoId] || []).push(l);
+  const out = Object.entries(porV).map(([vid, arr]) => ({ ...g0, vehiculoId: vid, importe: r2(arr.reduce((a, l) => a + (Number(l.importe) || 0), 0)), litros: litrosDe(arr), concepto: g0.concepto + ` (${arr.length} línea${arr.length > 1 ? 's' : ''})` }));
+  const resto = (c.lineas || []).filter(l => !l.vehiculoId);
+  if (c.vehiculoId && resto.length) {
+    const asignado = out.reduce((a, g) => a + g.importe, 0);
+    const imp = r2(g0.importe - asignado);
+    if (imp > 0.005) { const ya = out.find(g => g.vehiculoId === c.vehiculoId); if (ya) { ya.importe = r2(ya.importe + imp); ya.litros = r2((ya.litros || 0) + (litrosDe(resto) || 0)) || null; } else out.push({ ...g0, importe: imp, litros: litrosDe(resto), concepto: g0.concepto + ' (resto)' }); }
+  }
+  return out;
+}
+
 // ── GASTOS ──
 async function gastos({ desde, hasta } = {}) {
   const db = await getDB();
   const qFecha = (campo) => (desde || hasta) ? { [campo]: { ...(desde ? { $gte: desde } : {}), ...(hasta ? { $lte: hasta } : {}) } } : {};
   const [cs, pm] = await Promise.all([
-    db.collection('compras').find({ destino: 'vehiculo', vehiculoId: { $ne: null }, estado: { $ne: 'descartada' }, ...qFecha('fecha') })
-      .project({ vehiculoId: 1, proveedor: 1, numero: 1, fecha: 1, base: 1, total: 1, categoria: 1, estado: 1, createdAt: 1 }).toArray(),
+    db.collection('compras').find({ destino: 'vehiculo', $or: [{ vehiculoId: { $ne: null } }, { 'lineas.vehiculoId': { $ne: null } }], estado: { $ne: 'descartada' }, ...qFecha('fecha') })
+      .project({ vehiculoId: 1, proveedor: 1, numero: 1, fecha: 1, base: 1, total: 1, categoria: 1, estado: 1, createdAt: 1, 'lineas.vehiculoId': 1, 'lineas.importe': 1, 'lineas.cantidad': 1, 'lineas.unidad': 1, 'lineas.descripcion': 1 }).toArray(),
     db.collection('punteoManual').find({ decision: 'vehiculo', vehiculoId: { $ne: null }, ...qFecha('fecha') }).toArray(),
   ]);
   return [
-    ...cs.map(c => ({ vehiculoId: c.vehiculoId, fecha: c.fecha || (c.createdAt && c.createdAt.toISOString().slice(0, 10)), concepto: [c.proveedor, c.numero].filter(Boolean).join(' nº '), categoria: c.categoria && CATEGORIAS[c.categoria] ? c.categoria : sugerirCategoria(c.proveedor), importe: r2(c.base != null ? c.base : c.total), conFactura: true, compraId: String(c._id), porRevisar: c.estado !== 'revisada' })),
+    ...cs.flatMap(_gastosCompra),
     ...pm.map(p => ({ vehiculoId: p.vehiculoId, fecha: p.fecha, concepto: p.concepto + (p.nota ? ` — ${p.nota}` : ''), categoria: p.categoria || sugerirCategoria(p.concepto), importe: r2(Math.abs(p.importe || 0)), conFactura: false })),
   ].sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
 }

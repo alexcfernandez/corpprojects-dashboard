@@ -62,7 +62,7 @@ const PROMPT = `Eres el administrativo de una empresa de reformas en Girona. Te 
  "confianza": 0-1,
  "aviso": "una frase corta en español si hay algo que oficina deba mirar (importe ilegible, falta una página, es un presupuesto y no una compra…), o null"
 }
-Si el documento tiene más de 60 líneas, incluye las 60 primeras y resume el resto en una línea "… y N líneas más". Reglas: "albaran" = entrega de material SIN importes totales o con la palabra albarán/entrega; "factura" = lleva la palabra factura y desglose de IVA; "ticket" = ticket de caja/TPV; "devolucion" = abono, devolución o importes negativos (pon los importes en NEGATIVO). Números con formato español (1.234,56) → 1234.56. Si no es un documento de compra, calidad="no_es_documento". No inventes: lo que no se lea, null.`;
+Si el documento tiene más de 60 líneas, incluye las 60 primeras y resume el resto en una línea "… y N líneas más". En facturas de gasolinera que listan repostajes, una línea por tiquet con la descripción "PRODUCTO - Tiquet NÚMERO (DD-MM-AAAA)" (el nº de tiquet tal cual), litros como cantidad con unidad "L" e importe de la línea. Reglas: "albaran" = entrega de material SIN importes totales o con la palabra albarán/entrega; "factura" = lleva la palabra factura y desglose de IVA; "ticket" = ticket de caja/TPV; "devolucion" = abono, devolución o importes negativos (pon los importes en NEGATIVO). Números con formato español (1.234,56) → 1234.56. Si no es un documento de compra, calidad="no_es_documento". No inventes: lo que no se lea, null.`;
 
 // Esquema de la salida estructurada (mismo contenido que pide PROMPT).
 const _n = { type: ['number', 'null'] }, _s = { type: ['string', 'null'] };
@@ -299,7 +299,7 @@ async function editar(id, data, por) {
   if ('numero' in data) set.numero = String(data.numero || '').trim().slice(0, 60) || null;
   if ('fecha' in data) set.fecha = /^\d{4}-\d{2}-\d{2}$/.test(String(data.fecha || '')) ? data.fecha : null;
   for (const k of ['base', 'iva', 'total']) if (k in data) set[k] = n2(data[k]);
-  if ('lineas' in data && Array.isArray(data.lineas)) set.lineas = data.lineas.slice(0, 120).map(l => ({ descripcion: String(l.descripcion || '').trim().slice(0, 200), cantidad: nCant(l.cantidad), unidad: String(l.unidad || '').trim().slice(0, 12) || null, precio: n2(l.precio), importe: n2(l.importe), talla: String(l.talla || '').trim().slice(0, 12) || null })).filter(l => l.descripcion);
+  if ('lineas' in data && Array.isArray(data.lineas)) set.lineas = data.lineas.slice(0, 120).map(l => ({ descripcion: String(l.descripcion || '').trim().slice(0, 200), cantidad: nCant(l.cantidad), unidad: String(l.unidad || '').trim().slice(0, 12) || null, precio: n2(l.precio), importe: n2(l.importe), talla: String(l.talla || '').trim().slice(0, 12) || null, vehiculoId: /^[a-f0-9]{24}$/.test(String(l.vehiculoId || '')) ? String(l.vehiculoId) : null })).filter(l => l.descripcion);
   if ('albaranesRef' in data) set.albaranesRef = (Array.isArray(data.albaranesRef) ? data.albaranesRef : String(data.albaranesRef || '').split(/[,\s;]+/)).map(x => String(x).trim()).filter(Boolean).slice(0, 60);
   if ('nota' in data) set.nota = String(data.nota || '').trim().slice(0, 300) || null;
   if ('categoria' in data) set.categoria = data.categoria ? String(data.categoria).trim().toLowerCase() : null;
@@ -376,7 +376,7 @@ async function revisar(id, por, { enviarStel = true, herramientas = null, almace
   if (dest === 'obra' && !c.obraId) throw new Error('Elige la obra (o cambia el destino: varias obras, herramientas, ropa o gasto general)');
   if (dest === 'varias' && !(c.reparto || []).length) throw new Error('Reparte el importe entre las obras');
   if (dest === 'general' && !c.categoria) throw new Error('Pon la categoría del gasto general');
-  if (dest === 'vehiculo' && !c.vehiculoId) throw new Error('Elige el vehículo');
+  if (dest === 'vehiculo' && !c.vehiculoId && !(c.lineas || []).some(l => l.vehiculoId)) throw new Error('Elige el vehículo (o el de cada línea)');
   if (dest === 'almacen' && !(Array.isArray(almacen) && almacen.length) && !(c.almacenCreado || []).length) throw new Error('Marca qué líneas entran en el almacén');
   const set = { estado: 'revisada', revisadaPor: por || '', revisadaAt: new Date(), updatedAt: new Date() };
   // ALMACÉN: cada línea marcada entra como existencias (se agrupa por nombre; precio medio).
@@ -437,6 +437,8 @@ async function revisar(id, por, { enviarStel = true, herramientas = null, almace
     catch (e) { console.warn('[Compras] ITV del vehículo:', e.message); }
   }
   await db.collection(COL).updateOne({ _id: c._id }, { $set: set });
+  // Gasolinera: cada tiquet queda unido a su línea y vehículo (y se aprende el nombre que tenía en la app Esclat).
+  if (dest === 'vehiculo' && (c.lineas || []).some(l => l.vehiculoId)) { try { await require('./repostajes').alConfirmar(c); } catch (e) { console.warn('[Compras] repostajes:', e.message); } }
   // Cierra el aviso al trabajador con lo que ha pasado (push, sin importes)
   try {
     if (c.subidaPor && c.subidaPor.kind === 'worker') await require('./push').sendToWorker(c.subidaPor.userId, { title: '✅ Compra revisada', body: `${TIPO_TXT[c.tipo]}${c.proveedor ? ' de ' + c.proveedor : ''} — ${c.obraRef || DESTINO_TXT[dest]}${(set.activosCreados || []).length ? ' · ' + set.activosCreados.length + (dest === 'ropa' ? ' prenda(s)' : ' herramienta(s)') + ' a tu nombre' : ''}.`, url: '/compra', tag: 'compra-revisada' });

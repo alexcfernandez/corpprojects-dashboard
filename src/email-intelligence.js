@@ -369,6 +369,18 @@ async function procesarEmail(gmail, messageId) {
 
     console.log(`[Email] Procesando: ${asunto} de ${de}`);
 
+    // Aviso de repostaje de la app de Esclat: va a Vehículos (sin gastar IA en clasificarlo).
+    if (/bonpreu|esclat/i.test(de)) {
+      const rp = require('./repostajes').leerCorreoEsclat(asunto, cuerpo);
+      if (rp) {
+        try { await require('./repostajes').desdeCorreo({ ...rp, gmailId: messageId }); } catch (e) { console.warn('[Email] repostaje:', e.message); }
+        await db.collection('emails').insertOne({ gmailId: messageId, fecha, de, asunto, cuerpo: cuerpo.slice(0, 1000), adjuntos: [], tieneAdjuntos: false, categoria: 'OTRO', urgencia: 'BAJA',
+          resumen: `Repostaje ${rp.importe} € en ${rp.establecimiento || 'Esclat'} (${rp.hora}) → Vehículos`, accionSugerida: 'Ninguna', confianza: 1, estado: 'ARCHIVADO', leido: true, importante: false, notas: '', procesadoEn: new Date() });
+        await etiquetarProcesado(gmail, messageId, MARCAR_LEIDO);
+        return;
+      }
+    }
+
     const clasificacion = await clasificarEmail(de, asunto, cuerpo);
     let remitente       = await buscarRemitenteEnStelOrder(de);
     // Si no se encuentra por email, intentar identificar la comunidad por el asunto
@@ -684,4 +696,4 @@ function intentCorreo(texto) {
   return null;
 }
 
-module.exports = { pollEmails, recuperarFacturasCorreo, documentosDeAdjuntos, enviarRespuesta, getGmailClient, diagnosticoIA, reclasificarPendientes, usoIAHoy, listAttachments, getAttachment, reenviarAdjuntoOCR, esGestoria, emailsRecientes, seccionCorreo, resumenCorreo, intentCorreo };
+module.exports = { extractBody, pollEmails, recuperarFacturasCorreo, documentosDeAdjuntos, enviarRespuesta, getGmailClient, diagnosticoIA, reclasificarPendientes, usoIAHoy, listAttachments, getAttachment, reenviarAdjuntoOCR, esGestoria, emailsRecientes, seccionCorreo, resumenCorreo, intentCorreo };
