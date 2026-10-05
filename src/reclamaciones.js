@@ -51,6 +51,44 @@ async function revisarTodasCinc(por) {
   return { revisadas: cs.length, conErrores, fallos };
 }
 
+// Facturas de CINC que llegaron al correo y no están en Compras (el correo de CINC se clasificaba como
+// administrador de fincas, no como factura): se traen al archivo, se leen y se comprueban todas.
+// Tarda (la IA lee cada PDF): va en segundo plano y la página pregunta cómo va.
+let _trabajo = null;
+function estadoTrabajo() { return _trabajo; }
+async function traerCincDelCorreo({ desde = '2025-01-01' } = {}, por) {
+  if (_trabajo && !_trabajo.fin) return _trabajo;
+  _trabajo = { inicio: new Date(), fin: null, correos: 0, nuevas: 0, yaEstaban: 0, fallos: [], fase: 'buscando en el correo' };
+  (async () => {
+    const T = _trabajo;
+    try {
+      const ei = require('./email-intelligence');
+      const gmail = ei.getGmailClient();
+      const db = await getDB();
+      const q = `from:cinc.es has:attachment after:${desde.replace(/-/g, '/')}`;
+      const ids = []; let pageToken;
+      do { const r = await gmail.users.messages.list({ userId: 'me', q, maxResults: 100, pageToken }); (r.data.messages || []).forEach(m => ids.push(m.id)); pageToken = r.data.nextPageToken; } while (pageToken && ids.length < 300);
+      T.correos = ids.length; T.fase = 'leyendo las facturas';
+      for (const id of ids) {
+        try {
+          if (await db.collection('compras').findOne({ gmailId: id })) { T.yaEstaban++; continue; }
+          const msg = await gmail.users.messages.get({ userId: 'me', id, format: 'full' });
+          const h = msg.data.payload.headers || [];
+          const asunto = (h.find(x => x.name === 'Subject') || {}).value || '';
+          const de = (h.find(x => x.name === 'From') || {}).value || '';
+          if (!/factura|fra\.?|F2\d\/\d/i.test(asunto)) continue;   // avisos y presupuestos de CINC con adjunto: no
+          const nuevas = await ei.comprasDesdeCorreo(id, ei.extractAttachments(msg.data.payload), { de, asunto, fecha: new Date(Number(msg.data.internalDate)) }, { estadoInicial: 'archivo', silencioso: true });
+          T.nuevas += nuevas.length;
+        } catch (e) { T.fallos.push(e.message); }
+      }
+      T.fase = 'comprobando las comisiones';
+      T.revision = await revisarTodasCinc(por);
+    } catch (e) { T.fallos.push(e.message); }
+    T.fin = new Date(); T.fase = 'hecho';
+  })();
+  return _trabajo;
+}
+
 function _pub(r) { return r ? { ...r, id: String(r._id), _id: undefined } : null; }
 
 async function lista() {
@@ -118,4 +156,4 @@ function textoReclamacion(rs, { formato = 'correo' } = {}) {
   return { texto: L.join('\n'), total, conIva: r2(total * 1.21), facturas: abiertas.length };
 }
 
-module.exports = { desdeCinc, revisarTodasCinc, lista, pendienteProveedor, cambiarEstado, marcarReclamadas, textoReclamacion, RECLAMABLE, A_MIRAR };
+module.exports = { traerCincDelCorreo, estadoTrabajo, desdeCinc, revisarTodasCinc, lista, pendienteProveedor, cambiarEstado, marcarReclamadas, textoReclamacion, RECLAMABLE, A_MIRAR };

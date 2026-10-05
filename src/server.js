@@ -1669,6 +1669,12 @@ app.post('/api/reclamaciones/cinc/revisar-todas', requireAuthOficina, async (req
   req.setTimeout && req.setTimeout(300000);
   try { res.json(await require('./reclamaciones').revisarTodasCinc(await _porVeh(req))); } catch (err) { res.status(400).json({ error: err.message }); }
 });
+app.post('/api/reclamaciones/cinc/traer-correo', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./reclamaciones').traerCincDelCorreo({ desde: (req.body || {}).desde || '2025-01-01' }, await _porVeh(req))); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/reclamaciones/cinc/traer-correo', requireAuthOficina, async (req, res) => {
+  res.json(require('./reclamaciones').estadoTrabajo() || null);
+});
 app.post('/api/reclamaciones/marcar-reclamadas', requireAuthOficina, async (req, res) => {
   try { const b = req.body || {}; res.json(await require('./reclamaciones').marcarReclamadas(b.ids, b.fecha, await _porVeh(req))); } catch (err) { res.status(400).json({ error: err.message }); }
 });

@@ -696,4 +696,4 @@ function intentCorreo(texto) {
   return null;
 }
 
-module.exports = { extractBody, pollEmails, recuperarFacturasCorreo, documentosDeAdjuntos, enviarRespuesta, getGmailClient, diagnosticoIA, reclasificarPendientes, usoIAHoy, listAttachments, getAttachment, reenviarAdjuntoOCR, esGestoria, emailsRecientes, seccionCorreo, resumenCorreo, intentCorreo };
+module.exports = { extractBody, extractAttachments, comprasDesdeCorreo, pollEmails, recuperarFacturasCorreo, documentosDeAdjuntos, enviarRespuesta, getGmailClient, diagnosticoIA, reclasificarPendientes, usoIAHoy, listAttachments, getAttachment, reenviarAdjuntoOCR, esGestoria, emailsRecientes, seccionCorreo, resumenCorreo, intentCorreo };
