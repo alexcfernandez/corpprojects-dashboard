@@ -117,6 +117,8 @@ async function ensureIndexes(db) {
     ['activos',                { holderId: 1 }],
     ['vehiculos',              { estado: 1, nombre: 1 }],
     ['vehiculoDocs',           { vehiculoId: 1, subido: -1 }],
+    ['docsPersonal',           { ambito: 1, userId: 1, tipo: 1 }],
+    ['docsPersonal',           { estado: 1 }],
     ['activoMovimientos',      { activoId: 1, ts: -1 }],
     // Mediciones (motor de presupuestos) — multi-empresa desde el diseño
     ['mediciones',             { empresaId: 1, updatedAt: -1 }],

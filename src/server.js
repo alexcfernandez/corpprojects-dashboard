@@ -1443,6 +1443,19 @@ app.post('/api/fichaje/obra-dia', async (req, res) => {
     res.json(await require('./obraDelDia').guardar(w.workerId, w.workerName, require('./fichajeMarcas').fechaHoy(), { obraId: b.obraId, nombreLibre: b.nombreLibre, companeros: b.companeros })); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+// Sus documentos y nóminas en la app (solo si oficina lo ha activado en Documentación del personal).
+app.get('/api/fichaje/mis-docs', async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return; res.json(await require('./personalDocs').misDocs(w.workerId)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/fichaje/mis-docs/:id', async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return;
+    const d = await require('./personalDocs').miArchivo(w.workerId, req.params.id);
+    if (!d) return res.status(404).json({ error: 'No disponible' });
+    res.set('Content-Type', d.mime || 'application/octet-stream'); res.set('Content-Disposition', `inline; filename="${encodeURIComponent(d.nombre || 'documento')}"`);
+    res.send(Buffer.from(d.data.buffer || d.data)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 // Consentimiento GPS del trabajador (leer estado / firmar).
 app.get('/api/fichaje/consent', async (req, res) => {
   try { const w = await _worker(req, res); if (!w) return;
@@ -1496,7 +1509,8 @@ app.get('/api/campo/menu', async (req, res) => {
     if (!tieneParte) {
       try { const list = await getWorkOrdersLive(); await require('./asignaciones').attachAssignments(list); tieneParte = list.some(p => String(p.assignedUserId || '') === String(w.workerId) && p.workStatus !== 'done' && p.workStatus !== 'invoiced'); } catch (e) {}
     }
-    res.json({ workerId: w.workerId, name: w.workerName, rol, tieneParte, puedeCrearObra: ['owner', 'oficina'].includes(rol) });
+    let misDocs = false; try { misDocs = !!(await require('./personalDocs').getConfig()).visibleTrabajadores; } catch (e) {}
+    res.json({ workerId: w.workerId, name: w.workerName, rol, tieneParte, misDocs, puedeCrearObra: ['owner', 'oficina'].includes(rol) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 app.get('/api/fichaje/dia', requireAuth, async (req, res) => {
@@ -1967,6 +1981,45 @@ app.post('/api/vehiculos/:id/reactivar', requireAuthOficina, async (req, res) =>
 });
 app.post('/api/vehiculos/:id/docs', requireAuthOficina, uploadDocVeh.single('archivo'), async (req, res) => {
   try { res.json(await require('./vehiculos').subirDocumento(req.params.id, { tipo: (req.body || {}).tipo, nombre: (req.body || {}).nombre, archivo: req.file }, await _porVeh(req))); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+// ── Documentación del personal y de la empresa (obras / PRL / nóminas) ──
+const uploadPersonal = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024, files: 20 } });
+const _porPers = async (req) => { const q = (await _quienPush(req)) || {}; return q.name || 'Oficina'; };
+app.get('/api/personal/resumen', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./personalDocs').resumen()); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/personal/carpeta', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./personalDocs').carpeta({ userId: req.query.userId, ambito: req.query.ambito })); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/personal/docs', requireAuthOficina, uploadPersonal.single('archivo'), async (req, res) => {
+  try { const b = req.body || {}; res.json(await require('./personalDocs').subir({ ambito: b.ambito, userId: b.userId, tipo: b.tipo, archivo: req.file, fecha: b.fecha, caduca: b.caduca, mes: b.mes, notas: b.notas, visibleTrabajador: b.visibleTrabajador }, await _porPers(req))); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/personal/analizar', requireAuthOficina, uploadPersonal.array('archivos', 20), async (req, res) => {
+  try { if (!(req.files || []).length) return res.status(400).json({ error: 'Sube algún archivo' }); res.json(await require('./personalDocs').analizar(req.files, await _porPers(req))); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.put('/api/personal/docs/:id', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./personalDocs').editar(req.params.id, req.body || {}, await _porPers(req))); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.delete('/api/personal/docs/:id', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./personalDocs').borrar(req.params.id)); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/personal/docs/:id/archivo', requireAuthOficina, async (req, res) => {
+  try { const d = await require('./personalDocs').archivo(req.params.id); if (!d) return res.status(404).json({ error: 'No encontrado' });
+    res.set('Content-Type', d.mime || 'application/octet-stream'); res.set('Content-Disposition', `inline; filename="${encodeURIComponent(d.nombre || 'documento')}"`); res.send(Buffer.from(d.data.buffer || d.data)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/personal/paquete', requireAuthOficina, async (req, res) => {
+  try { const r = await require('./personalDocs').paqueteObra(req.body || {}, await _porPers(req));
+    res.set('Content-Type', 'application/zip'); res.set('Content-Disposition', `attachment; filename="${r.nombre}"`); res.set('X-Faltan', String(r.faltan)); res.send(r.zip); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/personal/config', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./personalDocs').getConfig()); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.put('/api/personal/config', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./personalDocs').setConfig(req.body || {}, await _porPers(req))); } catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.get('/api/tarjetas', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./tarjetas').listaTarjetas()); } catch (err) { res.status(500).json({ error: err.message }); }
@@ -3889,6 +3942,7 @@ app.delete('/api/pagos/:id', requireAuth, async (req, res) => {
 // ── Rutas HTML ────────────────────────────────────────────────────
 app.get('/informe-presencia', (req, res) => res.sendFile(path.join(__dirname, '../public/informe-presencia.html')));
 app.get('/horas', (req, res) => res.sendFile(path.join(__dirname, '../public/horas.html')));
+app.get('/personal', (req, res) => res.sendFile(path.join(__dirname, '../public/personal.html')));
 app.get('/sitios', (req, res) => res.sendFile(path.join(__dirname, '../public/sitios.html')));
 app.get('/diag', (req, res) => res.sendFile(path.join(__dirname, '../public/diag.html')));
 app.get('/conversaciones', (req, res) => res.sendFile(path.join(__dirname, '../public/conversaciones.html')));

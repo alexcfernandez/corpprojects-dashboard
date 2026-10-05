@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Documentación del personal — Corp Projects</title><link rel="stylesheet" href="/tool-theme.css">
+<meta name="theme-color" content="#4d9cf8">
+<style>*{box-sizing:border-box;margin:0;padding:0}:root{--bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.15);--text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;--green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 18px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:5}
+.logo{width:32px;height:32px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;flex-shrink:0}
+.hbtn{margin-left:auto;background:none;border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:6px 12px;font-size:13px;text-decoration:none;white-space:nowrap}
+.wrap{max-width:1100px;margin:0 auto;padding:16px}
+.tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.tab{background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:20px;padding:7px 14px;font:inherit;font-size:14px;cursor:pointer}.tab.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:14px;overflow:auto}
+h3{font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+.btn,select,input{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;color:var(--text);padding:8px 12px;font:inherit;font-size:14px}
+.btn{cursor:pointer}.btn.pri{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}.btn.peq{padding:5px 9px;font-size:12.5px}.btn.roja{color:var(--red)}
+table{width:100%;border-collapse:collapse;font-size:13.5px}th{text-align:left;font-size:11px;color:var(--text3);text-transform:uppercase;padding:6px;border-bottom:1px solid var(--border2);white-space:nowrap}
+td{padding:7px 6px;border-bottom:1px solid var(--border);vertical-align:middle}tr.clic{cursor:pointer}tr.clic:hover td{background:var(--bg3)}
+.sem{display:inline-block;min-width:26px;text-align:center;border-radius:20px;padding:2px 7px;font-size:12px;white-space:nowrap}
+.ok{background:rgba(34,196,135,.15);color:var(--green)}.pronto{background:rgba(245,158,11,.18);color:var(--amber)}.caducado{background:rgba(240,82,82,.18);color:var(--red)}.falta{background:var(--bg3);color:var(--text3)}
+.drop{border:2px dashed var(--border2);border-radius:14px;padding:28px;text-align:center;color:var(--text2);cursor:pointer}.drop.on{border-color:var(--blue);color:var(--blue)}
+.nota{font-size:12.5px;color:var(--text3);line-height:1.6;margin-top:6px}
+.doc{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px}.doc .n{flex:1;min-width:180px}
+.vacio{padding:24px;text-align:center;color:var(--text3)}
+.sw{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border)}.sw input{width:20px;height:20px;margin-top:2px}
+</style></head>
+<body><script>try{if(localStorage.getItem("cp_theme")==="light")document.body.classList.add("light");}catch(e){}</script>
+<div class="header"><div class="logo">CP</div><div><div style="font-weight:700">Documentación del personal</div><div style="font-size:12px;color:var(--text2)">Carpeta de cada trabajador y de la empresa · paquete para obras</div></div><a class="hbtn" href="/">← Dashboard</a></div>
+<div class="wrap">
+  <div class="tabs">
+    <button class="tab on" data-t="plantilla" onclick="verTab('plantilla')">👷 Plantilla</button>
+    <button class="tab" data-t="empresa" onclick="verTab('empresa')">🏢 Empresa</button>
+    <button class="tab" data-t="subir" onclick="verTab('subir')">⬆︎ Subir documentos <span id="n-prop"></span></button>
+    <button class="tab" data-t="paquete" onclick="verTab('paquete')">📦 Paquete para una obra</button>
+    <button class="tab" data-t="ajustes" onclick="verTab('ajustes')">⚙︎ Qué ven los trabajadores</button>
+  </div>
+  <div id="out"><div class="vacio">Cargando…</div></div>
+</div>
+<script src="/obra-picker.js?v=2"></script>
+<script src="/dialogo.js"></script>
+<script>
+const tok=localStorage.getItem('cp_token');const H={'Authorization':'Bearer '+tok};
+const esc=x=>String(x==null?'':x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fd=f=>f?String(f).slice(0,10).split('-').reverse().join('/'):'';
+let R=null,tab='plantilla',carpetaDe=null,_obras=null;
+async function api(m,u,b){const o={method:m,headers:{...H}};if(b instanceof FormData)o.body=b;else if(b){o.headers['Content-Type']='application/json';o.body=JSON.stringify(b);}const r=await fetch(u,o);if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.error||'HTTP '+r.status);}return r.headers.get('content-type')&&r.headers.get('content-type').includes('json')?r.json():r;}
+async function cargar(){if(!tok){document.getElementById('out').innerHTML='<div class="vacio">Abre esta página desde el dashboard.</div>';return;}
+  try{R=await api('GET','/api/personal/resumen');}catch(e){document.getElementById('out').innerHTML='<div class="vacio" style="color:var(--red)">'+esc(e.message)+'</div>';return;}
+  document.getElementById('n-prop').textContent=R.propuestas.length?'('+R.propuestas.length+')':'';pintar();}
+function verTab(t){tab=t;carpetaDe=null;document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('on',b.dataset.t===t));pintar();}
+const sem=r=>r.estado==='falta'?'<span class="sem falta">—</span>':`<span class="sem ${r.estado}" title="${r.caduca?'Válido hasta '+fd(r.caduca):''}">${r.estado==='ok'?'✓':r.estado==='pronto'?'⚠':'✗'}${r.caduca?' '+fd(r.caduca).slice(0,5):''}</span>`;
+function pintar(){const el=document.getElementById('out');if(!R)return;
+  if(carpetaDe)return pintarCarpeta();
+  if(tab==='plantilla'){const req=Object.entries(R.tipos).filter(([,t])=>t.obra);
+    el.innerHTML=`<div class="card"><h3>Lo que piden las obras · por trabajador</h3><table><tr><th>Trabajador</th>${req.map(([,t])=>`<th>${esc(t.nombre.split(' (')[0])}</th>`).join('')}<th>Nóminas</th></tr>
+      ${R.trabajadores.map(w=>`<tr class="clic" onclick="abrirCarpeta('${w.id}')"><td><b>${esc(w.name)}</b></td>${req.map(([k])=>`<td>${sem(w.requisitos[k])}</td>`).join('')}<td style="color:var(--text3)">${w.nominas||''}</td></tr>`).join('')}</table>
+      <div class="nota">✓ vigente · ⚠ caduca en menos de 30 días · ✗ caducado · — falta. Pulsa un trabajador para ver su carpeta. Los avisos de caducidad llegan por WhatsApp a la oficina.</div></div>`;}
+  else if(tab==='empresa'){const req=Object.entries(R.tiposEmpresa).filter(([,t])=>t.obra);
+    el.innerHTML=`<div class="card"><h3>Documentación de empresa</h3><table>${req.map(([k,t])=>{const r=R.empresa[k];return `<tr><td>${esc(t.nombre)}</td><td>${sem(r)}${r.mes?' <span style="color:var(--text3);font-size:12px">'+esc(r.mes)+'</span>':''}</td></tr>`;}).join('')}</table>
+      <div style="margin-top:10px"><button class="btn" onclick="abrirCarpeta('empresa')">📂 Abrir la carpeta de empresa</button></div>
+      <div class="nota">El RNT/RLC (TC) y el certificado de la SS cambian cada mes: súbelos cuando los mande el gestor (o arrástralos en «Subir documentos» y la IA los coloca).</div></div>`;}
+  else if(tab==='subir'){el.innerHTML=`<div class="card"><h3>Subir documentos · la IA los clasifica</h3>
+      <label class="drop" id="drop"><input type="file" id="files" multiple accept="application/pdf,image/*" style="display:none" onchange="analizar(this.files)">⬆︎ Arrastra aquí los PDF o fotos (reconocimientos, cursos, EPIs, nóminas del gestor, TC…) o pulsa para elegirlos<br><span style="font-size:12.5px;color:var(--text3)">Si un PDF trae las nóminas de todos, se parte por persona</span></label>
+      <div id="an-estado" class="nota"></div></div>
+      <div class="card"><h3>Por confirmar (${R.propuestas.length})</h3>${R.propuestas.length?`<div style="margin-bottom:8px"><button class="btn pri" onclick="confirmarTodas()">✓ Confirmar todas las que tienen trabajador</button></div>`+R.propuestas.map(filaProp).join(''):'<div class="vacio">Nada pendiente.</div>'}</div>`;
+    const d=document.getElementById('drop');['dragover','dragenter'].forEach(e=>d.addEventListener(e,ev=>{ev.preventDefault();d.classList.add('on');}));['dragleave','drop'].forEach(e=>d.addEventListener(e,ev=>{ev.preventDefault();d.classList.remove('on');}));d.addEventListener('drop',ev=>analizar(ev.dataTransfer.files));}
+  else if(tab==='paquete'){el.innerHTML=`<div class="card"><h3>Paquete de documentación para una obra</h3>
+      <div style="margin-bottom:10px"><div style="font-size:12.5px;color:var(--text3);margin-bottom:4px">Obra (opcional, queda apuntado quién va)</div><div id="pk-obra"></div></div>
+      <div style="font-size:12.5px;color:var(--text3);margin-bottom:4px">¿Quién va a la obra?</div>
+      ${R.trabajadores.map(w=>{const m=Object.values(w.requisitos).filter(r=>r.estado!=='ok').length;return `<label class="sw"><input type="checkbox" class="pk-w" value="${w.id}"><div><b>${esc(w.name)}</b> ${m?`<span class="sem caducado">${m} pendiente${m>1?'s':''}</span>`:'<span class="sem ok">todo vigente</span>'}</div></label>`;}).join('')}
+      <label class="sw"><input type="checkbox" id="pk-emp" checked><div>Incluir la documentación de empresa (TC, certificados, seguro, REA, PRL)</div></label>
+      <button class="btn pri" style="margin-top:12px" onclick="descargarPaquete(this)">📦 Descargar ZIP</button>
+      <div class="nota">El ZIP lleva una carpeta por trabajador con lo vigente, la de empresa y un INDICE.txt con lo que falta o está caducado.</div></div>`;
+    cargarPicker();}
+  else if(tab==='ajustes'){const c=R.config;el.innerHTML=`<div class="card"><h3>Qué ven los trabajadores en su app</h3>
+      <label class="sw"><input type="checkbox" id="cf-vis" ${c.visibleTrabajadores?'checked':''} onchange="guardarCfg()"><div><b>Mostrar «📁 Mis documentos» en la app</b><div class="nota">Cada uno ve solo su carpeta (reconocimiento, cursos, EPIs, DNI…). Desactivado, no les aparece nada.</div></div></label>
+      <label class="sw"><input type="checkbox" id="cf-nom" ${c.nominasVisibles?'checked':''} ${c.visibleTrabajadores?'':'disabled'} onchange="guardarCfg()"><div><b>Incluir sus nóminas</b><div class="nota">Cada uno solo las suyas. Puedes esconder un documento concreto desde su carpeta («no visible para él»).</div></div></label></div>`;}
+}
+const optTrab=sel=>`<option value="">— ¿de quién? —</option>`+R.trabajadores.map(w=>`<option value="${w.id}" ${w.id===sel?'selected':''}>${esc(w.name)}</option>`).join('');
+const optTipo=(amb,sel)=>Object.entries(amb==='empresa'?R.tiposEmpresa:R.tipos).map(([k,t])=>`<option value="${k}" ${k===sel?'selected':''}>${esc(t.nombre)}</option>`).join('');
+function filaProp(p){return `<div class="doc" id="p-${p.id}"><span class="n"><a href="#" onclick="event.preventDefault();ver('${p.id}')" style="color:var(--text)">📄 ${esc(p.nombre)}</a>${p.notas?`<div class="nota" style="margin:2px 0 0">${esc(p.notas)}</div>`:''}${p.ia&&p.ia.trabajadorLeido&&!p.userId?`<div class="nota" style="color:var(--amber);margin:2px 0 0">La IA leyó «${esc(p.ia.trabajadorLeido)}» y no lo encuentra en la plantilla</div>`:''}</span>
+  <select class="p-amb" onchange="this.closest('.doc').querySelector('.p-tipo').innerHTML=optTipo(this.value,'');this.closest('.doc').querySelector('.p-w').style.display=this.value==='empresa'?'none':''"><option value="trabajador" ${p.ambito!=='empresa'?'selected':''}>Trabajador</option><option value="empresa" ${p.ambito==='empresa'?'selected':''}>Empresa</option></select>
+  <select class="p-w" style="${p.ambito==='empresa'?'display:none':''}">${optTrab(p.userId)}</select><select class="p-tipo">${optTipo(p.ambito,p.tipo)}</select>
+  <input type="date" class="p-fecha" value="${p.fecha||''}" title="Fecha"><input type="date" class="p-cad" value="${p.caduca||''}" title="Caduca"><input type="month" class="p-mes" value="${p.mes||''}" title="Mes (nóminas, TC)" style="width:140px">
+  <button class="btn peq pri" onclick="confirmarProp('${p.id}')">✓</button><button class="btn peq roja" onclick="borrarDoc('${p.id}')">✕</button></div>`;}
+async function analizar(files){if(!files||!files.length)return;const st=document.getElementById('an-estado');st.textContent=`🤖 Leyendo ${files.length} archivo${files.length>1?'s':''}… (unos segundos por archivo)`;
+  const f=new FormData();[...files].forEach(x=>f.append('archivos',x));
+  try{const l=await api('POST','/api/personal/analizar',f);st.textContent=`✓ ${l.length} documento${l.length>1?'s':''} para revisar abajo.`;await cargar();}catch(e){st.textContent='✗ '+e.message;}}
+function leerProp(id){const r=document.getElementById('p-'+id);const g=c=>r.querySelector(c).value;return {ambito:g('.p-amb'),userId:g('.p-amb')==='empresa'?null:g('.p-w'),tipo:g('.p-tipo'),fecha:g('.p-fecha'),caduca:g('.p-cad'),mes:g('.p-mes'),confirmar:true};}
+async function confirmarProp(id){try{await api('PUT','/api/personal/docs/'+id,leerProp(id));await cargar();}catch(e){alerta(e.message);}}
+async function confirmarTodas(){let ok=0,mal=0;for(const p of R.propuestas){const d=leerProp(p.id);if(d.ambito==='trabajador'&&!d.userId){mal++;continue;}try{await api('PUT','/api/personal/docs/'+p.id,d);ok++;}catch(e){mal++;}}await cargar();alerta(`${ok} confirmadas${mal?' · '+mal+' sin trabajador o con error':''}`);}
+async function borrarDoc(id){if(!(await CPDialog.confirmar('¿Borrar este documento?',{ok:'Borrar',peligro:true})))return;try{await api('DELETE','/api/personal/docs/'+id);if(carpetaDe)await abrirCarpeta(carpetaDe,true);else await cargar();}catch(e){alerta(e.message);}}
+async function ver(id){const w=window.open('','_blank');try{const r=await api('GET','/api/personal/docs/'+id+'/archivo');const u=URL.createObjectURL(await r.blob());if(w)w.location=u;}catch(e){if(w)w.close();alerta(e.message);}}
+function alerta(t){CPDialog.confirmar(t,{ok:'Vale',cancelar:'Cerrar'});}
+// ── CARPETA ──
+let _carpeta=[];
+async function abrirCarpeta(quien,recargar){carpetaDe=quien;const q=quien==='empresa'?'ambito=empresa':'userId='+quien;
+  try{_carpeta=await api('GET','/api/personal/carpeta?'+q);}catch(e){alerta(e.message);return;}if(recargar)await cargar();pintarCarpeta();}
+function pintarCarpeta(){const emp=carpetaDe==='empresa';const w=emp?null:R.trabajadores.find(x=>x.id===carpetaDe);const tipos=emp?R.tiposEmpresa:R.tipos;
+  const porTipo={};_carpeta.forEach(d=>(porTipo[d.tipo]=porTipo[d.tipo]||[]).push(d));
+  document.getElementById('out').innerHTML=`<div style="margin-bottom:10px"><button class="btn peq" onclick="carpetaDe=null;pintar()">← Volver</button> <b style="font-size:18px;margin-left:6px">📂 ${esc(emp?'Empresa':w?w.name:'')}</b></div>
+   <div class="card"><h3>Añadir documento</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><select id="c-tipo">${optTipo(emp?'empresa':'trabajador','')}</select><input type="date" id="c-fecha" title="Fecha"><input type="date" id="c-cad" title="Caduca (si no, se calcula)"><input type="month" id="c-mes" title="Mes" style="width:150px"><input type="file" id="c-file" accept="application/pdf,image/*"><button class="btn pri" onclick="subirCarpeta()">Subir</button></div>
+   <div class="nota">El reconocimiento médico caduca a los 12 meses si no pones fecha; las nóminas y el TC van por mes.</div></div>
+   ${Object.entries(tipos).filter(([k])=>porTipo[k]).map(([k,t])=>`<div class="card"><h3>${esc(t.nombre)} (${porTipo[k].length})</h3>${porTipo[k].map(d=>`<div class="doc"><span class="n"><a href="#" onclick="event.preventDefault();ver('${d.id}')" style="color:var(--text)">📄 ${esc(d.nombre)}</a> <span style="color:var(--text3);font-size:12.5px">${d.mes?esc(d.mes):fd(d.fecha)}${d.caduca?' · válido hasta '+fd(d.caduca):''}</span>${d.dias!=null&&d.dias<=30?` <span class="sem ${d.dias<0?'caducado':'pronto'}">${d.dias<0?'caducado':'caduca en '+d.dias+' d'}</span>`:''}${!emp&&!d.visibleTrabajador?' <span class="sem falta">oculto para él</span>':''}</span>
+     ${emp?'':`<button class="btn peq" onclick="toggleVisible('${d.id}',${!d.visibleTrabajador})">${d.visibleTrabajador?'🙈 Ocultar para él':'👁 Que lo vea'}</button>`}<button class="btn peq roja" onclick="borrarDoc('${d.id}')">✕</button></div>`).join('')}</div>`).join('')||'<div class="vacio">Carpeta vacía.</div>'}`;}
+async function subirCarpeta(){const f=document.getElementById('c-file').files[0];if(!f){alerta('Elige el archivo');return;}const emp=carpetaDe==='empresa';
+  const fdat=new FormData();fdat.append('archivo',f);fdat.append('ambito',emp?'empresa':'trabajador');if(!emp)fdat.append('userId',carpetaDe);
+  ['tipo','fecha','cad','mes'].forEach(k=>{const v=document.getElementById('c-'+k).value;if(v)fdat.append(k==='cad'?'caduca':k,v);});
+  try{await api('POST','/api/personal/docs',fdat);await abrirCarpeta(carpetaDe,true);}catch(e){alerta(e.message);}}
+async function toggleVisible(id,v){try{await api('PUT','/api/personal/docs/'+id,{visibleTrabajador:v});await abrirCarpeta(carpetaDe);}catch(e){alerta(e.message);}}
+// ── PAQUETE ──
+let _pick=null;
+async function cargarPicker(){try{if(!_obras)_obras=await api('GET','/api/oficina/obras');_pick=CPObra.crear(document.getElementById('pk-obra'),{obras:_obras,value:'',vacio:'— Sin obra —',placeholder:'Elegir obra…',titulo:'¿Para qué obra?'});}catch(e){document.getElementById('pk-obra').textContent='No se pudieron cargar las obras';}}
+async function descargarPaquete(b){const ids=[...document.querySelectorAll('.pk-w:checked')].map(x=>x.value);if(!ids.length){alerta('Marca quién va a la obra');return;}
+  b.disabled=true;b.textContent='Preparando…';
+  try{const r=await api('POST','/api/personal/paquete',{userIds:ids,obraId:_pick&&_pick.value||null,conEmpresa:document.getElementById('pk-emp').checked});const falt=Number(r.headers.get('X-Faltan')||0);
+    const u=URL.createObjectURL(await r.blob());const a=document.createElement('a');a.href=u;a.download=(r.headers.get('content-disposition')||'').match(/filename="([^"]+)"/)?.[1]||'documentacion.zip';document.body.appendChild(a);a.click();a.remove();
+    if(falt)alerta(`ZIP descargado. Ojo: ${falt} documento${falt>1?'s':''} falta${falt>1?'n':''} o está${falt>1?'n':''} caducado${falt>1?'s':''} (mira INDICE.txt).`);}
+  catch(e){alerta(e.message);}finally{b.disabled=false;b.textContent='📦 Descargar ZIP';}}
+async function guardarCfg(){try{R.config=await api('PUT','/api/personal/config',{visibleTrabajadores:document.getElementById('cf-vis').checked,nominasVisibles:document.getElementById('cf-nom').checked&&document.getElementById('cf-vis').checked});pintar();}catch(e){alerta(e.message);}}
+cargar();
+</script>
+</body></html>

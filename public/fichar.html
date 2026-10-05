@@ -153,6 +153,7 @@ textarea.obra-sel{resize:vertical;line-height:1.4}
   <button class="sec-btn" onclick="location.href='/almacen'">📦 Almacén · sacar material / recogidas</button>
   <button class="sec-btn" id="btn-parte" onclick="location.href='/parte'" style="display:none;border-color:rgba(77,156,248,.5)">📋 Parte de trabajo</button>
   <button class="sec-btn" onclick="abrirMes()">📅 Mis horas · semana y mes</button>
+  <button class="sec-btn" id="btn-docs" onclick="abrirDocs()" style="display:none">📁 Mis documentos</button>
   <button class="link-btn" onclick="abrirOlvido()">¿Se te olvidó fichar? Pide una corrección</button>
   <div class="tramos" id="corr-wrap" style="display:none">
     <h3>Mis correcciones</h3>
@@ -161,6 +162,10 @@ textarea.obra-sel{resize:vertical;line-height:1.4}
 </div></div>
 
 <!-- MIS HORAS (semana y mes) -->
+<div class="page" id="page-docs"><div class="container">
+  <button class="link-btn" onclick="showPage('fichar');cargar()">← Volver a fichar</button>
+  <div class="card" style="text-align:left"><h3 style="margin-bottom:10px">📁 Mis documentos</h3><div id="docs-lista">Cargando…</div></div>
+</div></div>
 <div class="page" id="page-mes"><div class="container">
   <div class="mesbar">
     <button onclick="moverMes(-1)" aria-label="Mes anterior">‹</button>
@@ -612,9 +617,20 @@ async function avisoFirmaPendiente(){
 let _menuVisto=false;
 async function menuTrabajador(){if(_menuVisto)return;_menuVisto=true;
   try{const r=await fetch('/api/campo/menu',{headers:authH()});if(!r.ok)return;const m=await r.json();
+    const bd=document.getElementById('btn-docs');if(bd)bd.style.display=m.misDocs?'':'none';
     const b=document.getElementById('btn-parte');if(!b)return;b.style.display=m.tieneParte?'':'none';
     b.textContent=['owner','oficina','encargado'].includes(m.rol)?'📋 Parte de trabajo':'📋 Parte de trabajo · tienes trabajo asignado hoy';
   }catch(e){}}
+// Mis documentos (reconocimiento, cursos, EPIs, nóminas…): solo si oficina lo ha activado.
+async function abrirDocs(){showPage('docs');const el=document.getElementById('docs-lista');el.textContent='Cargando…';
+  try{const r=await fetchT('/api/fichaje/mis-docs',{headers:authH()},12000);const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');
+    if(!d.activo){el.textContent='No disponible.';return;}
+    if(!d.docs.length){el.innerHTML='<div style="color:var(--text3)">Aún no hay documentos tuyos.</div>';return;}
+    const grupos={};d.docs.forEach(x=>(grupos[x.tipoNombre]=grupos[x.tipoNombre]||[]).push(x));
+    const f=s=>s?String(s).slice(0,10).split('-').reverse().join('/'):'';
+    el.innerHTML=Object.entries(grupos).map(([t,l])=>`<div style="margin:10px 0 4px;font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">${escH(t)}</div>`+l.map(x=>`<button class="sec-btn" style="text-align:left;margin:4px 0" onclick="verMiDoc('${x.id}')">📄 ${escH(x.mes||f(x.fecha)||x.nombre)}${x.caduca?` <span style="color:${x.dias!=null&&x.dias<0?'var(--red)':'var(--text3)'};font-size:12px">· ${x.dias!=null&&x.dias<0?'caducado':'válido hasta '+f(x.caduca)}</span>`:''}</button>`).join('')).join('');}
+  catch(e){el.innerHTML='<div style="color:var(--red)">'+escH(e.message)+'</div>';}}
+async function verMiDoc(id){const w=window.open('','_blank');try{const r=await fetchT('/api/fichaje/mis-docs/'+id,{headers:authH()},20000);if(!r.ok)throw new Error('No disponible');const u=URL.createObjectURL(await r.blob());if(w)w.location=u;else location.href=u;}catch(e){if(w)w.close();toast(e.message,'error');}}
 // ── AVISOS (notificaciones push) ──
 // Si aún no están activados en este móvil, se ofrece un botón. En iPhone solo
 // funcionan con la app añadida a la pantalla de inicio, así que se explica cómo.

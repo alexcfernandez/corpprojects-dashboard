@@ -364,6 +364,8 @@ function startScheduler() {
   // Día 1 a las 9:30: albaranes de más de 35 días que ninguna factura ha recogido.
   cron.schedule('30 9 1 * *', () => require('./compras').avisoAlbaranesSinFactura().catch(e => console.warn('[Compras] sin factura:', e.message)), { timezone: 'Europe/Madrid' });
   // Cierre del trimestre: se recalcula cada mañana; los lunes, resumen a oficina si hay pendientes.
+  // Documentación del personal y de empresa que caduca (reconocimientos, certificados…): aviso a oficina.
+  cron.schedule('10 9 * * 1-5', () => require('./personalDocs').revisarCaducidades().catch(e => console.warn('[Personal] caducidades:', e.message)), { timezone: 'Europe/Madrid' });
   // Flota: avisos de ITV, seguro, revisión y fin de renting (conductor + oficina).
   cron.schedule('5 9 * * *', () => require('./vehiculos').revisarVencimientos().then(r => r.avisos.length && console.log('[Vehículos] avisos:', r.avisos.length)).catch(e => console.warn('[Vehículos] avisos:', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('40 8 * * 1-5', () => require('./trimestre').revisionDiaria()
