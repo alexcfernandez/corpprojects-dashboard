@@ -50,10 +50,11 @@ td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}
   </div>
   <div class="card" style="font-size:13.5px;line-height:1.6">
     <h3>Paquete para la gestoría (mismo formato que el 2º trimestre en Drive)</h3>
-    <div>Carpeta <b>PARA_GESTORIA_Q…</b>: <b>1</b> facturas emitidas (PDF por mes) · <b>2</b> facturas recibidas (ya se van guardando solas en Drive) · <b>3</b> resumen de emitidas · <b>5</b> extractos de tarjetas · <b>6</b> extracto del banco.</div>
+    <div>Carpeta <b>PARA_GESTORIA_Q…</b>: <b>1</b> facturas emitidas (PDF por mes) · <b>2</b> facturas recibidas (las que revisas en Compras, en PDF por mes) · <b>3</b> resumen de emitidas · <b>5</b> extractos de tarjetas · <b>6</b> extracto del banco.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-      <button class="btn p" onclick="bajar(this,'/api/trimestre/paquete','PARA_GESTORIA.zip','Preparando el paquete completo… (1-2 min)')">⬇️ Paquete completo (1, 2-índice, 3, 4 y LÉEME)</button>
+      <button class="btn p" onclick="bajar(this,'/api/trimestre/paquete','PARA_GESTORIA.zip','Preparando el paquete completo… (1-2 min)')">⬇️ Paquete completo (1, 2, 3, 4 y LÉEME)</button>
       <button class="btn" onclick="bajar(this,'/api/trimestre/emitidas-zip','1_Facturas_emitidas.zip','Descargando los PDF de StelOrder… (1-2 min)')">⬇️ 1 · Facturas emitidas (ZIP)</button>
+      <button class="btn" onclick="bajar(this,'/api/trimestre/recibidas-zip','2_Facturas_recibidas.zip','Juntando las facturas de Compras… (1 min)')">⬇️ 2 · Facturas recibidas de Compras (ZIP)</button>
       <button class="btn" onclick="bajar(this,'/api/trimestre/resumen-emitidas','3_Resumen_facturas_emitidas.xlsx','Preparando…')">⬇️ 3 · Resumen de emitidas (Excel)</button>
     </div>
     <div style="font-size:12px;color:var(--text3);margin-top:6px">Descomprime el ZIP y arrastra la carpeta a Drive. Si algún PDF no se pudo bajar, va apuntado en <i>_FALTAN.txt</i> dentro del ZIP.</div>
@@ -117,7 +118,8 @@ async function cargar(){
 async function bajar(b,url,nombre,txt){const t=b.textContent;b.disabled=true;b.textContent=txt;
   try{const q=document.getElementById('q').value;const r=await fetch(url+'?q='+q,{headers:H});if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.error||'HTTP '+r.status);}
     const fa=Number(r.headers.get('X-Fallos')||0);const u=URL.createObjectURL(await r.blob());const a=document.createElement('a');a.href=u;a.download=nombre.replace('.',`_${q}.`);document.body.appendChild(a);a.click();a.remove();
-    if(fa)alert(`Ojo: ${fa} factura(s) no se pudieron descargar de StelOrder. Van apuntadas en _FALTAN.txt dentro del ZIP.`);}
+    if(fa)alert(`Ojo: ${fa} factura(s) no se pudieron descargar de StelOrder. Van apuntadas en _FALTAN.txt dentro del ZIP.`);
+    const pe=Number(r.headers.get('X-Pendientes')||0);if(pe)alert(`Ojo: ${pe} factura(s) de este trimestre siguen por revisar en Compras y no van en el ZIP. La lista está en _POR_REVISAR_EN_COMPRAS.txt.`);}
   catch(e){alert('No se pudo: '+e.message);}finally{b.disabled=false;b.textContent=t;}}
 async function subirExtractos(b){
   const fs=[...document.getElementById('ext-file').files];const out=document.getElementById('ext-res');if(!fs.length){out.textContent='Elige uno o varios archivos';return;}

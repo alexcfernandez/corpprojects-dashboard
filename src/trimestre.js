@@ -206,6 +206,60 @@ async function _pdfsEmitidas(R) {
   return { archivos, fallos };
 }
 
+// Facturas confirmadas en Compras (fotos y PDF del correo), listas para la gestoría: un PDF por factura en
+// carpetas por mes (las fotos se juntan en un PDF), más un Excel índice con cómo se pagó cada una.
+// Entran las revisadas y las del archivo del correo; las que siguen por revisar van aparte en un aviso.
+async function _archivosRecibidasCompras(R, carpeta = '2_Facturas_recibidas') {
+  const XLSX = require('xlsx');
+  const compras = require('./compras');
+  const fw = require('./facturaWhatsApp');
+  const db = await getDB();
+  const cs = await db.collection('compras').find({ estado: { $in: ['revisada', 'archivo', 'por_revisar'] }, tipo: { $in: ['factura', 'ticket', 'devolucion'] }, fecha: { $gte: R.from, $lte: R.to }, duplicadoDe: null })
+    .project({ lineas: 0, ia: 0 }).sort({ fecha: 1, proveedor: 1 }).toArray();
+  const listas = cs.filter(c => c.estado !== 'por_revisar'), pendientes = cs.filter(c => c.estado === 'por_revisar');
+  const [pagos, stelRec] = await Promise.all([mapaPagos().catch(() => null), todasRecibidas().catch(() => [])]);
+  // La misma factura ya pasada a StelOrder (mismo nº de proveedor y total): así no se cuenta dos veces.
+  const dig = x => String(x || '').replace(/\D/g, '');
+  const gemela = c => { const d = dig(c.numero); return d.length < 4 ? null : stelRec.find(x => dig(x.refProveedor) === d && Math.abs(Math.abs(x.total) - Math.abs(c.total || 0)) < 0.05) || null; };
+  const archivos = [], filas = [], vistos = new Set();
+  for (const c of listas) {
+    const fotos = await compras.fotosDe(c._id);
+    const buf = f => Buffer.from(f.data.buffer || f.data);
+    const base0 = `${c.fecha}_${limpioArchivo(c.proveedor || 'Proveedor')}${c.numero ? '_' + limpioArchivo(c.numero) : ''}`;
+    let base = base0;
+    for (let i = 2; vistos.has(base); i++) base = `${base0}_(${i})`;
+    vistos.add(base);
+    const dir = `${carpeta}/${carpetaMes(c.fecha)}`, nombres = [];
+    const pdfs = fotos.filter(f => /pdf/i.test(f.mimetype || '')), imgs = fotos.filter(f => /^image\//.test(f.mimetype || ''));
+    pdfs.forEach((f, i) => { const n = `${base}${pdfs.length > 1 || imgs.length ? '_' + (i + 1) : ''}.pdf`; archivos.push({ nombre: `${dir}/${n}`, datos: buf(f) }); nombres.push(n); });
+    if (imgs.length) {
+      let pdf = null; try { pdf = await fw.fotosAPdf(imgs.map(f => ({ data: buf(f).toString('base64'), media_type: f.mimetype }))); } catch (e) { pdf = null; }
+      if (pdf) { const n = `${base}${pdfs.length ? '_fotos' : ''}.pdf`; archivos.push({ nombre: `${dir}/${n}`, datos: pdf }); nombres.push(n); }
+      else imgs.forEach((f, i) => { const n = `${base}_${i + 1}.${(f.mimetype || 'image/jpeg').split('/')[1].replace('jpeg', 'jpg')}`; archivos.push({ nombre: `${dir}/${n}`, datos: buf(f) }); nombres.push(n); });
+    }
+    const gm = gemela(c);
+    const pg = pagos ? (pagos.porDoc.get(String(c._id)) || (gm && pagos.porDoc.get(String(gm.numero))) || []) : [];
+    filas.push({ Fecha: c.fecha.split('-').reverse().join('/'), Proveedor: c.proveedor || '', 'Nº factura': c.numero || '', Tipo: c.tipo === 'devolucion' ? 'Abono' : c.tipo === 'ticket' ? 'Ticket' : 'Factura',
+      Base: c.base != null ? r2(c.base) : null, IVA: c.iva != null ? r2(c.iva) : null, Total: c.total != null ? r2(c.total) : null,
+      Destino: c.destino === 'obra' ? `Obra ${c.obraRef || ''}`.trim() : c.destino === 'varias' ? (c.reparto || []).map(p => p.obraRef).join(' + ') : c.destino === 'general' ? `Gasto general${c.categoria ? ' · ' + c.categoria : ''}` : (c.destino || ''),
+      Pagada: pg.length ? pg.map(p => `${p.fecha.split('-').reverse().join('/')} ${p.origen}${p.persona ? ' (' + p.persona + ')' : ''}`).join(' + ') : 'Sin pago encontrado',
+      'En StelOrder': gm ? `Sí (${gm.numero})` : 'No', Archivo: nombres.join(', ') || 'SIN ARCHIVO', Origen: c.estado === 'archivo' ? 'Correo' : ({ email: 'Correo', whatsapp: 'WhatsApp' })[c.origen] || 'Foto en Compras' });
+  }
+  const ws = XLSX.utils.json_to_sheet(filas.length ? filas : [{ Proveedor: 'No hay facturas de Compras en este trimestre' }]);
+  for (const k of Object.keys(ws)) { const cel = ws[k]; if (k[0] !== '!' && cel.t === 'n' && /^[EFG]\d+$/.test(k)) cel.z = '#,##0.00 "€"'; }
+  ws['!cols'] = [{ wch: 11 }, { wch: 32 }, { wch: 18 }, { wch: 8 }, { wch: 11 }, { wch: 10 }, { wch: 11 }, { wch: 28 }, { wch: 40 }, { wch: 18 }, { wch: 50 }, { wch: 14 }];
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, `Compras Q${R.n}`);
+  archivos.push({ nombre: `${carpeta}/Indice_facturas_de_Compras_Q${R.n}.xlsx`, datos: XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) });
+  if (pendientes.length) archivos.push({ nombre: `${carpeta}/_POR_REVISAR_EN_COMPRAS.txt`, datos: Buffer.from(`${pendientes.length === 1 ? 'Esta factura del trimestre sigue' : `Estas ${pendientes.length} facturas del trimestre siguen`} sin revisar en Compras y NO va(n) en esta carpeta.\nRevísalas y vuelve a descargar:\n\n` + pendientes.map(c => `${c.fecha}  ${c.proveedor || '?'}  ${c.numero || ''}  ${c.total != null ? c.total + ' €' : ''}`).join('\n') + '\n', 'utf8') });
+  archivos.sort((a, b) => a.nombre.localeCompare(b.nombre));
+  return { archivos, n: filas.length, pendientes: pendientes.length };
+}
+async function zipRecibidasCompras(q) {
+  const R = rango(q || trimestrePorDefecto());
+  const { archivos, n, pendientes } = await _archivosRecibidasCompras(R);
+  return { buf: require('./zip').crearZip(archivos), nombre: `2_Facturas_recibidas_Q${R.n}_${R.y}.zip`, n, pendientes };
+}
+
 // ── PUNTEO DEL BANCO y documentos para la gestoría ───────────────────────────
 // Todas las facturas (no solo las del trimestre): se cobran y pagan con retraso.
 async function todasEmitidas() {
@@ -537,7 +591,7 @@ function textoGestoria(e, p, b) {
     `Ya tienes toda la documentación del ${e.label} en la carpeta de Drive (PARA_GESTORIA_Q${e.n}_${e.y}).`, ``,
     `Dentro está organizada así:`,
     `- 1_Facturas_emitidas: PDFs separados por mes.`,
-    `- 2_Facturas_recibidas: PDFs separados por mes, más un Excel índice (${e.resumen.recibidas.n} facturas de compra).`,
+    `- 2_Facturas_recibidas: PDFs separados por mes (los que se revisan en nuestro programa), el índice del libro de StelOrder (${e.resumen.recibidas.n} facturas de compra) y el índice de Compras (columna «En StelOrder» para no contar dos veces).`,
     `- 3_Resumen_facturas_emitidas_Q${e.n}.xlsx`,
     `- 4_Movimientos_bancarios_Q${e.n}.xlsx — cada movimiento con su factura al lado (${p.resumen.punteados} punteados de ${p.resumen.movimientos}).`,
     `- 5_Extractos_tarjeta_credito y 6_Extracto_banco.`, ``,
@@ -601,6 +655,8 @@ async function paqueteGestoria(q) {
   const archivos = [];
   const emZip = await zipEmitidasArchivos(R.q);
   archivos.push(...emZip.map(a => ({ nombre: `PARA_GESTORIA_Q${R.n}_${R.y}/${a.nombre}`, datos: a.datos })));
+  const recCompras = await _archivosRecibidasCompras(R);
+  archivos.push(...recCompras.archivos.map(a => ({ nombre: `PARA_GESTORIA_Q${R.n}_${R.y}/${a.nombre}`, datos: a.datos })));
   archivos.push({ nombre: `PARA_GESTORIA_Q${R.n}_${R.y}/2_Facturas_recibidas/Indice_facturas_recibidas_Q${R.n}.xlsx`, datos: libro(hojaIndiceRecibidas(XLSX, R, recTrim, p.avisos), `Recibidas Q${R.n}`) });
   archivos.push({ nombre: `PARA_GESTORIA_Q${R.n}_${R.y}/${resEm.nombre}`, datos: resEm.buf });
   archivos.push({ nombre: `PARA_GESTORIA_Q${R.n}_${R.y}/4_Movimientos_bancarios_Q${R.n}.xlsx`, datos: XLSX.write(wbMov, { type: 'buffer', bookType: 'xlsx' }) });
@@ -734,4 +790,4 @@ async function buscar(texto) {
   };
 }
 
-module.exports = { rango, trimestrePorDefecto, estado, excel, revisionDiaria, resumenEmitidasXlsx, zipEmitidas, punteo, paqueteGestoria, borrador303, textoGestoria, justificar, deshacerJustificacion, comercio, confirmarDesdePunteo, buscar, recibidasPunteo, mapaPagos, todasEmitidas };
+module.exports = { rango, trimestrePorDefecto, estado, excel, revisionDiaria, resumenEmitidasXlsx, zipEmitidas, zipRecibidasCompras, punteo, paqueteGestoria, borrador303, textoGestoria, justificar, deshacerJustificacion, comercio, confirmarDesdePunteo, buscar, recibidasPunteo, mapaPagos, todasEmitidas };

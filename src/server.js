@@ -2041,6 +2041,14 @@ app.get('/api/trimestre/emitidas-zip', requireAuthOficina, async (req, res) => {
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
+app.get('/api/trimestre/recibidas-zip', requireAuthOficina, async (req, res) => {
+  req.setTimeout && req.setTimeout(300000);
+  try {
+    const { buf, nombre, n, pendientes } = await require('./trimestre').zipRecibidasCompras(req.query.q || null);
+    res.set('Content-Disposition', `attachment; filename="${nombre}"`).set('X-Facturas', String(n)).set('X-Pendientes', String(pendientes)).type('application/zip').send(buf);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 // ── Conversaciones de WhatsApp (todas): lista, hilo y fotos ──
 app.get('/api/conversaciones', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./waLog').conversaciones({ dias: req.query.dias })); }
