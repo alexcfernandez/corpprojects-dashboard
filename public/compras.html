@@ -151,7 +151,7 @@ async function abrir(id){
       <div id="f-albs" style="${c.tipo==='factura'?'':'display:none'}"><label class="f">Albaranes que agrupa (nº separados por comas)</label><input id="f-alb" value="${esc((c.albaranesRef||[]).join(', '))}" ${rev?'disabled':''}>
         ${/\bcinc\b/i.test(c.proveedor||'')?`<div style="margin-top:10px"><button type="button" class="btn" onclick="revisarCinc(this)">🔍 Comprobar comisiones de CINC</button><div id="cinc-res"></div></div>`:''}
         <div id="casar" style="margin-top:8px">${c.casado&&c.casado.n?`<div class="aviso ok">🔗 Casada con <b>${c.casado.n}</b> albaranes · suman ${eur(c.casado.suma)}${c.casado.diferencia!=null?' · diferencia con la base: <b style="color:'+(Math.abs(c.casado.diferencia)>0.5?'var(--amber)':'var(--green)')+'">'+eur(c.casado.diferencia)+'</b>':''}<div style="margin-top:6px;font-size:12px">${(c.casado.albaranes||[]).map(a=>esc(a.numero||'?')+(a.obraRef?' → '+esc(a.obraRef):'')+(a.importe!=null?' ('+eur(a.importe)+')':'')).join(' · ')}</div><div style="margin-top:8px"><button class="btn g" style="padding:6px 10px;font-size:12px" onclick="buscarAlbaranes()">Cambiar</button> <button class="btn rd" style="padding:6px 10px;font-size:12px" onclick="descasar()">Descasar</button></div></div>`:`<button class="btn g" style="padding:8px 12px;font-size:12px" onclick="buscarAlbaranes()">🔗 Buscar albaranes de esta factura</button> <span style="font-size:11.5px;color:var(--text3)">Al casarlos, en la obra cuentan los albaranes y esta factura no vuelve a sumar.</span>`}
-        ${!rev&&(c.albaranesRef||[]).length>=2?((c.lineas||[]).some(l=>l.albaran||l.obraTexto)?`<div style="margin-top:6px"><button class="btn g" style="padding:8px 12px;font-size:12px" onclick="repartirPorAlbaran(this)">🏗️ Repartir por obra según los albaranes de la factura</button></div>`:`<div style="font-size:11.5px;color:var(--text3);margin-top:6px">¿Albaranes de varias obras? Pulsa «🤖 Volver a leer» y la IA apuntará de qué albarán y obra es cada línea; luego podrás repartirla por obra.</div>`):''}</div>
+        ${!rev&&(c.albaranesRef||[]).length>=2?((c.lineas||[]).some(l=>l.albaran||l.obraTexto)?`<div style="margin-top:6px"><button class="btn g" style="padding:8px 12px;font-size:12px" onclick="repartirPorAlbaran(this)">🏗️ Repartir por obra según los albaranes de la factura</button></div>`:`<div style="margin-top:6px"><button class="btn g" style="padding:8px 12px;font-size:12px" onclick="accion('releer')">🤖 Leer de qué obra es cada albarán</button> <span style="font-size:11.5px;color:var(--text3)">La IA vuelve a leer la factura y la reparte por obra.</span></div>`):''}</div>
         <div id="casar-res"></div></div>
       ${c.tipo==='albaran'&&c.facturaId?`<div class="aviso ok">🔗 Casado con la factura <b>${esc(c.facturaNumero||'')}</b> · <a href="#" onclick="abrir('${esc(c.facturaId)}');return false" style="color:var(--blue)">abrirla</a></div>`:''}
       <label class="f">¿Para qué es?</label>
@@ -179,7 +179,10 @@ async function abrir(id){
   document.getElementById('f-tipo').addEventListener('change',e=>{document.getElementById('f-albs').style.display=e.target.value==='factura'?'':'none';const b=document.querySelector('.acciones .btn.ok');if(b)b.textContent='✅ Confirmar'+(['factura','ticket'].includes(e.target.value)?' y enviar a StelOrder':'');});
   if(!rev&&!c.vehiculoId)detectarVehiculo(c);
   // CINC (administrador de fincas) cobra un 10 % de los trabajos que nos pasa: se propone gasto general · comisiones.
-  if(!rev&&!c.categoria&&!c.obraId&&!(c.reparto||[]).length&&(!c.destino||c.destino==='obra')&&!/\bcinc\b/i.test(c.proveedor||''))aplicarRegla(c);
+  // Factura que junta albaranes de varias obras: se propone el reparto solo (tú solo corriges la obra que no cuadre).
+  const porAlb=c.tipo==='factura'&&!(c.casado&&c.casado.n)&&new Set((c.lineas||[]).filter(l=>l.albaran||l.obraTexto).map(l=>l.obraTexto||l.albaran)).size>=2;
+  if(!rev&&porAlb&&!c.obraId&&!(c.reparto||[]).length)setTimeout(()=>repartirPorAlbaran(null,true),0);
+  else if(!rev&&!c.categoria&&!c.obraId&&!(c.reparto||[]).length&&(!c.destino||c.destino==='obra')&&!/\bcinc\b/i.test(c.proveedor||''))aplicarRegla(c);
   if(!rev&&!c.categoria&&/\bcinc\b/i.test(c.proveedor||'')&&(!c.obraId)&&!(c.reparto||[]).length){const fd=document.getElementById('f-dest');if(fd){fd.value='general';}setTimeout(()=>{const fc=document.getElementById('f-cat');if(fc)fc.value='comisiones';},0);}
   onDest(true);window.scrollTo(0,0);
 }
@@ -302,21 +305,23 @@ function onDest(inicial){const d=destSel();const show=(id,v)=>document.getElemen
   show('d-obra',d==='obra');show('reparto',d==='varias');show('d-quien',d==='herramientas'||d==='ropa');show('d-herr',d==='herramientas'||d==='ropa');show('d-alm',d==='almacen');show('gasto',d==='general');
   document.getElementById('quien-lbl').textContent=d==='herramientas'?'¿Quién se queda las herramientas?':'¿Para quién es la ropa?';
   document.querySelectorAll('#lineas .hcol').forEach(e=>e.style.display=(d==='herramientas'||d==='ropa'||d==='almacen')?'':'none');document.querySelector('#lineas th.hcol').textContent=d==='ropa'?'👕':d==='almacen'?'📦':'🔧';document.querySelectorAll('#lineas .rcol').forEach(e=>e.style.display=d==='almacen'?'':'none');document.querySelectorAll('#lineas .tcol').forEach(e=>e.style.display=d==='ropa'?'':'none');
-  if(d==='varias'){if(inicial&&(cur.reparto||[]).length)renderReparto(cur.reparto);else if(!document.querySelector('#reparto .rep'))renderReparto([{obraId:pick.value||cur.obraId,importe:null},{obraId:'',importe:null}]);}
+  if(d==='varias'){if(inicial&&(cur.reparto||[]).length)renderReparto(cur.reparto.map(p=>({...p,nota:p.texto?`«${p.texto}»`:''})));else if(!document.querySelector('#reparto .rep'))renderReparto([{obraId:pick.value||cur.obraId,importe:null},{obraId:'',importe:null}]);}
   if(d==='general'&&!document.getElementById('f-cat').value&&cur.categoria)document.getElementById('f-cat').value=cur.categoria;}
 let _repPicks=[];
-function renderReparto(filas){const el=document.getElementById('reparto');el.innerHTML='<div style="font-size:12px;color:var(--text3);margin-bottom:6px">Qué parte del importe va a cada obra (sin IVA). Si no sabes el detalle, pon los totales aproximados.</div>'+filas.map((f,i)=>`<div class="rep"><div id="rp-${i}"></div><input id="ri-${i}" inputmode="decimal" placeholder="€" value="${f.importe??''}"><button class="btn g" style="padding:6px" onclick="quitarRep(${i})">×</button></div>${f.nota?`<div style="font-size:11.5px;color:${f.obraId?'var(--text3)':'var(--amber)'};margin:-2px 0 8px">${esc(f.nota)}</div>`:''}`).join('')+'<button class="btn g" style="padding:6px 10px;font-size:12px" onclick="addRep()">＋ otra obra</button>';
+function renderReparto(filas){const el=document.getElementById('reparto');el.innerHTML='<div style="font-size:12px;color:var(--text3);margin-bottom:6px">Qué parte del importe va a cada obra (sin IVA). Si no sabes el detalle, pon los totales aproximados.</div>'+filas.map((f,i)=>`<div class="rep" data-texto="${esc(f.texto||'')}"><div id="rp-${i}"></div><input id="ri-${i}" inputmode="decimal" placeholder="€" value="${f.importe??''}"><button class="btn g" style="padding:6px" onclick="quitarRep(${i})">×</button></div>${f.nota?`<div style="font-size:11.5px;color:${f.obraId?'var(--text3)':'var(--amber)'};margin:-2px 0 8px">${esc(f.nota)}</div>`:''}`).join('')+'<button class="btn g" style="padding:6px 10px;font-size:12px" onclick="addRep()">＋ otra obra</button>';
   _repPicks=filas.map((f,i)=>CPObra.crear(document.getElementById('rp-'+i),{obras,value:f.obraId||'',vacio:null,placeholder:'Obra…',crear:crearObra}));}
 // Factura que agrupa albaranes de varias obras: reparto por obra con las líneas de cada albarán.
-async function repartirPorAlbaran(b){b.disabled=true;try{const r=await api('GET','/api/compras/'+cur._id+'/reparto-albaranes');
-    if(!r.grupos.length){toast('La factura no dice de qué albarán es cada línea: pulsa «Volver a leer»','warn');return;}
+async function repartirPorAlbaran(b,auto){if(b)b.disabled=true;const c=cur;try{const r=await api('GET','/api/compras/'+c._id+'/reparto-albaranes');
+    if(cur!==c)return;
+    if(!r.grupos.length){if(!auto)toast('La factura no dice de qué albarán es cada línea: pulsa «Volver a leer»','warn');return;}
+    if(auto&&r.grupos.length<2)return;
     document.getElementById('f-dest').value='varias';onDest();
-    renderReparto(r.grupos.map(g=>({obraId:g.obraId||'',importe:g.importe,nota:`${g.albaranes.length?'Albarán '+g.albaranes.join(', ')+' · ':''}${g.obraTexto?'«'+g.obraTexto+'»':'sin obra en la factura'}${g.obraId?' → '+(g.obraRef||'')+' ('+g.motivo+')':' → elige la obra'}`})));
+    renderReparto(r.grupos.map(g=>({obraId:g.obraId||'',importe:g.importe,texto:g.obraTexto||'',nota:`${g.albaranes.length?'Albarán '+g.albaranes.join(', ')+' · ':''}${g.obraTexto?'«'+g.obraTexto+'»':'sin obra en la factura'}${g.obraId?' → '+(g.obraRef||'')+' ('+g.motivo+')':' → elige la obra'}`})));
     const sin=r.grupos.filter(g=>!g.obraId).length;
     toast(`🏗️ ${r.grupos.length} obra(s)${sin?` · ${sin} sin reconocer: elígelas`:''}${r.diferencia!=null&&Math.abs(r.diferencia)>0.5?` · las líneas suman ${eur(r.suma)} y la base es ${eur(r.base)}`:''}`,sin?'warn':'ok');
-    document.getElementById('reparto').scrollIntoView({block:'center'});}
-  catch(e){toast(e.message,'error');}finally{b.disabled=false;}}
-function leerReparto(){return _repPicks.map((p,i)=>({obraId:p.value,importe:document.getElementById('ri-'+i).value})).filter(r=>r.obraId);}
+    if(!auto)document.getElementById('reparto').scrollIntoView({block:'center'});}
+  catch(e){if(!auto)toast(e.message,'error');}finally{if(b)b.disabled=false;}}
+function leerReparto(){const rs=[...document.querySelectorAll('#reparto .rep')];return _repPicks.map((p,i)=>({obraId:p.value,importe:document.getElementById('ri-'+i).value,texto:(rs[i]&&rs[i].dataset.texto)||null})).filter(r=>r.obraId);}
 function addRep(){const f=leerReparto();f.push({obraId:'',importe:null});renderReparto(f);}
 function quitarRep(i){const f=_repPicks.map((p,j)=>({obraId:p.value,importe:document.getElementById('ri-'+j).value}));f.splice(i,1);renderReparto(f.length?f:[{obraId:'',importe:null}]);}
 function leerForm(){

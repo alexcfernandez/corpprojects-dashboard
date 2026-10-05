@@ -62,7 +62,7 @@ const PROMPT = `Eres el administrativo de una empresa de reformas en Girona. Te 
  "confianza": 0-1,
  "aviso": "una frase corta en español si hay algo que oficina deba mirar (importe ilegible, falta una página, es un presupuesto y no una compra…), o null"
 }
-Si el documento tiene más de 60 líneas, incluye las 60 primeras y resume el resto en una línea "… y N líneas más". En facturas que agrupan varios albaranes (cada albarán con su cabecera «SC/286689 17/09/2026 PEDIDO:» y debajo la obra o dirección), pon en CADA línea su "albaran" y su "obraTexto" (la cabecera no es una línea). En facturas de gasolinera que listan repostajes, una línea por tiquet con la descripción "PRODUCTO - Tiquet NÚMERO (DD-MM-AAAA)" (el nº de tiquet tal cual), litros como cantidad con unidad "L" e importe de la línea. Reglas: "albaran" = entrega de material SIN importes totales o con la palabra albarán/entrega; "factura" = lleva la palabra factura y desglose de IVA; "ticket" = ticket de caja/TPV; "devolucion" = abono, devolución o importes negativos (pon los importes en NEGATIVO). Números con formato español (1.234,56) → 1234.56. Si no es un documento de compra, calidad="no_es_documento". No inventes: lo que no se lea, null.`;
+Si el documento tiene más de 60 líneas, incluye las 60 primeras y resume el resto en una línea "… y N líneas más". En facturas que agrupan varios albaranes (cada albarán empieza con su cabecera, p. ej. «SC/286689 17/09/2026 PEDIDO:», y la obra o dirección va en una línea sin importe al principio o AL FINAL del bloque, p. ej. «OBRA CARLES RAHOLA, 13 ATIC (ALEX RINCON)»), pon en CADA línea su "albaran" y el "obraTexto" de su bloque (la cabecera y la línea de la obra no son líneas). En facturas de gasolinera que listan repostajes, una línea por tiquet con la descripción "PRODUCTO - Tiquet NÚMERO (DD-MM-AAAA)" (el nº de tiquet tal cual), litros como cantidad con unidad "L" e importe de la línea. Reglas: "albaran" = entrega de material SIN importes totales o con la palabra albarán/entrega; "factura" = lleva la palabra factura y desglose de IVA; "ticket" = ticket de caja/TPV; "devolucion" = abono, devolución o importes negativos (pon los importes en NEGATIVO). Números con formato español (1.234,56) → 1234.56. Si no es un documento de compra, calidad="no_es_documento". No inventes: lo que no se lea, null.`;
 
 // Esquema de la salida estructurada (mismo contenido que pide PROMPT).
 const _n = { type: ['number', 'null'] }, _s = { type: ['string', 'null'] };
@@ -332,7 +332,7 @@ async function editar(id, data, por) {
       for (const p of rep) {
         if (!p.obraId) continue;
         const o = await db.collection('obras').findOne({ _id: new ObjectId(String(p.obraId)) }, { projection: { reference: 1 } });
-        if (o) set.reparto.push({ obraId: String(o._id), obraRef: o.reference || '', importe: n2(p.importe) });
+        if (o) set.reparto.push({ obraId: String(o._id), obraRef: o.reference || '', importe: n2(p.importe), ...(p.texto ? { texto: String(p.texto).trim().slice(0, 120) } : {}) });
       }
     } else {
       const unico = rep.length === 1 ? rep[0].obraId : data.obraId;
@@ -438,6 +438,9 @@ async function revisar(id, por, { enviarStel = true, herramientas = null, almace
     catch (e) { console.warn('[Compras] ITV del vehículo:', e.message); }
   }
   await db.collection(COL).updateOne({ _id: c._id }, { $set: set });
+  // Reparto por albaranes: si la factura decía «CARRER OVIEDO 39» y se eligió la obra Oviedo 16, se apunta
+  // como alias de esa obra para que la próxima vez salga sola.
+  if ((c.reparto || []).some(p => p.texto)) { try { await aprenderAliasObras(c.reparto); } catch (e) { console.warn('[Compras] alias obra:', e.message); } }
   // CINC: sus comisiones mal cobradas quedan apuntadas en Reclamaciones (en segundo plano: tarda unos segundos).
   if (/\bcinc\b/i.test(c.proveedor || '') && c.tipo !== 'devolucion') require('./reclamaciones').desdeCinc(String(c._id), por).catch(e => console.warn('[Compras] reclamación CINC:', e.message));
   // Gasolinera: cada tiquet queda unido a su línea y vehículo (y se aprende el nombre que tenía en la app Esclat).
@@ -568,6 +571,22 @@ function obraDeTexto(obras, texto, ignorar = new Set()) {
   }).filter(x => x.p > 0).sort((a, b) => b.s - a.s);
   if (!sc.length || (sc[1] && sc[1].s === sc[0].s)) return null;
   return sc[0].s >= 3 || (sc[0].p >= 1 && !sc[1]) ? sc[0].o : null;
+}
+async function aprenderAliasObras(reparto) {
+  const db = await getDB();
+  const obras = await require('./obras').getSelector({ todas: true, conEstudio: true });
+  // Palabra que sale en albaranes de obras DISTINTAS (quién lo pidió: «ALEX RINCON») no identifica la obra.
+  const obrasDe = {};
+  reparto.filter(p => p.texto && p.obraId).forEach(p => new Set(_tokens(p.texto)).forEach(w => { (obrasDe[w] = obrasDe[w] || new Set()).add(String(p.obraId)); }));
+  const ignorar = new Set(Object.keys(obrasDe).filter(w => !/^\d+$/.test(w) && obrasDe[w].size >= 2));
+  for (const p of reparto) {
+    if (!p.texto || !p.obraId) continue;
+    const ya = obraDeTexto(obras, p.texto, ignorar);
+    if (ya && ya.id === String(p.obraId)) continue;            // ya la reconoce
+    const alias = _tokens(p.texto).filter(w => !ignorar.has(w)).join(' ').trim();
+    if (alias.length < 4) continue;
+    await db.collection('obras').updateOne({ _id: new ObjectId(String(p.obraId)) }, { $addToSet: { aliases: alias } });
+  }
 }
 async function repartoPorAlbaran(facturaId) {
   const db = await getDB();
@@ -756,4 +775,4 @@ async function resumenPendientes({ dryRun = false } = {}) {
   return { pendientes: pend.length, enviado: ok > 0 };
 }
 
-module.exports = { n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, albaranesDelCorreo, repartoPorAlbaran, obraDeTexto, clasificacionesParaStel, reglaProveedorDe, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };
+module.exports = { n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, albaranesDelCorreo, repartoPorAlbaran, obraDeTexto, _aprenderAliasObras: aprenderAliasObras, clasificacionesParaStel, reglaProveedorDe, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };
