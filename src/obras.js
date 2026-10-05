@@ -575,7 +575,7 @@ async function getRentabilidad(obraId) {
         if (parte) {
           const imp = Number(parte.importe) || 0;
           totalProveedores += imp;
-          proveedores.push({ id: f.id, number: f.number, supplier: f.supplier, total: imp, date: f.date, fuente: 'reparto', categoria: null });
+          proveedores.push({ id: f.id, number: f.number, ref: f.extraReference || '', supplier: f.supplier, total: imp, date: f.date, fuente: 'reparto', categoria: null });
         }
         continue; // el reparto manda; no se cuenta el total entero
       }
@@ -589,9 +589,10 @@ async function getRentabilidad(obraId) {
         pertenece = !!(tag && nRef && (tag.includes(nRef) || nRef.includes(tag)));
       }
       if (pertenece) {
-        const imp = Number(f.total) || 0;
+        // Coste sin IVA (el IVA se recupera), igual que Compras; si StelOrder no trae la base, el total.
+        const imp = Number(f.base != null ? f.base : f.total) || 0;
         totalProveedores += imp;
-        proveedores.push({ id: f.id, number: f.number, supplier: f.supplier, total: imp, date: f.date, fuente: cls.fuente, categoria: cls.categoria || null });
+        proveedores.push({ id: f.id, number: f.number, ref: f.extraReference || '', supplier: f.supplier, total: imp, date: f.date, fuente: cls.fuente, categoria: cls.categoria || null });
       }
     }
   } catch (e) { /* si StelOrder falla, la rentabilidad sigue con personal + material */ }
@@ -606,7 +607,10 @@ async function getRentabilidad(obraId) {
     const nn = v => String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '').replace(/^0+/, '');
     // Nº de albarán: se compara por sus DÍGITOS («ALB-4490» = «4490»); si no tiene, por el texto.
     const nd = v => { const d = (String(v || '').match(/\d+/g) || []).join(''); return d ? d.replace(/^0+/, '') : nn(v); };
-    const enStel = new Set(proveedores.map(p => norm(p.supplier).split(' ')[0] + '|' + nn(p.number)));
+    // Compras guarda el nº del PROVEEDOR; en StelOrder ese nº es la «referencia externa» (el suyo es FPR…).
+    // Nº largos (≥5 cifras/letras) bastan solos: el nombre cambia entre sitios («BRICOLAJE BRICOMAN» = «Obramat»).
+    const enStel = new Set(proveedores.flatMap(p => [p.number, p.ref].filter(Boolean).flatMap(n => [norm(p.supplier).split(' ')[0] + '|' + nn(n), ...(nn(n).length >= 5 ? ['#' + nn(n)] : [])])));
+    const yaEnStel = (prov1, num) => enStel.has(prov1 + '|' + nn(num)) || (nn(num).length >= 5 && enStel.has('#' + nn(num)));
     const albAgrupados = new Set(lista.filter(c => c.tipo === 'factura' && !(c.casado && c.casado.n > 0)).flatMap(c => c.albaranesRef.map(a => (c.proveedorNorm || '').split(' ')[0] + '|' + nd(a))));
     for (const c of lista) {
       const prov1 = (c.proveedorNorm || norm(c.proveedor)).split(' ')[0];
@@ -615,10 +619,10 @@ async function getRentabilidad(obraId) {
       if (casada) {
         cuenta = false; motivo = `desglosada en ${c.casado.n} albaranes`;
         // Su gemela de StelOrder (si está asignada a la obra) tampoco debe sumar: cuentan los albaranes.
-        if (c.numero) { const k = prov1 + '|' + nn(c.numero); const i = proveedores.findIndex(p => norm(p.supplier).split(' ')[0] + '|' + nn(p.number) === k); if (i >= 0 && !proveedores[i].desglosada) { totalProveedores -= proveedores[i].total; proveedores[i] = { ...proveedores[i], desglosada: true, nota: 'desglosada en albaranes' }; } }
+        if (c.numero) { const k = prov1 + '|' + nn(c.numero); const i = proveedores.findIndex(p => [p.number, p.ref].filter(Boolean).some(n => norm(p.supplier).split(' ')[0] + '|' + nn(n) === k || (nn(n).length >= 5 && nn(n) === nn(c.numero)))); if (i >= 0 && !proveedores[i].desglosada) { totalProveedores -= proveedores[i].total; proveedores[i] = { ...proveedores[i], desglosada: true, nota: 'desglosada en albaranes' }; } }
       }
       else if (c.tipo === 'albaran' && c.facturaId) { cuenta = !c.sinImporte; motivo = cuenta ? null : 'sin importe'; }   // casado formalmente: cuenta él
-      else if ((c.tipo === 'factura' || c.tipo === 'ticket') && c.numero && enStel.has(prov1 + '|' + nn(c.numero))) { cuenta = false; motivo = 'ya contada en StelOrder'; }
+      else if ((c.tipo === 'factura' || c.tipo === 'ticket') && c.numero && yaEnStel(prov1, c.numero)) { cuenta = false; motivo = 'ya contada en StelOrder'; }
       else if (c.tipo === 'albaran' && c.numero && albAgrupados.has(prov1 + '|' + nd(c.numero))) { cuenta = false; motivo = 'agrupado en una factura'; }
       else if (c.sinImporte) { cuenta = false; motivo = 'sin importe'; }
       if (cuenta) totalCompras += c.importe;

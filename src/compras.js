@@ -604,6 +604,27 @@ async function repartoPorAlbaran(facturaId) {
   const base = f.base != null ? f.base : f.total;
   return { grupos: junt, suma, base, diferencia: base != null ? Math.round((base - suma) * 100) / 100 : null };
 }
+// Para «Clasificar facturas» (facturas de StelOrder): la clasificación que ya tiene su gemela en Compras.
+// Misma factura = mismo nº del proveedor (≥4 cifras) y total parecido, o mismo total ±2 cént. a ≤7 días.
+async function clasificacionesParaStel() {
+  const db = await getDB();
+  const cs = await db.collection(COL).find({ empresaId: EMPRESA, estado: 'revisada', tipo: { $in: ['factura', 'ticket', 'devolucion'] }, duplicadoDe: null })
+    .project({ numero: 1, total: 1, fecha: 1, destino: 1, obraId: 1, obraRef: 1, reparto: 1, categoria: 1, varias: 1 }).toArray();
+  const dig = x => String(x || '').replace(/\D/g, '').replace(/^0+/, '');
+  const porNum = new Map(); cs.forEach(c => { const d = dig(c.numero); if (d.length >= 4) (porNum.get(d) || porNum.set(d, []).get(d)).push(c); });
+  const dias = (a, b) => Math.abs((new Date(a) - new Date(b)) / 86400000);
+  return f => {
+    const d = dig(f.extraReference);
+    const tot = Number(f.total) || 0;
+    let c = d.length >= 4 ? (porNum.get(d) || []).find(x => x.total == null || Math.abs(Math.abs(x.total) - Math.abs(tot)) < 1) : null;
+    if (!c && f.date) c = cs.find(x => x.total != null && Math.abs(x.total - tot) < 0.02 && x.fecha && dias(x.fecha, String(f.date).slice(0, 10)) <= 7);
+    if (!c) return null;
+    const dest = c.destino || (c.varias ? 'varias' : 'obra');
+    if (dest === 'obra' && c.obraId) return { tipo: 'obra', fuente: 'compras', obraId: c.obraId, obraRef: c.obraRef || '', categoria: null, compraId: String(c._id) };
+    if (dest === 'varias') return { tipo: 'obra', fuente: 'compras', reparto: true, obraRef: (c.reparto || []).map(p => p.obraRef).filter(Boolean).join(' + ') || 'Varias obras', compraId: String(c._id) };
+    return { tipo: 'general', fuente: 'compras', categoria: c.categoria || dest, compraId: String(c._id) };
+  };
+}
 async function casar(facturaId, albaranIds, por) {
   const db = await getDB();
   const f = await db.collection(COL).findOne({ _id: oid(facturaId), empresaId: EMPRESA });
@@ -714,4 +735,4 @@ async function resumenPendientes({ dryRun = false } = {}) {
   return { pendientes: pend.length, enviado: ok > 0 };
 }
 
-module.exports = { n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, albaranesDelCorreo, repartoPorAlbaran, obraDeTexto, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };
+module.exports = { n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, albaranesDelCorreo, repartoPorAlbaran, obraDeTexto, clasificacionesParaStel, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };

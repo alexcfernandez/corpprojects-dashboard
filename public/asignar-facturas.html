@@ -328,6 +328,7 @@ function filtrar(){
 function badgeDe(c){
   if(!c)return '<span class="badge none">Sin clasificar</span>';
   const via=c.fuente||'manual';
+  if(via==='compras')return `<span class="badge manual">📷 En Compras: ${c.tipo==='general'?'gasto '+esc(catLabel(c.categoria)):esc(c.obraRef||'obra')}</span>`;
   if(c.reparto||via==='reparto')return `<span class="badge reparto">🔀 ${esc(c.obraRef||'Repartida entre obras')}</span>`;
   if(c.tipo==='general')return `<span class="badge general">Gasto: ${esc(catLabel(c.categoria))}${via==='regla'?' · regla':''}</span>`;
   const cat=c.categoria?(' · '+esc(catLabel(c.categoria))):'';

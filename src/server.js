@@ -2831,10 +2831,13 @@ app.get('/api/facturas/proveedor', requireAuthOficina, async (req, res) => {
       obras.getAsignacionesFacturaMap(),
       obras.getReglasMap(),
     ]);
+    // Lo que ya se ha revisado en Compras (misma factura: nº del proveedor = referencia externa en
+    // StelOrder) sale como clasificado «en Compras». Solo informa: la rentabilidad la cuenta Compras.
+    const deCompras = await require('./compras').clasificacionesParaStel().catch(() => null);
     const out = (facturas || []).map(f => ({
       id: f.id, number: f.number, supplier: f.supplier, supplierId: f.supplierId,
       total: f.total, date: f.date,
-      clasif: obras.resolverFacturaObra(f, asignMap, reglaMap),
+      clasif: obras.resolverFacturaObra(f, asignMap, reglaMap) || (deCompras ? deCompras(f) : null),
     })).sort((a, b) => String(b.date).localeCompare(String(a.date)));
     const filtrada =
       filtro === 'sin'     ? out.filter(f => !f.clasif) :
