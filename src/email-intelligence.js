@@ -431,7 +431,10 @@ async function procesarEmail(gmail, messageId) {
     // Compras por foto: una FACTURA DE PROVEEDOR con PDF/imagen entra en la cola de compras
     // (la lee la IA; oficina le pone la obra). NO se reenvía a StelOrder desde ahí por defecto:
     // ese correo ya sigue su camino de siempre. Desactivable con EMAIL_COMPRAS=0.
-    if (clasificacion.categoria === 'FACTURA_PROVEEDOR' && process.env.EMAIL_COMPRAS !== '0') {
+    // Los ALBARANES que mandan por correo (Palahí: «PALAHI ALBARÀ 86525») también: así están para casarlos
+    // con su factura y dan la obra de cada compra. Los pedidos y presupuestos no.
+    const esAlbaranCorreo = clasificacion.categoria === 'PEDIDO_ALBARAN' && /albar[aàá]/i.test(asunto) && !/pedido|comanda|oferta|pressupost|presupuesto/i.test(asunto);
+    if ((clasificacion.categoria === 'FACTURA_PROVEEDOR' || esAlbaranCorreo) && process.env.EMAIL_COMPRAS !== '0') {
       try {
         const ids = await comprasDesdeCorreo(messageId, adjuntos, { de, asunto, fecha });
         if (ids.length) {

@@ -1784,6 +1784,15 @@ app.get('/api/compras/:id/casar', async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').propuestaCasar(req.params.id)); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+app.get('/api/compras/:id/reparto-albaranes', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').repartoPorAlbaran(req.params.id)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/compras/:id/casar/correo', async (req, res) => {
+  req.setTimeout && req.setTimeout(240000);
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').albaranesDelCorreo(req.params.id)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.post('/api/compras/:id/casar', async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').casar(req.params.id, (req.body || {}).albaranes || [], q.name)); }
   catch (err) { res.status(400).json({ error: err.message }); }

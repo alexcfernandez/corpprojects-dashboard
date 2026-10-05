@@ -56,13 +56,13 @@ const PROMPT = `Eres el administrativo de una empresa de reformas en Girona. Te 
  "proveedor": "nombre comercial del proveedor (Saltoki, Leroy Merlin, Obramat…)", "razonSocial": "razón social completa tal cual aparece (p. ej. Obramat S.L.U.) o null", "nif": "CIF/NIF del proveedor o null",
  "numero": "número del documento tal cual aparece, o null", "fecha": "YYYY-MM-DD o null",
  "base": número o null, "iva": número o null, "total": número o null,
- "lineas": [{"descripcion": "texto de la línea", "cantidad": número o null, "unidad": "ud|m|m2|kg|saco|caja|…", "precio": número o null, "importe": número o null, "talla": "talla si es ropa (M, L, 42…) o null"}],
+ "lineas": [{"descripcion": "texto de la línea", "cantidad": número o null, "unidad": "ud|m|m2|kg|saco|caja|…", "precio": número o null, "importe": número o null, "talla": "talla si es ropa (M, L, 42…) o null", "albaran": "en facturas que agrupan albaranes: nº del albarán al que pertenece la línea, o null", "obraTexto": "en facturas que agrupan albaranes: obra o dirección que pone en ese albarán (p. ej. «OBRA CARLES RAHOLA 13 ATIC»), o null"}],
  "albaranesRef": ["números de albarán que cite una FACTURA (si es una factura que agrupa albaranes), si no []"],
  "obraPista": "texto del documento que parezca referirse a una obra o dirección de entrega, o null",
  "confianza": 0-1,
  "aviso": "una frase corta en español si hay algo que oficina deba mirar (importe ilegible, falta una página, es un presupuesto y no una compra…), o null"
 }
-Si el documento tiene más de 60 líneas, incluye las 60 primeras y resume el resto en una línea "… y N líneas más". En facturas de gasolinera que listan repostajes, una línea por tiquet con la descripción "PRODUCTO - Tiquet NÚMERO (DD-MM-AAAA)" (el nº de tiquet tal cual), litros como cantidad con unidad "L" e importe de la línea. Reglas: "albaran" = entrega de material SIN importes totales o con la palabra albarán/entrega; "factura" = lleva la palabra factura y desglose de IVA; "ticket" = ticket de caja/TPV; "devolucion" = abono, devolución o importes negativos (pon los importes en NEGATIVO). Números con formato español (1.234,56) → 1234.56. Si no es un documento de compra, calidad="no_es_documento". No inventes: lo que no se lea, null.`;
+Si el documento tiene más de 60 líneas, incluye las 60 primeras y resume el resto en una línea "… y N líneas más". En facturas que agrupan varios albaranes (cada albarán con su cabecera «SC/286689 17/09/2026 PEDIDO:» y debajo la obra o dirección), pon en CADA línea su "albaran" y su "obraTexto" (la cabecera no es una línea). En facturas de gasolinera que listan repostajes, una línea por tiquet con la descripción "PRODUCTO - Tiquet NÚMERO (DD-MM-AAAA)" (el nº de tiquet tal cual), litros como cantidad con unidad "L" e importe de la línea. Reglas: "albaran" = entrega de material SIN importes totales o con la palabra albarán/entrega; "factura" = lleva la palabra factura y desglose de IVA; "ticket" = ticket de caja/TPV; "devolucion" = abono, devolución o importes negativos (pon los importes en NEGATIVO). Números con formato español (1.234,56) → 1234.56. Si no es un documento de compra, calidad="no_es_documento". No inventes: lo que no se lea, null.`;
 
 // Esquema de la salida estructurada (mismo contenido que pide PROMPT).
 const _n = { type: ['number', 'null'] }, _s = { type: ['string', 'null'] };
@@ -77,7 +77,7 @@ const HERRAMIENTA = {
       proveedor: _s, razonSocial: _s, nif: _s, numero: _s,
       fecha: { type: ['string', 'null'], description: 'YYYY-MM-DD' },
       base: _n, iva: _n, total: _n,
-      lineas: { type: 'array', items: { type: 'object', properties: { descripcion: { type: 'string' }, cantidad: _n, unidad: _s, precio: _n, importe: _n, talla: _s }, required: ['descripcion'] } },
+      lineas: { type: 'array', items: { type: 'object', properties: { descripcion: { type: 'string' }, cantidad: _n, unidad: _s, precio: _n, importe: _n, talla: _s, albaran: _s, obraTexto: _s }, required: ['descripcion'] } },
       albaranesRef: { type: 'array', items: { type: 'string' } },
       obraPista: _s,
       confianza: _n,
@@ -155,6 +155,7 @@ function aplicarLectura(doc, d) {
   const lineas = (Array.isArray(d.lineas) ? d.lineas : []).slice(0, 80).map(l => ({
     descripcion: String(l.descripcion || '').trim().slice(0, 200), cantidad: num(l.cantidad), unidad: String(l.unidad || '').trim().slice(0, 12) || null,
     precio: num(l.precio), importe: neg(num(l.importe)), talla: String(l.talla || '').trim().slice(0, 12) || null,
+    albaran: String(l.albaran || '').trim().slice(0, 30) || null, obraTexto: String(l.obraTexto || '').trim().slice(0, 120) || null,
   })).filter(l => l.descripcion);
   Object.assign(doc, {
     tipo, proveedor: String(d.proveedor || '').trim().slice(0, 120) || null, proveedorNorm: norm(d.proveedor) || null,
@@ -299,7 +300,7 @@ async function editar(id, data, por) {
   if ('numero' in data) set.numero = String(data.numero || '').trim().slice(0, 60) || null;
   if ('fecha' in data) set.fecha = /^\d{4}-\d{2}-\d{2}$/.test(String(data.fecha || '')) ? data.fecha : null;
   for (const k of ['base', 'iva', 'total']) if (k in data) set[k] = n2(data[k]);
-  if ('lineas' in data && Array.isArray(data.lineas)) set.lineas = data.lineas.slice(0, 120).map(l => ({ descripcion: String(l.descripcion || '').trim().slice(0, 200), cantidad: nCant(l.cantidad), unidad: String(l.unidad || '').trim().slice(0, 12) || null, precio: n2(l.precio), importe: n2(l.importe), talla: String(l.talla || '').trim().slice(0, 12) || null, vehiculoId: /^[a-f0-9]{24}$/.test(String(l.vehiculoId || '')) ? String(l.vehiculoId) : null })).filter(l => l.descripcion);
+  if ('lineas' in data && Array.isArray(data.lineas)) set.lineas = data.lineas.slice(0, 120).map(l => ({ descripcion: String(l.descripcion || '').trim().slice(0, 200), cantidad: nCant(l.cantidad), unidad: String(l.unidad || '').trim().slice(0, 12) || null, precio: n2(l.precio), importe: n2(l.importe), talla: String(l.talla || '').trim().slice(0, 12) || null, vehiculoId: /^[a-f0-9]{24}$/.test(String(l.vehiculoId || '')) ? String(l.vehiculoId) : null, albaran: String(l.albaran || '').trim().slice(0, 30) || null, obraTexto: String(l.obraTexto || '').trim().slice(0, 120) || null })).filter(l => l.descripcion);
   if ('albaranesRef' in data) set.albaranesRef = (Array.isArray(data.albaranesRef) ? data.albaranesRef : String(data.albaranesRef || '').split(/[,\s;]+/)).map(x => String(x).trim()).filter(Boolean).slice(0, 60);
   if ('nota' in data) set.nota = String(data.nota || '').trim().slice(0, 300) || null;
   if ('categoria' in data) set.categoria = data.categoria ? String(data.categoria).trim().toLowerCase() : null;
@@ -525,6 +526,84 @@ async function propuestaCasar(facturaId) {
     ventana: { desde, hasta }, albaranes, sumaSugeridos: suma, diferencia: base != null ? Math.round((base - suma) * 100) / 100 : null, sinImporteSugeridos: sug.filter(a => a.sinImporte).length,
     noEncontrados: [...ref].filter(r => !albaranes.some(a => a.numero && nd(a.numero) === r)) };
 }
+// Albaranes que la factura cita y no están en Compras: se buscan en el correo (primero del mismo remitente
+// que la factura; si no, de cualquiera) y se traen a la cola. La IA los lee (nº, obra) y quedan para casar.
+async function albaranesDelCorreo(facturaId) {
+  const p = await propuestaCasar(facturaId);
+  const faltan = p.noEncontrados.filter(r => /^\d{4,}$/.test(r)).slice(0, 15);
+  if (!faltan.length) return { ...p, correo: { buscados: 0, correos: 0, traidos: 0 } };
+  const db = await getDB();
+  const f = await db.collection(COL).findOne({ _id: oid(facturaId), empresaId: EMPRESA });
+  const ei = require('./email-intelligence');
+  const gmail = ei.getGmailClient();
+  const dom = ((f.email && f.email.de) || '').match(/@([\w.-]+)/);
+  const buscar = async q => ((await gmail.users.messages.list({ userId: 'me', q, maxResults: 25 })).data.messages || []);
+  const nums = `(${faltan.join(' OR ')}) has:attachment newer_than:1y`;
+  let msgs = dom ? await buscar(`from:${dom[1]} ${nums}`) : [];
+  if (!msgs.length) msgs = await buscar(nums);
+  let traidos = 0;
+  for (const m of msgs) {
+    if (m.id === f.gmailId || await db.collection(COL).findOne({ gmailId: m.id })) continue;
+    const msg = await gmail.users.messages.get({ userId: 'me', id: m.id, format: 'full' });
+    const h = msg.data.payload.headers || [];
+    const asunto = (h.find(x => x.name === 'Subject') || {}).value || '', de = (h.find(x => x.name === 'From') || {}).value || '';
+    if (/factura|invoice/i.test(asunto) && !/albar/i.test(asunto)) continue;   // otra factura que cita el mismo nº
+    const ids = await ei.comprasDesdeCorreo(m.id, ei.extractAttachments(msg.data.payload), { de, asunto, fecha: new Date(Number(msg.data.internalDate)) }, { silencioso: true });
+    traidos += ids.length;
+  }
+  return { ...(await propuestaCasar(facturaId)), correo: { buscados: faltan.length, correos: msgs.length, traidos } };
+}
+// Factura que agrupa albaranes de varias obras (Sant Narcís): cada albarán dice su obra. Se propone el
+// reparto por obra sumando sus líneas; la obra sale del albarán si está en Compras con obra, o del texto
+// de la factura comparado con las obras (referencia, cliente, dirección y alias).
+const _STOP = new Set(['obra', 'obras', 'obres', 'carrer', 'calle', 'avinguda', 'avenida', 'pedido', 'girona', 'para', 'desde', 'atic', 'baixos', 'pis', 'piso']);
+function _tokens(t) { return norm(t).split(/[^a-z0-9]+/).filter(w => (w.length >= 4 || /^\d{1,4}$/.test(w)) && !_STOP.has(w)); }
+function obraDeTexto(obras, texto, ignorar = new Set()) {
+  const tk = _tokens(texto).filter(w => !ignorar.has(w)); if (!tk.length) return null;
+  const pal = tk.filter(w => !/^\d+$/.test(w)), nums = tk.filter(w => /^\d+$/.test(w));
+  const sc = obras.map(o => {
+    const t = new Set(_tokens([o.reference, o.clientName, o.address, ...(o.aliases || [])].join(' ')));
+    const p = pal.filter(w => t.has(w)).length, n = nums.filter(w => t.has(w)).length;
+    return { o, s: p * 2 + n, p };
+  }).filter(x => x.p > 0).sort((a, b) => b.s - a.s);
+  if (!sc.length || (sc[1] && sc[1].s === sc[0].s)) return null;
+  return sc[0].s >= 3 || (sc[0].p >= 1 && !sc[1]) ? sc[0].o : null;
+}
+async function repartoPorAlbaran(facturaId) {
+  const db = await getDB();
+  const f = await db.collection(COL).findOne({ _id: oid(facturaId), empresaId: EMPRESA });
+  if (!f) throw new Error('Compra no encontrada');
+  const ls = f.lineas || [];
+  if (!ls.some(l => l.albaran || l.obraTexto)) return { grupos: [], sinDatos: true };
+  const obras = await require('./obras').getSelector({ todas: true, conEstudio: true });
+  const albs = await db.collection(COL).find({ empresaId: EMPRESA, tipo: 'albaran', estado: { $ne: 'descartada' }, obraId: { $ne: null } }).project({ numero: 1, obraId: 1, obraRef: 1, proveedorNorm: 1, proveedor: 1 }).toArray();
+  const p1 = prov1(f);
+  const grupos = new Map();
+  for (const l of ls) {
+    const clave = l.obraTexto ? norm(l.obraTexto) : (l.albaran ? 'alb:' + nd(l.albaran) : '_');
+    const g = grupos.get(clave) || { albaranes: new Set(), obraTexto: l.obraTexto || null, importe: 0, lineas: 0 };
+    if (l.albaran) g.albaranes.add(l.albaran);
+    g.importe += Number(l.importe) || 0; g.lineas++;
+    grupos.set(clave, g);
+  }
+  // Lo que sale en casi todos los albaranes (quién lo pidió: «ALEX RINCON») no sirve para saber la obra.
+  const textos = [...grupos.values()].filter(g => g.obraTexto).map(g => new Set(_tokens(g.obraTexto)));
+  const ignorar = new Set();
+  if (textos.length >= 2) { const cuenta = {}; textos.forEach(t => t.forEach(w => { cuenta[w] = (cuenta[w] || 0) + 1; })); Object.entries(cuenta).forEach(([w, n]) => { if (!/^\d+$/.test(w) && n > textos.length / 2) ignorar.add(w); }); }
+  const out = [...grupos.values()].map(g => {
+    let obra = null, motivo = null;
+    const alb = albs.find(a => prov1(a) === p1 && [...g.albaranes].some(n => nd(n) === nd(a.numero)));
+    if (alb) { obra = obras.find(o => o.id === String(alb.obraId)) || { id: String(alb.obraId), reference: alb.obraRef }; motivo = `albarán ${alb.numero} en Compras`; }
+    if (!obra && g.obraTexto) { obra = obraDeTexto(obras, g.obraTexto, ignorar); if (obra) motivo = 'por el nombre en la factura'; }
+    return { albaranes: [...g.albaranes], obraTexto: g.obraTexto, importe: Math.round(g.importe * 100) / 100, lineas: g.lineas, obraId: obra ? obra.id : null, obraRef: obra ? obra.reference : null, motivo };
+  });
+  // Mismas obras juntas (dos albaranes de la misma obra).
+  const junt = [];
+  for (const g of out) { const ya = g.obraId && junt.find(x => x.obraId === g.obraId); if (ya) { ya.importe = Math.round((ya.importe + g.importe) * 100) / 100; ya.albaranes.push(...g.albaranes); ya.lineas += g.lineas; ya.obraTexto = [ya.obraTexto, g.obraTexto].filter(Boolean).join(' / '); } else junt.push(g); }
+  const suma = Math.round(junt.reduce((a, g) => a + g.importe, 0) * 100) / 100;
+  const base = f.base != null ? f.base : f.total;
+  return { grupos: junt, suma, base, diferencia: base != null ? Math.round((base - suma) * 100) / 100 : null };
+}
 async function casar(facturaId, albaranIds, por) {
   const db = await getDB();
   const f = await db.collection(COL).findOne({ _id: oid(facturaId), empresaId: EMPRESA });
@@ -635,4 +714,4 @@ async function resumenPendientes({ dryRun = false } = {}) {
   return { pendientes: pend.length, enviado: ok > 0 };
 }
 
-module.exports = { n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };
+module.exports = { n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, albaranesDelCorreo, repartoPorAlbaran, obraDeTexto, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };
