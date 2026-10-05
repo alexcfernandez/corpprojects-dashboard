@@ -115,14 +115,12 @@ function cpUpdateBanner(){
     <button class="nav-btn" onclick="location.href='/compras'">🧾 Compras por revisar</button>
     <button class="nav-btn" onclick="location.href='/compra'">📤 Subir factura / compra</button>
     <button class="nav-btn" onclick="location.href='/almacen'">📦 Almacén</button>
-    <button class="nav-btn" onclick="location.href='/asignar-facturas'">🧾 Clasificar facturas</button>
     <button class="nav-btn" onclick="location.href='/activos'">🔑 Llaves y herramientas</button>
     <button class="nav-btn" onclick="location.href='/vehiculos'">🚐 Vehículos</button>
     <button class="nav-btn" onclick="location.href='/medir'">📐 Mediciones</button>
     <button class="nav-btn" onclick="location.href='/catalogo'">📋 Catálogo de precios</button>
     <button class="nav-btn" onclick="location.href='/presupuestos'">💶 Presupuestos</button>
     <button class="nav-btn" onclick="location.href='/fichajes'">🕐 Fichajes (informe)</button>
-    <button class="nav-btn" onclick="location.href='/gps'">🗺️ Mapa GPS</button>
     <button class="nav-btn" onclick="location.href='/fichar'">🕐 Fichar jornada</button>
     <button class="nav-btn" onclick="location.href='/parte'">📋 Parte de trabajo</button>
     <button class="nav-btn" onclick="location.href='/horas'">⏱️ Horas fichadas / a facturar</button>
@@ -145,7 +143,6 @@ function cpUpdateBanner(){
     <button class="tq" onclick="location.href='/almacen'"><span class="em">📦</span><span class="lb">Almacén</span></button>
     <button class="tq" onclick="location.href='/sitios'"><span class="em">🔎</span><span class="lb">¿Dónde hemos estado?</span></button>
     <button class="tq" onclick="showTab('obras',document.querySelector('.nav-btn[onclick*=&quot;obras&quot;]'));setTimeout(()=>{const b=document.querySelector('#obras-container .btab[onclick*=nueva]');if(window.CP&&CP.Obras)CP.Obras.showTab('nueva',b);},80)"><span class="em">🏗️</span><span class="lb">＋ Nueva obra</span></button>
-    <button class="tq" onclick="location.href='/asignar-facturas'"><span class="em">🧾</span><span class="lb">Clasificar facturas</span></button>
     <button class="tq" onclick="location.href='/medir'"><span class="em">📐</span><span class="lb">Mediciones</span></button>
     <button class="tq" onclick="location.href='/presupuestos'"><span class="em">💶</span><span class="lb">Presupuestos</span></button>
     <button class="tq" onclick="location.href='/activos'"><span class="em">🔑</span><span class="lb">Llaves y herram.</span></button>
@@ -429,12 +426,12 @@ function cpUpdateBanner(){
   </div>
   <div id="btab-subir" class="bpanel">
     <div class="card">
-      <div class="card-title">📤 Actualizar extracto bancario Santander</div>
+      <div class="card-title">📤 Actualizar extractos (cuenta y tarjetas)</div>
       <div class="uzn" onclick="document.getElementById('bFile').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="bDrop(event)">
-        <input type="file" id="bFile" accept=".xlsx,.xls" onchange="bUpload(this.files[0])">
+        <input type="file" id="bFile" accept=".xlsx,.xls,.csv" onchange="bUpload(this.files[0])">
         <div style="font-size:40px;margin-bottom:10px">📂</div>
-        <div style="font-size:14px;font-weight:500">Arrastra aquí el Excel del Santander</div>
-        <div style="font-size:12px;color:var(--text3);margin-top:6px">o haz clic · .xlsx · máx 10MB</div>
+        <div style="font-size:14px;font-weight:500">Arrastra aquí el extracto</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:6px">o haz clic · Excel de la cuenta o de la tarjeta Santander, o CSV de Revolut · máx 10MB<br>Es lo mismo que «Extractos» del Cierre del trimestre: da igual dónde lo subas.</div>
       </div>
       <div id="bUpProg" style="display:none;margin-top:12px">
         <div style="font-size:12px;color:var(--text2)" id="bUpMsg">Subiendo...</div>
@@ -690,7 +687,7 @@ const CP_ROLE_CAPS={
 const CP_ROLE_LABEL={owner:'Dueño',oficina:'Oficina',encargado:'Encargado',tecnico:'Técnico'};
 // Qué capacidad exige cada pestaña / enlace. Lo no listado es visible para todos.
 const CP_TAB_CAP={informes:'facturas',facturas:'facturas',pendientes:'facturas',cobros:'facturas',banco:'facturas',pagos:'facturas',obras:'facturas',comunidades:'facturas',alertas:'facturas',presupuestos:'presupuestos',familias:'clientes',emails:'clientes',usuarios:'usuarios',actividad:'registro'};
-const CP_TOOL_CAP={'/diag':'usuarios','/compras':'facturas','/compra':'facturas','/asignar-facturas':'facturas','/catalogo':'catalogo','/presupuestos':'presupuestos','/competencia':'facturas','/gps':'facturas'};
+const CP_TOOL_CAP={'/diag':'usuarios','/compras':'facturas','/compra':'facturas','/asignar-facturas':'facturas','/catalogo':'catalogo','/presupuestos':'presupuestos','/competencia':'facturas'};
 function cpUser(){ try{ return JSON.parse(localStorage.getItem('cp_user')||'{}'); }catch(e){ return {}; } }
 function cpRole(){ return cpUser().role || 'owner'; }  // sin cuenta (clave general) = Dueño
 function cpCan(cap){ return (CP_ROLE_CAPS[cpRole()]||CP_ROLE_CAPS.owner).includes(cap); }
@@ -1380,7 +1377,7 @@ async function bUpload(file){
     setTimeout(()=>{prog.style.display='none';loadBInfo();loadBanco();},2000);
   }catch(e){msg.textContent='Error: '+e.message;fill.style.background='var(--red)';}
 }
-function bDrop(e){e.preventDefault();document.querySelector('.uzn').classList.remove('drag');const f=e.dataTransfer.files[0];if(f&&(f.name.endsWith('.xlsx')||f.name.endsWith('.xls')))bUpload(f);}
+function bDrop(e){e.preventDefault();document.querySelector('.uzn').classList.remove('drag');const f=e.dataTransfer.files[0];if(f&&/\.(xlsx|xls|csv)$/i.test(f.name))bUpload(f);}
 
 // ── ACTIONS ───────────────────────────────────────────────────────
 async function checkAlerts(){

@@ -45,17 +45,6 @@
       ]
     },
     {
-      "name": "Clasificar facturas",
-      "short_name": "Clasificar",
-      "url": "/asignar-facturas",
-      "icons": [
-        {
-          "src": "/icons/icon-192.png",
-          "sizes": "192x192"
-        }
-      ]
-    },
-    {
       "name": "Llaves y herramientas",
       "short_name": "Activos",
       "url": "/activos",

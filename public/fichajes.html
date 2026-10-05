@@ -92,6 +92,23 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
     <button class="vtab on" id="vt-dia" onclick="verVista('dia')">Día</button>
     <button class="vtab" id="vt-mes" onclick="verVista('mes')">Informe mensual</button>
     <button class="vtab" id="vt-enl" onclick="verVista('enl')">Enlaces</button>
+    <button class="vtab" id="vt-map" onclick="verVista('map')">🗺️ Mapa</button>
+  </div>
+  <div id="vista-map" style="display:none">
+    <div class="datebar">
+      <button onclick="gMueve(-1)" aria-label="Día anterior">‹</button>
+      <input type="date" id="g-fecha" class="fi" style="width:auto;padding:7px 9px;font-size:14px" onchange="gCargar()">
+      <button onclick="gMueve(1)" aria-label="Día siguiente">›</button>
+      <button class="hoy" onclick="gHoy()">Hoy</button>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px"><select id="g-worker" class="fi" style="width:auto;padding:7px 9px;font-size:14px" onchange="gDibujar()"><option value="">Todos</option></select><span id="g-count" style="font-size:13px;color:var(--text2);margin-left:auto"></span></div>
+    <div id="g-map" style="height:62vh;min-height:360px;border-radius:14px;border:1px solid var(--border);overflow:hidden;background:#1a1e27"></div>
+    <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:12px;font-size:12px;color:var(--text2)">
+      <span><span style="display:inline-block;width:12px;height:12px;border-radius:50%;border:2px solid #fff;background:#22c487;vertical-align:middle"></span> Fichó entrada</span>
+      <span><span style="display:inline-block;width:12px;height:12px;border-radius:50%;border:2px solid #fff;background:#f05252;vertical-align:middle"></span> Fichó salida</span>
+      <span><span style="display:inline-block;width:12px;height:12px;border-radius:50%;border:2px solid #fff;background:#4d9cf8;vertical-align:middle"></span> Parte de trabajo</span>
+    </div>
+    <div style="font-size:11.5px;color:var(--text3);margin:10px 2px 30px;line-height:1.5">📍 Puntos donde el operario fichó o envió un parte, con su hora. No es un rastreo continuo: son sellos en momentos concretos, durante la jornada y con su consentimiento. <span id="g-empty"></span></div>
   </div>
   <div id="vista-enl" style="display:none">
     <div class="panel pend" id="enl-estado"><h4>Enlace de fichar por WhatsApp</h4><div class="al">Cargando…</div></div>
@@ -326,13 +343,35 @@ const dec=min=>Math.round((min||0)/60*100)/100;            // horas en decimal (
 const fechaHora=ts=>ts?new Date(ts).toLocaleString('es-ES',{timeZone:'Europe/Madrid',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'}):'';
 const FIRMA_TXT={firmado:'Firmado',no_conforme:'No conforme',cambiado:'Cambió tras firmar',no_firma:'No firma',pendiente:'Sin firmar'};
 function verVista(v){
-  document.getElementById('vista-dia').style.display=v==='dia'?'block':'none';
-  document.getElementById('vista-mes').style.display=v==='mes'?'block':'none';
-  document.getElementById('vista-enl').style.display=v==='enl'?'block':'none';
-  document.getElementById('vt-dia').classList.toggle('on',v==='dia');document.getElementById('vt-mes').classList.toggle('on',v==='mes');document.getElementById('vt-enl').classList.toggle('on',v==='enl');
+  ['dia','mes','enl','map'].forEach(x=>{document.getElementById('vista-'+x).style.display=v===x?'block':'none';});
+  document.getElementById('vt-dia').classList.toggle('on',v==='dia');document.getElementById('vt-mes').classList.toggle('on',v==='mes');document.getElementById('vt-enl').classList.toggle('on',v==='enl');document.getElementById('vt-map').classList.toggle('on',v==='map');
   if(v==='mes'){if(!_mesA)_mesA=mesHoyA();cargarMesA();}
   if(v==='enl')cargarEnl();
+  if(v==='map')gAbrir();
+  history.replaceState(null,'',location.pathname+(v==='map'?'#mapa':''));
 }
+// ── MAPA DEL DÍA (antes /gps): sellos GPS al fichar y al enviar partes ──
+let gMap=null,gCapa=null,gDatos={puntos:[],workers:[]};
+const G_COLOR={entrada:'#22c487',salida:'#f05252',parte:'#4d9cf8'},G_TIPO={entrada:'Fichó entrada',salida:'Fichó salida',parte:'Parte de trabajo'};
+function gLeaflet(){if(window.L)return Promise.resolve();return new Promise((ok,ko)=>{const l=document.createElement('link');l.rel='stylesheet';l.href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';document.head.appendChild(l);const sc=document.createElement('script');sc.src='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';sc.onload=ok;sc.onerror=ko;document.head.appendChild(sc);});}
+async function gAbrir(){try{await gLeaflet();}catch(e){document.getElementById('g-empty').textContent='No se pudo cargar el mapa.';return;}
+  if(!gMap){gMap=L.map('g-map',{zoomControl:true}).setView([41.98,2.82],13);L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,referrerPolicy:'strict-origin-when-cross-origin',attribution:'© OpenStreetMap'}).addTo(gMap);setTimeout(()=>gMap.invalidateSize(),150);gHoy();}
+  else setTimeout(()=>gMap.invalidateSize(),50);}
+function gHoy(){document.getElementById('g-fecha').value=new Date().toLocaleDateString('en-CA',{timeZone:'Europe/Madrid'});gCargar();}
+function gMueve(n){const f=document.getElementById('g-fecha');const d=new Date((f.value||new Date().toISOString().slice(0,10))+'T12:00:00');d.setDate(d.getDate()+n);f.value=d.toISOString().slice(0,10);gCargar();}
+async function gCargar(){const fe=document.getElementById('g-fecha').value;
+  try{const r=await fetch('/api/gps/dia?fecha='+encodeURIComponent(fe),{headers:{'Authorization':'Bearer '+tok}});gDatos=r.ok?await r.json():{puntos:[],workers:[]};}catch(e){gDatos={puntos:[],workers:[]};}
+  const sel=document.getElementById('g-worker'),prev=sel.value;
+  sel.innerHTML='<option value="">Todos</option>'+(gDatos.workers||[]).map(w=>`<option value="${esc(w.id)}">${esc(w.name||w.id)}</option>`).join('');
+  if([...sel.options].some(o=>o.value===prev))sel.value=prev;gDibujar();}
+function gDibujar(){if(!gMap)return;if(gCapa){gMap.removeLayer(gCapa);gCapa=null;}
+  const wf=document.getElementById('g-worker').value,pts=(gDatos.puntos||[]).filter(p=>!wf||String(p.quienId)===wf);
+  document.getElementById('g-count').textContent=pts.length?pts.length+' punto(s)':'';document.getElementById('g-empty').textContent=pts.length?'':'Sin puntos GPS ese día.';
+  gCapa=L.layerGroup();const b=[];
+  const hora=x=>{try{return new Date(x).toLocaleString('es-ES',{timeZone:'Europe/Madrid',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});}catch(e){return '';}};
+  pts.forEach(p=>{if(!Number.isFinite(p.lat)||!Number.isFinite(p.lng))return;
+    L.circleMarker([p.lat,p.lng],{radius:9,color:'#fff',weight:2,fillColor:G_COLOR[p.tipo]||'#888',fillOpacity:.95}).bindPopup(`<div style="color:#333;font-size:13px;line-height:1.4"><b style="color:#111">${esc(p.quien||'')}</b><br>${esc(G_TIPO[p.tipo]||p.tipo)}<br>${esc(hora(p.hora))}${p.etiqueta?'<br>'+esc(p.etiqueta):''}${p.acc?'<br><span style="color:#888">±'+Math.round(p.acc)+' m</span>':''}</div>`).addTo(gCapa);b.push([p.lat,p.lng]);});
+  gCapa.addTo(gMap);gMap.invalidateSize();if(b.length===1)gMap.setView(b[0],16);else if(b.length>1)gMap.fitBounds(b,{padding:[40,40]});}
 function moverMesA(n){const [y,m]=_mesA.split('-').map(Number);const d=new Date(y,m-1+n,1);const nm=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');if(nm>mesHoyA())return;_mesA=nm;cargarMesA();}
 async function cargarMesA(){
   const [y,m]=_mesA.split('-').map(Number);
@@ -503,7 +542,7 @@ async function enviarEnl(id,nombre,b){
   setTimeout(()=>{b.disabled=false;b.textContent='Enviar ahora';},3000);}
 
 if(!tok){document.getElementById('lista').innerHTML='<div class="empty">Abre esta página desde el dashboard (necesita sesión de admin).</div>';}
-else{cargar();avisoPush();}
+else{cargar();avisoPush();if(location.hash==='#mapa')verVista('map');}
 </script>
 </body>
 </html>

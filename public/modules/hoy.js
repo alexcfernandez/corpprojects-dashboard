@@ -28,7 +28,7 @@
     const nada = !bloques.length;
     el.innerHTML = `<div class="card" style="margin-bottom:16px">
       <div class="card-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">🕐 Hoy en obra <span style="font-weight:400;color:var(--text3);font-size:11px">${ahora.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}${d.laborable ? '' : ' · no laborable'} · ${dentro.length + pausa.length} en marcha</span>
-        <span style="margin-left:auto;display:flex;gap:6px"><a class="btn bgh" style="padding:4px 10px;font-size:11px;text-decoration:none" href="/fichajes">Fichajes</a><a class="btn bgh" style="padding:4px 10px;font-size:11px;text-decoration:none" href="/gps">Mapa</a><a class="btn bgh" style="padding:4px 10px;font-size:11px;text-decoration:none" href="/sitios">¿Dónde hemos estado?</a></span></div>
+        <span style="margin-left:auto;display:flex;gap:6px"><a class="btn bgh" style="padding:4px 10px;font-size:11px;text-decoration:none" href="/fichajes">Fichajes</a><a class="btn bgh" style="padding:4px 10px;font-size:11px;text-decoration:none" href="/fichajes#mapa">Mapa</a><a class="btn bgh" style="padding:4px 10px;font-size:11px;text-decoration:none" href="/sitios">¿Dónde hemos estado?</a></span></div>
       <style>.hoy-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}</style>
       ${nada ? '<div style="font-size:13px;color:var(--text3)">Nadie ha fichado todavía hoy.</div>' : bloques.join('')}
     </div>`;

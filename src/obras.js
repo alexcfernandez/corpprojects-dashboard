@@ -311,7 +311,9 @@ async function resumenAbiertas({ dias = 90, conDinero = false } = {}) {
   try {
     const [facturasProv, asignMap, reglaMap] = await Promise.all([require('./stelorder').getPurchaseInvoices(), getAsignacionesFacturaMap(db), getReglasMap(db)]);
     const porRef = abiertas.map(o => ({ id: String(o._id), n: norm(o.reference || '') })).filter(x => x.n);
+    const enCompras = await require('./compras').clasificacionesParaStel().catch(() => null);
     for (const f of (facturasProv || [])) {
+      if (enCompras && enCompras(f)) continue;   // revisada en Compras: cuenta allí (abajo)
       const rec = asignMap.get(String(f.id));
       const suma = (id, imp) => { stel[id] = (stel[id] || 0) + imp; (stelNums[id] = stelNums[id] || new Set()).add(norm(f.supplier).split(' ')[0] + '|' + nn(f.number)); if (f.date && (!ultCompra[id] || String(f.date).slice(0, 10) > ultCompra[id])) ultCompra[id] = String(f.date).slice(0, 10); };
       if (rec && Array.isArray(rec.repartos) && rec.repartos.length) { rec.repartos.forEach(p => { if (ids.includes(String(p.obraId))) suma(String(p.obraId), Number(p.importe) || 0); }); continue; }
@@ -319,7 +321,7 @@ async function resumenAbiertas({ dias = 90, conDinero = false } = {}) {
       if (!cls || cls.tipo !== 'obra') continue;
       let id = cls.obraId && ids.includes(String(cls.obraId)) ? String(cls.obraId) : null;
       if (!id && cls.obraRef) { const tag = norm(cls.obraRef); const hit = porRef.find(x => tag.includes(x.n) || x.n.includes(tag)); if (hit) id = hit.id; }
-      if (id) suma(id, Number(f.total) || 0);
+      if (id) suma(id, Number(f.base != null ? f.base : f.total) || 0);   // sin IVA, como Compras
     }
   } catch (e) { /* StelOrder caído → el panel sigue con lo del dashboard */ }
   for (const c of compras) {
@@ -567,7 +569,10 @@ async function getRentabilidad(obraId) {
       getReglasMap(db),
     ]);
     const miId = String(obra._id);
+    // La misma factura revisada en Compras manda: allí tiene su obra (o reparto) y la cuenta 2e.
+    const enCompras = await require('./compras').clasificacionesParaStel().catch(() => null);
     for (const f of (facturasProv || [])) {
+      if (enCompras && enCompras(f)) continue;
       // Reparto: la factura va troceada por importe entre varias obras.
       const rec = asignMap.get(String(f.id));
       if (rec && Array.isArray(rec.repartos) && rec.repartos.length) {

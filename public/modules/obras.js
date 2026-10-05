@@ -885,7 +885,7 @@ ${pago}
   }
 
   async function quitarFactura(facturaId, obraId) {
-    if (!confirm('¿Quitar esta factura de la obra?\n\nVolverá a "sin clasificar" en Herramientas → Clasificar facturas.')) return;
+    if (!confirm('¿Quitar esta factura de la obra?\n\nVolverá a Compras → «StelOrder sin clasificar».')) return;
     try {
       await api('/api/facturas/proveedor/' + facturaId, { method: 'DELETE' });
       openObra(obraId); // recargar la ficha con la rentabilidad recalculada

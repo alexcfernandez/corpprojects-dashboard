@@ -34,7 +34,7 @@
       <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:20px;overflow-x:auto">
         <button class="btab active" onclick="CP.Presencia.showTab('calendario',this)">📅 Calendario</button>
         <button class="btab" onclick="CP.Presencia.showTab('resumen',this)">📊 Resumen mensual</button>
-        <button class="btab" onclick="CP.Presencia.showTab('clientes',this)">👷 Por cliente/obra</button>
+        <button class="btab" onclick="location.href='/sitios'" title="Días, trabajadores y horas por obra o cliente">🔎 ¿Dónde hemos estado?</button>
         <button class="btab" onclick="CP.Presencia.showTab('calculadora',this)">🧮 Calculadora obra</button>
       </div>
 
@@ -70,27 +70,6 @@
         <div class="card"><div class="card-title">Días por trabajador</div><div id="p-sum-table">Cargando...</div></div>
         <div class="card"><div class="card-title">Horas en obra por cliente</div><div id="p-sum-clients">Cargando...</div></div>
         <div id="p-ayudantes-card" style="display:none"></div>
-      </div>
-
-      <div id="p-tab-clientes" class="p-tab" style="display:none">
-        <div class="card" style="padding:16px 20px;margin-bottom:14px">
-          <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
-            <div>
-              <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase">Cliente / Obra</div>
-              <input type="text" class="srch" id="p-client-search" placeholder="Ej: Habitat Migdia..." style="width:220px">
-            </div>
-            <div>
-              <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase">Desde</div>
-              <input type="date" class="srch" id="p-client-from" style="width:145px">
-            </div>
-            <div>
-              <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase">Hasta</div>
-              <input type="date" class="srch" id="p-client-to" style="width:145px">
-            </div>
-            <button class="btn bp" onclick="CP.Presencia.searchClient()">Buscar</button>
-          </div>
-        </div>
-        <div class="card"><div id="p-client-result"><div style="color:var(--text3);font-size:12px">Introduce un cliente para ver el extracto.</div></div></div>
       </div>
 
       <div id="p-tab-calculadora" class="p-tab" style="display:none">
@@ -786,45 +765,6 @@
     } catch(err) { console.error('[Presencia] Error summary:', err.message); }
   }
 
-  async function searchClient() {
-    const name = document.getElementById('p-client-search')?.value?.trim() || '';
-    const from = document.getElementById('p-client-from')?.value || '';
-    const to   = document.getElementById('p-client-to')?.value   || '';
-    if (!name) return;
-    const el = document.getElementById('p-client-result');
-    if (el) el.innerHTML = '<div style="color:var(--text3);font-size:12px">Buscando...</div>';
-    try {
-      const data    = await api(`/api/attendance/client?clientName=${encodeURIComponent(name)}&from=${from}&to=${to}`);
-      const eur     = v => new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0);
-      const workers = Object.values(data.byWorker||{});
-      if (!data.totalDias) {
-        if(el) el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:10px">Sin registros para este cliente.</div>';
-        return;
-      }
-      const totalCoste = workers.reduce((s,w)=>{
-        const wd = CFG.workers.find(x=>x.name===w.name);
-        return s+(wd ? w.horas*(wd.rate||wd.costeHora||15) : 0);
-      },0);
-      if (el) el.innerHTML = `
-        <div class="metrics-row" style="margin-bottom:14px">
-          <div class="mc"><div class="ml">Total días</div><div class="mv g">${data.totalDias}</div></div>
-          <div class="mc"><div class="ml">Total horas</div><div class="mv g">${workers.reduce((s,w)=>s+w.horas,0).toFixed(0)} h</div></div>
-          <div class="mc"><div class="ml">Coste personal</div><div class="mv r">${eur(totalCoste)}</div></div>
-        </div>
-        <table><thead><tr><th>Trabajador</th><th style="text-align:right">Días</th><th style="text-align:right">Horas</th><th style="text-align:right">Coste</th><th>Fechas</th></tr></thead>
-        <tbody>${workers.map(w=>{
-          const wd=CFG.workers.find(x=>x.name===w.name);
-          return`<tr>
-            <td><strong>${w.name}</strong></td>
-            <td style="text-align:right">${w.dias}</td>
-            <td style="text-align:right">${w.horas.toFixed(0)} h</td>
-            <td style="text-align:right;color:var(--red)">${eur(wd?w.horas*(wd.rate||wd.costeHora||15):0)}</td>
-            <td style="font-size:10px;color:var(--text3)">${w.dates.slice(0,5).map(d=>new Date(d+'T12:00:00').toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit'})).join(', ')}${w.dates.length>5?` +${w.dates.length-5} más`:''}</td>
-          </tr>`;
-        }).join('')}</tbody></table>`;
-    } catch(err) { if(el) el.innerHTML=`<div style="color:var(--red);font-size:12px">Error: ${err.message}</div>`; }
-  }
-
   function addMatRow() {
     const container = document.getElementById('calc-mat-rows');
     if (!container) return;
@@ -906,7 +846,7 @@
     render, showTab, openReport,
     prevMonth, nextMonth, goToday,
     prevSumMonth, nextSumMonth,
-    searchClient, exportCSV,
+    exportCSV,
     addMatRow, calcObra,
     _selectEstado, _saveEntry, _deleteEntry,
     _toggleChipEquipo, _addExternoPresencia, _removeLibre,

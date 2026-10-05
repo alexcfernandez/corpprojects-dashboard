@@ -1714,6 +1714,10 @@ app.get('/api/compras/:id/casar', async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').propuestaCasar(req.params.id)); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+app.get('/api/compras/:id/regla', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json({ regla: await require('./compras').reglaProveedorDe(req.params.id) }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/compras/:id/reparto-albaranes', async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').repartoPorAlbaran(req.params.id)); }
   catch (err) { res.status(400).json({ error: err.message }); }
@@ -2190,20 +2194,24 @@ app.post('/api/bank/upload', requireAuth, upload.single('file'), async (req, res
   try {
     if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
     const buf = fs.readFileSync(req.file.path);
-    const r = await require('./banco').ingestExcelBuffer(buf, { originalname: req.file.originalname });
-    if (!r.ok) return res.status(422).json(r);
-    // compat: mantenemos latest.json por si la UI antigua lo consulta
-    try {
-      fs.writeFileSync(path.join(UPLOADS_DIR, 'latest.json'), JSON.stringify({
-        filename: req.file.filename, originalname: req.file.originalname,
-        uploadedAt: new Date().toISOString(), size: req.file.size,
-        periodo: r.periodo, total: r.total, nuevos: r.nuevos, repetidos: r.repetidos,
-      }));
-    } catch (e) {}
-    res.json({ message: `Importados ${r.nuevos} movimientos nuevos (${r.repetidos} ya existían).`, ...r });
+    // Mismo lector que el cierre del trimestre: cuenta Santander, tarjeta de crédito Santander o CSV de Revolut.
+    let r;
+    try { r = await require('./tarjetas').importar(buf, req.file.originalname); }
+    catch (e) { return res.status(422).json({ error: e.message, message: '❌ ' + e.message }); }
+    if (r.tipo === 'cuenta Santander') {
+      // compat: latest.json lo lee «Última actualización» de Banco
+      try {
+        fs.writeFileSync(path.join(UPLOADS_DIR, 'latest.json'), JSON.stringify({
+          filename: req.file.filename, originalname: req.file.originalname,
+          uploadedAt: new Date().toISOString(), size: req.file.size,
+          periodo: { desde: r.desde, hasta: r.hasta }, nuevos: r.nuevos, repetidos: r.repetidos,
+        }));
+      } catch (e) {}
+    }
+    res.json({ message: `${r.tipo}: ${r.nuevos} movimientos nuevos (${r.repetidos} ya existían).`, ...r });
   } catch (err) {
     console.error('[Banco] upload error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message, message: '❌ ' + err.message });
   }
 });
 
@@ -2376,16 +2384,6 @@ app.get('/api/presencia/sitio', requireAuth, async (req, res) => {
   try { res.json(await attendance.buscarSitio(String(req.query.q || ''), { from: req.query.from || null, to: req.query.to || null, todos: req.query.todos === '1' })); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
-app.get('/api/attendance/client', requireAuth, async (req, res) => {
-  try {
-    const { clientName, from, to } = req.query;
-    const data = await attendance.getClientExtract(clientName, from, to);
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // ── USUARIOS ──────────────────────────────────────────────────────
 const users = require('./users');
 
@@ -3806,7 +3804,7 @@ app.get('/fichajes', (req, res) => res.sendFile(path.join(__dirname, '../public/
 app.get('/compra', (req, res) => res.sendFile(path.join(__dirname, '../public/compra.html')));
 app.get('/compras', (req, res) => res.sendFile(path.join(__dirname, '../public/compras.html')));
 app.get('/almacen', (req, res) => res.sendFile(path.join(__dirname, '../public/almacen.html')));
-app.get('/gps', (req, res) => res.sendFile(path.join(__dirname, '../public/gps.html')));
+app.get('/gps', (req, res) => res.redirect(301, '/fichajes#mapa'));   // el mapa GPS es ahora una pestaña de Fichajes
 app.get('/subir-factura', (req, res) => res.redirect(302, '/compra'));   // pantalla retirada: sustituida por Compras por foto
 app.get('/asignar-facturas', (req, res) => res.sendFile(path.join(__dirname, '../public/asignar-facturas.html')));
 app.get('/activos', (req, res) => res.sendFile(path.join(__dirname, '../public/activos.html')));

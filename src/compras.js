@@ -609,7 +609,7 @@ async function repartoPorAlbaran(facturaId) {
 async function clasificacionesParaStel() {
   const db = await getDB();
   const cs = await db.collection(COL).find({ empresaId: EMPRESA, estado: 'revisada', tipo: { $in: ['factura', 'ticket', 'devolucion'] }, duplicadoDe: null })
-    .project({ numero: 1, total: 1, fecha: 1, destino: 1, obraId: 1, obraRef: 1, reparto: 1, categoria: 1, varias: 1 }).toArray();
+    .project({ numero: 1, total: 1, fecha: 1, destino: 1, obraId: 1, obraRef: 1, reparto: 1, categoria: 1, varias: 1, proveedor: 1, razonSocial: 1 }).toArray();
   const dig = x => String(x || '').replace(/\D/g, '').replace(/^0+/, '');
   const porNum = new Map(); cs.forEach(c => { const d = dig(c.numero); if (d.length >= 4) (porNum.get(d) || porNum.set(d, []).get(d)).push(c); });
   const dias = (a, b) => Math.abs((new Date(a) - new Date(b)) / 86400000);
@@ -617,13 +617,34 @@ async function clasificacionesParaStel() {
     const d = dig(f.extraReference);
     const tot = Number(f.total) || 0;
     let c = d.length >= 4 ? (porNum.get(d) || []).find(x => x.total == null || Math.abs(Math.abs(x.total) - Math.abs(tot)) < 1) : null;
-    if (!c && f.date) c = cs.find(x => x.total != null && Math.abs(x.total - tot) < 0.02 && x.fecha && dias(x.fecha, String(f.date).slice(0, 10)) <= 7);
+    // Sin nº: mismo importe, fechas cercanas Y algún nombre en común (si no, dos compras de 100 € se cruzarían).
+    const comun = x => { const w = new Set(_pal(f.supplier)); return [..._pal(x.proveedor), ..._pal(x.razonSocial)].some(p => w.has(p)); };
+    if (!c && f.date) c = cs.find(x => x.total != null && Math.abs(x.total - tot) < 0.02 && x.fecha && dias(x.fecha, String(f.date).slice(0, 10)) <= 7 && comun(x));
     if (!c) return null;
     const dest = c.destino || (c.varias ? 'varias' : 'obra');
     if (dest === 'obra' && c.obraId) return { tipo: 'obra', fuente: 'compras', obraId: c.obraId, obraRef: c.obraRef || '', categoria: null, compraId: String(c._id) };
     if (dest === 'varias') return { tipo: 'obra', fuente: 'compras', reparto: true, obraRef: (c.reparto || []).map(p => p.obraRef).filter(Boolean).join(' + ') || 'Varias obras', compraId: String(c._id) };
     return { tipo: 'general', fuente: 'compras', categoria: c.categoria || dest, compraId: String(c._id) };
   };
+}
+// Regla por proveedor (las que se ponían en «Clasificar facturas»: «este proveedor siempre es gasto general
+// · gestoría» u «obra X»). Se casa por el nombre (razón social o comercial) con el de la regla de StelOrder.
+const _GEN = new Set(['sociedad', 'limitada', 'girona', 'barcelona', 'espana', 'grupo', 'comercial', 'serveis', 'servicios', 'materials', 'materiales', 'distribucions', 'distribuciones']);
+const _pal = t => norm(t).replace(/\b(s\.?\s?l\.?u?|s\.?\s?a\.?u?|slu|sau)\b/g, ' ').split(/[^a-z0-9]+/).filter(w => w.length >= 3 && !_GEN.has(w) && !['del', 'les', 'els', 'los', 'las'].includes(w));
+async function reglaProveedorDe(compraId) {
+  const db = await getDB();
+  const c = await db.collection(COL).findOne({ _id: oid(compraId), empresaId: EMPRESA }, { projection: { proveedor: 1, razonSocial: 1 } });
+  if (!c || !(c.proveedor || c.razonSocial)) return null;
+  const reglas = await db.collection('reglaProveedor').find({}).toArray();
+  // Todas las palabras del nombre (comercial o razón social) tienen que estar en el de la regla:
+  // «Obramat» ⊂ «BRICOMAN (OBRAMAT GIRONA)», pero «Pintures Vic» no es «Pintures Sant Narcís».
+  const nombres = [_pal(c.proveedor), _pal(c.razonSocial)].filter(w => w.length);
+  const sc = reglas.map(r => { const w = new Set(_pal(r.supplier)); const n = Math.max(0, ...nombres.map(ns => ns.every(x => w.has(x)) ? ns.length : 0)); return { r, n }; })
+    .filter(x => x.n >= 1).sort((a, b) => b.n - a.n);
+  if (!sc.length || (sc[1] && sc[1].n === sc[0].n)) return null;
+  const r = sc[0].r;
+  if (!r.obraId && !r.obraRef && !r.categoria) return null;
+  return { proveedor: r.supplier || '', obraId: r.obraId || null, obraRef: r.obraRef || '', categoria: r.categoria || null };
 }
 async function casar(facturaId, albaranIds, por) {
   const db = await getDB();
@@ -735,4 +756,4 @@ async function resumenPendientes({ dryRun = false } = {}) {
   return { pendientes: pend.length, enviado: ok > 0 };
 }
 
-module.exports = { n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, albaranesDelCorreo, repartoPorAlbaran, obraDeTexto, clasificacionesParaStel, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };
+module.exports = { n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, albaranesDelCorreo, repartoPorAlbaran, obraDeTexto, clasificacionesParaStel, reglaProveedorDe, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };
