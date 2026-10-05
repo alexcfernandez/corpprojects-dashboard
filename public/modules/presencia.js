@@ -882,8 +882,7 @@
   }
 
   function openReport() {
-    const tok = localStorage.getItem('cp_token');
-    window.open(`/informe-presencia?year=${sumYear2}&month=${sumMonth2}&token=${tok}`, '_blank');
+    window.open(`/informe-presencia?year=${sumYear2}&month=${sumMonth2}`, '_blank');   // la sesión la lee de localStorage, nunca en la URL
   }
 
   async function exportCSV() {

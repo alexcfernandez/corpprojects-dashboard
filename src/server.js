@@ -15,8 +15,8 @@ const { MongoClient, ObjectId } = require('mongodb');
 const {
   getSummary, getPendingInvoices, getInvoices, getClients,
   getEstimatesSummary, getFamiliesSummary, getAccountCategories, clearCache,
-  sendInvoiceByEmail, findInvoiceIdByNumber, getInvoiceRaw, getInvoicePdfPath, getEntityRawByRef,
-  getWorkOrdersLive, diagProveedores, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA, diagLineaImpuesto, diagImpuestos
+  sendInvoiceByEmail, findInvoiceIdByNumber, getInvoicePdfPath, getEntityRawByRef,
+  getWorkOrdersLive
 } = require('./stelorder');
 const { sendWhatsApp, sendEmail } = require('./notifications');
 const { startScheduler, checkPendingInvoices, runDailySummary, sendReminders, sendManual, previewToEmail, sendWorkOrdersAlert } = require('./scheduler');
@@ -97,13 +97,6 @@ const uploadMemory = multer({
 const uploadPdf = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024, files: 1 }
-});
-
-// Facturas subidas desde la app de oficina: fotos y/o PDFs (Obramat vienen grandes).
-// En memoria (como partes/amidaments); varios archivos por envío.
-const uploadFactura = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024, files: 15 }
 });
 
 // El service worker y los HTML NUNCA se cachean en el navegador: así las
@@ -436,19 +429,6 @@ app.post(['/api/bridge/ack', '/bridge/ack'], express.json({ limit: '64kb' }), as
   if (!canalWa.tokenBridgeValido(req.get('X-Bridge-Token'))) return res.sendStatus(401);
   try { const b = req.body || {}; res.json({ ok: true, n: await canalWa.confirmarEntregas(Array.isArray(b.acks) ? b.acks : [b]) }); }
   catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// PRUEBA de envío proactivo (owner): manda un WhatsApp por el canal activo a un
-// número que quizá NUNCA ha escrito al puente → verifica el caso del Map vacío
-// (fallback phoneToJid). POST {to:'+34...', body:'...'}.
-app.post('/api/whatsapp/test', requireAuth, express.json({ limit: '16kb' }), async (req, res) => {
-  try {
-    const to = String((req.body && req.body.to) || '').trim();
-    const body = String((req.body && req.body.body) || 'Prueba del bot de Corp Projects ✅').trim();
-    if (!to) return res.status(400).json({ error: 'Falta el número destino (to), ej. +34692270438' });
-    const ok = await enviarWhatsApp(to, body);
-    res.json({ ok, to, canal: require('./canalWhatsapp').canalActivo() });
-  } catch (e) { console.error('[Test envío]', e.message); res.status(500).json({ error: e.message }); }
 });
 
 // Descarga una imagen de Twilio y la devuelve como {media_type, data(base64)}
@@ -1024,56 +1004,6 @@ app.get('/api/diag/traffic', requireAuth, (req, res) => {
     desde: _trafSince, totalReq: totReq, totalMB: +(totBytes / 1048576).toFixed(2),
     rutas: entries.slice(0, 40).map(([k, t]) => ({ ruta: k, req: t.n, MB: +(t.bytes / 1048576).toFixed(2) })),
   });
-});
-app.get('/api/diag-proveedores',   requireAuth, async (req,res) => res.json(await diagProveedores()));
-app.get('/api/diag/stel-write',     requireAuth, async (req,res) => {
-  try { res.json(await diagEscritura({ probePost: req.query.probe === '1' || req.query.probe === 'true' })); }
-  catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.get('/api/diag/stel-enlace',    requireAuth, async (req,res) => {
-  try { res.json(await diagCrearEnlace({ accId: req.query.acc || null, go: req.query.go === '1' || req.query.go === 'true' })); }
-  catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.get('/api/diag/stel-linea',     requireAuth, async (req,res) => {
-  try { res.json(await diagLineaLibre({ accId: req.query.acc || null, go: req.query.go === '1' || req.query.go === 'true' })); }
-  catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.get('/api/diag/stel-caminoa',   requireAuth, async (req,res) => {
-  try { res.json(await diagCaminoA({ accId: req.query.acc || null, go: req.query.go === '1' || req.query.go === 'true' })); }
-  catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.get('/api/diag/stel-iva',       requireAuth, async (req,res) => {
-  try { res.json(await diagLineaImpuesto()); }
-  catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.get('/api/diag/stel-impuestos', requireAuth, async (req,res) => {
-  try { res.json(await diagImpuestos()); }
-  catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.get('/api/diag/stel-cliente-campos', requireAuth, async (req,res) => {
-  try { res.json(await require('./stelorder').diagClienteCampos()); }
-  catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.get('/api/diag/stel-crear-cliente', requireAuth, async (req,res) => {
-  try { res.json(await require('./stelorder').diagCrearCliente({ categoria: req.query.categoria, crear: req.query.crear })); }
-  catch (e) { res.status(500).json({ error: e.message, data: e.response && e.response.data }); }
-});
-app.get('/api/diag/stel-multiseccion', requireAuth, async (req,res) => {
-  let accId = req.query.accId;
-  try {
-    const stel = require('./stelorder');
-    if (!accId && req.query.cliente) accId = await stel.accountIdByName(req.query.cliente);
-    if (!accId) return res.status(400).json({ error: 'Pasa ?accId=NNN (de un CLIENTE, no de una familia) o ?cliente=Nombre' });
-    res.json(await stel.crearPresupuestoMultiSeccionPrueba(accId));
-  } catch (e) { res.status(500).json({ error: e.message, accIdUsado: accId || null, stelOrder: e.response?.data || null }); }
-});
-app.get('/api/diag/stel-presu-lineas', requireAuth, async (req,res) => {
-  try { res.json(await require('./stelorder').diagPresupuestoConLineas({ ref: req.query.ref || null, id: req.query.id || null })); }
-  catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.get('/api/diag/stel-cambiar-iva', requireAuth, async (req,res) => {
-  try { res.json(await require('./stelorder').diagCambiarIvaPrueba({ id: req.query.id || null, iva: req.query.iva || 21, go: req.query.go === '1' || req.query.go === 'true' })); }
-  catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── Importador de amidaments (PDF del arquitecto -> presupuesto en StelOrder) ──
@@ -1805,19 +1735,10 @@ app.get('/api/compras-sin-facturar', async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').albaranesSinFactura({ diasMin: Number(req.query.dias) || 0 })); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
-app.get('/api/compras-prueba/sin-facturar', async (req, res) => {
-  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').avisoAlbaranesSinFactura({ dryRun: true, diasMin: Number(req.query.dias) || 35 })); }
-  catch (err) { res.status(500).json({ error: err.message }); }
-});
 
 // Resumen por proveedor (compras confirmadas): nº de documentos, total, albaranes sin factura, último.
 app.get('/api/compras-proveedores', async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').resumenProveedores({ desde: req.query.desde, hasta: req.query.hasta })); }
-  catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.get('/api/compras-prueba/resumen', async (req, res) => {
-  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').resumenPendientes({ dryRun: true })); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1841,15 +1762,6 @@ app.post('/api/push/test', async (req, res) => {
     const n = await require('./push').sendToEndpoint((req.body || {}).endpoint, { title: 'Avisos activados ✅', body: 'Así te llegarán los recordatorios de Corp Projects.', url: q.kind === 'worker' ? '/fichar' : '/fichajes', tag: 'prueba' });
     res.json({ ok: n > 0 }); }
   catch (err) { res.status(400).json({ error: err.message }); }
-});
-
-// Prueba de los avisos sin enviar nada (?tipo=salidas|oficina|entrada&paso=1..3).
-app.get('/api/fichaje/avisos-prueba', requireAuth, async (req, res) => {
-  try { if (!_soloOficinaFichaje(req, res)) return;
-    const fa = require('./fichajeAvisos');
-    if (req.query.tipo === 'entrada') return res.json({ escalera: fa.cronsEscalera(), ...(await fa.recordatorioEntrada(Number(req.query.paso) || 1, { dryRun: true })) });
-    res.json(req.query.tipo === 'salidas' ? await fa.avisarSalidasOlvidadas({ dryRun: true }) : await fa.resumenOficina({ dryRun: true, forzarHora: req.query.hora })); }
-  catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ── MAPA GPS ── puntos del día = sellos de los partes + entradas/salidas de
@@ -2228,23 +2140,6 @@ app.post('/api/workorders/send-now', requireAuth, async (req, res) => {
   }
 });
 
-
-// DEBUG: volcar el objeto crudo de una factura por su número.
-app.post('/api/invoice/raw', requireAuth, async (req, res) => {
-  try {
-    const { number, invoiceId } = req.body;
-    let id = invoiceId;
-    if (!id && number) id = await findInvoiceIdByNumber(number);
-    if (!id) return res.status(404).json({ error: `No se encontró la factura ${number || ''}`.trim() });
-    const data = await getInvoiceRaw(id);
-    res.json({ id, data });
-  } catch (err) {
-    const status = err.response?.status;
-    const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
-    res.status(500).json({ error: `StelOrder respondió ${status || ''}: ${detail}`.trim() });
-  }
-});
-
 // Enviar AHORA un resumen agrupado a cada familia con responsable
 app.post('/api/send-family-summaries', requireAuth, async (req, res) => {
   try {
@@ -2496,40 +2391,6 @@ const users = require('./users');
 
 users.initDefaultUsers().catch(err => console.error('[Users] Error init:', err.message));
 
-app.post('/api/users/login', async (req, res) => {
-  try {
-    const { pin } = req.body;
-    if (!pin) return res.status(400).json({ error: 'PIN requerido' });
-    const result = await users.loginWithPin(pin);
-    res.json(result);
-  } catch (err) {
-    res.status(401).json({ error: err.message });
-  }
-});
-
-app.post('/api/users/logout', async (req, res) => {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (token) await users.logout(token).catch(() => {});
-  res.json({ ok: true });
-});
-
-app.get('/api/users/me', async (req, res) => {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'No autorizado' });
-  try {
-    if (!token.startsWith('u_')) {
-      const jwt = require('jsonwebtoken');
-      jwt.verify(token, JWT_SECRET);
-      return res.json({ role: 'admin', userName: 'Admin' });
-    }
-    const session = await users.verifyUserToken(token);
-    if (!session) return res.status(401).json({ error: 'Sesión expirada' });
-    res.json({ role: session.userRole, userName: session.userName, userId: session.userId });
-  } catch (err) {
-    res.status(401).json({ error: 'Token inválido' });
-  }
-});
-
 app.get('/api/users', requireAuth, async (req, res) => {
   try {
     const list = await users.getUsers(true);
@@ -2748,79 +2609,6 @@ app.get('/api/facturas/obras', requireAuthOficina, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Subida de foto(s)/PDF de factura, etiquetada por obra. Reenvía al buzón de n8n
-// por el mismo camino que WhatsApp (→ StelOrder) y registra en `facturasObra`.
-// Alta de cliente en StelOrder desde la app de oficina (mismo criterio que usa n8n
-// con los proveedores: si ya existe por NIF o por nombre exacto, se REUTILIZA).
-app.post('/api/facturas/cliente-nuevo', requireAuthOficina, async (req, res) => {
-  try {
-    const nombre = String((req.body || {}).nombre || '').trim();
-    const nif    = String((req.body || {}).nif || '').trim() || null;
-    if (!nombre) return res.status(400).json({ error: 'Falta el nombre del cliente.' });
-    const r = await require('./stelorder').crearClienteStel({ nombre, nif });
-    if (r && r.duplicado && r.existente) {
-      return res.json({ ok: true, reutilizado: true, motivo: r.motivo, id: r.existente.id, nombre: r.existente.nombre });
-    }
-    res.json(r);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// Categorias de gasto (para el selector de "sin obra" al subir una factura).
-app.get('/api/facturas/categorias', requireAuthOficina, (req, res) => res.json(obras.CATEGORIAS_GASTO));
-
-app.post('/api/facturas/subir', requireAuthOficina, uploadFactura.any(), async (req, res) => {
-  try {
-    const files = req.files || [];
-    if (!files.length) return res.status(400).json({ ok: false, error: 'No has adjuntado ningún archivo.' });
-
-    const facturaWA = require('./facturaWhatsApp');
-    const attachments = [];
-
-    // PDFs: se reenvían tal cual. Imágenes: se embeben en UN solo PDF (una por página).
-    const pdfs  = files.filter(f => /pdf/i.test(f.mimetype || '') || /\.pdf$/i.test(f.originalname || ''));
-    const imgs  = files.filter(f => /^image\//i.test(f.mimetype || ''));
-    const otros = files.filter(f => !pdfs.includes(f) && !imgs.includes(f));
-
-    for (const f of pdfs) {
-      attachments.push({ filename: f.originalname || 'factura.pdf', content: f.buffer, contentType: 'application/pdf' });
-    }
-    if (imgs.length) {
-      const pdfBuf = await facturaWA.fotosAPdf(imgs.map(f => ({ data: f.buffer.toString('base64'), media_type: f.mimetype })));
-      if (pdfBuf && pdfBuf.length) {
-        const nombre = attachments.some(a => a.filename === 'factura.pdf') ? 'factura-fotos.pdf' : 'factura.pdf';
-        attachments.push({ filename: nombre, content: pdfBuf, contentType: 'application/pdf' });
-      } else {
-        // Fallback: adjuntar las imágenes crudas si no se pudo generar el PDF.
-        let i = 0;
-        for (const f of imgs) {
-          const ext = (String(f.mimetype || 'image/jpeg').split('/')[1] || 'jpg');
-          attachments.push({ filename: f.originalname || `factura-${++i}.${ext}`, content: f.buffer, contentType: f.mimetype });
-        }
-      }
-    }
-    // Cualquier otro tipo con nombre de archivo → adjuntar tal cual (no perder la factura).
-    for (const f of otros) {
-      attachments.push({ filename: f.originalname || 'factura', content: f.buffer, contentType: f.mimetype || 'application/octet-stream' });
-    }
-
-    const obraRef = String(req.body.obraRef || '').trim() || null;
-    const obraId  = String(req.body.obraId || '').trim() || null;
-    const nota    = String(req.body.nota || '').trim() || null;
-    const categoria = String(req.body.categoria || '').trim().toLowerCase() || null;
-    const quien   = req.oficina?.workerName || (req.oficina?.admin ? 'admin' : 'oficina');
-
-    const r = await facturaWA.reenviarFacturaMail({
-      attachments, obraRef, obraId, origen: 'app-oficina', from: quien, nota,
-      categoria: (categoria && obras.CATEGORIAS_GASTO.includes(categoria)) ? categoria : null,
-    });
-    if (!r.ok) return res.status(502).json(r);
-    res.json(r);
-  } catch (err) {
-    console.error('[Factura subir]', err.message);
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
 // ── Clasificar facturas de proveedor: obra / gasto general / sin clasificar ──
 // Estado por factura (prioridad manual > regla-proveedor > marcador n8n).
 app.get('/api/facturas/proveedor', requireAuthOficina, async (req, res) => {
@@ -2894,15 +2682,6 @@ app.post('/api/facturas/proveedor/:id/quitar-reparto', requireAuthOficina, async
 app.delete('/api/facturas/proveedor/:id', requireAuthOficina, async (req, res) => {
   try { res.json(await obras.desclasificarFactura(req.params.id)); }
   catch (err) { res.status(400).json({ error: err.message }); }
-});
-
-// Crear una obra al vuelo desde la oficina (referencia + cliente) para poder asignar.
-app.post('/api/facturas/obra-nueva', requireAuthOficina, async (req, res) => {
-  try {
-    const { reference, clientName, address, aliases } = req.body || {};
-    const obra = await obras.createObra({ reference, clientName, address, aliases });
-    res.json({ ok: true, id: String(obra.id), reference: obra.reference, clientName: obra.clientName });
-  } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
 // Reglas por proveedor (autoclasifican todas las facturas de ese proveedor).
@@ -3858,18 +3637,6 @@ const colaboradores = require('./colaboradores');
 const trabajadores = require('./trabajadores');
 app.get('/api/trabajadores', requireAuth, async (req, res) => {
   try { res.json({ trabajadores: await trabajadores.getTrabajadores(req.query.activos === '1') }); }
-  catch (err) { res.status(500).json({ error: err.message }); }
-});
-app.get('/api/trabajadores/diag', requireAuth, async (req, res) => {
-  try { res.json(await trabajadores.diag()); }
-  catch (err) { res.status(500).json({ error: err.message }); }
-});
-app.post('/api/trabajadores/seed', requireAuth, async (req, res) => {
-  try { res.json(await trabajadores.seedDesdeConfig()); }
-  catch (err) { res.status(500).json({ error: err.message }); }
-});
-app.post('/api/trabajadores/reconciliar', requireAuth, async (req, res) => {
-  try { res.json(await trabajadores.aplicarReconciliacion()); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 app.get('/api/trabajadores/:id', requireAuth, async (req, res) => {

@@ -34,9 +34,9 @@
       ]
     },
     {
-      "name": "Subir factura",
-      "short_name": "Factura",
-      "url": "/subir-factura",
+      "name": "Subir una compra",
+      "short_name": "Compra",
+      "url": "/compra",
       "icons": [
         {
           "src": "/icons/icon-192.png",

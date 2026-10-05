@@ -89,7 +89,7 @@ function cpUpdateBanner(){
     <button class="nav-btn" onclick="showTab('facturas',this)">📊 Facturación</button>
     <button class="nav-btn" onclick="showTab('pendientes',this)">🔴 Pendientes cobro</button>
     <button class="nav-btn" onclick="showTab('cobros',this)">💸 Cobros</button>
-    <button class="nav-btn" onclick="showTab('presupuestos',this)">📋 Presupuestos</button>
+    <button class="nav-btn" onclick="showTab('presupuestos',this)">📋 Presupuestos StelOrder</button>
     <button class="nav-btn" onclick="showTab('banco',this)">🏦 Banco y gastos</button>
     <button class="nav-btn" onclick="showTab('pagos',this)">💵 Pagos</button>
   </span>
@@ -125,7 +125,6 @@ function cpUpdateBanner(){
     <button class="nav-btn" onclick="location.href='/gps'">🗺️ Mapa GPS</button>
     <button class="nav-btn" onclick="location.href='/fichar'">🕐 Fichar jornada</button>
     <button class="nav-btn" onclick="location.href='/parte'">📋 Parte de trabajo</button>
-    <button class="nav-btn" onclick="location.href='/informe-presencia'">📅 Informe presencia</button>
     <button class="nav-btn" onclick="location.href='/horas'">⏱️ Horas fichadas / a facturar</button>
     <button class="nav-btn" onclick="location.href='/personal'">📁 Documentación del personal</button>
     <button class="nav-btn" onclick="location.href='/sitios'">🔎 ¿Dónde hemos estado?</button>
@@ -522,23 +521,31 @@ function cpUpdateBanner(){
 <div id="tab-alertas" class="panel">
   <div class="g2">
     <div class="card">
-      <div class="card-title">Configuración alertas</div>
+      <div class="card-title">Facturas pendientes de cobro</div>
       <table>
-        <tr><td style="color:var(--text2)">✅ Verde</td><td style="text-align:right">Menos de 15 días</td></tr>
+        <tr><td style="color:var(--text2)">✅ Al día</td><td style="text-align:right">Menos de 15 días</td></tr>
         <tr><td style="color:var(--text2)">⚠️ Primer aviso</td><td style="text-align:right">15 días</td></tr>
         <tr><td style="color:var(--text2)">⚠️⚠️ Segundo aviso</td><td style="text-align:right">30 días</td></tr>
         <tr><td style="color:var(--text2)">🔴 Urgente</td><td style="text-align:right">45 días</td></tr>
         <tr><td style="color:var(--text2)">🚨 Crítico</td><td style="text-align:right">60 días</td></tr>
-        <tr><td style="color:var(--text2)">🔁 Revisión auto</td><td style="text-align:right">Cada 2 horas</td></tr>
-        <tr><td style="color:var(--text2)">🌅 Resumen diario</td><td style="text-align:right">08:30 lun–vie</td></tr>
-        <tr><td style="color:var(--text2)">📧 Poll emails</td><td style="text-align:right">Cada 15 min</td></tr>
+        <tr><td style="color:var(--text2)">🔁 Recordatorios a clientes</td><td style="text-align:right">08:30 y 17:00 (según cada familia)</td></tr>
       </table>
+      <div style="font-size:12px;color:var(--text3);margin-top:8px">WhatsApp y correo funcionando; el estado del WhatsApp se ve en 🩺 Diagnóstico.</div>
     </div>
     <div class="card">
-      <div class="card-title">Destinatarios</div>
+      <div class="card-title">Avisos automáticos</div>
       <table>
-        <tr><td style="color:var(--text2)">📧 Email</td><td style="text-align:right">corpy@corpprojects.es</td></tr>
-        <tr><td style="color:var(--text2)">💬 WhatsApp</td><td style="text-align:right;color:var(--amber)">⚠️ Pendiente Twilio</td></tr>
+        <tr><td style="color:var(--text2)">🌅 Resumen de la mañana</td><td style="text-align:right">08:00–08:30 lun–vie</td></tr>
+        <tr><td style="color:var(--text2)">🕐 Fichajes: recordatorios de entrada</td><td style="text-align:right">08:10 · 08:30 · 09:00</td></tr>
+        <tr><td style="color:var(--text2)">🕐 Fichajes: resumen a oficina</td><td style="text-align:right">09:15 lun–vie</td></tr>
+        <tr><td style="color:var(--text2)">🕐 Jornadas sin cerrar</td><td style="text-align:right">20:00</td></tr>
+        <tr><td style="color:var(--text2)">📅 Presencia sin rellenar</td><td style="text-align:right">17:30 lun–vie</td></tr>
+        <tr><td style="color:var(--text2)">🚐 ITV, seguro y revisión</td><td style="text-align:right">09:05 (30/15/7/1/0 días)</td></tr>
+        <tr><td style="color:var(--text2)">📁 Documentos del personal que caducan</td><td style="text-align:right">09:10 lun–vie</td></tr>
+        <tr><td style="color:var(--text2)">🗂️ Revisión del trimestre</td><td style="text-align:right">08:40 lun–vie</td></tr>
+        <tr><td style="color:var(--text2)">🧾 Compras por revisar</td><td style="text-align:right">18:00 lun–vie</td></tr>
+        <tr><td style="color:var(--text2)">📄 Albaranes sin factura</td><td style="text-align:right">día 1 a las 09:30</td></tr>
+        <tr><td style="color:var(--text2)">📧 Correo (facturas, albaranes, repostajes)</td><td style="text-align:right">cada 15 min</td></tr>
       </table>
     </div>
   </div>
@@ -683,7 +690,7 @@ const CP_ROLE_CAPS={
 const CP_ROLE_LABEL={owner:'Dueño',oficina:'Oficina',encargado:'Encargado',tecnico:'Técnico'};
 // Qué capacidad exige cada pestaña / enlace. Lo no listado es visible para todos.
 const CP_TAB_CAP={informes:'facturas',facturas:'facturas',pendientes:'facturas',cobros:'facturas',banco:'facturas',pagos:'facturas',obras:'facturas',comunidades:'facturas',alertas:'facturas',presupuestos:'presupuestos',familias:'clientes',emails:'clientes',usuarios:'usuarios',actividad:'registro'};
-const CP_TOOL_CAP={'/diag':'usuarios','/compras':'facturas','/compra':'facturas','/asignar-facturas':'facturas','/catalogo':'facturas','/presupuestos':'presupuestos','/competencia':'facturas','/gps':'facturas'};
+const CP_TOOL_CAP={'/diag':'usuarios','/compras':'facturas','/compra':'facturas','/asignar-facturas':'facturas','/catalogo':'catalogo','/presupuestos':'presupuestos','/competencia':'facturas','/gps':'facturas'};
 function cpUser(){ try{ return JSON.parse(localStorage.getItem('cp_user')||'{}'); }catch(e){ return {}; } }
 function cpRole(){ return cpUser().role || 'owner'; }  // sin cuenta (clave general) = Dueño
 function cpCan(cap){ return (CP_ROLE_CAPS[cpRole()]||CP_ROLE_CAPS.owner).includes(cap); }
