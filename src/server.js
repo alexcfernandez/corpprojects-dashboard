@@ -641,6 +641,12 @@ async function procesarTrabajador(from, body, media, trab, responder) {
     return responder(partes.join('\n\n') || '📎 Recibido.');
   }
 
+  // ¿Contesta a «¿dónde habéis estado hoy?» (trabaja por partes)? Su respuesta rellena la Presencia.
+  if (texto && trab.userId) {
+    try { const r = await require('./sitiosDia').responder(trab.userId, trab.name, texto); if (r) return responder(r); }
+    catch (e) { console.error('[Sitios] respuesta:', e.message); }
+  }
+
   if (!texto) return responder(`Hola${nombreCap ? ' ' + nombreCap : ''} 👋` + lineaFichar);
 
   // Texto → a la oficina (por WhatsApp si hay destino configurado; siempre queda en Conversaciones)
@@ -1370,7 +1376,7 @@ app.get('/api/fichaje/obra-dia', async (req, res) => {
 app.post('/api/fichaje/obra-dia', async (req, res) => {
   try { const w = await _worker(req, res); if (!w) return;
     const b = req.body || {};
-    res.json(await require('./obraDelDia').guardar(w.workerId, w.workerName, require('./fichajeMarcas').fechaHoy(), { obraId: b.obraId, nombreLibre: b.nombreLibre, companeros: b.companeros })); }
+    res.json(await require('./obraDelDia').guardar(w.workerId, w.workerName, require('./fichajeMarcas').fechaHoy(), { obraId: b.obraId, nombreLibre: b.nombreLibre, companeros: b.companeros, partes: !!b.partes })); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 // Vehículos en la app de fichar: repostajes y km (solo nombre y matrícula, nada de dinero de la empresa).
@@ -1431,6 +1437,22 @@ app.get('/api/fichaje/mios', async (req, res) => {
 });
 // Portada del dashboard: quién está hoy en obra ahora mismo (fichaje + presencia).
 // Horas por día: real fichado vs a facturar (mínimo 8 h por día trabajado), por obra y trabajador.
+// Obras fijas (oficina pone a alguien en una obra varios días) y pregunta de sitios a los de partes.
+app.get('/api/presencia/obras-fijas', requireAuth, async (req, res) => {
+  try {
+    const [fijas, ws] = await Promise.all([require('./obraDelDia').listarFijas({ fecha: require('./fichajeMarcas').fechaHoy() }), require('./fichajeMarcas').trabajadoresQueFichan()]);
+    res.json({ fijas, porPartes: ws.filter(w => w.porPartes).map(w => ({ id: w.id, name: w.name, conTelefono: !!w.whatsapp })) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/presencia/obras-fijas', requireAuth, async (req, res) => {
+  try { res.json(await require('./obraDelDia').crearFija(req.body || {}, req.user && (req.user.name || req.user.username))); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.delete('/api/presencia/obras-fijas/:id', requireAuth, async (req, res) => {
+  try { res.json(await require('./obraDelDia').quitarFija(req.params.id)); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/presencia/preguntar-sitios/:workerId', requireAuth, async (req, res) => {
+  try { res.json(await require('./sitiosDia').preguntar(req.params.workerId, { motivo: 'oficina', forzar: true })); } catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/presencia/horas', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./horasFacturables').informe({ desde: req.query.desde, hasta: req.query.hasta })); }
   catch (err) { res.status(400).json({ error: err.message }); }

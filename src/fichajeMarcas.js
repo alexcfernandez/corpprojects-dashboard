@@ -189,6 +189,7 @@ async function marcar(userId, userName, tipo, { loc, obraId, opId, offline, hora
       if (previas === 1) await require('./attendance').marcarPresenciaFichaje(String(userId), userName, fecha);
       // La obra elegida al fichar pasa a su presencia del día (antes se quedaba solo en la marca).
       if (obraId) await require('./obraDelDia').guardar(String(userId), userName, fecha, { obraId });
+      else await require('./obraDelDia').aplicarFijaSiFalta(String(userId), userName, fecha);   // obra fija de oficina
     }
   } catch (e) { console.warn('[FichajeMarcas] presencia:', e.message); }
 
@@ -198,6 +199,8 @@ async function marcar(userId, userName, tipo, { loc, obraId, opId, offline, hora
       await require('./attendance').actualizarHorasFichaje(String(userId), fecha, Math.round(nuevo.minutos / 6) / 10);
     }
   } catch (e) { console.warn('[FichajeMarcas] horas:', e.message); }
+  // Trabaja por partes: al terminar, Corpy le pregunta por WhatsApp dónde han estado hoy.
+  if (tipo === 'salida' && fecha === fechaHoy()) require('./sitiosDia').preguntar(String(userId), { motivo: 'salida' }).catch(e => console.warn('[Sitios] pregunta:', e.message));
 
   // La app pinta siempre el día de HOY (una marca offline puede ser de ayer).
   const hoy = fechaHoy();
@@ -404,7 +407,7 @@ async function trabajadoresQueFichan() {
   return (us || [])
     .filter(u => u.role !== 'client' && ['tecnico', 'encargado', 'oficina'].includes(normalizeRole(u.role)))
     .filter(u => !(u.autonomo && u.autonomo.activo))   // los autónomos no fichan (solo presencia)
-    .map(u => ({ id: String(u._id), name: u.name, whatsapp: _tel(u.whatsapp || u.telefono) }));
+    .map(u => ({ id: String(u._id), name: u.name, whatsapp: _tel(u.whatsapp || u.telefono), porPartes: !!u.porPartes }));
 }
 function _tel(t) {
   const d = String(t || '').replace(/\D/g, '');

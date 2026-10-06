@@ -43,6 +43,19 @@
           <div>📅</div>
           <div><strong>Control de presencia diario</strong> — haz clic en cualquier día para registrar el estado. Los fines de semana se marcan automáticamente como jornada extra.</div>
         </div>
+        <details id="p-fijas" class="card" style="padding:12px 16px;margin-bottom:14px">
+          <summary style="cursor:pointer;font-weight:600">📌 Obras fijas y trabajo por partes <span id="p-fijas-n" style="font-weight:400;color:var(--text3)"></span></summary>
+          <div style="font-size:12px;color:var(--text3);margin:8px 0">Obra fija: al fichar le sale ya puesta y su Presencia se rellena sola esos días. Sin obra fija, cada uno la elige al fichar (la de ayer no se pone sola).</div>
+          <div id="p-fijas-lista"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:10px">
+            <div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:3px">Trabajador</div><select id="pf-w" class="srch" style="width:170px"></select></div>
+            <div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:3px">Obra</div><select id="pf-o" class="srch" style="width:240px"><option value="">Cargando…</option></select></div>
+            <div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:3px">Desde</div><input type="date" id="pf-d" class="srch" style="width:145px"></div>
+            <div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:3px">Hasta (vacío = hasta que la quites)</div><input type="date" id="pf-h" class="srch" style="width:145px"></div>
+            <button class="btn bp" onclick="CP.Presencia.addFija()">＋ Poner obra fija</button>
+          </div>
+          <div id="p-partes" style="margin-top:14px"></div>
+        </details>
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
           <button class="btn bgh" onclick="CP.Presencia.prevMonth()">← Anterior</button>
           <span style="font-size:16px;font-weight:600;font-family:'Space Grotesk',sans-serif" id="p-month-label">—</span>
@@ -139,6 +152,7 @@
     }
 
     loadCalendar();
+    cargarFijas();
   }
 
   let sumYear2  = new Date().getFullYear();
@@ -235,6 +249,9 @@
             ${entry?.avisoHoras==='sin_salida' ? '<span title="No fichó la salida: se cuentan 8 h">⏱️</span>' : entry?.avisoHoras==='corta' ? `<span title="Jornada corta: fichó ${entry.horasFichadas} h">⏱️</span>` : ''}
             ${entry?.obraDichaPorTrabajador ? `<span title="El trabajador dice que estuvo en ${String(entry.obraDichaPorTrabajador).replace(/"/g,'&quot;')}${(entry.equipoDichoPorTrabajador||[]).length?' con '+entry.equipoDichoPorTrabajador.join(', '):''} (tú le pusiste otra)">❓</span>` : ''}
             ${entry?.obraElegidaPorTrabajador ? '<span title="La obra la eligió él al fichar">📲</span>' : ''}
+            ${entry?.obraFija ? '<span title="Obra fija puesta por oficina">📌</span>' : ''}
+            ${entry?.obraFuente==='whatsapp' ? `<span title="Lo dijo por WhatsApp: «${String(entry.sitiosDichos||'').replace(/"/g,'&quot;').slice(0,200)}»">💬</span>` : entry?.dePartes ? '<span title="De partes: falta que diga dónde han estado (se le pregunta por WhatsApp al acabar)">🔧</span>' : ''}
+            ${entry && entry.autoFromFichaje && !entry.dePartes && !entry.clientName && !(entry.obras||[]).length && (!entry.estado || entry.estado==='obra') ? '<span title="Fichó pero no ha dicho en qué obra está">❓</span>' : ''}
             ${entry?.obraPorCompanero ? `<span title="Le apuntó ${String(entry.obraPorCompanero).replace(/"/g,'&quot;')} (iban juntos)">🤝</span>` : ''}
             ${tieneEquipo ? '<span title="Con ayudantes">👥</span>' : ''}
           </div>
@@ -842,7 +859,35 @@
     } catch(err) { console.error('[Presencia] CSV error:', err.message); }
   }
 
+  // ── OBRAS FIJAS Y TRABAJO POR PARTES ──
+  async function cargarFijas() {
+    const el = document.getElementById('p-fijas-lista'); if (!el) return;
+    let d; try { d = await api('/api/presencia/obras-fijas'); } catch (e) { el.innerHTML = '<div style="color:var(--red);font-size:12px">No se pudieron cargar</div>'; return; }
+    const fd = f => f ? f.slice(8,10)+'/'+f.slice(5,7)+'/'+f.slice(2,4) : '';
+    document.getElementById('p-fijas-n').textContent = d.fijas.length ? `(${d.fijas.length} fija${d.fijas.length>1?'s':''})` : '';
+    el.innerHTML = d.fijas.length ? d.fijas.map(f => `<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px"><b>${f.workerName||'?'}</b> → 🏗️ ${f.obraRef} <span style="color:var(--text3)">del ${fd(f.desde)} ${f.hasta?'al '+fd(f.hasta):'en adelante'}</span><button class="btn bgh" style="margin-left:auto;padding:3px 10px;font-size:11px" onclick="CP.Presencia.quitarFija('${f.id}')">Quitar</button></div>`).join('') : '<div style="font-size:12px;color:var(--text3)">Ninguna obra fija.</div>';
+    const pp = document.getElementById('p-partes');
+    if (pp) pp.innerHTML = `<div style="font-size:12px;font-weight:600;margin-bottom:4px">🔧 Trabajan por partes</div>` + (d.porPartes.length
+      ? d.porPartes.map(w => `<div style="display:flex;gap:8px;align-items:center;font-size:13px;padding:4px 0">${w.name}${w.conTelefono?'':' <span style="color:var(--amber);font-size:11px">sin teléfono: no le llega el WhatsApp</span>'}<button class="btn bgh" style="margin-left:auto;padding:3px 10px;font-size:11px" onclick="CP.Presencia.preguntarSitios('${w.id}',this)">💬 Preguntarle ahora dónde ha estado</button></div>`).join('')
+      : '<div style="font-size:12px;color:var(--text3)">Nadie. Se marca en Usuarios → ficha del trabajador → «Trabaja por partes».</div>');
+    const sw = document.getElementById('pf-w'); if (sw && !sw.options.length) sw.innerHTML = (CFG.workers||[]).map(w => `<option value="${w.id}">${w.name}</option>`).join('');
+    const pd = document.getElementById('pf-d'); if (pd && !pd.value) pd.value = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
+    const so = document.getElementById('pf-o');
+    if (so && so.options.length <= 1) { if (!Array.isArray(_obrasSel)) { try { _obrasSel = await api('/api/obras/selector'); if (!Array.isArray(_obrasSel)) _obrasSel = []; } catch (e) { _obrasSel = []; } }
+      so.innerHTML = '<option value="">— Elige la obra —</option>' + _obrasSel.filter(o => o.grupo === 'abierta').map(o => `<option value="${o.id}">${o.reference}${o.address?' · '+o.address:''}</option>`).join(''); }
+  }
+  async function addFija() {
+    const b = { workerId: document.getElementById('pf-w').value, obraId: document.getElementById('pf-o').value, desde: document.getElementById('pf-d').value, hasta: document.getElementById('pf-h').value || null };
+    if (!b.obraId) { alert('Elige la obra'); return; }
+    const r = await fetch('/api/presencia/obras-fijas', { method: 'POST', headers: { 'Authorization': 'Bearer ' + localStorage.getItem('cp_token'), 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+    const d = await r.json(); if (!r.ok) { alert(d.error || 'No se pudo'); return; }
+    document.getElementById('pf-h').value = ''; cargarFijas(); loadCalendar();
+  }
+  async function quitarFija(id) { if (!confirm('¿Quitar esta obra fija? Lo ya apuntado en Presencia no se toca.')) return; await api('/api/presencia/obras-fijas/' + id, { method: 'DELETE' }); cargarFijas(); }
+  async function preguntarSitios(id, b) { b.disabled = true; try { const d = await api('/api/presencia/preguntar-sitios/' + id, { method: 'POST' }); b.textContent = d.enviado ? '✓ Enviado' : (d.saltado || d.pausado && 'avisos en pausa' || 'No salió'); } catch (e) { b.textContent = 'No salió'; } setTimeout(() => { b.disabled = false; b.textContent = '💬 Preguntarle ahora dónde ha estado'; }, 4000); }
+
   CP.Presencia = {
+    addFija, quitarFija, preguntarSitios,
     render, showTab, openReport,
     prevMonth, nextMonth, goToday,
     prevSumMonth, nextSumMonth,

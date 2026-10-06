@@ -151,6 +151,12 @@
         <div style="font-size:10px;color:var(--text3);margin-top:3px">Sueldo + SS prorrateado por hora</div>
       </div>
     </div>
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:12px 14px;margin-bottom:12px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer">
+        <input type="checkbox" id="u-partes" ${user.porPartes?'checked':''} style="width:16px;height:16px;cursor:pointer"> Trabaja por partes (varios sitios al día)
+      </label>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">No elige una obra al fichar. Al terminar la jornada (o a las 18:30 si no ficha la salida) Corpy le pregunta por WhatsApp dónde han estado, y su respuesta rellena la Presencia suya y de quien vaya con él.</div>
+    </div>
     <div id="u-aut-block" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:12px 14px;margin-bottom:12px">
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer">
         <input type="checkbox" id="u-aut" ${user.autonomo&&user.autonomo.activo?'checked':''} onchange="CP.Usuarios.onAutChange()" style="width:16px;height:16px;cursor:pointer"> Es autónomo (no ficha)
@@ -291,7 +297,7 @@
             </div>
             <div style="flex:1 1 150px;min-width:0">
               <div style="font-weight:600;font-size:13px">${u.name} ${u.active===false?'<span style="font-size:10px;color:var(--text3)">(inactivo)</span>':''}</div>
-              <div style="font-size:11px;color:${ROLE_COLORS[r]}">${ROLE_LABELS[r]||r}${u.autonomo&&u.autonomo.activo?' · <span style="color:var(--amber)">Autónomo · no ficha</span>':''} ${ROLES_PASSWORD.includes(r)?(u.hasPassword?'· <span style="color:var(--green)">🔑 con contraseña</span>':'· <span style="color:var(--amber)">⚠️ sin contraseña</span>'):''}</div>
+              <div style="font-size:11px;color:${ROLE_COLORS[r]}">${ROLE_LABELS[r]||r}${u.autonomo&&u.autonomo.activo?' · <span style="color:var(--amber)">Autónomo · no ficha</span>':''}${u.porPartes?' · <span style="color:var(--blue)">🔧 Por partes</span>':''} ${ROLES_PASSWORD.includes(r)?(u.hasPassword?'· <span style="color:var(--green)">🔑 con contraseña</span>':'· <span style="color:var(--amber)">⚠️ sin contraseña</span>'):''}</div>
               ${u.notes?`<div style="font-size:11px;color:var(--text3);margin-top:2px">${u.notes}</div>`:''}
               ${u.lastLogin?`<div style="font-size:10px;color:var(--text3)">Último acceso: ${new Date(u.lastLogin).toLocaleDateString('es-ES')}</div>`:''}
               ${ROLES_FIELD.includes(r)?(u.gpsConsentAt?`<div style="font-size:10px;color:var(--green)">📍 Consentimiento GPS firmado el ${new Date(u.gpsConsentAt).toLocaleDateString('es-ES')}</div>`:`<div style="font-size:10px;color:var(--amber)">📍 GPS sin firmar</div>`):''}
@@ -346,6 +352,7 @@
       set('u-dni', u.docs?.dni||'');
       set('u-carnet', u.docs?.carnet||'');
       set('u-emergency', u.docs?.emergency||'');
+      { const cp=document.getElementById('u-partes'); if (cp) cp.checked=!!u.porPartes; }
       const ua=u.autonomo&&u.autonomo.activo?u.autonomo:null;
       const ck=document.getElementById('u-aut');if(ck)ck.checked=!!ua;
       set('u-aut-tipo', ua&&ua.tarifaTipo==='hora'?'hora':'dia');
@@ -408,6 +415,7 @@
     color:     document.getElementById('u-color')?.value,
     notes:     document.getElementById('u-notes')?.value?.trim(),
     autonomo: autData(),
+    porPartes: !!document.getElementById('u-partes')?.checked,
     docs: {
       dni:       document.getElementById('u-dni')?.value?.trim(),
       carnet:    document.getElementById('u-carnet')?.value?.trim(),
@@ -448,7 +456,7 @@
     ['u-name','u-pass','u-pin','u-coste-hora','u-telefono','u-email','u-notes','u-dni','u-carnet','u-emergency','u-aut-tarifa','u-aut-nif','u-aut-nombre'].forEach(id => {
       const e = document.getElementById(id); if(e) e.value='';
     });
-    { const ck = document.getElementById('u-aut'); if (ck) ck.checked = false; onAutChange(); }
+    { const ck = document.getElementById('u-aut'); if (ck) ck.checked = false; onAutChange(); const cp = document.getElementById('u-partes'); if (cp) cp.checked = false; }
     const msg = document.getElementById('u-form-msg');
     if (msg) msg.style.display='none';
     const card = document.querySelector('#ut-nuevo .card');

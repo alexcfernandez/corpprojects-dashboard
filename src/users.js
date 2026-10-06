@@ -165,6 +165,7 @@ async function createUser(data) {
     lastLogin: null,
   };
   // Autónomo: no ficha; su coste/hora en las obras es su tarifa.
+  user.porPartes = !!data.porPartes;
   user.autonomo = require('./autonomos').limpiar(data.autonomo);
   if (user.autonomo && !(user.costeHora > 0)) user.costeHora = require('./autonomos').costeHora(user) || 0;
 
@@ -190,12 +191,13 @@ async function createUser(data) {
 
 async function updateUser(id, data) {
   const db      = await getDB();
-  const allowed = ['name','role','pin','color','costeHora','nota','active','notes','docs','telefono','email','username'];
+  const allowed = ['name','role','pin','color','costeHora','nota','active','notes','docs','telefono','email','username','porPartes'];
   const set     = { updatedAt: new Date() };
   allowed.forEach(k => { if (data[k] !== undefined) set[k] = data[k]; });
 
   // Parsear costeHora como número
   if (set.costeHora !== undefined) set.costeHora = parseFloat(set.costeHora || 0);
+  if (set.porPartes !== undefined) set.porPartes = !!set.porPartes;   // varios sitios al día: se le pregunta por WhatsApp al acabar
   // Autónomo (o dejar de serlo). Su tarifa pasa a ser su coste/hora en las obras.
   if (data.autonomo !== undefined) {
     const aut = require('./autonomos');

@@ -207,6 +207,7 @@ async function resumenOficina({ dryRun = false, forzarHora } = {}) {
   if (a.noFicho.length) lineas.push(`🔴 *Sin fichar hoy (${a.noFicho.length}):* ${a.noFicho.map(x => _nombre(x.userName)).join(', ')}`);
   if (a.sinCerrarPrevios.length) lineas.push(`🟠 *Jornadas sin cerrar:* ${a.sinCerrarPrevios.slice(0, 8).map(x => `${_nombre(x.userName)} (${x.fecha.slice(8, 10)}/${x.fecha.slice(5, 7)})`).join(', ')}`);
   if (a.correccionesPendientes) lineas.push(`📝 *Correcciones por revisar:* ${a.correccionesPendientes}`);
+  try { const so = await require('./obraDelDia').sinObraHoy(a.fecha); if (so.length) lineas.push(`❓ *Han fichado sin decir la obra:* ${so.map(x => _nombre(x.name)).join(', ')}`); } catch (e) {}
   if (!lineas.length) return { fecha: a.fecha, enviado: false, motivo: 'nada que revisar' };
   const texto = `🕐 *Fichajes — ${a.fecha.slice(8, 10)}/${a.fecha.slice(5, 7)}*\n\n${lineas.join('\n')}\n\nRevisar: https://dashboard.corpprojects.es/fichajes`;
   if (dryRun) return { fecha: a.fecha, enviado: false, texto, a: _oficina() };

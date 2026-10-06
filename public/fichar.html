@@ -329,21 +329,45 @@ async function renderObra(est,obraId){
   const w=document.getElementById('obra-wrap');const obras=await cargarObras();const dia=_dia||{};
   const abierta=id=>!!id&&obras.some(o=>o.id===id&&o.grupo==='abierta');
   if(est==='fuera'){
+    // Trabaja por partes: no elige obra; al acabar le preguntamos por WhatsApp dónde han estado.
+    if(dia.porPartes&&!dia.fija){_obraPick=null;w.innerHTML=`<div class="obra-pista" style="font-size:14px">🔧 Hoy vas <b>de partes</b>. Al terminar la jornada te pregunto por WhatsApp dónde habéis estado.</div>`;return;}
     if(_obraPick&&w.firstChild){_obraPick.setObras(obras);return;} // no pisar lo que esté eligiendo
-    const last=localStorage.getItem('cpObra')||'';
-    // Propuesta: la que oficina le puso hoy → la de su último día → la última que eligió (si siguen abiertas).
-    const pro=(dia.hoy&&dia.hoy.obraId)||(dia.ultima&&abierta(dia.ultima.obraId)?dia.ultima.obraId:'')||(abierta(last)?last:'');
-    const pista=dia.hoy?(dia.hoy.puestaPor==='oficina'?`📌 Oficina te ha puesto hoy en <b>${escH(dia.hoy.nombre)}</b>`:`Hoy: <b>${escH(dia.hoy.nombre)}</b>`):(dia.ultima?`Tu último día estuviste en <b>${escH(dia.ultima.nombre)}</b>`:'');
-    w.innerHTML='<label class="obra-lbl">¿En qué obra estás hoy?</label><div id="obra-pick"></div>'+(pista?`<div class="obra-pista">${pista}</div>`:'');
-    _obraPick=CPObra.crear(document.getElementById('obra-pick'),{obras,value:pro,vacio:'— Sin obra / otra —',placeholder:'Elegir obra…',titulo:'¿En qué obra estás hoy?'});
+    // Solo viene puesta si la ha puesto oficina (hoy o como obra fija): la de ayer hay que pulsarla.
+    const pro=(dia.hoy&&dia.hoy.obraId)||'';
+    const fd=f=>f?f.slice(8,10)+'/'+f.slice(5,7):'';
+    const pista=dia.hoy?(dia.hoy.puestaPor==='fija'?`📌 Oficina te ha puesto en <b>${escH(dia.hoy.nombre)}</b>${dia.hoy.hasta?' hasta el '+fd(dia.hoy.hasta):''}`:dia.hoy.puestaPor==='oficina'?`📌 Oficina te ha puesto hoy en <b>${escH(dia.hoy.nombre)}</b>`:`Hoy: <b>${escH(dia.hoy.nombre)}</b>`):'';
+    const ayer=!dia.hoy&&dia.ultima&&abierta(dia.ultima.obraId)?dia.ultima:null;
+    w.innerHTML='<label class="obra-lbl">¿En qué obra estás hoy?</label><div id="obra-pick"></div>'+(pista?`<div class="obra-pista">${pista}</div>`:'')
+      +(ayer?`<button type="button" class="obra-cambiar" id="obra-ayer" style="margin-top:8px">↺ Igual que ayer: ${escH(ayer.nombre)}</button>`:'');
+    _obraPick=CPObra.crear(document.getElementById('obra-pick'),{obras,value:pro,vacio:'— Elige la obra —',placeholder:'Elegir obra…',titulo:'¿En qué obra estás hoy?'});
+    const ba=document.getElementById('obra-ayer');if(ba)ba.onclick=()=>{_obraPick.set(ayer.obraId);ba.remove();};
+  }else if(dia.porPartes&&!dia.hoy){
+    _obraPick=null;
+    if(dia.dePartes)w.innerHTML=`<div class="obra-chip">🔧 De partes${(dia.equipoHoy||[]).length?' · con '+escH(dia.equipoHoy.join(', ')):''}</div><div class="obra-pista">Al terminar te pregunto por WhatsApp dónde habéis estado.</div><div><button class="obra-cambiar" onclick="preguntarPartes()">Cambiar compañeros</button></div>`;
+    else preguntarPartes();
   }else{
     _obraPick=null;
+    if(dia.dePartes&&!dia.hoy){w.innerHTML=`<div class="obra-chip">🔧 De partes${(dia.equipoHoy||[]).length?' · con '+escH(dia.equipoHoy.join(', ')):''}</div>${dia.partesPor?`<div class="obra-pista">Te ha apuntado ${escH(dia.partesPor)}</div>`:''}<div><button class="obra-cambiar" onclick="preguntarObra()">Cambiar obra o compañeros</button></div>`;return;}
     const h=dia.hoy||(obraId&&obras.find(x=>x.id===obraId)?{nombre:obras.find(x=>x.id===obraId).reference,equipo:[]}:null);
-    if(h)w.innerHTML=`<div class="obra-chip">🏗️ ${escH(h.nombre)}${(h.equipo||[]).length?' · con '+escH(h.equipo.join(', ')):''}</div>${h.puestaPor&&h.puestaPor!=='ti'&&h.puestaPor!=='oficina'?`<div class="obra-pista">Te ha apuntado ${escH(h.puestaPor)}</div>`:''}<div><button class="obra-cambiar" onclick="preguntarObra()">Cambiar obra o compañeros</button></div>`;
+    if(h)w.innerHTML=`<div class="obra-chip">🏗️ ${escH(h.nombre)}${(h.equipo||[]).length?' · con '+escH(h.equipo.join(', ')):''}</div>${h.puestaPor==='fija'?`<div class="obra-pista">📌 Te la ha puesto oficina${h.hasta?' hasta el '+h.hasta.slice(8,10)+'/'+h.hasta.slice(5,7):''}</div>`:h.puestaPor&&h.puestaPor!=='ti'&&h.puestaPor!=='oficina'?`<div class="obra-pista">Te ha apuntado ${escH(h.puestaPor)}</div>`:''}<div><button class="obra-cambiar" onclick="preguntarObra()">Cambiar obra o compañeros</button></div>`;
     else preguntarObra();   // ha empezado sin decir la obra: se le pregunta aquí mismo
   }
 }
 // Tarjeta «¿En qué obra estás hoy? · ¿Vas con alguien?» (un toque).
+// Trabaja por partes: solo se le pregunta con quién va (los sitios, por WhatsApp al acabar).
+function preguntarPartes(){
+  const w=document.getElementById('obra-wrap');const dia=_dia||{};const comps=(dia.companeros||[]).slice(0,14);
+  const ya=new Set((dia.companeros||[]).filter(c=>(dia.equipoHoy||[]).includes(c.nombre)).map(c=>c.id));
+  w.innerHTML=`<div class="obra-ask"><div class="t">🔧 Hoy vas de partes</div><div class="obra-pista" style="margin:0 0 10px">Al terminar te pregunto por WhatsApp dónde habéis estado.</div>
+    ${comps.length?`<div class="t2">¿Vas con alguien?</div><div class="chips">${comps.map(c=>`<button class="cc${ya.has(c.id)?' on':''}" data-id="${escH(c.id)}">${escH(c.nombre.split(' ')[0])}</button>`).join('')}</div>`:''}
+    <button class="fichar-btn entrada" id="partes-guardar" style="margin-top:14px;padding:14px;font-size:16px">Guardar</button>
+    <button class="obra-cambiar" style="margin-top:8px" onclick="preguntarObra()">Hoy estoy en una sola obra</button></div>`;
+  w.querySelectorAll('.cc').forEach(b=>b.onclick=()=>{ya.has(b.dataset.id)?ya.delete(b.dataset.id):ya.add(b.dataset.id);b.classList.toggle('on',ya.has(b.dataset.id));});
+  document.getElementById('partes-guardar').onclick=async ev=>{const btn=ev.target;btn.disabled=true;btn.textContent='Guardando…';
+    try{const r=await fetchT('/api/fichaje/obra-dia',{method:'POST',headers:authH({'Content-Type':'application/json'}),body:JSON.stringify({partes:true,companeros:[...ya]})},12000);const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');
+      toast(`🔧 De partes${d.equipo&&d.equipo.length?' · con '+d.equipo.join(', '):''}`,'ok');await cargarDia();renderObra(estadoDe(_estado),_estado&&_estado.obraId);}
+    catch(e){toast(e.message||'No se pudo guardar','error');btn.disabled=false;btn.textContent='Guardar';}};
+}
 function preguntarObra(){
   const w=document.getElementById('obra-wrap');const dia=_dia||{};const obras=_obras||lsGet('cpObras',[]);
   const abierta=id=>!!id&&obras.some(o=>o.id===id&&o.grupo==='abierta');
@@ -352,16 +376,19 @@ function preguntarObra(){
   if(dia.ultima&&abierta(dia.ultima.obraId)&&!vistas.has(dia.ultima.obraId)){opts.push({id:dia.ultima.obraId,nombre:dia.ultima.nombre,sub:'Igual que tu último día'});vistas.add(dia.ultima.obraId);}
   (dia.companeros||[]).filter(c=>c.obra&&c.obra.obraId).forEach(c=>{if(vistas.has(c.obra.obraId)){const o=opts.find(x=>x.id===c.obra.obraId);if(o)o.con=(o.con||[]).concat(c.id);return;}vistas.add(c.obra.obraId);opts.push({id:c.obra.obraId,nombre:c.obra.nombre,sub:'',con:[c.id]});});
   opts.forEach(o=>{if(o.con&&o.con.length){const ns=o.con.map(id=>(dia.companeros.find(c=>c.id===id)||{}).nombre).filter(Boolean);o.sub=(o.sub?o.sub+' · ':'')+'Está '+ns.join(', ');}});
-  let elegida=opts[0]?{obraId:opts[0].id,nombre:opts[0].nombre}:null;const con=new Set();
-  if(opts[0]&&opts[0].con)opts[0].con.forEach(id=>con.add(id));
+  // Solo va marcada si la ha puesto oficina (o es obra fija); si no, la tiene que pulsar él.
+  const pre=dia.hoy&&dia.hoy.obraId&&opts[0]&&opts[0].id===dia.hoy.obraId;
+  let elegida=pre?{obraId:opts[0].id,nombre:opts[0].nombre}:null;const con=new Set();
+  if(pre&&opts[0].con)opts[0].con.forEach(id=>con.add(id));
   const comps=(dia.companeros||[]).slice(0,14);
   w.innerHTML=`<div class="obra-ask"><div class="t">¿En qué obra estás hoy?</div>
-    <div class="opts">${opts.map((o,i)=>`<button class="opt${i===0?' on':''}" data-i="${i}">🏗️ ${escH(o.nombre)}${o.sub?`<small>${escH(o.sub)}</small>`:''}</button>`).join('')}<button class="opt otra">🔎 Otra obra…</button></div>
+    <div class="opts">${opts.map((o,i)=>`<button class="opt${i===0&&pre?' on':''}" data-i="${i}">🏗️ ${escH(o.nombre)}${o.sub?`<small>${escH(o.sub)}</small>`:''}</button>`).join('')}<button class="opt otra">🔎 Otra obra…</button><button class="opt partes">🔧 De partes (varios sitios)<small>Al acabar se pregunta dónde habéis estado</small></button></div>
     <div id="obra-pick-ask" style="display:none;margin-bottom:8px"></div>
     ${comps.length?`<div class="t2">¿Vas con alguien?</div><div class="chips">${comps.map(c=>`<button class="cc" data-id="${escH(c.id)}">${escH(c.nombre.split(' ')[0])}${c.haFichado?'':' <span style="opacity:.6">·no ha fichado</span>'}</button>`).join('')}</div>`:''}
     <button class="fichar-btn entrada" id="obra-guardar" style="margin-top:14px;padding:14px;font-size:16px">Guardar</button></div>`;
   const pintaChips=()=>w.querySelectorAll('.cc').forEach(b=>b.classList.toggle('on',con.has(b.dataset.id)));pintaChips();
   w.querySelectorAll('.opt[data-i]').forEach(b=>b.onclick=()=>{const o=opts[Number(b.dataset.i)];elegida={obraId:o.id,nombre:o.nombre};w.querySelectorAll('.opt').forEach(x=>x.classList.toggle('on',x===b));document.getElementById('obra-pick-ask').style.display='none';(o.con||[]).forEach(id=>con.add(id));pintaChips();});
+  w.querySelector('.opt.partes').onclick=ev=>{w.querySelectorAll('.opt').forEach(x=>x.classList.toggle('on',x.classList.contains('partes')));elegida={partes:true,nombre:'De partes'};document.getElementById('obra-pick-ask').style.display='none';};
   w.querySelector('.opt.otra').onclick=()=>{w.querySelectorAll('.opt').forEach(x=>x.classList.toggle('on',x.classList.contains('otra')));elegida=null;const c=document.getElementById('obra-pick-ask');c.style.display='block';
     if(!c.firstChild){const p=CPObra.crear(c,{obras,value:'',vacio:'— Elige —',placeholder:'Buscar obra…',titulo:'¿En qué obra estás hoy?',onChange:o=>{elegida=o?{obraId:o.id,nombre:o.reference}:null;}});c._p=p;}};
   w.querySelectorAll('.cc').forEach(b=>b.onclick=()=>{con.has(b.dataset.id)?con.delete(b.dataset.id):con.add(b.dataset.id);pintaChips();});
@@ -369,8 +396,8 @@ function preguntarObra(){
     if(!elegida){const c=document.getElementById('obra-pick-ask');const v=c&&c._p&&c._p.value;const o=v&&obras.find(x=>x.id===v);if(o)elegida={obraId:o.id,nombre:o.reference};}
     if(!elegida){toast('Elige la obra','error');return;}
     btn.disabled=true;btn.textContent='Guardando…';
-    try{const r=await fetchT('/api/fichaje/obra-dia',{method:'POST',headers:authH({'Content-Type':'application/json'}),body:JSON.stringify({obraId:elegida.obraId,companeros:[...con]})},12000);const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');
-      localStorage.setItem('cpObra',elegida.obraId||'');
+    try{const r=await fetchT('/api/fichaje/obra-dia',{method:'POST',headers:authH({'Content-Type':'application/json'}),body:JSON.stringify(elegida.partes?{partes:true,companeros:[...con]}:{obraId:elegida.obraId,companeros:[...con]})},12000);const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');
+      if(!elegida.partes)localStorage.setItem('cpObra',elegida.obraId||'');
       toast(d.respetada?`Anotado. Oficina te tenía en ${d.respetada}: lo revisará`:`🏗️ ${d.obra}${d.companerosPuestos&&d.companerosPuestos.length?' · también '+d.companerosPuestos.join(', '):''}`,'ok');
       await cargarDia();renderObra(estadoDe(_estado),_estado&&_estado.obraId);}
     catch(e){toast(e.message||'No se pudo guardar','error');btn.disabled=false;btn.textContent='Guardar';}};

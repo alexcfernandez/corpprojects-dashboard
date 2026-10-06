@@ -352,6 +352,8 @@ function startScheduler() {
   cron.schedule('0 10 2 * *', () => fichajeAvisos.recordarFirmaMensual()
     .then(r => console.log('[Fichaje] recordatorio firma mensual →', JSON.stringify(r)))
     .catch(err => console.error('[Fichaje] firma mensual:', err.message)), { timezone: 'Europe/Madrid' });
+  // Los que trabajan por partes y no han fichado la salida: «¿dónde habéis estado hoy?» por WhatsApp.
+  cron.schedule('30 18 * * 1-5', () => require('./sitiosDia').repasar().then(r => { const n = r.filter(x => x.enviado).length; if (n) console.log(`[Sitios] repaso 18:30: ${n} pregunta(s)`); }).catch(e => console.warn('[Sitios] repaso:', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('15 9 * * 1-5', () => fichajeAvisos.resumenOficina()
     .then(r => console.log('[Fichaje] resumen oficina →', JSON.stringify({ enviado: r.enviado, motivo: r.motivo })))
     .catch(e => console.error('[Fichaje] resumen oficina:', e.message)), { timezone: 'Europe/Madrid' });
