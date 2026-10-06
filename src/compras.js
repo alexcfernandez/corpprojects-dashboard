@@ -27,8 +27,8 @@ const TIPO_TXT = { albaran: 'Albarán', factura: 'Factura', ticket: 'Ticket', de
 // Para qué es la compra: una obra · varias obras (oficina reparte) · herramientas para un
 // trabajador (al confirmar se dan de alta en Llaves y herramientas y se le entregan) ·
 // ropa de trabajo para un trabajador · otro gasto general (con categoría).
-const DESTINOS = ['obra', 'varias', 'herramientas', 'ropa', 'almacen', 'general', 'vehiculo'];
-const DESTINO_TXT = { obra: 'Obra', varias: 'Varias obras', herramientas: 'Herramientas', ropa: 'Ropa de trabajo', almacen: 'Stock de almacén', general: 'Gasto general', vehiculo: 'Vehículo' };
+const DESTINOS = ['obra', 'varias', 'herramientas', 'ropa', 'almacen', 'general', 'vehiculo', 'cliente'];
+const DESTINO_TXT = { obra: 'Obra', varias: 'Varias obras', herramientas: 'Herramientas', ropa: 'Ropa de trabajo', almacen: 'Stock de almacén', general: 'Gasto general', vehiculo: 'Vehículo', cliente: 'Cliente (sin obra)' };
 function limpiarWorker(w) { if (!w || !w.id) return null; return { id: String(w.id), name: String(w.name || '').trim().slice(0, 80) }; }
 
 async function getDB() { return require('./db').getDB(); }
@@ -304,6 +304,8 @@ async function editar(id, data, por) {
   if ('albaranesRef' in data) set.albaranesRef = (Array.isArray(data.albaranesRef) ? data.albaranesRef : String(data.albaranesRef || '').split(/[,\s;]+/)).map(x => String(x).trim()).filter(Boolean).slice(0, 60);
   if ('nota' in data) set.nota = String(data.nota || '').trim().slice(0, 300) || null;
   if ('categoria' in data) set.categoria = data.categoria ? String(data.categoria).trim().toLowerCase() : null;
+  // Reparación suelta sin obra: va al cliente (comunidad, particular…) para ver su historial y lo que nos deja.
+  if ('clienteNombre' in data) set.clienteNombre = String(data.clienteNombre || '').trim().slice(0, 160) || null;
   if ('destino' in data) { if (!DESTINOS.includes(data.destino)) throw new Error('Destino no válido'); set.destino = data.destino; }
   if ('paraWorker' in data) set.paraWorker = limpiarWorker(data.paraWorker);
   // Vehículo de la flota (/vehiculos): sus gastos se ven en su ficha.
@@ -377,6 +379,7 @@ async function revisar(id, por, { enviarStel = true, herramientas = null, almace
   if (dest === 'obra' && !c.obraId) throw new Error('Elige la obra (o cambia el destino: varias obras, herramientas, ropa o gasto general)');
   if (dest === 'varias' && !(c.reparto || []).length) throw new Error('Reparte el importe entre las obras');
   if (dest === 'general' && !c.categoria) throw new Error('Pon la categoría del gasto general');
+  if (dest === 'cliente' && !c.clienteNombre) throw new Error('Elige el cliente');
   if (dest === 'vehiculo' && !c.vehiculoId && !(c.lineas || []).some(l => l.vehiculoId)) throw new Error('Elige el vehículo (o el de cada línea)');
   if (dest === 'almacen' && !(Array.isArray(almacen) && almacen.length) && !(c.almacenCreado || []).length) throw new Error('Marca qué líneas entran en el almacén');
   const set = { estado: 'revisada', revisadaPor: por || '', revisadaAt: new Date(), updatedAt: new Date() };
@@ -426,7 +429,7 @@ async function revisar(id, por, { enviarStel = true, herramientas = null, almace
         const pdf = await fw.fotosAPdf(imgs.map(f => ({ data: Buffer.from(f.data.buffer || f.data).toString('base64'), media_type: f.mimetype })));
         if (pdf) attachments.push({ filename: `${c.tipo}-${(c.proveedor || 'proveedor').replace(/[^\w-]+/g, '_')}-${(c.numero || id).replace(/[^\w-]+/g, '_')}.pdf`, content: pdf, contentType: 'application/pdf' });
       }
-      const obraRef = dest === 'obra' ? c.obraRef : dest === 'varias' ? (c.reparto || []).map(p => p.obraRef).join(' + ') : null;
+      const obraRef = dest === 'obra' ? c.obraRef : dest === 'varias' ? (c.reparto || []).map(p => p.obraRef).join(' + ') : dest === 'cliente' ? c.clienteNombre : null;
       const catGasto = c.categoria || ({ herramientas: 'herramientas', ropa: 'ropa', almacen: 'material' })[dest] || null;
       const r = await fw.reenviarFacturaMail({ attachments, obraRef, obraId: c.obraId || null, origen: 'compras', from: por || 'oficina', nota: [c.proveedor, c.numero ? 'nº ' + c.numero : null, c.total != null ? c.total + ' €' : null, (dest === 'herramientas' || dest === 'ropa') ? DESTINO_TXT[dest] + (c.paraWorker ? ' para ' + c.paraWorker.name : ' (stock en oficina)') : null].filter(Boolean).join(' · '), categoria: !obraRef ? catGasto : null });
       set.enviadaStel = { ok: !!r.ok, at: new Date(), detalle: r.reply || null };

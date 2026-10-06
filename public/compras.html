@@ -80,7 +80,7 @@ td input{padding:6px 7px;font-size:13px;border-radius:7px}th{font-size:10.5px;co
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
 const tok=localStorage.getItem('cp_token')||localStorage.getItem('cpWT');
 let estadoTab='por_revisar', obras=[], workers=[], cur=null, pick=null, _blobs=[];
-const DEST_TXT={obra:'🏗️ Una obra',varias:'🏗️🏗️ Varias obras (repartir)',herramientas:'🔧 Herramientas para un trabajador',ropa:'👕 Ropa de trabajo para un trabajador',almacen:'📦 Stock de almacén (se va sacando por obras)',general:'🏢 Otro gasto general',vehiculo:'🚐 Un vehículo (taller, gasolina, seguro…)'};
+const DEST_TXT={obra:'🏗️ Una obra',cliente:'👤 Un cliente (reparación sin obra)',varias:'🏗️🏗️ Varias obras (repartir)',herramientas:'🔧 Herramientas para un trabajador',ropa:'👕 Ropa de trabajo para un trabajador',almacen:'📦 Stock de almacén (se va sacando por obras)',general:'🏢 Otro gasto general',vehiculo:'🚐 Un vehículo (taller, gasolina, seguro…)'};
 const TIPO_TXT={albaran:'Albarán',factura:'Factura',ticket:'Ticket',devolucion:'Devolución',otro:'Documento'};
 const CATS=['material','combustible','herramientas','subcontrata','comisiones','gestoria','seguros','suministros','alquiler','otros'];   // comisiones: CINC cobra el 10 % de los trabajos que nos pasa
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -162,6 +162,7 @@ async function abrir(id){
         <div id="d-herr" style="display:none;font-size:12.5px;color:var(--text2);line-height:1.5;margin-top:6px">${rev?((c.activosCreados||[]).length?'✅ Dadas de alta en Llaves y herramientas: '+c.activosCreados.map(a=>esc(a.codigo)+' '+esc(a.nombre)).join(', '):''):'Al confirmar, las líneas marcadas se dan de alta en <b>Llaves y herramientas</b>, tantas unidades como diga la cantidad (4 × pantalón = 4 prendas; el importe se reparte por unidad): entregadas a esa persona, o en oficina si no eliges a nadie (se reparten después desde allí).'}</div></div>
       <div id="d-alm" style="display:none;font-size:12.5px;color:var(--text2);line-height:1.5;margin-top:6px">${rev?((c.almacenCreado||[]).length?'📦 En el almacén: '+c.almacenCreado.map(a=>esc(a.nombre)+' ×'+a.cantidad).join(', ')+' · <a href="/almacen" style="color:var(--blue)">ver almacén</a>':''):'Al confirmar, las líneas marcadas 📦 entran en el <b>almacén</b> con su cantidad y precio (se agrupan por nombre). Marca <b>♻️</b> en las que luego hay que recoger (big bags, contenedores).'}</div>
       <div id="d-veh" style="display:none"><label class="f">¿De qué vehículo?</label><select id="f-veh" ${rev?'disabled':''}><option value="">— elige —</option></select><label class="f">Tipo de gasto</label><select id="f-vcat" ${rev?'disabled':''}></select><div style="font-size:12px;color:var(--text3);margin-top:4px">Los vehículos se dan de alta en <a href="/vehiculos" style="color:var(--blue)">🚐 Vehículos</a>, donde se ve lo que cuesta cada uno. Si es la ITV, al confirmar se apunta en su ficha con la próxima fecha. <a href="/vehiculos" style="color:var(--blue)">Ir a vehículos</a>.</div></div>
+      <div id="d-cli" style="display:none"><label class="f">¿De qué cliente?</label><input id="f-cli" list="cli-list" value="${esc(c.clienteNombre||'')}" placeholder="Comunidad, particular… (como en StelOrder)" ${rev?'disabled':''}><datalist id="cli-list"></datalist><div style="font-size:12px;color:var(--text3);margin-top:4px">Para reparaciones sueltas que no son una obra: el gasto queda en la ficha del cliente (Dashboard → Comunidades), junto a sus obras y lo que le facturamos.</div></div>
       <div id="gasto" style="display:none"><label class="f">Categoría del gasto</label><select id="f-cat" ${rev?'disabled':''}><option value="">— elige —</option>${CATS.map(k=>`<option value="${k}" ${c.categoria===k?'selected':''}>${k}</option>`).join('')}</select></div>
       <label class="f">Líneas (${(c.lineas||[]).length})</label>
       <div id="d-lveh" style="display:none;font-size:12.5px;color:var(--text2);line-height:1.5;margin-bottom:6px">⛽ <b>Cada línea a su vehículo</b> (repostajes de varias furgonetas): se propone solo con el correo de Esclat de cada repostaje, las capturas de su app o el tipo de combustible.
@@ -299,8 +300,11 @@ async function subirCapturas(inp){const fs=[...inp.files];if(!fs.length)return;c
   try{const r=await fetch('/api/vehiculos/repostajes/capturas',{method:'POST',headers:{Authorization:'Bearer '+tok},body:fd});const d=await r.json();if(!r.ok)throw new Error(d.error||'HTTP '+r.status);
     toast(`📱 ${d.leidos} tiquet(s) leídos${d.sinVehiculo.length?' · no sé cuál es: '+d.sinVehiculo.join(', '):''}`,'ok');await lineasVehiculo();}
   catch(e){toast(e.message,'error');contarLv();}finally{inp.value='';}}
+let _clientes=null;
+async function cargarClientes(){const dl=document.getElementById('cli-list');if(!dl)return;try{if(!_clientes){const d=await api('GET','/api/comunidades');_clientes=d.todas||[];}dl.innerHTML=_clientes.map(n=>`<option value="${esc(n)}">`).join('');}catch(e){}}
 function onDest(inicial){const d=destSel();const show=(id,v)=>document.getElementById(id).style.display=v?'':'none';
   show('d-veh',d==='vehiculo');if(d==='vehiculo')cargarVehiculos();
+  show('d-cli',d==='cliente');if(d==='cliente')cargarClientes();
   const lv=d==='vehiculo'&&document.querySelectorAll('#lineas tbody tr').length>=2;show('d-lveh',lv);document.querySelectorAll('#lineas .vcol').forEach(e=>e.style.display=lv?'':'none');if(lv)lineasVehiculo();
   show('d-obra',d==='obra');show('reparto',d==='varias');show('d-quien',d==='herramientas'||d==='ropa');show('d-herr',d==='herramientas'||d==='ropa');show('d-alm',d==='almacen');show('gasto',d==='general');
   document.getElementById('quien-lbl').textContent=d==='herramientas'?'¿Quién se queda las herramientas?':'¿Para quién es la ropa?';
@@ -331,6 +335,7 @@ function leerForm(){
   const d={tipo:g('f-tipo'),fecha:g('f-fecha'),proveedor:g('f-prov'),numero:g('f-num'),base:g('f-base'),iva:g('f-iva'),total:g('f-total'),albaranesRef:g('f-alb'),lineas:filas.map(({alta,...l})=>l),destino:dest,
     categoria:dest==='general'?g('f-cat'):dest==='vehiculo'?g('f-vcat'):dest==='herramientas'?'herramientas':dest==='ropa'?'ropa':dest==='almacen'?'material':null,
     vehiculoId:dest==='vehiculo'?(g('f-veh')||null):null,
+    clienteNombre:dest==='cliente'?(g('f-cli').trim()||null):null,
     paraWorker:(dest==='herramientas'||dest==='ropa')&&q.value?{id:q.value,name:q.options[q.selectedIndex].textContent}:null};
   if(dest==='varias'){d.reparto=leerReparto();d.obraId=null;}else if(dest==='obra'){d.obraId=pick.value||null;d.reparto=[];}else{d.obraId=null;d.reparto=[];}
   d._herramientas=(dest==='herramientas'||dest==='ropa')?filas.filter(l=>l.alta).map(l=>({nombre:l.descripcion.trim(),cantidad:Number(String(l.cantidad).replace(',','.'))||1,talla:l.talla.trim(),valor:String(l.importe).replace(',','.'),valorEsTotal:1})):[];
@@ -366,6 +371,7 @@ async function confirmar(){if(!(await guardar(true)))return;
   if(d.destino==='varias'&&!(d.reparto||[]).length){toast('Reparte el importe entre las obras','error');return;}
   if(d.destino==='varias'&&_repPicks.some((p,i)=>!p.value&&Number(String(document.getElementById('ri-'+i).value).replace(',','.')))){toast('Hay una parte del importe sin obra: elígela o quita esa fila','error');return;}
   if(d.destino==='general'&&!d.categoria){toast('Pon la categoría del gasto','error');return;}
+  if(d.destino==='cliente'&&!d.clienteNombre){toast('Elige el cliente','error');return;}
   if(d.destino==='vehiculo'&&!d.vehiculoId&&!d.lineas.some(l=>l.vehiculoId)){toast('Elige el vehículo (o el de cada línea)','error');return;}
   if(d.destino==='almacen'&&!d._almacen.length){toast('Marca qué líneas entran en el almacén','error');return;}
   let txt=['factura','ticket'].includes(d.tipo)&&d._enviarStel?'Se da por revisada y se envía a StelOrder (contabilidad).':'Se da por revisada'+(['email','whatsapp'].includes(cur.origen)?' (sin reenviar a StelOrder).':'. Los albaranes y devoluciones se quedan solo en el dashboard (no van a StelOrder).');

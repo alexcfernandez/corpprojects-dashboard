@@ -954,6 +954,10 @@ app.get('/api/comunidades', requireAuth, async (req, res) => {
     res.json({ todas, conFicha });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+// Cuentas de un cliente: facturado, coste de sus obras y gastos sueltos a su nombre (Compras → «Un cliente»).
+app.get('/api/clientes/historial', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./clientes').historial(req.query.nombre)); } catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/comunidades/ficha', requireAuth, async (req, res) => {
   try {
     const target = req.query.comunidad; const scope = req.query.scope || 'cliente';

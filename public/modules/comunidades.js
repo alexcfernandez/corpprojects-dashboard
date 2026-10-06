@@ -81,9 +81,31 @@
             <button class="cb-btn" onclick='CP.Comunidades.anadir(${JSON.stringify(comunidad)})'>+ Añadir</button>
           </div>
           <div style="font-size:12px;color:var(--muted);margin-top:6px">Se clasifica sola en su categoría.</div>
-        </div>`;
+        </div>
+        <div id="com-cuentas" style="margin-top:22px"><p style="color:var(--muted)">Cargando cuentas del cliente…</p></div>`;
       cont.innerHTML = html;
+      cuentas(comunidad);
     } catch (e) { cont.innerHTML = `<p style="color:var(--red)">Error: ${esc(e.message)}</p>`; }
+  }
+
+  // 💶 Cuentas: facturado, coste de sus obras y gastos sueltos a su nombre (Compras → «Un cliente»).
+  async function cuentas(comunidad) {
+    const el = document.getElementById('com-cuentas'); if (!el) return;
+    let d; try { d = await api('/api/clientes/historial?nombre=' + encodeURIComponent(comunidad)); } catch (e) { el.innerHTML = ''; return; }
+    if (_sel !== comunidad) return;
+    const eur = v => Number(v || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
+    const fd = f => f ? String(f).slice(0, 10).split('-').reverse().join('/') : '';
+    const t = d.totales;
+    const kpi = (l, v, c) => `<div style="flex:1;min-width:130px;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px 12px"><div style="font-size:11px;color:var(--muted)">${l}</div><div style="font-size:18px;font-weight:700;${c ? 'color:' + c : ''}">${v}</div></div>`;
+    const tabla = (cab, filas) => `<table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:6px"><tr>${cab.map(c => `<th style="text-align:left;padding:5px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600">${c}</th>`).join('')}</tr>${filas.map(f => `<tr>${f.map(c => `<td style="padding:5px;border-bottom:1px solid var(--border)">${c}</td>`).join('')}</tr>`).join('')}</table>`;
+    el.innerHTML = `<h3 style="margin:0 0 8px">💶 Cuentas del cliente</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${kpi('Facturado (sin IVA)', eur(t.facturado))}${kpi('Pendiente de cobro', eur(t.pendienteCobro), t.pendienteCobro > 0 ? 'var(--amber,#f59e0b)' : '')}${kpi('Gasto en sus obras', eur(t.gastoObras))}${kpi('Gasto suelto (sin obra)', eur(t.gastoDirecto))}${kpi('Queda (sin mano de obra propia)', eur(t.margenSinManoObra), t.margenSinManoObra < 0 ? 'var(--red,#f05252)' : 'var(--green,#22c487)')}</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:6px">Gastos sin IVA, de Compras y facturas de proveedor. No incluye las horas de nuestra gente (eso está en la rentabilidad de cada obra).</div>
+      ${d.obras.length ? `<div style="font-weight:700;margin-top:14px">🏗️ Obras (${d.obras.length})</div>` + tabla(['Obra', 'Estado', 'Presupuesto', 'Gasto en compras'], d.obras.map(o => [esc(o.referencia), esc(o.estado), o.presupuesto ? eur(o.presupuesto) : '—', eur(o.compras) + ` <span style="color:var(--muted)">(${o.nCompras})</span>`])) : ''}
+      <div style="font-weight:700;margin-top:14px">👤 Gastos sueltos a su nombre (${d.compras.length})</div>
+      ${d.compras.length ? tabla(['Fecha', 'Proveedor', 'Nº', 'Importe', ''], d.compras.map(c => [fd(c.fecha), esc(c.proveedor || ''), esc(c.numero || ''), eur(c.base != null ? c.base : c.total), c.estado === 'revisada' ? '' : '<span style="color:var(--amber,#f59e0b)">por revisar</span>'])) : '<div style="font-size:12.5px;color:var(--muted)">Ninguno. En Compras, «¿Para qué es?» → «👤 Un cliente (reparación sin obra)».</div>'}
+      <div style="font-weight:700;margin-top:14px">🧾 Facturas que le hemos hecho (${d.nFacturas})</div>
+      ${d.facturas.length ? tabla(['Fecha', 'Nº', 'Base', 'Pendiente'], d.facturas.map(f => [fd(f.fecha), esc(f.numero), eur(f.base), f.pendiente > 0.01 ? `<b style="color:var(--amber,#f59e0b)">${eur(f.pendiente)}</b>` : '✓'])) : '<div style="font-size:12.5px;color:var(--muted)">Ninguna.</div>'}`;
   }
 
   async function anadir(comunidad) {
