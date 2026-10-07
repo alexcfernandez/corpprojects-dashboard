@@ -871,6 +871,13 @@ app.get('/api/inicio', requireAuth, async (req, res) => {
     const fmt = d => d.toISOString().slice(0, 10); const semana = await getPlanning(fmt(lunes), fmt(domingo));
     out.planning = { hoy: semana.filter(p => p.date === hoy).map(p => ({ workerName: p.workerName, color: p.color, client: p.client, tipo: p.tipo, horaInicio: p.horaInicio, workOrderNumber: p.workOrderNumber })), semanaTotal: semana.length };
   } catch (e) { out.planning = { hoy: [], semanaTotal: 0 }; } })());
+  // 8) Saldo de las cuentas (banco automático, se lee una vez al día) · 9) Compras por revisar
+  t.push((async () => { try {
+    const db = await require('./db').getDB();
+    const conns = await db.collection('bancoConexiones').find({ estado: 'activa' }).toArray();
+    out.banco = conns.flatMap(c => (c.cuentas || []).filter(a => a.saldo != null).map(a => ({ banco: c.banco, cuenta: (a.nombre || '').split(' · ').pop(), fin: a.iban ? a.iban.slice(-4) : null, saldo: a.saldo, saldoAt: a.saldoAt, reserva: !!(a.iban && a.iban.endsWith(process.env.RESERVA_IBAN || '6452')) })));
+  } catch (e) { out.banco = []; } })());
+  t.push((async () => { try { out.compras = { porRevisar: await require('./compras').contarPendientes() }; } catch (e) { out.compras = { porRevisar: null }; } })());
   await Promise.all(t);
   res.json(out);
 });

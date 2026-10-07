@@ -65,3 +65,18 @@ body.light table th { color: #64748b; }
 
 /* Reservas: en el móvil, dos columnas */
 @media (max-width: 640px) { .cp-resfila { grid-template-columns: 1fr auto !important; } .cp-resfila > div:nth-child(3), .cp-resfila > div:nth-child(4) { grid-column: span 1; } }
+
+/* Portada */
+@keyframes cpGrow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.ini-barra { transform-box: fill-box; transform-origin: bottom; animation: cpGrow .6s cubic-bezier(.2,.8,.2,1) both; }
+@media (max-width: 900px) { .ini-grid { grid-template-columns: 1fr !important; } }
+.tools-quick.compacto { display: flex !important; flex-wrap: wrap; gap: 8px; grid-template-columns: none !important; }
+.tools-quick.compacto .tq { flex: 0 0 auto; display: inline-flex; flex-direction: row; align-items: center; gap: 6px; padding: 8px 12px; min-height: 0; border-radius: 999px; }
+.tools-quick.compacto .tq .em { font-size: 15px; margin: 0; }
+.tools-quick.compacto .tq .lb { font-size: 12.5px; margin: 0; }
+.ini-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+.ini-kpi .k-l { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; font-weight: 600; }
+.ini-kpi .k-v { font-family: var(--font-display); font-size: 28px; font-weight: 800; margin-top: 6px; line-height: 1.1; white-space: nowrap; }
+.ini-kpi .k-s { font-size: 12px; color: var(--text3); margin-top: 4px; }
+@media (max-width: 900px) { .ini-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .ini-kpis { gap: 8px; } .ini-kpi { padding: 12px !important; } .ini-kpi .k-l { font-size: 10px; letter-spacing: .04em; } .ini-kpi .k-v { font-size: 21px; } .ini-kpi .k-s { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }

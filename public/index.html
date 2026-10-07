@@ -576,7 +576,7 @@ let showY={2025:true,2026:true}, cy='all';
 let CH={};
 function dc(id){if(CH[id]){CH[id].destroy();delete CH[id];}}
 const CSC={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${new Intl.NumberFormat('es-ES').format(Math.round(ctx.raw))} €`}}},scales:{y:{ticks:{callback:v=>(v/1000).toFixed(0)+'k',color:'#5a6278',font:{size:10}},grid:{color:'rgba(255,255,255,.05)'},border:{color:'rgba(255,255,255,.1)'}},x:{ticks:{color:'#5a6278',font:{size:10},maxRotation:45,autoSkip:false},grid:{display:false},border:{color:'rgba(255,255,255,.1)'}}}};
-function eur(v){return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(v||0)}
+function eur(v){return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0,useGrouping:'always'}).format(v||0)}
 function dt(d){return d?new Date(d).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'}):'—'}
 function lB(l){return{ok:'<span class="badge bgo">✅ <15d</span>',warning1:'<span class="badge bw1">⚠️ 15d</span>',warning2:'<span class="badge bw2">⚠️⚠️ 30d</span>',urgent:'<span class="badge bur">🔴 45d</span>',critical:'<span class="badge bcr">🚨 60d+</span>'}[l]||l}
 function eB(k){return{accepted:'<span class="badge bgo">✅ Aceptado</span>',pending:'<span class="badge bw1">⏳ Pendiente</span>',closed:'<span class="badge bbl">🔒 Cerrado</span>',rejected:'<span class="badge bur">❌ Rechazado</span>'}[k]||k}
@@ -1371,7 +1371,7 @@ async function testN(t){const d=await af('/api/test-notification',{method:'POST'
 function showNR(m){const el=document.getElementById('nRes');if(el){el.textContent='✅ '+m;el.style.display='block';setTimeout(()=>el.style.display='none',4000);}}
 
 // ── TABS ──────────────────────────────────────────────────────────
-function eur(n){ return (n||0).toLocaleString('es-ES',{maximumFractionDigits:0})+' €'; }
+function eur(n){ return (n||0).toLocaleString('es-ES',{maximumFractionDigits:0,useGrouping:'always'})+' €'; }
 
 // Portada para roles sin dinero (Encargado): accesos directos a su trabajo.
 function renderInicioOperativo(c){
@@ -1488,62 +1488,66 @@ async function renderInicio(){
       </div>
     </div>`;
 
+  // ── PORTADA (7/10/2026): saludo y lo urgente arriba; 4 cifras; dos columnas (dinero | obra); reservas;
+  // accesos rápidos al final. «Hoy en obra», «Obras abiertas» y «Reservas» se rellenan en sus propios bloques,
+  // que aquí solo se colocan en su sitio.
+  const ahora=new Date(), hora=ahora.getHours();
+  const nombre=((cpUser().name||'').split(' ')[0])||'';
+  const saludo=(hora<13?'Buenos días':hora<20?'Buenas tardes':'Buenas noches')+(nombre?', '+nombre:'');
+  const fechaTxt=(t=>t.charAt(0).toUpperCase()+t.slice(1))(ahora.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'}));
+  const bancoPpal=(d.banco||[]).filter(b=>!b.reserva);
+  const saldoPpal=bancoPpal.reduce((a,b)=>a+(Number(b.saldo)||0),0);
+  const reserva=(d.banco||[]).filter(b=>b.reserva);
+  const urg=[];
+  const add=(n,txt,grupo,tab,color,href)=>{if(n>0)urg.push(`<button class="cp-chip" style="cursor:pointer;background:var(--bg2);font-size:13px;padding:7px 12px;border-color:${color}55;color:var(--text)" onclick="${href?`location.href='${href}'`:`irA('${grupo}','${tab}')`}"><b style="color:${color}">${n}</b> ${txt}</button>`);};
+  add(f.criticas||0,'cobros críticos','dinero','pendientes','var(--red)');
+  add((d.compras&&d.compras.porRevisar)||0,'compras por revisar','','', 'var(--amber)','/compras');
+  add(par.porRevisar||0,'partes por revisar','obras','partes','var(--amber)');
+  add(ped.rojo||0,'pedidos urgentes','obras','pedidos','var(--red)');
+  add(em.urgentes||0,'emails urgentes','ajustes','emails','var(--blue)');
+  add(par.porFacturar||0,'partes por facturar','obras','partes','var(--amber)');
+  const kpi2=(label,val,sub,color,onclick)=>`<div class="card ini-kpi" style="margin:0;${onclick?'cursor:pointer':''}" ${onclick?`onclick="${onclick}"`:''}>
+      <div class="k-l">${label}</div><div class="k-v" style="color:${color||'var(--text)'}">${val}</div><div class="k-s">${sub||''}</div></div>`;
+  // Gráfica con barras en degradado
+  const barras2=serie.map((s,i)=>{const h=Math.max(2,(s.total/maxV)*(VH-padB-padT)),bw=slot*0.52,x=i*slot+(slot-bw)/2,y=VH-padB-h,et=s.total>=1000?(s.total/1000).toFixed(1)+'k':Math.round(s.total);
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="8" fill="url(#gIni)" class="ini-barra" style="animation-delay:${i*60}ms"></rect>
+      <text x="${(x+bw/2).toFixed(1)}" y="${(VH-padB+17).toFixed(1)}" text-anchor="middle" font-size="13" fill="var(--text3)">${s.label}</text>
+      <text x="${(x+bw/2).toFixed(1)}" y="${(y-7).toFixed(1)}" text-anchor="middle" font-size="12.5" fill="var(--text2)" font-weight="700">${et}</text>`;}).join('');
+  const grafica=serie.length?`<svg viewBox="0 0 ${VW} ${VH}" style="width:100%;height:220px;display:block"><defs><linearGradient id="gIni" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4d9cf8"/><stop offset="1" stop-color="#22c487" stop-opacity=".85"/></linearGradient></defs>${barras2}</svg>`:chartSvg;
+  const planHoy=(d.planning&&d.planning.hoy&&d.planning.hoy.length)
+    ? `<div style="display:flex;flex-direction:column;gap:6px">${d.planning.hoy.map(p=>`<div style="display:flex;align-items:center;gap:8px;font-size:13px;padding:7px 10px;background:${p.color}14;border-left:3px solid ${p.color};border-radius:8px"><span>${p.tipo==='visita'?'👤':'🔧'}</span><strong>${(p.workerName||'').split(' ')[0]||'—'}</strong>${p.client?`<span style="color:var(--text2)">· ${p.client}</span>`:''}${p.horaInicio?`<span style="margin-left:auto;color:var(--text3);font-size:12px">${p.horaInicio}</span>`:''}</div>`).join('')}</div>`
+    : `<div style="color:var(--text3);font-size:13px;padding:6px 0">Nada planificado para hoy.</div>`;
   c.innerHTML=`
-    <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:6px">
-      ${kpi('Facturado este mes',eur(f.mes),`${f.mesCount||0} facturas`,'var(--green)')}
-      ${kpi('Pendiente de cobro',eur(f.pendiente),`${f.pendienteCount||0} facturas`,'var(--red)')}
-      ${kpi('Pedidos activos',ped.total||0,`${ped.rojo||0} 🔴 · ${ped.ambar||0} 🟠`,'var(--blue)')}
-      ${kpi('Pte. de facturar',par.porFacturar||0,'partes verificados','var(--amber)')}
+    <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin:6px 0 14px">
+      <div><div style="font-family:var(--font-display);font-size:28px;font-weight:800;letter-spacing:-.01em">${saludo} 👋</div><div style="color:var(--text3);font-size:13.5px">${fechaTxt}</div></div>
+      <div style="margin-left:auto;font-size:11.5px;color:var(--text3)">Actualizado ${new Date(d.lastUpdated).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}</div>
     </div>
-
-    <div class="card">
-      <div class="card-title">📈 Facturación últimos 6 meses</div>
-      ${chartSvg}
+    ${urg.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"><span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:700;align-self:center;margin-right:4px">Hoy toca</span>${urg.join('')}</div>`:`<div style="font-size:13px;color:var(--green);margin-bottom:14px">✔ Nada urgente pendiente</div>`}
+    <div class="ini-kpis">
+      ${kpi2('Facturado este mes',eur(f.mes),`${f.mesCount||0} facturas`,'var(--green)',"irA('dinero','facturas')")}
+      ${kpi2('Pendiente de cobro',eur(f.pendiente),`${f.pendienteCount||0} facturas · ${f.criticas||0} críticas`,'var(--red)',"irA('dinero','pendientes')")}
+      ${kpi2('En el banco',bancoPpal.length?eur(saldoPpal):'—',bancoPpal.length?bancoPpal.map(b=>`${b.banco}${b.fin?' …'+b.fin:''}`).join(' · '):'el saldo llega con la lectura de la mañana','var(--blue)',"irA('dinero','banco')")}
+      ${kpi2('En la reserva',reserva.length?eur(reserva.reduce((a,b)=>a+(Number(b.saldo)||0),0)):'—',reserva.length?'cuenta …'+(reserva[0].fin||'')+' · impuestos y nóminas':'cuenta de reserva sin conectar','var(--amber)',"document.getElementById('inicio-reservas')&&document.getElementById('inicio-reservas').scrollIntoView({behavior:'smooth'})")}
     </div>
-
-    <div class="card" style="cursor:pointer" onclick="irA('operacion','planning')">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div class="card-title" style="margin:0">🗓 Planificación de hoy</div>
-        <span style="font-size:11px;color:var(--text3)">${(d.planning&&d.planning.semanaTotal)||0} esta semana ›</span>
+    <div class="ini-grid" style="display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:14px;align-items:start">
+      <div>
+        <div class="card"><div class="card-title">📈 Facturación de los últimos 6 meses</div>${grafica}</div>
+        ${(f.topPendientes&&f.topPendientes.length)?`<div class="card"><div class="card-title">🔴 Cobros más urgentes</div><table style="width:100%;border-collapse:collapse;font-size:13px"><tbody>${f.topPendientes.map(p=>`<tr style="cursor:pointer" onclick="irA('dinero','pendientes')"><td style="padding:8px 6px"><strong>${p.number||''}</strong></td><td style="padding:8px 6px;color:var(--text2)">${p.client||''}</td><td style="padding:8px 6px;text-align:right;font-weight:700;color:var(--red)">${eur(p.pending)}</td><td style="padding:8px 6px;text-align:right;color:var(--text3)">${p.days||0} d</td></tr>`).join('')}</tbody></table></div>`:''}
       </div>
-      ${(d.planning&&d.planning.hoy&&d.planning.hoy.length)
-        ? `<div style="display:flex;flex-direction:column;gap:6px">${d.planning.hoy.map(p=>`
-            <div style="display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 8px;background:${p.color}14;border-left:3px solid ${p.color};border-radius:5px">
-              <span>${p.tipo==='visita'?'👤':'🔧'}</span>
-              <strong>${(p.workerName||'').split(' ')[0]||'—'}</strong>
-              ${p.client?`<span style="color:var(--text2)">· ${p.client}</span>`:''}
-              ${p.workOrderNumber?`<span style="color:var(--text3);font-size:11px">${p.workOrderNumber}</span>`:''}
-              ${p.horaInicio?`<span style="margin-left:auto;color:var(--text3);font-size:12px">${p.horaInicio}</span>`:''}
-            </div>`).join('')}</div>`
-        : `<div style="color:var(--text3);font-size:13px;padding:8px 0">No hay nada planificado para hoy. Pulsa para abrir el calendario.</div>`}
+      <div>
+        <div class="card" style="cursor:pointer" onclick="irA('obras','planning')"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><div class="card-title" style="margin:0">🗓 Hoy</div><span style="font-size:11.5px;color:var(--text3)">${(d.planning&&d.planning.semanaTotal)||0} esta semana ›</span></div>${planHoy}
+          ${pre.hoy!=null?`<div style="font-size:12.5px;color:var(--text2);margin-top:10px">👷 ${pre.hoy||0} han fichado hoy</div>`:''}</div>
+        <div id="ini-slot-hoy"></div>
+      </div>
     </div>
-
-    <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin:10px 2px 8px">Requiere tu atención</div>
-    <div style="display:flex;flex-wrap:wrap;gap:12px">
-      ${att('🔧','Pedidos urgentes',(ped.rojo||0),`${ped.rojo||0} en rojo · ${ped.ambar||0} en ámbar`,'operacion','pedidos','var(--red)')}
-      ${att('📋','Partes por revisar',(par.porRevisar||0),'pendientes de verificar','operacion','partes','var(--amber)')}
-      ${att('💰','Facturas críticas',(f.criticas||0),`${f.avisos||0} en aviso`,'dinero','pendientes','var(--red)')}
-      ${att('📧','Emails urgentes',(em.urgentes||0),`${em.sinLeer||0} sin leer`,'gestion','emails','var(--blue)')}
-      ${pre.hoy!=null?att('👷','Presencia hoy',(pre.hoy||0),'han fichado','operacion','presencia','var(--green)'):''}
-    </div>
-
-    ${(f.topPendientes&&f.topPendientes.length)?`
-    <div class="card" style="margin-top:14px">
-      <div class="card-title">🔴 Cobros más urgentes</div>
-      <table style="width:100%;border-collapse:collapse;font-size:13px">
-        <tbody>${f.topPendientes.map(p=>`<tr>
-          <td style="padding:8px 6px;border-bottom:1px solid var(--border2)"><strong>${p.number||''}</strong></td>
-          <td style="padding:8px 6px;border-bottom:1px solid var(--border2);color:var(--text2)">${p.client||''}</td>
-          <td style="padding:8px 6px;border-bottom:1px solid var(--border2);text-align:right;font-weight:700;color:var(--red)">${eur(p.pending)}</td>
-          <td style="padding:8px 6px;border-bottom:1px solid var(--border2);text-align:right;color:var(--text3)">${p.days||0} días</td>
-        </tr>`).join('')}</tbody>
-      </table>
-    </div>`:''}
-
-    <div style="text-align:center;font-size:11px;color:var(--text3);margin-top:14px">Actualizado ${new Date(d.lastUpdated).toLocaleString('es-ES')}</div>
-  `;
+    <div id="ini-slot-reservas" style="margin-top:2px"></div>
+    <div id="ini-slot-accesos" style="margin-top:6px"></div>`;
+  // Colocar los bloques que se rellenan aparte (reservas, «Hoy en obra», «Obras abiertas», accesos rápidos).
+  const mover=(id,slot)=>{const e=document.getElementById(id),s=document.getElementById(slot);if(e&&s&&e.parentElement!==s)s.appendChild(e);};
+  mover('inicio-reservas','ini-slot-reservas');mover('inicio-hoy','ini-slot-hoy');mover('inicio-obras','ini-slot-hoy');
+  const tq=document.querySelector('#tab-inicio .tools-quick');const sa=document.getElementById('ini-slot-accesos');
+  if(tq&&sa){if(tq.parentElement!==sa){sa.innerHTML='<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin:8px 2px">Accesos rápidos</div>';sa.appendChild(tq);}tq.classList.add('compacto');}
 }
-
 function showGrupo(grp, btn){
   // Activar el grupo y mostrar su subnav
   document.querySelectorAll('.nav-grp').forEach(b=>b.classList.remove('active'));
