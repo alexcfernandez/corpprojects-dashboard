@@ -540,10 +540,12 @@
                 </select>
               </div>
               <div>
-                <span class="field-label">Presupuesto (€)</span>
+                <span class="field-label">Presupuesto (€, sin IVA)</span>
                 <input type="number" id="ob-edit-budget" value="${obra.budgetAmount||''}" min="0" class="field-input">
+                <button type="button" class="btn bgh" style="margin-top:6px;padding:5px 10px;font-size:12px" onclick="CP.Obras.buscarPresuStel()">📄 Elegir de StelOrder</button>
               </div>
             </div>
+            <div id="ob-presu-stel" style="margin:-2px 0 12px"></div>
             <div class="field-grid-2" style="margin-bottom:10px">
               <div>
                 <span class="field-label">Nombre de la obra</span>
@@ -573,6 +575,7 @@
         </div>`;
 
       document.body.appendChild(modal);
+      _presuSel = Array.isArray(obra.presupuestosStel) && obra.presupuestosStel.length ? obra.presupuestosStel.slice() : null; pintarPresuStel();
       modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
     } catch(err) { alert('Error: ' + err.message); }
   }
@@ -591,6 +594,34 @@
     } catch(err) { say('❌ ' + err.message, 'var(--red)'); }
   }
 
+  // ── Presupuestos de StelOrder enlazados (base sin IVA; el presupuesto de la obra es la suma) ──
+  let _presuSel = null;
+  function pintarPresuStel() {
+    const el = document.getElementById('ob-presu-stel'); if (!el) return;
+    const l = _presuSel || [];
+    const eu = v => Number(v || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
+    el.innerHTML = l.length ? `<div style="font-size:12px;color:var(--text3);margin-bottom:4px">Presupuestos de StelOrder enlazados (la suma sin IVA es el presupuesto de la obra):</div>` + l.map((p, i) => `<span style="display:inline-flex;gap:6px;align-items:center;background:var(--bg3);border:1px solid var(--border2);border-radius:14px;padding:3px 10px;margin:0 6px 6px 0;font-size:12px">📄 ${ceMod(p.numero)} · ${eu(p.base)} <span style="color:var(--text3)">(${eu(p.total)} con IVA · ${ceMod(p.estado || '')})</span><b style="cursor:pointer;color:var(--red)" onclick="CP.Obras.quitarPresuStel(${i})">×</b></span>`).join('') : '';
+    const b = document.getElementById('ob-edit-budget'); if (b && l.length) b.value = Math.round(l.reduceMod((a, p) => a + p.base, 0) * 100) / 100;
+  }
+  async function buscarPresuStel() {
+    const el = document.getElementById('ob-presu-stel'); if (!el) return;
+    const cli = document.getElementById('ob-edit-client')?.value || '', ref = document.getElementById('ob-edit-reference')?.value || '';
+    el.innerHTML = `<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:10px"><input id="ob-presu-q" class="field-input" placeholder="Buscar por cliente, título o nº (PRT…)" value="${ceMod(cli || ref)}"><div id="ob-presu-res" style="max-height:260px;overflow:auto;margin-top:8px;font-size:13px">Buscando…</div></div>`;
+    const q = document.getElementById('ob-presu-q');
+    const run = async () => { const r = document.getElementById('ob-presu-res'); try { const l = await api('/api/obras/presupuestos-stel?q=' + encodeURIComponent(q.value)); window._presuRes = l;
+      const eu = v => Number(v || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
+      r.innerHTML = l.length ? l.map((p, i) => `<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)"><div style="flex:1"><b>${ceMod(p.numero)}</b> · ${ceMod(p.cliente)} <span style="color:var(--text3)">${p.fecha.split('-').reverse().join('/')}${p.titulo ? ' · ' + ceMod(p.titulo) : ''}</span><br><span style="font-size:12px">${eu(p.base)} sin IVA · ${eu(p.total)} con IVA · <b style="color:${p.estadoKey === 'accepted' ? 'var(--green)' : p.estadoKey === 'rejected' ? 'var(--red)' : 'var(--text2)'}">${ceMod(p.estado)}</b></span></div><button class="btn bp" style="padding:4px 10px;font-size:12px" onclick="CP.Obras.anadirPresuStel(${i})">＋ Enlazar</button></div>`).join('') : 'Nada con ese texto.'; }
+      catch (e) { r.textContent = '❌ ' + e.message; } };
+    let t = null; q.oninput = () => { clearTimeout(t); t = setTimeout(run, 300); }; run();
+  }
+  function anadirPresuStel(i) {
+    const p = (window._presuRes || [])[i]; if (!p) return;
+    _presuSel = (_presuSel || []).filter(x => x.id !== p.id).concat([p]);
+    const c = document.getElementById('ob-edit-client'); if (c && !c.value.trim()) c.value = p.cliente;   // el cliente, si no estaba
+    pintarPresuStel();
+  }
+  function quitarPresuStel(i) { _presuSel = (_presuSel || []).filter((_, j) => j !== i); pintarPresuStel(); }
+
   async function saveObraChanges(id) {
     const status       = document.getElementById('ob-edit-status')?.value;
     const budgetAmount = parseFloat(document.getElementById('ob-edit-budget')?.value || 0);
@@ -601,7 +632,8 @@
     const msg = document.getElementById('ob-modal-msg');
     if (!reference) { if (msg) { msg.textContent='⚠️ Ponle un nombre a la obra'; msg.style.display='block'; msg.style.color='var(--amber)'; } return; }
     try {
-      await api(`/api/obras/${id}`, { method:'PUT', body: JSON.stringify({ status, budgetAmount, aliases, reference, clientName, address }) });
+      const extra = _presuSel ? { presupuestosStel: _presuSel } : {};
+      await api(`/api/obras/${id}`, { method:'PUT', body: JSON.stringify({ status, budgetAmount, aliases, reference, clientName, address, ...extra }) });
       openObra(id); // recargar la ficha para ver la rentabilidad recalculada
       if (msg) { msg.textContent='✅ Guardado'; msg.style.display='block'; msg.style.color='var(--green)'; setTimeout(()=>msg.style.display='none',2000); }
       loadResumen();
@@ -901,6 +933,6 @@ ${pago}
     } catch (err) { alert('No se pudo borrar: ' + err.message); }
   }
 
-  CP.Obras = { render, showTab, loadResumen, loadLista, loadEstudio, nuevaEstudio, estadoEstudio, openObra, saveObraChanges, ubicacion, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, addCert, certRapida, certEstado, conciliarCert, _ccPick, delCert, reciboCert, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick, _fpBack, _fpToggleAll, _fpSum, _fpAsignar };
+  CP.Obras = { buscarPresuStel, anadirPresuStel, quitarPresuStel, render, showTab, loadResumen, loadLista, loadEstudio, nuevaEstudio, estadoEstudio, openObra, saveObraChanges, ubicacion, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, addCert, certRapida, certEstado, conciliarCert, _ccPick, delCert, reciboCert, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick, _fpBack, _fpToggleAll, _fpSum, _fpAsignar };
 
 })(window.CP = window.CP || {});

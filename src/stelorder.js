@@ -282,6 +282,22 @@ const WORK_ESTIMATE_STATES = {
 };
 
 // ─── Presupuestos SAT con familia ────────────────────────────────
+// Presupuestos de StelOrder para elegirlos desde una obra: base SIN IVA (como todos los costes de la obra).
+async function listaPresupuestos() {
+  const [l, { clientMap }] = await Promise.all([getWorkEstimates(), getClients()]);
+  const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+  const ESTADO = { pending: 'Pendiente', accepted: 'Aceptado', rejected: 'Rechazado', closed: 'Cerrado' };
+  return (l || []).filter(x => !x.deleted).map(x => {
+    const im = importesDoc(x);
+    const total = im.total != null ? im.total : Number(x['total-amount']) || 0;
+    const base = im.base != null ? im.base : (Number(x['subtotal-amount']) || r2(total / 1.21));
+    const st = WORK_ESTIMATE_STATES[Number(x['document-state-id'] ?? 0)] || 'pending';
+    return { id: String(x.id), numero: x['full-reference'] || x.reference || String(x.id), fecha: String(x.date || '').slice(0, 10),
+      cliente: (resolveClient(x, clientMap) || {}).name || '', titulo: (x.title && x.title !== 'null') ? String(x.title).slice(0, 120) : '',
+      base: r2(base), total: r2(total), estado: ESTADO[st] || '', estadoKey: st };
+  }).sort((a, b) => b.fecha.localeCompare(a.fecha));
+}
+
 async function getEstimatesSummary() {
   try {
     const [estimates, { clientMap, families }] = await Promise.all([getWorkEstimates(), getClients()]);
@@ -1942,6 +1958,7 @@ async function modificarImportePresupuesto({ id = null, modo, valor = null, part
 
 
 module.exports = {
+  listaPresupuestos,
   getInvoices, getAllReceipts, getAllOrdinaryInvoices, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary, diagProveedores,
   getSuppliers, getPurchaseInvoices, getPurchaseInvoiceDetalle, getExpenses,

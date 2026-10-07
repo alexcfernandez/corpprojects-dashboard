@@ -2582,6 +2582,15 @@ app.post('/api/obras', requireAuth, async (req, res) => {
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
+// Presupuestos de StelOrder para enlazar a una obra (buscador): número, cliente, título, base sin IVA, estado.
+app.get('/api/obras/presupuestos-stel', requireAuth, async (req, res) => {
+  try {
+    const n = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const qs = n(req.query.q).split(/\s+/).filter(w => w.length >= 2);
+    const l = await require('./stelorder').listaPresupuestos();
+    res.json((qs.length ? l.filter(p => { const t = n(`${p.numero} ${p.cliente} ${p.titulo}`); return qs.every(w => t.includes(w)); }) : l).slice(0, 40));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 app.put('/api/obras/:id', requireAuth, async (req, res) => {
   try {
     await obras.updateObra(req.params.id, req.body);

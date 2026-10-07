@@ -242,9 +242,17 @@ async function getObra(id) {
 
 async function updateObra(id, data) {
   const db = await getDB();
-  const allowed = ['clientName','reference','description','address','status','startDate','endDate','budgetAmount','notes','tags','materiales','aliases'];
+  const allowed = ['clientName','reference','description','address','status','startDate','endDate','budgetAmount','notes','tags','materiales','aliases','presupuestosStel'];
   const set = { updatedAt: new Date() };
   allowed.forEach(k => { if (data[k] !== undefined) set[k] = data[k]; });
+  // Presupuestos de StelOrder enlazados a la obra (base sin IVA): el presupuesto de la obra es su suma.
+  if (set.presupuestosStel !== undefined) {
+    const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+    set.presupuestosStel = (Array.isArray(set.presupuestosStel) ? set.presupuestosStel : []).slice(0, 20)
+      .map(p => ({ id: String(p.id || ''), numero: String(p.numero || '').slice(0, 30), fecha: String(p.fecha || '').slice(0, 10), cliente: String(p.cliente || '').slice(0, 120), base: r2(p.base), total: r2(p.total), estado: String(p.estado || '').slice(0, 20) }))
+      .filter(p => p.id);
+    if (set.presupuestosStel.length) set.budgetAmount = r2(set.presupuestosStel.reduce((a, p) => a + p.base, 0));
+  }
   if (Array.isArray(set.aliases)) set.aliases = set.aliases.map(s => String(s || '').trim()).filter(Boolean);
   if (set.reference !== undefined && !String(set.reference || '').trim()) throw new Error('Ponle un nombre a la obra');
   // Fecha de cierre: la usa el selector para enseñar las "cerradas hace poco".
