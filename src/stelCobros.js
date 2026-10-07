@@ -34,9 +34,10 @@ async function plan({ desde = '2026-01-01' } = {}) {
     const total = Math.abs(doc.total);
     const cobradoBanco = r2(Math.min(total, pagos.reduce((a, p) => a + p.importe, 0)));
     const yaEnStel = r2(total - pendiente);
-    const falta = r2(cobradoBanco - yaEnStel);
+    const completo = Math.abs(cobradoBanco - total) <= 0.02 || cobradoBanco >= total;   // ±2 cént. del banco: pagada entera
+    const falta = completo ? r2(pendiente) : r2(cobradoBanco - yaEnStel);
     if (falta <= 0.01) return;
-    out.push({ tipo, id: String(doc.id), numero: doc.numero, tercero: tipo === 'emitida' ? doc.cliente : doc.proveedor, fecha: doc.fecha, total, pendienteStel: r2(pendiente), cobradoBanco, marcar: falta, completo: Math.abs(cobradoBanco - total) <= 0.02, pagos });
+    out.push({ tipo, id: String(doc.id), numero: doc.numero, tercero: tipo === 'emitida' ? doc.cliente : doc.proveedor, fecha: doc.fecha, total, pendienteStel: r2(pendiente), cobradoBanco, marcar: falta, completo, pagos });
   };
   em.forEach(d => mira(d, 'emitida', d.pendiente));
   rec.forEach(d => mira(d, 'recibida', d.pendienteStel));
@@ -72,6 +73,20 @@ async function aplicarUno(p, { por = 'auto' } = {}) {
   const db = await getDB();
   const { ep, sinPagar } = await _recibos(p.tipo, p.id);
   const hechos = [];
+  // Pagada entera (también la factura mensual de Bon Preu con 15 pagos de tarjeta): todos sus recibos pendientes,
+  // pagados con la fecha del último pago; si fueron varios pagos, el concepto lo dice.
+  if (p.completo) {
+    const ult = p.pagos[p.pagos.length - 1];
+    const fp = formaPago(ult);
+    if (p.pagos.length > 1) fp.concept = `${p.pagos.length} pagos del ${p.pagos[0].fecha.split('-').reverse().join('/')} al ${ult.fecha.split('-').reverse().join('/')} · ${fp.concept || ''}`.slice(0, 250);
+    for (const rc of sinPagar) {
+      await S()._client.put(`${ep}/${rc.id}`, { paid: true, 'payment-date': isoT(ult.fecha), ...fp }, { timeout: 25000 });
+      hechos.push({ recibo: rc.id, accion: 'pagado', importe: Math.abs(Number(rc.amount) || 0), fecha: ult.fecha, forma: fp['payment-option-id'] || null });
+      await espera(1100);
+    }
+    await db.collection('stelWriteLog').insertOne({ tipo: 'cobro', doc: p.numero, docId: p.id, tercero: p.tercero, hechos, por, at: new Date() }).catch(() => {});
+    return hechos;
+  }
   let porMarcar = p.marcar;
   // Lo ya cobrado en StelOrder se descuenta de los pagos más antiguos.
   let yaCubierto = r2(p.total - p.pendienteStel);
