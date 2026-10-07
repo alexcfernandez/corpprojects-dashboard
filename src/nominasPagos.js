@@ -38,7 +38,17 @@ async function estado(mes, { hoy = new Date() } = {}) {
   const plantilla = users.filter(u => u.active !== false && !u.autonomo && ['tecnico', 'encargado', 'oficina'].includes(require('./users').normalizeRole(u.role)) && nombresDe(u).some(ws => ws.length >= 2));
   const out = [];
   for (const u of plantilla) {
-    const suyas = noms.filter(n => String(n.userId) === String(u._id)).sort((a, b) => a.mes.localeCompare(b.mes));
+    // Una rectificación sustituye a la nómina de ese mes; las pagas extra se suman (van como otra línea del mes).
+    const delUser = noms.filter(n => String(n.userId) === String(u._id));
+    const porMes = {};
+    delUser.forEach(n => (porMes[n.mes] = porMes[n.mes] || []).push(n));
+    const suyas = Object.entries(porMes).map(([mesN, l]) => {
+      const rect = l.filter(n => /rectific/i.test(`${n.nombre} ${n.notas} ${(n.origen && n.origen.asunto) || ''}`)).sort((a, b) => String(b.subido).localeCompare(String(a.subido)));
+      const extra = l.filter(n => /paga|extra/i.test(`${n.nombre} ${n.notas}`) && !rect.includes(n));
+      const usar = rect.length ? [rect[0], ...extra] : l;
+      const liq = usar.reduce((a, n) => a + ((n.importes && n.importes.liquido) || 0), 0);
+      return { _id: usar[0]._id, mes: mesN, importes: { liquido: usar.every(n => n.importes && n.importes.liquido != null) ? r2(liq) : null } };
+    }).sort((a, b) => a.mes.localeCompare(b.mes));
     const pagos = movs.filter(m => (m.categoria === 'nomina' || /transferencia|a favor de|bizum/i.test(m.concepto || '')) && esDe(m.concepto, u))
       .sort((a, b) => a.fechaOperacion.localeCompare(b.fechaOperacion)).map(m => ({ fecha: m.fechaOperacion, importe: r2(-m.importe), concepto: m.concepto, restante: r2(-m.importe) }));
     // Reparto: cada pago, a la nómina más antigua sin pagar cuyo mes sea ≤ el del pago (o el anterior).

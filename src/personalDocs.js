@@ -55,7 +55,7 @@ async function setConfig(c = {}, por) {
 async function _plantilla() {
   const { getUsers, normalizeRole } = require('./users');
   return ((await getUsers(false)) || []).filter(u => u.role !== 'client' && ['tecnico', 'encargado', 'oficina'].includes(normalizeRole(u.role)) && u.active !== false)
-    .map(u => ({ id: String(u._id), name: u.name, dni: (u.docs && u.docs.dni) || '' }));
+    .map(u => ({ id: String(u._id), name: u.name, dni: (u.docs && u.docs.dni) || '', alias: require('./nominasPagos').nombresDe(u).map(ws => ws.join(' ')) }));
 }
 function _caduca(ambito, tipo, fecha, caduca) {
   if (fechaOk(caduca)) return caduca;
@@ -105,7 +105,8 @@ function _matchTrabajador(plantilla, nombre, dni) {
   const nn = n(nombre); if (!nn) return null;
   const pal = nn.split(' ').filter(x => x.length >= 3);
   let mejor = null, punt = 0;
-  for (const p of plantilla) { const pp = n(p.name).split(' ').filter(x => x.length >= 3); const c = pp.filter(x => pal.includes(x)).length; if (c > punt && (c >= 2 || (pp.length === 1 && c === 1))) { mejor = p; punt = c; } }
+  // Por su nombre o por un alias («David Taladros» en el programa es «David Valencia» en la nómina y el banco).
+  for (const p of plantilla) for (const nom of [p.name, ...(p.alias || [])]) { const pp = n(nom).split(' ').filter(x => x.length >= 3); const c = pp.filter(x => pal.includes(x)).length; if (c > punt && (c >= 2 || (pp.length === 1 && c === 1))) { mejor = p; punt = c; } }
   return mejor;
 }
 async function _clasificarIA(archivo, plantilla) {
