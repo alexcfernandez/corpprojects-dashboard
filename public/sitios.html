@@ -31,7 +31,9 @@ table{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}td,th{p
 .empty{color:var(--text3);text-align:center;padding:40px 16px;line-height:1.6}
 .spinner{display:inline-block;width:18px;height:18px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle}
 @keyframes sp{to{transform:rotate(360deg)}}
-@media print{.header,.card.busca,.btn,.chip,.hbtn{display:none!important}body{background:#fff;color:#000}.card{border-color:#ccc}.det{display:block!important}}
+@media print{.header,.card.busca,.btn,.chip,.hbtn,.np{display:none!important}body{background:#fff;color:#000}.card{border-color:#ccc;break-inside:auto}.det{display:block!important}.pcab{display:block!important}tr{break-inside:avoid}}
+.pcab{display:none;margin:0 0 14px;font-size:12px;color:#333}.pcab b{font-size:15px;color:#000}
+.coste{color:var(--text3);font-weight:400}
 </style>
 </head>
 <body>
@@ -58,11 +60,13 @@ async function buscar(){const q=document.getElementById('q').value.trim();const 
   try{const r=await fetch('/api/presencia/sitio?q='+encodeURIComponent(q)+'&from='+(document.getElementById('from').value||'')+'&to='+(document.getElementById('to').value||''),{headers:{'Authorization':'Bearer '+tok}});const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');if(seq!==_seq)return;_r=d;
     document.getElementById('btn-xls').style.display=d.sitios.length?'':'none';document.getElementById('btn-pdf').style.display=d.sitios.length?'':'none';
     if(!d.sitios.length){el.innerHTML=`<div class="empty">No encuentro nada con «${esc(q)}».<br>Prueba con la calle, el cliente o un mote de la obra.</div>`;return;}
-    el.innerHTML=d.sitios.map((s,i)=>`<div class="card sitio ${s.obraId?'':'txt'}"><div class="st"><div><div class="n">${s.obraId?'🏗️ ':'📝 '}${esc(s.sitio)}</div><div class="s">${s.obraId?[s.direccion,s.motes.length?'motes: '+s.motes.join(', '):'',s.estado].filter(Boolean).map(esc).join(' · '):'texto de la presencia (sin obra creada)'}${s.desde?' · del '+f(s.desde)+' al '+f(s.hasta):' · sin presencia en el periodo'}</div></div>
-      <div class="kpis"><div><b>${s.dias}</b><span>días</span></div><div><b>${s.diasPersona}</b><span>días·persona</span></div><div><b>${s.horas}</b><span>horas</span></div></div></div>
-      ${s.trabajadores.length?`<table><thead><tr><th>Trabajador</th><th class="r">Días</th><th class="r">Horas</th></tr></thead><tbody>${s.trabajadores.map(w=>`<tr><td>${esc(w.name)}</td><td class="r">${w.dias}</td><td class="r"><b>${w.horas}</b></td></tr>`).join('')}</tbody></table>
+    const hoy=new Date().toLocaleDateString('es-ES');const eur=v=>Number(v||0).toLocaleString('es-ES',{style:'currency',currency:'EUR'});
+    el.innerHTML=`<div class="pcab"><b>Corp Projects Holding, S.L.</b><br>Días y horas de trabajo${document.getElementById('from').value||document.getElementById('to').value?' del '+(document.getElementById('from').value?f(document.getElementById('from').value):'inicio')+' al '+(document.getElementById('to').value?f(document.getElementById('to').value):'hoy'):''} · impreso el ${hoy}</div>`+d.sitios.map((s,i)=>`<div class="card sitio ${s.obraId?'':'txt'}"><div class="st"><div><div class="n">${s.obraId?'🏗️ ':'📝 '}${esc(s.sitio)}</div><div class="s">${s.obraId?[s.direccion,s.motes.length?'motes: '+s.motes.join(', '):'',s.estado].filter(Boolean).map(esc).join(' · '):'texto de la presencia (sin obra creada)'}${s.desde?' · del '+f(s.desde)+' al '+f(s.hasta):' · sin presencia en el periodo'}</div></div>
+      <div class="kpis"><div><b>${s.dias}</b><span>días</span></div><div><b>${s.diasPersona}</b><span>días·persona</span></div><div><b>${s.horas}</b><span>horas</span></div>${d.conCoste?`<div class="np"><b>${eur(s.coste)}</b><span>coste mano de obra</span></div>`:''}</div></div>
+      ${s.trabajadores.length?`<table><thead><tr><th>Trabajador</th><th class="r">Días</th><th class="r">Horas</th>${d.conCoste?'<th class="r np">Coste</th>':''}</tr></thead><tbody>${s.trabajadores.map(w=>`<tr><td>${esc(w.name)}</td><td class="r">${w.dias}</td><td class="r"><b>${w.horas}</b></td>${d.conCoste?`<td class="r np">${eur(w.coste)} <span class="coste">(${String(w.costeHora).replace('.',',')} €/h)</span></td>`:''}</tr>`).join('')}</tbody></table>
+      ${d.conCoste?`<div class="np" style="font-size:12px;color:var(--text3);margin-top:6px">El coste solo se ve en pantalla (no sale al imprimir ni en el Excel). Solo mano de obra: materiales y margen, en Dashboard → Obras → rentabilidad.</div>`:''}
       <button class="btn g" style="margin-top:8px;padding:6px 10px;font-size:12px" onclick="document.getElementById('det-${i}').classList.toggle('show')">📅 Ver día a día</button>
-      <div class="det" id="det-${i}"><table><thead><tr><th>Fecha</th><th>Trabajador</th><th class="r">Horas</th><th>Fuente</th></tr></thead><tbody>${s.lineas.map(l=>`<tr><td>${f(l.date)}</td><td>${esc(l.worker)}</td><td class="r">${l.horas}</td><td style="color:var(--text3)">${l.fuente}</td></tr>`).join('')}</tbody></table></div>`:''}
+      <div class="det" id="det-${i}"><table><thead><tr><th>Fecha</th><th>Trabajador</th><th class="r">Horas</th><th class="np">Fuente</th></tr></thead><tbody>${s.lineas.map(l=>`<tr><td>${f(l.date)}</td><td>${esc(l.worker)}</td><td class="r">${l.horas}</td><td class="np" style="color:var(--text3)">${l.fuente}</td></tr>`).join('')}</tbody></table></div>`:''}
     </div>`).join('');
   }catch(e){el.innerHTML='<div class="empty">❌ '+esc(e.message)+'</div>';}}
 // Sin buscar nada: dónde hemos estado los últimos 14 días, lo más reciente arriba.

@@ -526,7 +526,7 @@ async function buscarSitio(texto, { from, to, todos = false } = {}) {
     obraId: s.obraId, sitio: s.sitio, direccion: s.direccion, motes: s.motes, estado: s.estado,
     dias: s.fechas.size, horas: Math.round(s.horas * 100) / 100,
     desde: s.lineas.length ? s.lineas[0].date : null, hasta: s.lineas.length ? s.lineas[s.lineas.length - 1].date : null,
-    trabajadores: Object.values(s.trabajadores).map(w => ({ name: w.name, dias: w.dias.size, horas: Math.round(w.horas * 100) / 100 })).sort((a, b) => b.horas - a.horas),
+    trabajadores: Object.entries(s.trabajadores).map(([id, w]) => ({ id, name: w.name, dias: w.dias.size, horas: Math.round(w.horas * 100) / 100 })).sort((a, b) => b.horas - a.horas),
     diasPersona: Object.values(s.trabajadores).reduce((a, w) => a + w.dias.size, 0),
     lineas: s.lineas.sort((a, b) => a.date.localeCompare(b.date) || a.worker.localeCompare(b.worker)),
   })).sort((a, b) => todos ? (String(b.hasta || '').localeCompare(String(a.hasta || '')) || b.horas - a.horas) : (b.horas - a.horas || b.dias - a.dias));

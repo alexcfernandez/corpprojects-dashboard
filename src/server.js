@@ -2407,7 +2407,16 @@ app.get('/api/attendance/summary/:year/:month', requireAuth, async (req, res) =>
 
 // ¿Dónde hemos estado? Texto libre → días/trabajadores/horas por sitio (para facturar).
 app.get('/api/presencia/sitio', requireAuth, async (req, res) => {
-  try { res.json(await attendance.buscarSitio(String(req.query.q || ''), { from: req.query.from || null, to: req.query.to || null, todos: req.query.todos === '1' })); }
+  try {
+    const r = await attendance.buscarSitio(String(req.query.q || ''), { from: req.query.from || null, to: req.query.to || null, todos: req.query.todos === '1' });
+    // Coste de mano de obra (horas × coste/hora): solo para quien puede ver dinero; no sale al imprimir.
+    if (users.canSeeMoney(req.user?.role || 'owner')) {
+      const rateFor = await obras.tarifaHora();
+      r.sitios.forEach(s => { s.trabajadores.forEach(w => { w.costeHora = rateFor(w.name, w.id); w.coste = Math.round(w.horas * w.costeHora * 100) / 100; }); s.coste = Math.round(s.trabajadores.reduce((a, w) => a + w.coste, 0) * 100) / 100; });
+      r.conCoste = true;
+    }
+    res.json(r);
+  }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 // ── USUARIOS ──────────────────────────────────────────────────────

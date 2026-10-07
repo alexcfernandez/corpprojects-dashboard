@@ -357,6 +357,28 @@ async function resumenAbiertas({ dias = 90, conDinero = false } = {}) {
 //   · antigua  → cerrada hace más tiempo (solo con `todas`, y el selector la enseña al buscar)
 const ESTADOS_CERRADA = ['terminada', 'facturada', 'archivada'];
 const DIAS_CERRADA_RECIENTE = Number(process.env.OBRA_CERRADA_DIAS) || 60;
+// Coste/hora de cada trabajador (para la rentabilidad y para «¿Dónde hemos estado?»): autónomos por su
+// tarifa; plantilla por su ficha de Trabajadores (nombre o alias); si no, una tarifa por defecto.
+async function tarifaHora() {
+  const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  const RATES = { jose: 26.72, diego: 19.05, abdellah: 13.28, mamadou: 13.28, paula: 8.66 };
+  let trabs = [];
+  try { trabs = await require('./trabajadores').getTrabajadores(false); } catch (e) {}
+  // Autónomos: su coste es su tarifa (por id de usuario, que es el workerId de presencia/partes).
+  const tarifaAut = {};
+  try { const aut = require('./autonomos'); (await aut.lista()).forEach(u => { const ch = aut.costeHora(u); if (ch) tarifaAut[String(u._id)] = ch; }); } catch (e) {}
+  return (name, id) => {
+    if (id && tarifaAut[String(id)]) return tarifaAut[String(id)];
+    const n = norm(name);
+    for (const w of trabs) {
+      if (!w.costeHora) continue;
+      const toks = norm(w.nombre).split(/\s+/).filter(t => t.length > 2);
+      if (n && (n === norm(w.nombre) || toks.some(t => n.includes(t)) || (w.alias || []).some(a => a && n.includes(a)))) return w.costeHora;
+    }
+    return RATES[id] || 15;
+  };
+}
+
 async function getSelector({ todas = false, conEstudio = false } = {}) {
   const db = await getDB();
   const lista = await db.collection('obras').find({ status: { $ne: 'archivada' } })
@@ -489,22 +511,7 @@ async function getRentabilidad(obraId) {
   // 2. Coste de personal — desde PARTES y, si no hay parte ese día, desde PRESENCIA.
   //    Tarifa real = coste/hora de la plantilla (con fallback razonable).
   const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-  const RATES = { jose: 26.72, diego: 19.05, abdellah: 13.28, mamadou: 13.28, paula: 8.66 };
-  let trabs = [];
-  try { trabs = await require('./trabajadores').getTrabajadores(false); } catch (e) {}
-  // Autónomos: su coste es su tarifa (por id de usuario, que es el workerId de presencia/partes).
-  const tarifaAut = {};
-  try { const aut = require('./autonomos'); (await aut.lista()).forEach(u => { const ch = aut.costeHora(u); if (ch) tarifaAut[String(u._id)] = ch; }); } catch (e) {}
-  const rateFor = (name, id) => {
-    if (id && tarifaAut[String(id)]) return tarifaAut[String(id)];
-    const n = norm(name);
-    for (const w of trabs) {
-      if (!w.costeHora) continue;
-      const toks = norm(w.nombre).split(/\s+/).filter(t => t.length > 2);
-      if (n && (n === norm(w.nombre) || toks.some(t => n.includes(t)) || (w.alias || []).some(a => a && n.includes(a)))) return w.costeHora;
-    }
-    return RATES[id] || 15;
-  };
+  const rateFor = await tarifaHora();
 
   // Presencia asociada a la obra: por cualquiera de sus nombres/alias.
   const nRef = norm(obra.reference || ''), nCli = norm(obra.clientName || '');
@@ -737,7 +744,7 @@ module.exports = {
   ESTADOS_PREVIOS, createObra, getObras, getObra, updateObra, deleteObra, getSelector, getEnEstudio, resumenAbiertas, addMaterial, deleteMaterial,
   addCertificacion, setCertificacion, deleteCertificacion, resumenCertificaciones,
   getRentabilidad, getResumenGeneral,
-  extraerObraMarcador, extraerGastoMarcador, getAsignacionesFacturaMap, getReglasMap, resolverFacturaObra,
+  tarifaHora, extraerObraMarcador, extraerGastoMarcador, getAsignacionesFacturaMap, getReglasMap, resolverFacturaObra,
   clasificarFactura, desclasificarFactura, repartirFactura, quitarReparto,
   setReglaProveedor, deleteReglaProveedor, getReglas,
 };
