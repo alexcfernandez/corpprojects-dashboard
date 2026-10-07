@@ -45,7 +45,9 @@ async function estado(mes, { hoy = new Date() } = {}) {
     const suyas = Object.entries(porMes).map(([mesN, l]) => {
       const rect = l.filter(n => /rectific/i.test(`${n.nombre} ${n.notas} ${(n.origen && n.origen.asunto) || ''}`)).sort((a, b) => String(b.subido).localeCompare(String(a.subido)));
       const extra = l.filter(n => /paga|extra/i.test(`${n.nombre} ${n.notas}`) && !rect.includes(n));
-      const usar = rect.length ? [rect[0], ...extra] : l;
+      // La misma nómina recibida dos veces (en el PDF del mes y suelta): mismo líquido → cuenta una vez.
+      const unicas = []; l.forEach(n => { const q = n.importes && n.importes.liquido; if (q == null || !unicas.some(u => u.importes && u.importes.liquido === q)) unicas.push(n); });
+      const usar = rect.length ? [rect[0], ...extra.filter(n => unicas.includes(n))] : unicas;
       const liq = usar.reduce((a, n) => a + ((n.importes && n.importes.liquido) || 0), 0);
       return { _id: usar[0]._id, mes: mesN, importes: { liquido: usar.every(n => n.importes && n.importes.liquido != null) ? r2(liq) : null } };
     }).sort((a, b) => a.mes.localeCompare(b.mes));
