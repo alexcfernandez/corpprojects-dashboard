@@ -2153,6 +2153,10 @@ app.put('/api/vehiculos/:id', requireAuthOficina, async (req, res) => {
 app.post('/api/vehiculos/:id/conductor', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./vehiculos').asignarConductor(req.params.id, req.body || {}, await _porVeh(req))); } catch (err) { res.status(400).json({ error: err.message }); }
 });
+// Lo que cuesta cada vehículo: compra + gastos − venta, por año y de media al año.
+app.get('/api/vehiculos/:id/coste', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./vehiculos').costeTotal(req.params.id)); } catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.post('/api/vehiculos/:id/baja', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./vehiculos').darDeBaja(req.params.id, req.body || {}, await _porVeh(req))); } catch (err) { res.status(400).json({ error: err.message }); }
 });

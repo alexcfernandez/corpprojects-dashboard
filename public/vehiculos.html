@@ -133,8 +133,16 @@ async function abrir(id){
   const el=document.getElementById('v-ficha');el.innerHTML='<div class="vacio">Cargando…</div>';
   if(!workers.length){try{workers=await (await fetch('/api/partes/workers')).json();}catch(e){workers=[];}}
   try{cur=await api('GET','/api/vehiculos/'+id);}catch(e){el.innerHTML='<div class="vacio" style="color:var(--red)">'+esc(e.message)+'</div>';return;}
-  pintarFicha();cargarKm(id);
+  pintarFicha();cargarKm(id);cargarCoste(id);
 }
+// Lo que cuesta: compra + gastos − venta, por año y de media al año (para ver si sale a cuenta o mejor un renting).
+async function cargarCoste(id){const el=document.getElementById('coste-blq');if(!el)return;let d;try{d=await api('GET','/api/vehiculos/'+id+'/coste');}catch(e){el.innerHTML='<div style="color:var(--red)">'+esc(e.message)+'</div>';return;}
+  const cats=[...new Set(d.porAnio.flatMap(a=>Object.keys(a.porCategoria)))];
+  el.innerHTML=`<div style="display:flex;gap:18px;flex-wrap:wrap;font-size:14px;margin-bottom:8px"><span>Desde ${fmtF(d.desde)} (${d.anos} años)</span><span>Total <b>${eur(d.total)}</b></span><span>Al año <b>${eur(d.alAnio)}</b> (${eur(d.alMes)}/mes)</span><span style="color:var(--text3)">Solo uso, sin la compra: ${eur(d.usoAlAnio)}/año</span></div>
+    ${!d.precioCompra&&d.formaCompra==='compra'?'<div style="font-size:12.5px;color:var(--amber);margin-bottom:6px">Falta el precio de compra (tarjeta «Compra» de la ficha) para que el coste sea completo.</div>':''}
+    <div style="overflow:auto"><table style="width:100%;font-size:13px;border-collapse:collapse"><tr style="color:var(--text3)"><th style="text-align:left;padding:4px">Año</th>${cats.map(c=>`<th style="text-align:right;padding:4px">${esc(d.categorias[c]||c)}</th>`).join('')}<th style="text-align:right;padding:4px">Total</th></tr>
+    ${d.porAnio.map(a=>`<tr style="border-top:1px solid var(--border)"><td style="padding:4px">${a.anio}</td>${cats.map(c=>`<td style="text-align:right;padding:4px">${a.porCategoria[c]?eur(a.porCategoria[c]):'—'}</td>`).join('')}<td style="text-align:right;padding:4px"><b>${eur(a.total)}</b></td></tr>`).join('')}</table></div>
+    <div style="font-size:12px;color:var(--text3);margin-top:6px">Compra (o cuotas) + taller, neumáticos, seguro, combustible, ITV… − venta. Compáralo con lo que costaría un renting al año.</div>`;}
 async function cargarKm(id){const el=document.getElementById('km-blq');if(!el)return;let d;try{d=await api('GET','/api/vehiculos/'+id+'/km');}catch(e){el.innerHTML='<div style="color:var(--red)">'+esc(e.message)+'</div>';return;}
   const v=cur.vehiculo,n=x=>Number(x).toLocaleString('es-ES');
   el.innerHTML=(d.km?`<div class="chips" style="margin-top:0"><span class="chip">${n(d.km)} km del ${fmtF(d.desde)} al ${fmtF(d.hasta)}</span><span class="chip ok">${String(d.eurKm.toFixed(2)).replace('.',',')} €/km</span>${d.l100?`<span class="chip">${String(d.l100).replace('.',',')} L/100 km</span>`:''}<span class="chip">gasto ${eur(d.gasto)} (combustible ${eur(d.combustible)})</span></div>`
@@ -194,6 +202,9 @@ function pintarFicha(){
 
   <h3>Kilómetros y combustible</h3>
   <div class="card" id="km-blq"><div style="color:var(--text3);font-size:14px">Cargando…</div></div>
+
+  <h3>Lo que cuesta</h3>
+  <div class="card" id="coste-blq"><div style="color:var(--text3);font-size:14px">Cargando…</div></div>
 
   <h3>Gastos ${anioAct}</h3>
   <div class="card">${g&&g.gastos.length?bloqueGastos(g,cur.categorias,false):'<div style="color:var(--text3);font-size:14px">Sin gastos este año. En Compras, destino «🚐 Un vehículo»; en el cierre del trimestre, «🚐 Vehículo».</div>'}</div>

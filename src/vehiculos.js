@@ -299,6 +299,44 @@ async function resumen({ anio, soloId, incluirBajas } = {}) {
   return { anio: y, categorias: CATEGORIAS, vehiculos: out, total: r2(out.reduce((a, v) => a + v.total, 0)) };
 }
 
+// ── LO QUE CUESTA CADA VEHÍCULO (toda su vida y por año) ──
+// Compra (o cuotas de renting/leasing/préstamo) + todos sus gastos con factura o punteados (taller, neumáticos,
+// seguro, combustible, ITV…) − lo que se saque al venderlo. El seguro y el impuesto anuales de la ficha se suman
+// solo en los años en que no hay ya una factura de esa categoría (para no contarlos dos veces).
+// «Al año» = total / años que lleva con nosotros: así se ve si sale a cuenta o es mejor un renting.
+async function costeTotal(id, { hoy = new Date() } = {}) {
+  const db = await getDB();
+  const v = await db.collection('vehiculos').findOne({ _id: _oid(id) });
+  if (!v) throw new Error('Vehículo no encontrado');
+  const vid = String(v._id);
+  const alta = v.fechaAlta || v.fechaMatriculacion || (v.createdAt && new Date(v.createdAt).toISOString().slice(0, 10)) || `${hoy.getFullYear()}-01-01`;
+  const fin = v.estado === 'baja' && v.baja && v.baja.fecha ? v.baja.fecha : hoy.toISOString().slice(0, 10);
+  const gs = (await gastos({ desde: alta.slice(0, 4) + '-01-01' })).filter(g => g.vehiculoId === vid);
+  const anios = {};
+  const suma = (y, cat, imp) => { const a = (anios[y] = anios[y] || { anio: Number(y), total: 0, porCategoria: {} }); a.porCategoria[cat] = r2((a.porCategoria[cat] || 0) + imp); a.total = r2(a.total + imp); };
+  for (const g of gs) suma(String(g.fecha || alta).slice(0, 4), g.categoria || 'otros', g.importe);
+  // Compra o cuotas
+  const forma = v.formaCompra || 'compra';
+  if (forma === 'compra' && Number(v.precioCompra) > 0) suma(alta.slice(0, 4), 'compra', Number(v.precioCompra));
+  if (forma !== 'compra' && Number(v.cuotaMensual) > 0) {
+    const d0 = new Date(alta + 'T12:00:00Z'), d1 = new Date(Math.min(new Date(fin + 'T12:00:00Z'), v.finContrato ? new Date(v.finContrato + 'T12:00:00Z') : Infinity));
+    for (let d = new Date(d0); d <= d1; d.setUTCMonth(d.getUTCMonth() + 1)) suma(String(d.getUTCFullYear()), 'renting', Number(v.cuotaMensual));
+  }
+  // Seguro e impuesto de la ficha, en los años sin factura de eso
+  for (let y = Number(alta.slice(0, 4)); y <= Number(fin.slice(0, 4)); y++) {
+    const a = anios[y] || {}; const pc = a.porCategoria || {};
+    if (v.seguro && Number(v.seguro.precioAnual) > 0 && !pc.seguro) suma(String(y), 'seguro', Number(v.seguro.precioAnual));
+    if (Number(v.ivtm) > 0 && !pc.impuestos) suma(String(y), 'impuestos', Number(v.ivtm));
+  }
+  if (v.estado === 'baja' && v.baja && Number(v.baja.precioVenta) > 0) suma(fin.slice(0, 4), 'venta', -Number(v.baja.precioVenta));
+  const lista = Object.values(anios).sort((a, b) => a.anio - b.anio);
+  const total = r2(lista.reduce((a, x) => a + x.total, 0));
+  const anos = Math.max(0.25, (new Date(fin + 'T12:00:00Z') - new Date(alta + 'T12:00:00Z')) / (365.25 * 86400000));
+  const sinCompra = r2(total - lista.reduce((a, x) => a + (x.porCategoria.compra || 0) + (x.porCategoria.venta || 0), 0));
+  return { id: vid, nombre: v.nombre, desde: alta, hasta: fin, anos: Math.round(anos * 10) / 10, total, alAnio: r2(total / anos), alMes: r2(total / anos / 12),
+    usoAlAnio: r2(sinCompra / anos), porAnio: lista, categorias: { ...CATEGORIAS, compra: 'Compra', venta: 'Venta (resta)' }, precioCompra: Number(v.precioCompra) || null, formaCompra: forma };
+}
+
 // ── AVISOS DE VENCIMIENTOS ──
 const UMBRALES = [30, 15, 7, 1, 0];
 // Clave del aviso que toca hoy (o null): el menor umbral ≥ días que falten; vencida → una por semana.
@@ -360,4 +398,4 @@ async function revisarVencimientos({ dryRun = false, hoy = new Date() } = {}) {
   return { avisos: hechos, dryRun };
 }
 
-module.exports = { CATEGORIAS, TIPOS, FORMAS, MOTIVOS_BAJA, DOCS, sugerirCategoria, limpiar, crear, editar, asignarConductor, darDeBaja, reactivar, subirDocumento, documentos, documento, borrarDocumento, lista, flota, ficha, gastos, resumen, diasHasta, claveAviso, avisosPendientes, revisarVencimientos, matNorm, proximaItv, registrarItv };
+module.exports = { costeTotal, CATEGORIAS, TIPOS, FORMAS, MOTIVOS_BAJA, DOCS, sugerirCategoria, limpiar, crear, editar, asignarConductor, darDeBaja, reactivar, subirDocumento, documentos, documento, borrarDocumento, lista, flota, ficha, gastos, resumen, diasHasta, claveAviso, avisosPendientes, revisarVencimientos, matNorm, proximaItv, registrarItv };
