@@ -1,0 +1,67 @@
+/* public/cp-ui.css — Acabado común del dashboard y de todas las pantallas de oficina (7/10/2026).
+   Inspirado en nuvoialabs.com: fondo tinta, tipografía de títulos con carácter (Bricolage Grotesque), tarjetas
+   limpias con brillo suave, transiciones al cambiar de pantalla. Mantiene el degradado azul→verde de Corp Projects.
+   Solo retoca clases que ya existen (.card, .mc, .mv, .nav…), así que no cambia nada de cómo funcionan. */
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  --bg: #0d0f12; --bg2: #151920; --bg3: #1b2029; --bg4: #232935;
+  --border: rgba(255,255,255,.07); --border2: rgba(255,255,255,.13);
+  --text: #eef0f2; --text2: #a0a8b3; --text3: #6f7884;
+  --cp-grad: linear-gradient(135deg, #4d9cf8, #22c487);
+  --cp-glow: 0 0 0 1px rgba(77,156,248,.18), 0 12px 32px rgba(0,0,0,.28);
+  --font-display: 'Bricolage Grotesque', 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --r: 16px; --rs: 10px;
+}
+body { font-family: 'Inter', -apple-system, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; }
+body:not(.light) { background: radial-gradient(1200px 600px at 10% -10%, rgba(77,156,248,.06), transparent 60%), radial-gradient(900px 500px at 100% 0%, rgba(34,196,135,.05), transparent 55%), var(--bg); background-attachment: fixed; }
+
+/* Títulos y cifras */
+h1, h2, h3, .card-title, .login-title, .mv, .header-text { font-family: var(--font-display); letter-spacing: -0.01em; }
+.card-title { font-size: 15px; font-weight: 700; }
+.mv { font-size: 24px; font-weight: 700; line-height: 1.15; }
+.ml { letter-spacing: .07em; }
+
+/* Tarjetas */
+.card, .mc, .metric-card {
+  border-radius: var(--r) !important;
+  background: linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,0) 60%), var(--bg2);
+  border: 1px solid var(--border);
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+.card:hover, .mc:hover { border-color: var(--border2); }
+body.light .card, body.light .mc, body.light .metric-card { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(15,23,42,.05); }
+
+/* Menú del dashboard */
+.nav { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.nav-grp, .nav-btn { border-radius: 10px 10px 0 0; }
+.nav-grp.active, .nav-btn.active { color: var(--text) !important; border-bottom-color: transparent !important; position: relative; }
+.nav-grp.active::after, .nav-btn.active::after { content: ''; position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; border-radius: 2px; background: var(--cp-grad); }
+body.light .nav-grp.active, body.light .nav-btn.active { color: #0f172a !important; }
+
+/* Botones */
+.btn, .login-btn { border-radius: 999px; transition: transform .15s ease, background .15s ease, border-color .15s ease; }
+.btn:hover { transform: translateY(-1px); }
+.btn.pri, .btn.ok { background: var(--cp-grad); border-color: transparent; color: #fff; }
+
+/* Tablas */
+table thead tr { background: transparent !important; }
+table th { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text3); font-weight: 600; border-bottom: 1px solid var(--border2); }
+table td { border-bottom: 1px solid var(--border); }
+body.light table th { color: #64748b; }
+
+/* Transición al cambiar de pantalla / pestaña */
+@keyframes cpFade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.panel.active, .bpanel.active, .wrap > *, .container > .card { animation: cpFade .28s ease both; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* Barras de progreso reutilizables */
+.cp-bar { height: 8px; border-radius: 999px; background: var(--bg3); overflow: hidden; }
+.cp-bar > i { display: block; height: 100%; border-radius: 999px; background: var(--cp-grad); transition: width .6s ease; }
+.cp-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border2); color: var(--text2); white-space: nowrap; }
+.cp-chip.ro { color: #f05252; border-color: rgba(240,82,82,.45); background: rgba(240,82,82,.08); }
+.cp-chip.am { color: #f59e0b; border-color: rgba(245,158,11,.45); background: rgba(245,158,11,.08); }
+.cp-chip.ok { color: #22c487; border-color: rgba(34,196,135,.45); background: rgba(34,196,135,.08); }
+
+/* Reservas: en el móvil, dos columnas */
+@media (max-width: 640px) { .cp-resfila { grid-template-columns: 1fr auto !important; } .cp-resfila > div:nth-child(3), .cp-resfila > div:nth-child(4) { grid-column: span 1; } }
