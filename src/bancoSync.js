@@ -239,10 +239,21 @@ async function sincronizar({ soloId = null, _api: api = _api } = {}) {
           const d = await api('GET', `/accounts/${encodeURIComponent(cu.uid)}/transactions?date_from=${desde}${ck ? '&continuation_key=' + encodeURIComponent(ck) : ''}`);
           txs.push(...(d.transactions || [])); ck = d.continuation_key || null; pags++;
         } while (ck && pags < 30);
+        // Saldo de la cuenta, una vez al día (para el panel de reservas).
+        let saldoSet = {};
+        if (!cu.saldoAt || new Date(cu.saldoAt).toISOString().slice(0, 10) !== new Date().toISOString().slice(0, 10)) {
+          try {
+            const b = await api('GET', `/accounts/${encodeURIComponent(cu.uid)}/balances`);
+            const ls = (b && b.balances) || [];
+            const pref = ['CLBD', 'ITAV', 'XPCD', 'ITBD', 'CLAV', 'OPBD'];
+            const el = ls.slice().sort((x, y) => (pref.indexOf(x.balance_type) + 99) % 99 - (pref.indexOf(y.balance_type) + 99) % 99)[0];
+            if (el && el.balance_amount) saldoSet = { [`cuentas.${i}.saldo`]: r2(el.balance_amount.amount), [`cuentas.${i}.saldoAt`]: new Date(), [`cuentas.${i}.saldoTipo`]: el.balance_type || null };
+          } catch (e) { console.warn('[BancoSync] saldo:', e.message); }
+        }
         const r = await guardarMovimientos(db, cu, txs, propias);
         n = r.nuevos; total += n; nuevosIds.push(...(r.ids || []));
         const fechas = txs.flatMap(_fechas).sort();
-        await db.collection('bancoConexiones').updateOne({ _id: c._id }, { $set: { [`cuentas.${i}.ultimaSync`]: new Date(), [`cuentas.${i}.nuevos`]: n, [`cuentas.${i}.error`]: null, [`cuentas.${i}.mapeo`]: MAPEO, ...(fechas.length ? { [`cuentas.${i}.hasta`]: fechas[fechas.length - 1] } : {}) } });
+        await db.collection('bancoConexiones').updateOne({ _id: c._id }, { $set: { [`cuentas.${i}.ultimaSync`]: new Date(), [`cuentas.${i}.nuevos`]: n, [`cuentas.${i}.error`]: null, [`cuentas.${i}.mapeo`]: MAPEO, ...saldoSet, ...(fechas.length ? { [`cuentas.${i}.hasta`]: fechas[fechas.length - 1] } : {}) } });
         out.push({ banco: c.banco, cuenta: cu.nombre, desde, recibidos: txs.length, nuevos: n, repetidos: r.repetidos });
       } catch (e) {
         if (e.status === 401 || /expired|EXPIRED|revoked|not authorized/i.test(e.message || '') || e.status === 403 && /session/i.test(e.message || '')) { await _caducada(db, c); out.push({ banco: c.banco, error: 'permiso caducado o retirado' }); break; }

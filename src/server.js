@@ -1954,6 +1954,11 @@ app.get('/api/trimestre/paquete', requireAuthOficina, async (req, res) => {
     res.set('Content-Disposition', `attachment; filename="${nombre}"`).type('application/zip').send(buf);
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
+// ── RESERVAS: lo que hay que ir apartando (IVA, IRPF, Seguridad Social, nóminas) y lo que ya está guardado ──
+app.get('/api/reservas', requireAuthOficina, async (req, res) => {
+  req.setTimeout && req.setTimeout(120000);
+  try { res.json(await require('./reservas').panel({ fresco: req.query.fresco === '1' })); } catch (err) { res.status(500).json({ error: err.message }); }
+});
 // ── NÓMINAS: líquido de cada nómina frente a lo transferido en el banco ──
 app.get('/api/personal/nominas-pagos', requireAuthOficina, async (req, res) => {
   req.setTimeout && req.setTimeout(120000);

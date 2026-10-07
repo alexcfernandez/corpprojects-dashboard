@@ -152,6 +152,7 @@ function cpUpdateBanner(){
     <button class="tq" onclick="location.href='/fichar'"><span class="em">▶</span><span class="lb">Fichar jornada</span></button>
     <button class="tq" onclick="location.href='/parte'"><span class="em">📋</span><span class="lb">Parte de trabajo</span></button>
   </div>
+  <div id="inicio-reservas"></div>
   <div id="inicio-hoy"></div>
   <div id="inicio-obras"></div>
   <div id="inicio-container"><div style="text-align:center;padding:60px;color:var(--text3)">Cargando resumen…</div></div>
@@ -1724,5 +1725,22 @@ window.addEventListener('load',()=>{
 <script src="/modules/pedidos-admin.js"></script>
 <script src="/modules/planning.js"></script>
 <script src="/modules/activity-admin.js"></script>
+<script>
+// ── RESERVAS (inicio): IVA, IRPF, Seguridad Social y nóminas — lo que hay que apartar, lo guardado y lo que falta ──
+(function(){
+  const eurR=v=>v==null?'—':Number(v).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2,useGrouping:'always'})+' €';
+  const escR=x=>String(x==null?'':x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  async function cargarReservas(fresco){const el=document.getElementById('inicio-reservas');const t=localStorage.getItem('cp_token');if(!el||!t)return;
+    let d;try{const r=await fetch('/api/reservas'+(fresco?'?fresco=1':''),{headers:{Authorization:'Bearer '+t}});if(!r.ok)return;d=await r.json();}catch(e){return;}
+    const T=d.totales,R=d.reserva;const pct=T.necesario?Math.min(100,Math.round((T.guardado||0)/T.necesario*100)):100;
+    el.innerHTML=`<div class="card" style="margin:12px 0;padding:14px 16px;border-radius:14px;background:var(--bg2);border:1px solid var(--border)">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b style="font-size:15px">🐷 Reservas para impuestos y nóminas</b><span style="font-size:12px;color:var(--text3)">${R.cuenta?'cuenta de reserva '+escR(R.cuenta):'cuenta de reserva sin saldo todavía'}${R.saldoAt?' · saldo del '+new Date(R.saldoAt).toLocaleDateString('es-ES'):''}</span><button onclick="window._cargarReservas(1)" style="margin-left:auto;background:none;border:1px solid var(--border);color:var(--text2);border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer">↻</button></div>
+      <div style="display:flex;gap:18px;flex-wrap:wrap;margin:10px 0 6px;font-size:14px"><span>Hace falta <b>${eurR(T.necesario)}</b></span><span>Guardado <b>${eurR(T.guardado)}</b></span>${T.falta>0.01?`<span style="color:var(--amber)">Falta <b>${eurR(T.falta)}</b> · aparta unos <b>${eurR(T.porSemana)}/semana</b></span>`:`<span style="color:var(--green)">✔ Cubierto${T.sobra>0.01?' (sobran '+eurR(T.sobra)+')':''}</span>`}</div>
+      <div style="height:8px;background:var(--bg3);border-radius:6px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${pct>=100?'var(--green)':'var(--amber)'}"></div></div>
+      <div style="margin-top:10px;font-size:13px">${d.items.map(i=>i.error?`<div style="color:var(--red);padding:3px 0">${escR(i.concepto)}: ${escR(i.error)}</div>`:`<div style="display:flex;gap:8px;flex-wrap:wrap;padding:5px 0;border-top:1px dashed var(--border)"><span style="min-width:190px"><b>${escR(i.concepto)}</b>${i.enCurso?' <span style="font-size:11px;color:var(--text3)">(en curso)</span>':''}</span><span>${eurR(i.importe)}</span><span style="color:${i.dias<=7?'var(--red)':i.dias<=20?'var(--amber)':'var(--text3)'}">vence ${escR(i.vence.split('-').reverse().join('/'))} · ${i.dias>0?'en '+i.dias+' días':i.dias===0?'hoy':'vencido'}</span><span style="margin-left:auto;color:${i.falta>0.01?'var(--amber)':'var(--green)'}">${i.falta>0.01?'falta '+eurR(i.falta):'✔ cubierto'}</span><div style="width:100%;font-size:11.5px;color:var(--text3)">${escR(i.detalle||'')}</div></div>`).join('')}</div></div>`;}
+  window._cargarReservas=cargarReservas;
+  setTimeout(()=>cargarReservas(false),800);
+})();
+</script>
 </body>
 </html>
