@@ -412,7 +412,7 @@ async function getDashboardData() {
 function blank() { return { i: Array(12).fill(0), g: Array(12).fill(0), a: Array(12).fill(0) }; }
 function sum(arr) { return arr.reduce((a, b) => a + b, 0); }
 function acc(bucket, cat, map, yKey, val) {
-  if (!bucket[cat]) { const [n, c, t] = map[cat] || [cat, '#6b7280', 'Variable']; bucket[cat] = { n, c, t, y5: 0, y6: 0 }; }
+  if (!bucket[cat]) { const [n, c, t] = map[cat] || [cat, '#6b7280', 'Variable']; bucket[cat] = { k: cat, n, c, t, y5: 0, y6: 0 }; }   // k: para abrir el detalle
   bucket[cat][yKey] += val;
 }
 

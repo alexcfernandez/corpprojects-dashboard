@@ -48,8 +48,7 @@
     el.innerHTML = `
       <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:20px;overflow-x:auto">
         <button class="btab active" onclick="CP.Pagos.showTab('colaboradores',this)">👷 Colaboradores</button>
-        <button class="btab" onclick="CP.Pagos.showTab('pagos',this)">💵 Pagos generales</button>
-        <button class="btab" onclick="CP.Pagos.showTab('proyectos',this)">🏠 Proyectos inversión</button>
+        <!-- «Pagos generales» y «Proyectos inversión» ya no se usan (7/10/2026): ocultos, sus datos siguen en Mongo. -->
         <button class="btab" onclick="CP.Pagos.showTab('autonomos',this)">🧾 Autónomos</button>
       </div>
 
