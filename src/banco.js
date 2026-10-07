@@ -55,7 +55,35 @@ const TRABAJADORES = [
   { nombre: 'Alfonso Galvez',  tokens: ['alfonso galvez', 'alfonso'] },
 ];
 
+// Trabajadores dados de alta en el programa (users, con sus alias: «David Taladros» cobra como «David Valencia»).
+// Se cargan al arrancar y cada hora (cargarTrabajadores); se suman a la lista fija de arriba (los de antes).
+let _deUsuarios = [];
+async function cargarTrabajadores() {
+  try {
+    const { getUsers, normalizeRole } = require('./users');
+    const NP = require('./nominasPagos');
+    const us = (await getUsers(true)).filter(u => !u.autonomo && ['tecnico', 'encargado', 'oficina'].includes(normalizeRole(u.role)));
+    _deUsuarios = us.map(u => ({ nombre: u.name, palabras: NP.nombresDe(u).filter(ws => ws.length >= 2).map(ws => ws.slice(0, 2)) })).filter(t => t.palabras.length);
+  } catch (e) { console.warn('[Banco] trabajadores:', e.message); }
+  return _deUsuarios.length;
+}
+// Movimientos ya guardados que ahora se reconocen como nómina (trabajador nuevo o alias): se reclasifican.
+async function reclasificarNominas() {
+  const db = await getDB();
+  const l = await db.collection('bancoMovimientos').find({ importe: { $lt: 0 }, categoria: { $in: ['pago_proveedor', 'otro_gasto', 'tarjeta_otro'] } }).project({ concepto: 1, codigo: 1, importe: 1 }).toArray();
+  let n = 0;
+  for (const m of l) {
+    const c = clasificar(m.concepto, m.codigo, m.importe);
+    if (c.categoria !== 'nomina') continue;
+    await db.collection('bancoMovimientos').updateOne({ _id: m._id }, { $set: { categoria: c.categoria, categoriaLabel: c.label, flujo: c.flujo, contraparte: c.contraparte, recurrente: c.recurrente, reclasificadoAt: new Date() } });
+    n++;
+  }
+  if (n) console.log(`[Banco] ${n} pago(s) reclasificados como nómina`);
+  return n;
+}
 function detectarTrabajador(nConcepto) {
+  // De los usuarios: todas las palabras del nombre (o de un alias) en el concepto, aunque no vayan seguidas.
+  for (const t of _deUsuarios) if (t.palabras.some(ws => ws.every(w => nConcepto.includes(w)))) return t.nombre;
   // exige "a favor de" para no confundir un cobro entrante con una nómina
   for (const t of TRABAJADORES) {
     for (const tok of t.tokens) {
@@ -369,13 +397,34 @@ const IC_MAP = {
 
 async function getDashboardData() {
   const db = await getDB();
-  const movs = await db.collection('bancoMovimientos').find({}).toArray();
+  const [movs, tarjetas] = await Promise.all([
+    db.collection('bancoMovimientos').find({}).toArray(),
+    db.collection('tarjetaMovimientos').find({ interno: { $ne: true } }).project({ fecha: 1, importe: 1, concepto: 1, tipo: 1, estado: 1 }).toArray(),
+  ]);
+  // COMPRAS CON TARJETA (Revolut y crédito Santander), una a una y con su categoría. Para no contarlas dos veces,
+  // en los meses con detalle de tarjeta se quitan de la cuenta el traspaso a Revolut y la liquidación de la de crédito.
+  const { tipoMovimiento } = require('./conciliacion');
+  const tarjetaMes = new Set();
+  const compTarjeta = [];
+  for (const t of tarjetas) {
+    if (!t.fecha || /declined|reverted|failed/i.test(t.estado || '') || !['CARD_PAYMENT', 'CARD_REFUND', 'REFUND', 'FEE'].includes(t.tipo)) continue;
+    tarjetaMes.add(t.fecha.slice(0, 7));
+    compTarjeta.push({ mes: t.fecha.slice(0, 7), importe: Number(t.importe) || 0, categoria: t.tipo === 'FEE' ? 'comision' : clasificar(t.concepto, '136', Number(t.importe) || 0).categoria, flujo: 'salida' });
+  }
 
   const BD = { 2025: blank(), 2026: blank() };
   const ec = {}, ic = {};
   let ahorroTotal = 0;
 
+  const lista = [];
   for (const m of movs) {
+    if (m.importe < 0 && tarjetaMes.has(m.mes)) { const tp = tipoMovimiento(m).tipo; if (tp === 'liquidacion_tarjeta' || (tp === 'traspaso_propio' && m.categoria !== 'ahorro')) continue; }
+    lista.push(m);
+  }
+  // Devoluciones con tarjeta: restan del gasto de su categoría.
+  for (const t of compTarjeta) lista.push({ mes: t.mes, importe: t.importe < 0 ? t.importe : 0, _resta: t.importe > 0 ? t.importe : 0, categoria: t.categoria === 'tarjeta_otro' ? 'tarjeta_otro' : t.categoria, flujo: 'salida', deTarjeta: true });
+  for (const m of lista) {
+    if (m._resta) { const yr = m.mes.slice(0, 4), mo = parseInt(m.mes.slice(5, 7), 10) - 1; if (!BD[yr]) BD[yr] = blank(); BD[yr].g[mo] -= m._resta; const esY = yr === '2025' ? 'y5' : (yr === '2026' ? 'y6' : null); if (esY) acc(ec, m.categoria, EC_MAP, esY, -m._resta); continue; }
     const yr = m.mes.slice(0, 4);
     const mo = parseInt(m.mes.slice(5, 7), 10) - 1;
     if (!BD[yr]) BD[yr] = blank();
@@ -418,7 +467,7 @@ function acc(bucket, cat, map, yKey, val) {
 
 module.exports = {
   // núcleo
-  parseExcelBuffer, ingestExcelBuffer, norm,
+  parseExcelBuffer, ingestExcelBuffer, norm, cargarTrabajadores, reclasificarNominas,
   // lectura dashboard
   getMovimientos, getResumen, getRecurrentesMensuales, getUltimoImport, getDashboardData,
   // utilidades expuestas por si las quiere reusar el asistente

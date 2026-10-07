@@ -309,6 +309,9 @@ async function sendWorkOrdersAlert(opts = {}) {
 }
 
 function startScheduler() {
+  // Trabajadores del banco desde los usuarios (y sus alias); al arrancar, reclasifica pagos antiguos que ahora son nómina.
+  setTimeout(() => { const B = require('./banco'); B.cargarTrabajadores().then(() => B.reclasificarNominas()).catch(e => console.warn('[Banco] trabajadores:', e.message)); }, 20000);
+  cron.schedule('5 * * * *', () => require('./banco').cargarTrabajadores().catch(() => {}), { timezone: 'Europe/Madrid' });
   console.log('[Scheduler] Iniciando tareas...');
 
   // Recordatorios a clientes: 08:30 (mañana) y 17:00 (tarde) todos los días.
