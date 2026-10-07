@@ -52,6 +52,14 @@ async function resumen(nuevos, { hoy = new Date() } = {}) {
   if (cobros.length) { out.push(`*Cobros* (${cobros.length} · ${eur(cobros.reduce((a, m) => a + m.importe, 0))})`); cobros.forEach(m => out.push(linea(m, mapa.porMov.get(m.id)).txt)); }
   if (pagos.length) {
     const ls = pagos.map(m => ({ m, l: linea(m, mapa.porMov.get(m.id)) }));
+    // A cada pago a un proveedor se le añade lo que aún le debemos (cuentasProveedor).
+    try { require('./cuentasProveedor').olvidar(); } catch (e) {}
+    for (const x of ls) {
+      const pm = mapa.porMov.get(x.m.id); const ter = pm && pm.docs && pm.docs[0] && pm.docs[0].tercero;
+      if (!ter || !(Math.abs(x.m.importe) >= GRANDE || x.l.ok === 'parcial')) continue;
+      const d = await require('./cuentasProveedor').deuda(ter).catch(() => null);
+      if (d) x.l.txt += d.pendiente > 0.01 ? ` · aún le debemos ${eur(d.pendiente)} (${d.nPendientes} fra.)` : ' · al día';
+    }
     const uno = ls.filter(x => Math.abs(x.m.importe) >= GRANDE || x.l.ok === 'parcial');
     const resto = ls.filter(x => !uno.includes(x));
     out.push(`${out.length ? '\n' : ''}*Pagos* (${pagos.length} · ${eur(pagos.reduce((a, m) => a + m.importe, 0))})`);
@@ -76,4 +84,31 @@ async function avisar(nuevos, { dryRun = false, _enviar = null, hoy = new Date()
   return { enviado: n > 0, a: n, texto: txt };
 }
 
-module.exports = { resumen, avisar, linea };
+// Factura de proveedor que llega por correo (email-intelligence): «llega la 0017 de Rubén por 320 €; con esta le
+// debemos X». Si ya está pagada (con tarjeta, o casada con el banco), no se avisa.
+async function facturaLlegada(compraIds, { dryRun = false, _enviar = null } = {}) {
+  const C = require('./compras');
+  const T = require('./trimestre'); T.olvidarMapaPagos();
+  const CP = require('./cuentasProveedor'); CP.olvidar();
+  const lineas = [];
+  for (const id of compraIds || []) {
+    let c = null; try { c = await C.getCompra(id); } catch (e) { continue; }
+    if (!c || c.tipo !== 'factura' || !(c.ia && c.ia.ok) || c.duplicadoDe || !c.proveedor || c.total == null) continue;
+    const d = await CP.deuda(c.razonSocial || c.proveedor) || await CP.deuda(c.proveedor);
+    if (d) {
+      const cuenta = await CP.cuenta(d.proveedor).catch(() => null);
+      const esta = cuenta && cuenta.facturas.find(f => (f.refProveedor || f.numero) && String(f.refProveedor || f.numero).replace(/\D/g, '').endsWith(String(c.numero || '').replace(/\D/g, '').slice(-5)));
+      if (esta && esta.estado === 'pagada') continue;            // ya pagada (tarjeta, recibo…): nada que avisar
+    }
+    lineas.push(`📥 *${c.proveedor}* · factura ${c.numero || 's/n'} de *${eur(c.total)}*${c.fecha ? ' (' + c.fecha.split('-').reverse().join('/') + ')' : ''}` +
+      (d ? (d.pendiente > 0.01 ? `\n   Con esta le debemos *${eur(d.pendiente)}* (${d.nPendientes} factura${d.nPendientes === 1 ? '' : 's'} sin pagar)` : '\n   Con esta, al día') : ''));
+  }
+  if (!lineas.length) return { enviado: false };
+  const txt = lineas.join('\n');
+  if (dryRun) return { enviado: false, texto: txt };
+  const enviar = _enviar || (async (to, t) => require('./notifications').sendWhatsAppTo(to, t));
+  let n = 0; for (const to of destinos()) { try { if (await enviar(to, txt) !== false) n++; } catch (e) { console.warn('[AvisoPagos] factura:', e.message); } }
+  return { enviado: n > 0, texto: txt };
+}
+
+module.exports = { resumen, avisar, linea, facturaLlegada };

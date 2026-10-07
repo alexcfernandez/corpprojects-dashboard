@@ -1615,6 +1615,15 @@ app.get('/api/compras/masiva/:id', async (req, res) => {
   catch (err) { res.status(404).json({ error: err.message }); }
 });
 // Tickets que faltan de los pagos con tarjeta: el trabajador ve los suyos (desde su enlace); oficina, todos.
+// Cuenta de cada proveedor: facturas, lo pagado (banco/tarjeta) y lo pendiente.
+app.get('/api/proveedores/cuentas', requireAuthOficina, async (req, res) => {
+  req.setTimeout && req.setTimeout(120000);
+  try { res.json(await require('./cuentasProveedor').cuentas({ desde: req.query.desde || '2025-01-01' })); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/proveedores/cuenta', requireAuthOficina, async (req, res) => {
+  req.setTimeout && req.setTimeout(120000);
+  try { res.json(await require('./cuentasProveedor').cuenta(req.query.nombre || '', { desde: req.query.desde || '2025-01-01' })); } catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/compras/tickets-pendientes', async (req, res) => {
   try { const q = await _quienPush(req); if (!q) return res.status(401).json({ error: 'No autorizado' });
     const T = require('./ticketsAviso');

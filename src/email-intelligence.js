@@ -440,6 +440,8 @@ async function procesarEmail(gmail, messageId) {
         if (ids.length) {
           await db.collection('emails').updateOne({ gmailId: messageId }, { $set: { compraId: ids[0], compraIds: ids } });
           console.log(`[Email] → ${ids.length} compra(s) en la cola`);
+          // WhatsApp a Álex y oficina: «llega la factura N de X; con esta le debemos Y» (si no está ya pagada).
+          if (process.env.AVISO_FACTURAS !== 'off') require('./avisoPagos').facturaLlegada(ids).catch(e => console.warn('[Email] aviso factura:', e.message));
         }
       } catch (e) { console.warn('[Email] compra desde correo:', e.message); }
     }
