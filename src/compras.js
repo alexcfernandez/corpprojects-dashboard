@@ -348,6 +348,27 @@ async function editar(id, data, por) {
   await db.collection(COL).updateOne({ _id: c._id }, { $set: { duplicadoDe: dup } });
   return getCompra(id);
 }
+// Han subido dos documentos juntos (p. ej. una devolución y la factura nueva): esa foto pasa a una compra
+// nueva (la IA la lee) y la original se vuelve a leer sin ella.
+async function separarFoto(id, idx, por) {
+  const db = await getDB();
+  const c = await db.collection(COL).findOne({ _id: oid(id), empresaId: EMPRESA });
+  if (!c) throw new Error('Compra no encontrada');
+  if (c.estado === 'revisada') throw new Error('Está revisada: reábrela antes de separar');
+  const fotos = await fotosDe(id);
+  if (fotos.length < 2) throw new Error('Solo tiene una foto');
+  const f = fotos.find(x => Number(x.idx) === Number(idx));
+  if (!f) throw new Error('Foto no encontrada');
+  const nueva = await crear({ fotos: [{ data: f.data.buffer ? Buffer.from(f.data.buffer) : f.data, mimetype: f.mimetype }], destino: c.destino || null, obraId: c.obraId || null,
+    paraWorker: c.paraWorker || null, origen: c.origen, gmailId: null, email: c.email || null, nota: `Separada de ${c.proveedor || 'otra compra'}${c.numero ? ' nº ' + c.numero : ''}`, subidaPor: c.subidaPor, silencioso: true });
+  // Fuera de la original y fotos renumeradas (0, 1, 2…)
+  await db.collection(FOTOS).deleteOne({ _id: f._id });
+  const resto = fotos.filter(x => String(x._id) !== String(f._id)).sort((a, b) => a.idx - b.idx);
+  for (let i = 0; i < resto.length; i++) if (resto[i].idx !== i) await db.collection(FOTOS).updateOne({ _id: resto[i]._id }, { $set: { idx: i } });
+  await db.collection(COL).updateOne({ _id: c._id }, { $set: { nFotos: resto.length, updatedAt: new Date() }, $push: { historial: { accion: 'separada', foto: Number(idx), nueva: nueva && nueva.id, por: por || '', at: new Date() } } });
+  let releida = null; try { releida = await releer(id); } catch (e) { releida = null; }
+  return { ok: true, nuevaId: nueva && nueva.id, original: releida || await getCompra(id) };
+}
 async function releer(id) {
   const db = await getDB();
   const c = await db.collection(COL).findOne({ _id: oid(id), empresaId: EMPRESA });
@@ -778,4 +799,4 @@ async function resumenPendientes({ dryRun = false } = {}) {
   return { pendientes: pend.length, enviado: ok > 0 };
 }
 
-module.exports = { n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, albaranesDelCorreo, repartoPorAlbaran, obraDeTexto, _aprenderAliasObras: aprenderAliasObras, clasificacionesParaStel, reglaProveedorDe, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };
+module.exports = { separarFoto, n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, albaranesDelCorreo, repartoPorAlbaran, obraDeTexto, _aprenderAliasObras: aprenderAliasObras, clasificacionesParaStel, reglaProveedorDe, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };

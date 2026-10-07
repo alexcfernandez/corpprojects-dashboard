@@ -142,7 +142,7 @@ async function abrir(id){
   if(c.enviadaStel)avisos.push(`<div class="aviso ${c.enviadaStel.ok?'ok':'err'}">${c.enviadaStel.ok?'📤 Enviada a StelOrder el '+fh(c.enviadaStel.at):'❌ No se pudo enviar a StelOrder: '+esc(c.enviadaStel.detalle||'')}</div>`);
   v.innerHTML=`<button class="btn g" onclick="volver()" style="margin-bottom:12px">← Volver a la cola</button>
   <div class="det">
-    <div class="card"><h3>Documento · subido por ${esc((c.subidaPor||{}).name||'?')} el ${fh(c.createdAt)}${c.nota?' · «'+esc(c.nota)+'»':''}</h3><div class="fotos" id="fotos">${Array.from({length:c.nFotos||1}).map((_,i)=>`<img data-i="${i}" alt="página ${i+1}" onclick="zoom(this)">`).join('')}</div></div>
+    <div class="card"><h3>Documento · subido por ${esc((c.subidaPor||{}).name||'?')} el ${fh(c.createdAt)}${c.nota?' · «'+esc(c.nota)+'»':''}</h3><div class="fotos" id="fotos">${Array.from({length:c.nFotos||1}).map((_,i)=>`<img data-i="${i}" alt="página ${i+1}" onclick="zoom(this)">${(c.nFotos||1)>1&&!['revisada','descartada'].includes(c.estado)?`<button class="btn g" style="display:block;margin:4px 0 12px;padding:5px 10px;font-size:12px" onclick="separarFoto(${i},this)">✂️ Esta foto es otro documento: separarla</button>`:''}`).join('')}</div></div>
     <div class="card">
       ${avisos.join('')}
       <div class="g2"><div><label class="f">Tipo</label><select id="f-tipo" ${rev?'disabled':''}>${Object.entries(TIPO_TXT).map(([k,t])=>`<option value="${k}" ${c.tipo===k?'selected':''}>${t}</option>`).join('')}</select></div><div><label class="f">Fecha</label><input type="date" id="f-fecha" value="${esc(c.fecha||'')}" ${rev?'disabled':''}></div></div>
@@ -380,6 +380,11 @@ async function confirmar(){if(!(await guardar(true)))return;
   if(d._herramientas.length)txt+=`\n\nAdemás se dan de alta ${d._herramientas.reduce((a,h)=>a+Math.min(30,Math.max(1,Math.round(h.cantidad))),0)} ${d.destino==='ropa'?'prenda(s)':'herramienta(s)'} en Llaves y herramientas, ${d.paraWorker?'entregadas a '+d.paraWorker.name:'en oficina (sin entregar todavía)'}.`;
   if(!(await CPDialog.confirmar(txt+' ¿Seguimos?',{ok:'Seguir'})))return;
   try{cur=await api('POST','/api/compras/'+cur._id+'/revisar',{herramientas:d._herramientas,almacen:d._almacen,enviarStel:d._enviarStel});const it=cur.itvActualizada;await siguiente(cur._id,it&&!it.yaEstaba?`✅ Revisada · 🚐 ITV de ${it.vehiculo} al día: próxima el ${it.proxima.split('-').reverse().join('/')}`:'✅ Revisada');}catch(e){toast(e.message,'error');}}
+// Dos documentos subidos juntos: la foto pasa a otra compra (la IA la lee) y esta se vuelve a leer sin ella.
+async function separarFoto(i,b){if(!(await CPDialog.confirmar(`¿Separar la foto ${i+1} en otra compra? La IA la leerá aparte y esta se vuelve a leer sin ella.`,{ok:'Separar'})))return;
+  b.disabled=true;b.innerHTML='<span class="spinner"></span> Separando y leyendo… (10-30 s)';
+  try{const r=await api('POST','/api/compras/'+cur._id+'/separar/'+i,{});toast('✂️ Separada: la otra compra está en la cola','ok');abrir(cur._id);}
+  catch(e){toast(e.message,'error');b.disabled=false;b.textContent='✂️ Esta foto es otro documento: separarla';}}
 async function descartar(){const m=await CPDialog.pedir('¿Por qué la descartas? (lo verá quien la subió)',{opciones:['Foto repetida','Ya estaba subida','No es una compra','Foto ilegible'],ok:'Descartar'});if(m===null)return;
   try{await api('POST','/api/compras/'+cur._id+'/descartar',{motivo:m});const era=cur.estado;if(era==='por_revisar')await siguiente(cur._id,'Descartada');else{toast('Descartada','ok');volver();}}catch(e){toast(e.message,'error');}}
 async function accion(a){const b=[...document.querySelectorAll('.acciones .btn')];const rel=b.find(x=>/Volver a leer/.test(x.textContent));try{b.forEach(x=>x.disabled=true);if(a==='releer'){if(rel)rel.innerHTML='<span class="spinner"></span> Leyendo el documento… (10-30 s)';toast('🤖 La IA está leyendo el documento, espera unos segundos…','ok');}
