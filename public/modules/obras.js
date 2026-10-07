@@ -501,6 +501,11 @@
             ${rent.almacen&&(rent.almacen.salidas||[]).length?`<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px"><div style="font-size:12px;font-weight:600;margin-bottom:6px">📦 Del almacén · ${eur(rent.almacen.importe||0)}${rent.almacen.sacasPendientes?` · <span style="color:var(--amber)">♻️ ${rent.almacen.sacasPendientes} por recoger</span>`:''} <a href="/almacen" target="_blank" style="color:var(--blue);font-weight:400;font-size:11px">ver almacén</a></div>${rent.almacen.salidas.slice(0,12).map(s=>`<div style="font-size:12px;display:flex;gap:8px;padding:3px 0"><span style="flex:1">${s.cantidad} ${ce(s.unidad||'ud')} × ${ce(s.nombre)}${s.recogida&&s.recogida.pendientes>0?' <span style="color:var(--amber)">♻️ '+s.recogida.pendientes+' por recoger</span>':''}</span><span style="color:var(--text3)">${new Date(s.fecha).toLocaleDateString('es-ES')}${s.por?' · '+ce(s.por):''}</span><span style="color:var(--red)">${eur(s.importe)}</span></div>`).join('')}</div>`:''}
           </div>
 
+          <div class="card" style="margin-bottom:12px" id="ob-sug-card">
+            <div class="card-title" style="display:flex;align-items:center;gap:8px">🔎 ¿Son de esta obra? <span id="ob-sug-n" style="font-weight:400;color:var(--text3);font-size:11px"></span></div>
+            <div id="ob-sug" style="font-size:12px;color:var(--text3)">Buscando compras sin obra que podrían ser de aquí…</div>
+          </div>
+
           <div class="card" style="margin-bottom:12px">
             <div class="card-title">🧾 Facturas de proveedor</div>
             ${(rent.proveedores&&rent.proveedores.length)?`<table><thead><tr><th>Proveedor</th><th style="text-align:right">Importe</th><th></th></tr></thead><tbody>${rent.proveedores.map(p=>`<tr>
@@ -599,6 +604,7 @@
         </div>`;
 
       document.body.appendChild(modal);
+      cargarSugerencias(id);
       _presuSel = Array.isArray(obra.presupuestosStel) && obra.presupuestosStel.length ? obra.presupuestosStel.slice() : null; pintarPresuStel();
       modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
     } catch(err) { alert('Error: ' + err.message); }
@@ -616,6 +622,37 @@
       if (r && r.error) throw new Error(r.error);
       openObra(id);
     } catch(err) { say('❌ ' + err.message, 'var(--red)'); }
+  }
+
+  // ── «¿Son de esta obra?»: compras sin obra (de Compras, sin StelOrder) que nombran la obra o son de sus fechas ──
+  async function cargarSugerencias(id) {
+    const el = document.getElementById('ob-sug'), n = document.getElementById('ob-sug-n'); if (!el) return;
+    let d; try { d = await api(`/api/obras/${id}/sugerencias-compras`); if (d && d.error) throw new Error(d.error); }
+    catch (e) { el.textContent = '❌ ' + e.message; return; }
+    const total = d.fuertes.length + d.porFechas.length;
+    if (n) n.textContent = total ? `(${total}${d.masPorFechas ? '+' : ''})` : '';
+    const T = { albaran: 'Albarán', factura: 'Factura', ticket: 'Ticket', devolucion: 'Devolución' };
+    const fila = c => `<div id="sug-${c.id}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--border);font-size:12.5px;color:var(--text)">
+        <div style="flex:1;min-width:200px"><b>${ceMod(c.proveedor || 'Sin proveedor')}</b> <span style="color:var(--text3)">${T[c.tipo] || c.tipo}${c.numero ? ' ' + ceMod(c.numero) : ''} · ${ceMod(String(c.fecha || '').split('-').reverse().join('/'))}${c.estado === 'archivo' ? ' · archivo' : ''}</span>
+          <div style="font-size:11px;color:${c.fuerza === 'fuerte' ? 'var(--green)' : 'var(--text3)'}">${ceMod(c.motivo)}</div></div>
+        <b>${c.importe != null ? eur(c.importe) : '—'}</b>
+        <a href="/compras#${ceMod(c.id)}" target="_blank" style="color:var(--blue);font-size:11px">ver</a>
+        <button class="btn bp" style="padding:3px 10px;font-size:11px" onclick="CP.Obras.decidirSug('${id}','${c.id}',true)">Sí, es de aquí</button>
+        <button class="btn bgh" style="padding:3px 10px;font-size:11px" onclick="CP.Obras.decidirSug('${id}','${c.id}',false)">No</button></div>`;
+    el.innerHTML = !total ? 'No hay compras sin obra que parezcan de aquí. 👍'
+      : (d.fuertes.length ? `<div style="font-weight:600;color:var(--text2);margin:2px 0 2px">Nombran esta obra</div>${d.fuertes.map(fila).join('')}` : '')
+      + (d.porFechas.length ? `<details ${d.fuertes.length ? '' : 'open'} style="margin-top:8px"><summary style="cursor:pointer;font-weight:600;color:var(--text2)">De las fechas en que se trabajó aquí (${d.porFechas.length}${d.masPorFechas ? ' de ' + (d.porFechas.length + d.masPorFechas) : ''}) · no nombran ninguna obra</summary>${d.porFechas.map(fila).join('')}</details>` : '')
+      + `<div style="font-size:11px;color:var(--text3);margin-top:8px">«Sí» le pone esta obra y la confirma (pasa a StelOrder como siempre). Del ${ceMod(String(d.desde).split('-').reverse().join('/'))} al ${ceMod(String(d.hasta).split('-').reverse().join('/'))}${d.dias ? ` · ${d.dias} días trabajados` : ''}. Usa las copias de Compras: funciona aunque StelOrder esté caído.</div>`;
+  }
+  async function decidirSug(id, compraId, es) {
+    const row = document.getElementById('sug-' + compraId);
+    try {
+      const r = await api(`/api/obras/${id}/sugerencias-compras/${compraId}`, { method: 'POST', body: JSON.stringify({ es }) });
+      if (r && r.error) throw new Error(r.error);
+      if (!es) { if (row) row.remove(); return; }
+      if (r.confirmada) { openObra(id); loadResumen(); }
+      else if (row) row.innerHTML = `<div style="color:var(--amber);font-size:12px">Obra puesta, pero falta confirmarla en Compras: ${ceMod(r.falta)} · <a href="/compras#${ceMod(compraId)}" target="_blank" style="color:var(--blue)">abrir</a></div>`;
+    } catch (e) { alert('No se pudo: ' + e.message); }
   }
 
   // ── Facturas de StelOrder enlazadas (lo facturado de la obra es su suma sin IVA). Se guardan al momento. ──
@@ -1040,6 +1077,6 @@ ${pago}
     } catch (err) { alert('No se pudo borrar: ' + err.message); }
   }
 
-  CP.Obras = { buscarFactStel, enlazarFactStel, quitarFactStel, ponerCliente, guardarCliente, buscarPresuStel, anadirPresuStel, quitarPresuStel, partidasPresuStel, certMedicion, render, showTab, loadResumen, loadLista, loadEstudio, nuevaEstudio, estadoEstudio, openObra, saveObraChanges, ubicacion, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, addCert, certRapida, certEstado, conciliarCert, _ccPick, delCert, reciboCert, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick, _fpBack, _fpToggleAll, _fpSum, _fpAsignar };
+  CP.Obras = { decidirSug, buscarFactStel, enlazarFactStel, quitarFactStel, ponerCliente, guardarCliente, buscarPresuStel, anadirPresuStel, quitarPresuStel, partidasPresuStel, certMedicion, render, showTab, loadResumen, loadLista, loadEstudio, nuevaEstudio, estadoEstudio, openObra, saveObraChanges, ubicacion, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, addCert, certRapida, certEstado, conciliarCert, _ccPick, delCert, reciboCert, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick, _fpBack, _fpToggleAll, _fpSum, _fpAsignar };
 
 })(window.CP = window.CP || {});

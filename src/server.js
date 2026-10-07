@@ -2713,6 +2713,19 @@ app.get('/api/obras/:id/presupuestos', requireAuth, async (req, res) => {
 app.get('/api/obras/presupuestos-stel/:id/lineas', requireAuth, async (req, res) => {
   try { res.json(await require('./stelorder').lineasPresupuesto(req.params.id)); } catch (err) { res.status(400).json({ error: err.message }); }
 });
+// «¿Son de esta obra?»: compras sin obra que probablemente son de esta (por lo que ponen o por las fechas).
+app.get('/api/obras/:id/sugerencias-compras', requireAuth, async (req, res) => {
+  try {
+    if (!users.canSeeMoney(req.user?.role || 'owner')) return res.status(403).json({ error: 'Solo Dueño y Oficina' });
+    res.json(await require('./obraSugerencias').sugerencias(req.params.id));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/obras/:id/sugerencias-compras/:compraId', requireAuth, async (req, res) => {
+  try {
+    if (!users.canSeeMoney(req.user?.role || 'owner')) return res.status(403).json({ error: 'Solo Dueño y Oficina' });
+    res.json(await require('./obraSugerencias').decidir(req.params.id, req.params.compraId, !!(req.body || {}).es, req.user?.name || ''));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
 // Facturas emitidas de StelOrder para enlazar a una obra (buscar por nº o cliente; las más recientes primero).
 app.get('/api/obras/facturas-stel', requireAuth, async (req, res) => {
   try {
