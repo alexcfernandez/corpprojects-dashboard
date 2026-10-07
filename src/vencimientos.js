@@ -41,12 +41,20 @@ function fechaPrevista(fechaFactura, pt) {
 async function prevision({ dias = 45, hoy = new Date() } = {}) {
   const gs = await require('./cuentasProveedor').grupos({ desde: '2025-01-01' });
   const hoyIso = iso(hoy), hasta = iso(hoy.getTime() + dias * DIA);
-  const out = [];
+  const out = [], revisar = [];
+  const limiteAntigua = iso(hoy.getTime() - 120 * DIA);
   for (const g of gs) {
     const pend = g.facturas.filter(f => f.estado === 'pendiente' || f.estado === 'parcial');
     if (!pend.length) continue;
     const pt = patron(g.facturas);
+    // Proveedores que se pagan con tarjeta en la tienda (Obramat, Leroy…): lo que el banco no encuentra ya está
+    // pagado casi seguro (ticket sin casar); no es un pago futuro.
+    const pagos = g.facturas.flatMap(f => f.pagos);
+    const conTarjeta = pagos.filter(p => /revolut|cr[eé]dito|tarj/i.test(`${p.origen} ${p.concepto || ''}`)).length;
+    const deTarjeta = pagos.length >= 3 && conTarjeta / pagos.length >= 0.6;
     for (const f of pend) {
+      // Sin pago en el banco y de hace más de 4 meses, o de proveedor de tarjeta: a revisar, no es un pago previsto.
+      if (deTarjeta || f.fecha < limiteAntigua) { revisar.push({ proveedor: g.proveedor, factura: f.refProveedor || f.numero, numero: f.numero, fechaFactura: f.fecha, importe: f.pendiente, motivo: deTarjeta ? 'se paga con tarjeta: seguramente ya pagada' : 'de hace más de 4 meses sin pago en el banco' }); continue; }
       const fecha = fechaPrevista(f.fecha, pt);
       if (fecha > hasta) continue;
       out.push({ proveedor: g.proveedor, factura: f.refProveedor || f.numero, numero: f.numero, fechaFactura: f.fecha, importe: f.pendiente, fecha, vencida: fecha < hoyIso,
@@ -55,7 +63,8 @@ async function prevision({ dias = 45, hoy = new Date() } = {}) {
   }
   out.sort((a, b) => a.fecha.localeCompare(b.fecha) || b.importe - a.importe);
   const vencidas = out.filter(x => x.vencida), proximas = out.filter(x => !x.vencida);
-  return { hoy: hoyIso, vencidas, proximas, totales: { vencido: r2(vencidas.reduce((a, x) => a + x.importe, 0)), proximos30: r2(proximas.filter(x => x.fecha <= iso(hoy.getTime() + 30 * DIA)).reduce((a, x) => a + x.importe, 0)) } };
+  revisar.sort((a, b) => b.importe - a.importe);
+  return { hoy: hoyIso, vencidas, proximas, revisar, totales: { revisar: r2(revisar.reduce((a, x) => a + x.importe, 0)), vencido: r2(vencidas.reduce((a, x) => a + x.importe, 0)), proximos30: r2(proximas.filter(x => x.fecha <= iso(hoy.getTime() + 30 * DIA)).reduce((a, x) => a + x.importe, 0)) } };
 }
 
 // WhatsApp de la mañana: lo que se carga en los próximos 3 días (y los lunes, las 2 próximas semanas).

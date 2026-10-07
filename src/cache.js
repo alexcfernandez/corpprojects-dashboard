@@ -15,6 +15,37 @@ const store = new Map();    // key -> { value, expires }
 const MAX_STALE = parseInt(process.env.CACHE_MAX_STALE_MIN || 120) * 60 * 1000; // hasta 2 h se sirve caducado mientras se refresca
 const inflight = new Map(); // key -> Promise (descarga en curso)
 
+// COPIA EN MONGO (7/10/2026): cada reinicio (cada publicación) vaciaba la caché y volvía a descargar TODO de
+// StelOrder a la vez; con muchas publicaciones seguidas StelOrder devolvía 403. Ahora cada descarga buena se
+// guarda comprimida en `cacheStel` y, al arrancar, se sirve esa copia (aunque tenga unas horas) mientras se
+// refresca por detrás, de una en una. CACHE_PERSISTENTE=off para desactivarlo.
+const zlib = require('zlib');
+const SNAP_MAX = parseInt(process.env.CACHE_SNAPSHOT_MAX_H || 24) * 3600 * 1000;
+const persistente = () => process.env.CACHE_PERSISTENTE !== 'off' && process.env.NODE_ENV !== 'test' && !process.env.NODE_TEST_CONTEXT;
+async function _leerSnap(key) {
+  if (!persistente()) return null;
+  try {
+    const db = await require('./db').getDB();
+    const d = await db.collection('cacheStel').findOne({ _id: key });
+    if (!d || !d.data || Date.now() - new Date(d.at).getTime() > SNAP_MAX) return null;
+    return { value: JSON.parse(zlib.gunzipSync(Buffer.from(d.data.buffer || d.data)).toString('utf8')), at: new Date(d.at).getTime() };
+  } catch (e) { return null; }
+}
+function _guardarSnap(key, value) {
+  if (!persistente()) return;
+  (async () => {
+    try {
+      const buf = zlib.gzipSync(Buffer.from(JSON.stringify(value)));
+      if (buf.length > 15 * 1024 * 1024) return;               // límite de un documento de Mongo
+      const db = await require('./db').getDB();
+      await db.collection('cacheStel').updateOne({ _id: key }, { $set: { data: buf, at: new Date(), bytes: buf.length } }, { upsert: true });
+    } catch (e) { /* la copia es un extra */ }
+  })();
+}
+// Refrescos por detrás tras un arranque: de uno en uno, para no pedirlo todo a StelOrder a la vez.
+let _cola = Promise.resolve();
+const _enCola = fn => (_cola = _cola.then(fn, fn).then(() => new Promise(r => setTimeout(r, 1500))));
+
 /**
  * Devuelve el valor cacheado si está fresco; si no, ejecuta fetcher(),
  * guarda el resultado con su TTL y lo devuelve. Las llamadas concurrentes
@@ -38,7 +69,7 @@ async function cached(key, ttlMs, fetcher) {
   //     hace unos minutos, que al siguiente refresco ya están al día.
   if (hit && now < hit.expires + MAX_STALE) {
     if (!inflight.has(key)) {
-      const p = (async () => { try { const v = await fetcher(); store.set(key, { value: v, expires: Date.now() + ttlMs }); } catch (e) { /* se queda lo viejo */ } finally { inflight.delete(key); } })();
+      const p = (async () => { try { const v = await fetcher(); store.set(key, { value: v, expires: Date.now() + ttlMs }); _guardarSnap(key, v); } catch (e) { /* se queda lo viejo */ } finally { inflight.delete(key); } })();
       inflight.set(key, p);
     }
     return hit.value;
@@ -49,6 +80,20 @@ async function cached(key, ttlMs, fetcher) {
     return inflight.get(key);
   }
 
+  // 2b) Recién arrancado: la copia guardada en Mongo. Si aún está fresca, ni se descarga; si no, se sirve y se
+  //     refresca por detrás (en cola).
+  if (!hit) {
+    const snap = await _leerSnap(key);
+    if (snap) {
+      store.set(key, { value: snap.value, expires: snap.at + ttlMs });
+      if (Date.now() >= snap.at + ttlMs && !inflight.has(key)) {
+        const p = _enCola(async () => { try { const v = await fetcher(); store.set(key, { value: v, expires: Date.now() + ttlMs }); _guardarSnap(key, v); } catch (e) { /* se queda la copia */ } finally { inflight.delete(key); } });
+        inflight.set(key, p);
+      }
+      return snap.value;
+    }
+  }
+
   // 3) Caché fría: lanzar la descarga, registrarla como "en vuelo"
   //    (se registra de forma síncrona, antes de cualquier await, para que
   //     las peticiones que llegan en el mismo instante la encuentren).
@@ -56,6 +101,7 @@ async function cached(key, ttlMs, fetcher) {
     try {
       const value = await fetcher();
       store.set(key, { value, expires: Date.now() + ttlMs });
+      _guardarSnap(key, value);
       return value;
     } finally {
       // pase lo que pase, esta descarga deja de estar "en vuelo"
