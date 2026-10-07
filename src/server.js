@@ -2407,6 +2407,9 @@ app.get('/api/bank/info', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.get('/api/bank/coste-fijo', requireAuth, async (req, res) => {
+  try { res.json(await require('./banco').costeFijoMes()); } catch (err) { res.status(500).json({ error: err.message }); }
+});
 app.get('/api/bank/movimientos', requireAuth, async (req, res) => {
   try {
     const { from, to, categoria, flujo, q, limit } = req.query;

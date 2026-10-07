@@ -458,6 +458,32 @@ async function getDashboardData() {
 
   return { BD, EC, IC, kpis, ahorroTotal };
 }
+// Coste fijo real al mes (Bancos y gastos → Personal): media de los 3 últimos meses completos con banco.
+// Personal = nóminas + Seguridad Social + autónomos (pagos a usuarios marcados como autónomos); fijos = gestoría,
+// seguros, software y teléfono; impuestos = pagos a Hacienda (IVA, IRPF…). De ahí, el mínimo a facturar al mes.
+async function costeFijoMes({ hoy = new Date() } = {}) {
+  const db = await getDB();
+  const meses = [3, 2, 1].map(i => new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth() - i, 1)).toISOString().slice(0, 7));
+  const movs = await db.collection('bancoMovimientos').find({ mes: { $in: meses }, importe: { $lt: 0 } }).project({ mes: 1, importe: 1, categoria: 1, concepto: 1 }).toArray();
+  let autonomos = [];
+  try { autonomos = (await require('./users').getUsers(false)).filter(u => u.autonomo).map(u => require('./nominasPagos').nombresDe(u)); } catch (e) {}
+  const esAut = c => autonomos.some(ns => ns.some(ws => ws.length && ws.every(w => norm(c).includes(w))));
+  const G = { nominas: 0, ss: 0, autonomos: 0, fijos: 0, impuestos: 0 };
+  const detalleFijos = {};
+  for (const m of movs) {
+    const imp = -m.importe;
+    if (m.categoria === 'nomina') G.nominas += imp;
+    else if (m.categoria === 'seguridad_social') G.ss += imp;
+    else if (m.categoria === 'impuesto') G.impuestos += imp;
+    else if (['gestoria', 'seguro', 'software_suscrip', 'telefonia'].includes(m.categoria)) { G.fijos += imp; const k = (EC_MAP[m.categoria] || [m.categoria])[0]; detalleFijos[k] = (detalleFijos[k] || 0) + imp; }
+    else if (esAut(m.concepto)) G.autonomos += imp;
+  }
+  const n = meses.length, r = v => Math.round(v / n * 100) / 100;
+  const out = { meses, nominas: r(G.nominas), ss: r(G.ss), autonomos: r(G.autonomos), fijos: r(G.fijos), impuestos: r(G.impuestos), detalleFijos: Object.fromEntries(Object.entries(detalleFijos).map(([k, v]) => [k, r(v)])) };
+  out.personal = Math.round((out.nominas + out.ss + out.autonomos) * 100) / 100;
+  out.minimo = Math.round((out.personal + out.fijos + out.impuestos) * 100) / 100;
+  return out;
+}
 function blank() { return { i: Array(12).fill(0), g: Array(12).fill(0), a: Array(12).fill(0) }; }
 function sum(arr) { return arr.reduce((a, b) => a + b, 0); }
 function acc(bucket, cat, map, yKey, val) {
@@ -467,7 +493,7 @@ function acc(bucket, cat, map, yKey, val) {
 
 module.exports = {
   // núcleo
-  parseExcelBuffer, ingestExcelBuffer, norm, cargarTrabajadores, reclasificarNominas,
+  parseExcelBuffer, ingestExcelBuffer, norm, cargarTrabajadores, reclasificarNominas, costeFijoMes,
   // lectura dashboard
   getMovimientos, getResumen, getRecurrentesMensuales, getUltimoImport, getDashboardData,
   // utilidades expuestas por si las quiere reusar el asistente

@@ -325,15 +325,8 @@ function cpUpdateBanner(){
     </div>
   </div>
   <div id="btab-personal" class="bpanel">
-    <div class="alert ain" style="margin-bottom:16px"><div>👥</div><div><strong>Coste real por trabajador</strong> — calculado con el recibo de SS real (marzo 2026: 4.040,47 €, base 9.214,28 €). SS empresa = 43,9% sobre base. 218 días laborables reales/año.</div></div>
-    <div class="metrics-row">
-      <div class="mc"><div class="ml">Nóminas netas/mes</div><div class="mv r" id="p-nom">7.100 €</div><div class="ms" id="p-noms">Suma fijos</div></div>
-      <div class="mc"><div class="ml">SS empresa/mes</div><div class="mv a" id="p-ss">4.040 €</div><div class="ms">Estimada (43,9%)</div></div>
-      <div class="mc"><div class="ml">Autónomos/mes</div><div class="mv a">410 €</div><div class="ms">315 + 94,50 €</div></div>
-      <div class="mc"><div class="ml">TOTAL personal/mes</div><div class="mv r" id="p-tot">11.550 €</div><div class="ms">Nóminas + SS estimada</div></div>
-      <div class="mc"><div class="ml">Días laborables/año</div><div class="mv b">218</div><div class="ms">L–V sin festivos ni vacaciones</div></div>
-      <div class="mc"><div class="ml">Horas facturables/año</div><div class="mv b">1.744 h</div><div class="ms">Por trabajador</div></div>
-    </div>
+    <div class="alert ain" style="margin-bottom:16px"><div>👥</div><div><strong>Coste real</strong> — arriba, lo pagado de verdad (banco, media de los 3 últimos meses). En la tabla, el coste por trabajador y hora. SS empresa = 43,9% sobre base. 218 días laborables reales/año.</div></div>
+    <div id="p-real" class="metrics-row"><div class="mc"><div class="ml">Cargando coste real…</div></div></div>
     <div class="wgrid" id="wCards"></div>
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:6px">
@@ -347,31 +340,7 @@ function cpUpdateBanner(){
         <tfoot id="wTf"></tfoot>
       </table>
     </div>
-    <div class="g2">
-      <div class="card">
-        <div class="card-title" style="color:var(--green)">✅ Gastos fijos reales/mes</div>
-        <table>
-          <tr><td style="color:var(--text2)">VidaCaixa Seguros</td><td style="text-align:right">~100 €</td></tr>
-          <tr><td style="color:var(--text2)">Masmovil/Xfera</td><td style="text-align:right">~12 €</td></tr>
-          <tr><td style="color:var(--text2)">La Burocracia SL</td><td style="text-align:right">~550 €</td></tr>
-          <tr><td style="color:var(--text2)">PayPymes SL (trimestral/3)</td><td style="text-align:right">~180 €</td></tr>
-          <tr><td style="color:var(--text2)">Gerard Codina (trimestral/3)</td><td style="text-align:right">~30 €</td></tr>
-          <tr><td style="color:var(--text2)">OpenAI + Apple</td><td style="text-align:right">~46 €</td></tr>
-          <tr style="background:rgba(34,196,135,.05)"><td><strong>Total fijos</strong></td><td style="text-align:right;color:var(--green)"><strong>~918 €/mes</strong></td></tr>
-        </table>
-      </div>
-      <div class="card">
-        <div class="card-title">📊 Resumen coste total mínimo empresa/mes</div>
-        <table>
-          <tr><td style="color:var(--text2)">Personal total</td><td style="text-align:right;color:var(--red)">11.550 €</td></tr>
-          <tr><td style="color:var(--text2)">Gastos fijos</td><td style="text-align:right">~918 €</td></tr>
-          <tr><td style="color:var(--text2)">AEAT trimestral prorrateado</td><td style="text-align:right">~1.500 €</td></tr>
-          <tr><td style="color:var(--text2)">Seguros trimestrales prorrateados</td><td style="text-align:right">~590 €</td></tr>
-          <tr style="background:rgba(240,82,82,.05)"><td><strong>Mínimo fijo/mes</strong></td><td style="text-align:right;color:var(--red)"><strong>~14.558 €</strong></td></tr>
-          <tr style="background:rgba(34,196,135,.05)"><td><strong>Objetivo recomendado</strong></td><td style="text-align:right;color:var(--green)"><strong>~43.000 €</strong></td></tr>
-        </table>
-      </div>
-    </div>
+    <div id="p-fijos"></div>
   </div>
   <div id="btab-prevision" class="bpanel">
     <div class="metrics-row">
@@ -1752,6 +1721,23 @@ window.addEventListener('load',()=>{
       <div style="margin-top:10px;font-size:13px">${d.items.map(i=>i.error?`<div style="color:var(--red);padding:3px 0">${escR(i.concepto)}: ${escR(i.error)}</div>`:`<div style="display:flex;gap:8px;flex-wrap:wrap;padding:5px 0;border-top:1px dashed var(--border)"><span style="min-width:190px"><b>${escR(i.concepto)}</b>${i.enCurso?' <span style="font-size:11px;color:var(--text3)">(en curso)</span>':''}</span><span>${eurR(i.importe)}</span><span style="color:${i.dias<=7?'var(--red)':i.dias<=20?'var(--amber)':'var(--text3)'}">vence ${escR(i.vence.split('-').reverse().join('/'))} · ${i.dias>0?'en '+i.dias+' días':i.dias===0?'hoy':'vencido'}</span><span style="margin-left:auto;color:${i.falta>0.01?(i.pagarYa?'var(--red)':'var(--amber)'):'var(--green)'}">${i.falta>0.01?(i.pagarYa?'pagar ya: ':'falta ')+eurR(i.falta)+(i.porSemana>0.01?' · '+eurR(i.porSemana)+'/sem':''):'✔ cubierto'}</span><div style="width:100%;font-size:11.5px;color:var(--text3)">${escR(i.detalle||'')}</div></div>`).join('')}</div></div>`;}
   window._cargarReservas=cargarReservas;
   setTimeout(()=>cargarReservas(false),800);
+})();
+</script>
+<script>
+// Bancos y gastos → Personal: coste fijo real al mes desde el banco (media 3 meses) y mínimo a facturar.
+(function(){
+  const e0=v=>(Number(v)||0).toLocaleString('es-ES',{maximumFractionDigits:0,useGrouping:'always'})+' €';
+  async function cargar(){const el=document.getElementById('p-real'),ef=document.getElementById('p-fijos');const t=localStorage.getItem('cp_token');if(!el||!t)return;
+    let d;try{const r=await fetch('/api/bank/coste-fijo',{headers:{Authorization:'Bearer '+t}});if(!r.ok)return;d=await r.json();}catch(e){return;}
+    const per=d.meses[0].split('-').reverse().join('/')+' – '+d.meses[d.meses.length-1].split('-').reverse().join('/');
+    el.innerHTML=`<div class="mc"><div class="ml">Nóminas/mes</div><div class="mv r">${e0(d.nominas)}</div><div class="ms">pagado (banco)</div></div>
+      <div class="mc"><div class="ml">Seg. Social/mes</div><div class="mv a">${e0(d.ss)}</div><div class="ms">TGSS (banco)</div></div>
+      <div class="mc"><div class="ml">Autónomos/mes</div><div class="mv a">${e0(d.autonomos)}</div><div class="ms">pagos a autónomos</div></div>
+      <div class="mc"><div class="ml">Personal total/mes</div><div class="mv r">${e0(d.personal)}</div><div class="ms">media ${per}</div></div>`;
+    if(ef)ef.innerHTML=`<div class="g2"><div class="card"><div class="card-title" style="color:var(--green)">Gastos fijos reales/mes</div><table>${Object.entries(d.detalleFijos).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<tr><td style="color:var(--text2)">${k}</td><td style="text-align:right">${e0(v)}</td></tr>`).join('')}<tr style="background:rgba(34,196,135,.05)"><td><strong>Total fijos</strong></td><td style="text-align:right;color:var(--green)"><strong>${e0(d.fijos)}</strong></td></tr></table></div>
+      <div class="card"><div class="card-title">Coste mínimo de la empresa al mes</div><table><tr><td style="color:var(--text2)">Personal</td><td style="text-align:right;color:var(--red)">${e0(d.personal)}</td></tr><tr><td style="color:var(--text2)">Gastos fijos</td><td style="text-align:right">${e0(d.fijos)}</td></tr><tr><td style="color:var(--text2)">Impuestos (Hacienda, media)</td><td style="text-align:right">${e0(d.impuestos)}</td></tr>
+      <tr style="background:rgba(240,82,82,.05)"><td><strong>Mínimo al mes (sin materiales)</strong></td><td style="text-align:right;color:var(--red)"><strong>${e0(d.minimo)}</strong></td></tr></table><div style="font-size:11px;color:var(--text3);margin-top:6px">Media de ${per}, de lo pagado en el banco. Los materiales y proveedores de obra van aparte (según obras).</div></div></div>`;}
+  window._cargarCosteFijo=cargar;setTimeout(cargar,1500);
 })();
 </script>
 </body>
