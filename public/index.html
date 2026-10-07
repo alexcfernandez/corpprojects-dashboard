@@ -77,62 +77,68 @@ function cpUpdateBanner(){
 </header>
 <nav class="nav" id="nav-grupos" style="gap:4px">
   <button class="nav-btn active" onclick="showTab('inicio',this)" style="font-weight:700">🏠 Inicio</button>
+  <button class="nav-grp" onclick="showGrupo('obras',this)">🏗️ Obras ▾</button>
   <button class="nav-grp" onclick="showGrupo('dinero',this)">💰 Dinero ▾</button>
-  <button class="nav-grp" onclick="showGrupo('operacion',this)">🔧 Operación ▾</button>
-  <button class="nav-grp" onclick="showGrupo('gestion',this)">⚙️ Gestión ▾</button>
-  <button class="nav-grp" onclick="showGrupo('herramientas',this)">🧰 Herramientas ▾</button>
+  <button class="nav-grp" onclick="showGrupo('compras',this)">🧾 Compras ▾</button>
+  <button class="nav-grp" onclick="showGrupo('personal',this)">👷 Personal ▾</button>
+  <button class="nav-grp" onclick="showGrupo('flota',this)">🚐 Flota ▾</button>
+  <button class="nav-grp" onclick="showGrupo('documentos',this)">📄 Documentos ▾</button>
+  <button class="nav-grp" onclick="showGrupo('ajustes',this)">⚙️ Ajustes ▾</button>
 </nav>
 <nav class="nav" id="subnav" style="display:none;background:var(--bg3)">
-  <!-- DINERO -->
+  <span class="subgrp" data-grp="obras" style="display:none">
+    <button class="nav-btn" onclick="showTab('obras',this)">📊 Obras</button>
+    <button class="nav-btn" onclick="showTab('pedidos',this)">🔧 Pedidos de trabajo</button>
+    <button class="nav-btn" onclick="showTab('planning',this)">🗓 Planificación</button>
+    <button class="nav-btn" onclick="showTab('partes',this)">📋 Partes</button>
+    <button class="nav-btn" onclick="showTab('comunidades',this)">🏘️ Comunidades</button>
+    <button class="nav-btn" onclick="location.href='/medir'">📐 Mediciones</button>
+    <button class="nav-btn" onclick="location.href='/presupuestos'">💶 Presupuestos</button>
+    <button class="nav-btn" onclick="location.href='/catalogo'">📋 Catálogo de precios</button>
+    <button class="nav-btn" onclick="location.href='/amidaments'">📐 Amidaments</button>
+    <button class="nav-btn" onclick="location.href='/competencia'">🔍 Competencia</button>
+  </span>
   <span class="subgrp" data-grp="dinero" style="display:none">
-    <button class="nav-btn" onclick="showTab('informes',this)">📈 Informes</button>
+    <button class="nav-btn" onclick="showTab('informes',this)">📈 Informes · resultado</button>
     <button class="nav-btn" onclick="showTab('facturas',this)">📊 Facturación</button>
-    <button class="nav-btn" onclick="showTab('pendientes',this)">🔴 Pendientes cobro</button>
+    <button class="nav-btn" onclick="showTab('pendientes',this)">🔴 Pendientes de cobro</button>
     <button class="nav-btn" onclick="showTab('cobros',this)">💸 Cobros</button>
     <button class="nav-btn" onclick="showTab('presupuestos',this)">📋 Presupuestos StelOrder</button>
     <button class="nav-btn" onclick="showTab('banco',this)">🏦 Banco y gastos</button>
-    <button class="nav-btn" onclick="showTab('pagos',this)">💵 Pagos</button>
+    <button class="nav-btn" onclick="location.href='/trimestre'">🗂️ Cierre del trimestre</button>
+    <button class="nav-btn" onclick="showTab('pagos',this)">💵 Pagos y autónomos</button>
   </span>
-  <!-- OPERACIÓN -->
-  <span class="subgrp" data-grp="operacion" style="display:none">
-    <button class="nav-btn" onclick="showTab('pedidos',this)">🔧 Pedidos trabajo</button>
-    <button class="nav-btn" onclick="showTab('planning',this)">🗓 Planificación</button>
-    <button class="nav-btn" onclick="showTab('partes',this)">📋 Partes</button>
-    <button class="nav-btn" onclick="showTab('obras',this)">📊 Obras</button>
-    <button class="nav-btn" onclick="showTab('comunidades',this)">🏘️ Comunidades</button>
+  <span class="subgrp" data-grp="compras" style="display:none">
+    <button class="nav-btn" onclick="location.href='/compras'">🧾 Compras por revisar</button>
+    <button class="nav-btn" onclick="location.href='/compras#cuentas'">💶 Cuentas de proveedores</button>
+    <button class="nav-btn" onclick="location.href='/compra'">📤 Subir una compra</button>
+    <button class="nav-btn" onclick="location.href='/almacen'">📦 Almacén</button>
+  </span>
+  <span class="subgrp" data-grp="personal" style="display:none">
     <button class="nav-btn" onclick="showTab('presencia',this)">📅 Presencia</button>
+    <button class="nav-btn" onclick="location.href='/fichajes'">🕐 Fichajes</button>
+    <button class="nav-btn" onclick="location.href='/horas'">⏱️ Horas fichadas</button>
+    <button class="nav-btn" onclick="location.href='/personal'">📁 Documentación y nóminas</button>
+    <button class="nav-btn" onclick="location.href='/sitios'">🔎 ¿Dónde hemos estado?</button>
+    <button class="nav-btn" onclick="location.href='/fichar'">▶ Fichar jornada</button>
+    <button class="nav-btn" onclick="location.href='/parte'">📋 Parte de trabajo</button>
   </span>
-  <!-- GESTIÓN -->
-  <span class="subgrp" data-grp="gestion" style="display:none">
+  <span class="subgrp" data-grp="flota" style="display:none">
+    <button class="nav-btn" onclick="location.href='/vehiculos'">🚐 Vehículos</button>
+    <button class="nav-btn" onclick="location.href='/activos'">🔑 Llaves y herramientas</button>
+  </span>
+  <span class="subgrp" data-grp="documentos" style="display:none">
+    <button class="nav-btn" onclick="location.href='/documentos'">📄 Documentos para clientes</button>
+    <button class="nav-btn" onclick="location.href='/conversaciones'">💬 Conversaciones WhatsApp</button>
+  </span>
+  <span class="subgrp" data-grp="ajustes" style="display:none">
+    <button class="nav-btn" onclick="showTab('usuarios',this)">⚙️ Usuarios</button>
     <button class="nav-btn" onclick="showTab('familias',this)">👥 Familias</button>
     <button class="nav-btn" onclick="showTab('emails',this)" id="nav-emails">📧 Emails <span id="badge-emails" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:2px">0</span></button>
-    <button class="nav-btn" onclick="showTab('usuarios',this)">⚙️ Usuarios</button>
     <button class="nav-btn" onclick="showTab('alertas',this)">🔔 Alertas</button>
     <button class="nav-btn" onclick="showTab('actividad',this)">📜 Actividad</button>
-  </span>
-  <!-- HERRAMIENTAS (páginas standalone; se abren en su propia pantalla) -->
-  <span class="subgrp" data-grp="herramientas" style="display:none">
-    <button class="nav-btn" onclick="location.href='/compras'">🧾 Compras por revisar</button>
-    <button class="nav-btn" onclick="location.href='/compra'">📤 Subir factura / compra</button>
-    <button class="nav-btn" onclick="location.href='/almacen'">📦 Almacén</button>
-    <button class="nav-btn" onclick="location.href='/activos'">🔑 Llaves y herramientas</button>
-    <button class="nav-btn" onclick="location.href='/vehiculos'">🚐 Vehículos</button>
-    <button class="nav-btn" onclick="location.href='/documentos'">📄 Documentos</button>
     <button class="nav-btn" onclick="location.href='/copias'">💾 Copias de seguridad</button>
-    <button class="nav-btn" onclick="location.href='/medir'">📐 Mediciones</button>
-    <button class="nav-btn" onclick="location.href='/catalogo'">📋 Catálogo de precios</button>
-    <button class="nav-btn" onclick="location.href='/presupuestos'">💶 Presupuestos</button>
-    <button class="nav-btn" onclick="location.href='/fichajes'">🕐 Fichajes (informe)</button>
-    <button class="nav-btn" onclick="location.href='/fichar'">🕐 Fichar jornada</button>
-    <button class="nav-btn" onclick="location.href='/parte'">📋 Parte de trabajo</button>
-    <button class="nav-btn" onclick="location.href='/horas'">⏱️ Horas fichadas / a facturar</button>
-    <button class="nav-btn" onclick="location.href='/personal'">📁 Documentación del personal</button>
-    <button class="nav-btn" onclick="location.href='/sitios'">🔎 ¿Dónde hemos estado?</button>
-    <button class="nav-btn" onclick="location.href='/trimestre'">🗂️ Cierre del trimestre</button>
-    <button class="nav-btn" onclick="location.href='/conversaciones'">💬 Conversaciones WhatsApp</button>
     <button class="nav-btn" onclick="location.href='/diag'">🩺 Diagnóstico</button>
-    <button class="nav-btn" onclick="location.href='/amidaments'">📐 Amidaments</button>
-    <button class="nav-btn" onclick="location.href='/competencia'">🔍 Competencia</button>
   </span>
 </nav>
 <main class="main">
@@ -1548,19 +1554,19 @@ function showGrupo(grp, btn){
   const target=document.querySelector(`.subgrp[data-grp="${grp}"]`);
   if(target){
     target.style.display='contents';
-    // Abrir la primera pestaña del grupo automáticamente. Excepción: Herramientas
-    // son enlaces a páginas standalone; auto-abrir redirigiría al entrar al menú.
-    if(grp!=='herramientas'){
-      // Abrir la primera pestaña VISIBLE (respeta los permisos por rol).
-      const firstBtn=[...target.querySelectorAll('.nav-btn')].find(b=>b.style.display!=='none');
-      if(firstBtn) firstBtn.click();
-    }
+    // Abrir la primera PESTAÑA visible del grupo (respeta los permisos por rol). Los enlaces a otras páginas no
+    // se abren solos: si el grupo solo tiene enlaces (Compras, Flota, Documentos), se queda el menú abierto.
+    const firstBtn=[...target.querySelectorAll('.nav-btn')].find(b=>b.style.display!=='none'&&/showTab\(/.test(b.getAttribute('onclick')||''));
+    if(firstBtn) firstBtn.click();
   }
 }
 
 // Navegar desde una tarjeta de Inicio a una pestaña concreta de un grupo.
 function irA(grupo, tab){
-  const grpBtn=document.querySelector(`.nav-grp[onclick*="${grupo}"]`);
+  // El grupo sale de la propia pestaña (los grupos del menú cambiaron el 7/10/2026).
+  const tb0=document.querySelector(`.subgrp .nav-btn[onclick*="showTab('${tab}'"]`);
+  if(tb0&&tb0.closest('.subgrp')) grupo=tb0.closest('.subgrp').dataset.grp;
+  const grpBtn=document.querySelector(`.nav-grp[onclick*="'${grupo}'"]`);
   if(grpBtn){
     // abrir el grupo sin auto-abrir su primera pestaña
     document.querySelectorAll('.nav-grp').forEach(b=>b.classList.remove('active'));
