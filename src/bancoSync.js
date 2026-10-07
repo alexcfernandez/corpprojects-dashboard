@@ -113,11 +113,13 @@ function _codigo(t, concepto) {
   return '';
 }
 function _fechas(t) { return [...new Set([t.booking_date, t.transaction_date, t.value_date].filter(Boolean).map(x => String(x).slice(0, 10)))]; }
+// Por IBAN (no por la cuenta de la sesión): la misma cuenta enlazada dos veces (Revolut sale repetida) no duplica.
+const _idCuenta = cuenta => cuenta.iban || cuenta.uid;
 function _ref(cuenta, t) {
   const id = t.entry_reference || t.transaction_id;
-  if (id) return `eb|${cuenta.uid}|${id}`;
+  if (id) return `eb|${_idCuenta(cuenta)}|${id}`;
   const h = crypto.createHash('sha1').update([_fechas(t)[0], t.transaction_amount && t.transaction_amount.amount, t.credit_debit_indicator, [].concat(t.remittance_information || []).join(' ')].join('|')).digest('hex').slice(0, 16);
-  return `eb|${cuenta.uid}|h${h}`;
+  return `eb|${_idCuenta(cuenta)}|h${h}`;
 }
 function aBanco(cuenta, t) {
   const B = require('./banco');
@@ -188,7 +190,7 @@ async function _desde(db, cuenta) {
   const hoy = Date.now();
   let ult = cuenta.hasta;
   if (!ult) {
-    const q = cuenta.destino === 'banco' ? db.collection('bancoMovimientos').find({ iban: cuenta.iban }).sort({ fechaOperacion: -1 }).limit(1) : db.collection('tarjetaMovimientos').find({ ebRef: { $regex: '^eb\\|' + cuenta.uid } }).sort({ fecha: -1 }).limit(1);
+    const q = cuenta.destino === 'banco' ? db.collection('bancoMovimientos').find({ iban: cuenta.iban }).sort({ fechaOperacion: -1 }).limit(1) : db.collection('tarjetaMovimientos').find({ ebRef: { $regex: '^eb\\|' + _idCuenta(cuenta).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\|' } }).sort({ fecha: -1 }).limit(1);
     const u = (await q.toArray())[0]; ult = u ? (u.fechaOperacion || u.fecha) : null;
   }
   const t = ult ? Math.max(new Date(ult + 'T00:00:00Z').getTime() - 5 * DIA, hoy - 365 * DIA) : hoy - 90 * DIA;

@@ -48,12 +48,12 @@ test('lo ya subido en Excel no se duplica, y lo nuevo entra solo una vez', async
   const txs = [tx({ imp: -300, fecha: '2026-09-26', ref: 'R2', a: 'RACHID', saldo: 9450 }), tx({ imp: -484, fecha: '2026-10-03', ref: 'R3', a: 'RACHID EL', rem: 'IN2609-0069', saldo: 8966 }), { ...tx({ imp: -5, fecha: '2026-10-06', ref: 'R4' }), status: 'PDNG' }];
   const r1 = await S.guardarMovimientos(db, SANT, txs, new Set());
   assert.deepEqual(r1, { nuevos: 1, repetidos: 1 });                       // el pendiente no entra
-  assert.equal(col('bancoMovimientos').find(d => d._id === 'x1').ebRef, 'eb|u-sant|R2');  // enlazado con el del Excel
+  assert.equal(col('bancoMovimientos').find(d => d._id === 'x1').ebRef, `eb|${IBAN}|R2`);  // enlazado con el del Excel
   const r2 = await S.guardarMovimientos(db, SANT, txs, new Set());          // segunda lectura: nada nuevo
   assert.deepEqual(r2, { nuevos: 0, repetidos: 2 });
   // Y si luego se sube el Excel con el pago del 3/10, se enlaza con el que entró solo.
   const gem = await S.gemelaDeExcel(db, { iban: IBAN, fechaOperacion: '2026-10-03', fechaValor: '2026-10-03', importe: -484, saldo: 8966 });
-  assert.ok(gem && gem.ebRef === 'eb|u-sant|R3');
+  assert.ok(gem && gem.ebRef === `eb|${IBAN}|R3`);
 });
 
 test('Revolut va con las tarjetas aunque tenga IBAN; los traspasos entre cuentas propias no son gasto', () => {
@@ -63,4 +63,11 @@ test('Revolut va con las tarjetas aunque tenga IBAN; los traspasos entre cuentas
   assert.equal(m.fuente, 'revolut'); assert.equal(m.tipo, 'TRANSFER'); assert.equal(m.interno, true);
   const p = S.aTarjeta({ ...c, banco: 'Revolut' }, tx({ imp: -63.2, fecha: '2026-10-01', ref: 'T2', rem: 'Obramat Girona' }), new Set(['compras']));
   assert.equal(p.tipo, 'CARD_PAYMENT'); assert.equal(p.interno, false);
+});
+
+test('la misma cuenta enlazada dos veces (Revolut repetida) no duplica movimientos', async () => {
+  const a = { uid: 'r1', iban: 'ES9115830001199300813708', nombre: 'Main', destino: 'tarjeta', banco: 'Revolut' }, b = { ...a, uid: 'r2' };
+  const t = [tx({ imp: -63.2, fecha: '2026-10-02', ref: 'TX9', rem: 'Obramat Girona' })];
+  assert.deepEqual(await S.guardarMovimientos(db, a, t, new Set()), { nuevos: 1, repetidos: 0 });
+  assert.deepEqual(await S.guardarMovimientos(db, b, t, new Set()), { nuevos: 0, repetidos: 1 });
 });
