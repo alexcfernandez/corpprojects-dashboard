@@ -31,6 +31,7 @@ const BASE_URL = (process.env.PUBLIC_URL || 'https://dashboard.corpprojects.es')
 const REDIRECT = BASE_URL + '/api/banco-sync/callback';
 const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
 const DIA = 86400000;
+const MAPEO = 2;   // versión de cómo se leen los movimientos: al subirla, la siguiente lectura rehace los ya guardados
 
 function _clave() {
   let k = String(process.env.EB_PRIVATE_KEY || '').trim();
@@ -132,17 +133,31 @@ function aBanco(cuenta, t) {
   return { huella: ref, ebRef: ref, iban: cuenta.iban, fechaOperacion: fecha, fechaValor: t.value_date ? String(t.value_date).slice(0, 10) : fecha, mes: fecha.slice(0, 7), concepto, importe: imp, saldo, codigo, numeroDocumento: null,
     flujo: c.flujo, categoria: c.categoria, categoriaLabel: c.label, contraparte: c.contraparte, recurrente: c.recurrente, _fechas: _fechas(t) };
 }
+// Revolut dice el tipo (CARD_PAYMENT, TRANSFER, TOPUP, FEE, CARD_REFUND, EXCHANGE, ATM…) y la tarjeta que pagó
+// (…6439) igual que su CSV: el concepto va tal cual («Obramat Girona», «To EUR David Taladros»).
+const TIPOS_REV = ['CARD_PAYMENT', 'CARD_REFUND', 'TRANSFER', 'TOPUP', 'FEE', 'EXCHANGE', 'ATM', 'REFUND', 'CASHBACK'];
+function _tarjetaDe(t) {
+  const ids = [].concat(t.debtor_account_additional_identification || [], t.creditor_account_additional_identification || []).map(x => String(x && x.identification || ''));
+  const c = ids.find(x => /^\d{4}$/.test(x)) || ids.map(x => x.replace(/\D/g, '')).find(x => x.length >= 4);
+  return c ? c.slice(-4) : null;
+}
 function aTarjeta(cuenta, t, propias = new Set()) {
+  const B = require('./banco');
   const imp = r2(Math.abs(Number(t.transaction_amount && t.transaction_amount.amount) || 0) * (t.credit_debit_indicator === 'DBIT' ? -1 : 1));
-  const concepto = _concepto(t), n = require('./banco').norm(concepto);
-  const otro = require('./banco').norm((t.credit_debit_indicator === 'CRDT' ? t.debtor : t.creditor) && ((t.credit_debit_indicator === 'CRDT' ? t.debtor : t.creditor).name) || '');
-  const transf = /^(to|from)\s|transferencia/.test(n) || !!otro;
-  const interno = (otro && propias.has(otro)) || /^(to|from)\s+(.+)$/.test(n) && propias.has(n.replace(/^(to|from)\s+/, '').split(' concepto')[0].trim()) || /top.?up|recarga/.test(n);
+  const rem = [].concat(t.remittance_information || []).join(' ').replace(/\s+/g, ' ').trim();
+  const comercio = (t.credit_debit_indicator === 'DBIT' ? t.creditor : t.debtor) || {};
+  const concepto = rem || comercio.name || _concepto(t);
+  const n = B.norm(concepto);
+  const cod = String(t.bank_transaction_code && t.bank_transaction_code.code || '').toUpperCase();
+  const tipo = TIPOS_REV.includes(cod) ? cod : /comision|cuota|fee/.test(n) ? 'FEE' : /^(to|from)\s|transferencia/.test(n) ? 'TRANSFER' : (imp > 0 ? 'CARD_REFUND' : 'CARD_PAYMENT');
+  // Traspaso entre subcuentas propias («To EUR David Taladros» = la cuenta de David en Revolut): no es gasto.
+  const destinoTr = /^(to|from)\s+(.+)$/.exec(n) ? n.replace(/^(to|from)\s+/, '').replace(/^[a-z]{3}\s+/, '').split(' concepto')[0].trim() : null;
+  const interno = tipo === 'TOPUP' || (tipo === 'TRANSFER' && ((destinoTr && propias.has(destinoTr)) || propias.has(B.norm(comercio.name || '')) || /corp\.?\s*projects/.test(n)));
   const ref = _ref(cuenta, t);
   const banco = /revolut/i.test(cuenta.banco || cuenta.nombre || '');
   return { huella: ref, ebRef: ref, fuente: banco ? 'revolut' : 'santander_credito', fecha: _fechas(t)[0], concepto, importe: imp,
-    tipo: /comision|cuota|fee/.test(n) ? 'FEE' : transf ? 'TRANSFER' : (imp > 0 ? 'CARD_REFUND' : 'CARD_PAYMENT'), estado: 'COMPLETED',
-    tarjeta: cuenta.tarjeta || null, etiqueta: null, titular: null, cuenta: cuenta.nombre, interno: !!interno, beneficiario: (t.creditor && t.creditor.name) || null, _fechas: _fechas(t) };
+    tipo, estado: 'COMPLETED', tarjeta: _tarjetaDe(t) || cuenta.tarjeta || null, etiqueta: null, titular: (t.debtor && t.debtor.name) || null, cuenta: cuenta.nombre, interno: !!interno,
+    beneficiario: tipo === 'TRANSFER' ? (comercio.name || null) : null, _fechas: _fechas(t) };
 }
 
 // ── Gemelas: lo mismo subido a mano y traído del banco ───────────────────────
@@ -175,11 +190,19 @@ async function guardarMovimientos(db, cuenta, txs, propias) {
     if (t.status && !/BOOK/i.test(t.status)) continue;           // solo lo ya apuntado (lo pendiente cambia)
     const m = cuenta.destino === 'banco' ? aBanco(cuenta, t) : aTarjeta(cuenta, t, propias);
     if (!m.fechaOperacion && !m.fecha) continue;
-    if (await db.collection(col).findOne({ $or: [{ huella: m.huella }, { ebRef: m.ebRef }] }, { projection: { _id: 1 } })) { repetidos++; continue; }
+    const ya = await db.collection(col).findOne({ $or: [{ huella: m.huella }, { ebRef: m.ebRef }] }, { projection: { _id: 1, origen: 1, csvHuella: 1, mapeo: 1 } });
+    if (ya) {
+      // Lo que entró con una lectura antigua se rehace (p. ej. Revolut sin tarjeta); lo completado por su CSV no se toca.
+      if (cuenta.destino === 'tarjeta' && ya.origen === 'enablebanking' && !ya.csvHuella && ya.mapeo !== MAPEO) {
+        const { _fechas: _f, huella: _h, ...campos } = m;
+        await db.collection(col).updateOne({ _id: ya._id }, { $set: { ...campos, mapeo: MAPEO } });
+      }
+      repetidos++; continue;
+    }
     const gem = cuenta.destino === 'banco' ? await _gemelaExcelDe(db, m) : await _gemelaCsvDe(db, m);
     if (gem) { await db.collection(col).updateOne({ _id: gem._id }, { $set: { ebRef: m.ebRef, vistoEl: new Date() } }); repetidos++; continue; }
     const { _fechas: _f, ...doc } = m;
-    await db.collection(col).insertOne({ ...doc, importadoEl: new Date(), origen: 'enablebanking', archivo: null });
+    await db.collection(col).insertOne({ ...doc, importadoEl: new Date(), origen: 'enablebanking', archivo: null, mapeo: MAPEO });
     nuevos++;
   }
   return { nuevos, repetidos };
@@ -188,6 +211,7 @@ async function guardarMovimientos(db, cuenta, txs, propias) {
 // Desde cuándo pedir: lo último que ya tenemos de esa cuenta menos 5 días (por si el banco apunta tarde), o 90 días.
 async function _desde(db, cuenta) {
   const hoy = Date.now();
+  if (cuenta.destino === 'tarjeta' && cuenta.mapeo !== MAPEO) return new Date(hoy - 90 * DIA).toISOString().slice(0, 10);
   let ult = cuenta.hasta;
   if (!ult) {
     const q = cuenta.destino === 'banco' ? db.collection('bancoMovimientos').find({ iban: cuenta.iban }).sort({ fechaOperacion: -1 }).limit(1) : db.collection('tarjetaMovimientos').find({ ebRef: { $regex: '^eb\\|' + _idCuenta(cuenta).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\|' } }).sort({ fecha: -1 }).limit(1);
@@ -201,7 +225,7 @@ async function sincronizar({ soloId = null, _api: api = _api } = {}) {
   if (!configurado()) return { configurado: false, nuevos: 0 };
   const db = await getDB();
   const conns = await db.collection('bancoConexiones').find(soloId ? { _id: soloId } : { estado: 'activa' }).toArray();
-  const propias = new Set(conns.flatMap(c => (c.cuentas || []).map(a => require('./banco').norm(a.nombre.split(' · ')[0]))).concat(['corp projects holding sl', 'corp projects holding', 'corp projects']));
+  const propias = new Set(conns.flatMap(c => (c.cuentas || []).flatMap(a => String(a.nombre || '').split(' · ').map(x => require('./banco').norm(x)))).concat(['corp projects holding sl', 'corp projects holding', 'corp projects']).filter(Boolean));
   const out = []; let total = 0;
   for (const c of conns) {
     if (c.validoHasta && new Date(c.validoHasta) < new Date()) { await _caducada(db, c); out.push({ banco: c.banco, error: 'permiso caducado' }); continue; }
@@ -217,7 +241,7 @@ async function sincronizar({ soloId = null, _api: api = _api } = {}) {
         const r = await guardarMovimientos(db, cu, txs, propias);
         n = r.nuevos; total += n;
         const fechas = txs.flatMap(_fechas).sort();
-        await db.collection('bancoConexiones').updateOne({ _id: c._id }, { $set: { [`cuentas.${i}.ultimaSync`]: new Date(), [`cuentas.${i}.nuevos`]: n, [`cuentas.${i}.error`]: null, ...(fechas.length ? { [`cuentas.${i}.hasta`]: fechas[fechas.length - 1] } : {}) } });
+        await db.collection('bancoConexiones').updateOne({ _id: c._id }, { $set: { [`cuentas.${i}.ultimaSync`]: new Date(), [`cuentas.${i}.nuevos`]: n, [`cuentas.${i}.error`]: null, [`cuentas.${i}.mapeo`]: MAPEO, ...(fechas.length ? { [`cuentas.${i}.hasta`]: fechas[fechas.length - 1] } : {}) } });
         out.push({ banco: c.banco, cuenta: cu.nombre, desde, recibidos: txs.length, nuevos: n, repetidos: r.repetidos });
       } catch (e) {
         if (e.status === 401 || /expired|EXPIRED|revoked|not authorized/i.test(e.message || '') || e.status === 403 && /session/i.test(e.message || '')) { await _caducada(db, c); out.push({ banco: c.banco, error: 'permiso caducado o retirado' }); break; }
@@ -227,6 +251,8 @@ async function sincronizar({ soloId = null, _api: api = _api } = {}) {
     }
   }
   if (total) { try { require('./trimestre').olvidarMapaPagos(); } catch (e) {} }
+  // Compras con tarjeta recién llegadas sin ticket: WhatsApp al momento a quien pagó (ticketsAviso).
+  if (!soloId && process.env.TICKETS_AVISOS !== 'off') require('./ticketsAviso').avisar({ modo: 'nuevos' }).catch(e => console.warn('[Tickets] avisos:', e.message));
   if (out.length) console.log('[BancoSync]', out.map(o => `${o.banco}${o.cuenta ? ' · ' + o.cuenta : ''}: ${o.error || o.nuevos + ' nuevos'}`).join(' | '));
   return { configurado: true, nuevos: total, detalle: out };
 }

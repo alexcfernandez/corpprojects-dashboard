@@ -1590,8 +1590,48 @@ app.post('/api/compras', uploadCompra.any(), async (req, res) => {
     const q = await _quienPush(req); if (!q) return res.status(401).json({ error: 'No autorizado' });
     const fotos = (req.files || []).filter(f => /^image\//.test(f.mimetype || '') || /pdf/i.test(f.mimetype || '')).map(f => ({ data: f.buffer, mimetype: f.mimetype }));
     const b = req.body || {};
-    res.json(await require('./compras').crear({ fotos, obraId: b.obraId || null, varias: b.varias === '1' || b.varias === 'true', destino: b.destino || null, paraWorker: b.paraWorkerId ? { id: b.paraWorkerId, name: b.paraWorkerName || '' } : null, nota: b.nota, subidaPor: { kind: q.kind, userId: String(q.userId), name: q.name } }));
+    const r = await require('./compras').crear({ fotos, obraId: b.obraId || null, varias: b.varias === '1' || b.varias === 'true', destino: b.destino || null, paraWorker: b.paraWorkerId ? { id: b.paraWorkerId, name: b.paraWorkerName || '' } : null, nota: b.nota, subidaPor: { kind: q.kind, userId: String(q.userId), name: q.name } });
+    // Ticket pedido por WhatsApp (ticketsAviso): la foto queda unida a ese pago con tarjeta.
+    if (b.movId && r && r.id) {
+      try {
+        const T = require('./ticketsAviso');
+        const suyo = q.kind === 'admin' || (await T.pendientes({ dias: 90, userId: q.userId })).some(p => p.id === String(b.movId));
+        if (suyo) await T.alSubir(String(b.movId), r.id, q.name);
+      } catch (e) { console.warn('[Tickets] unir compra:', e.message); }
+    }
+    res.json(r);
   } catch (err) { res.status(400).json({ error: err.message }); }
+});
+// Subida masiva (oficina): muchas facturas de golpe; cada archivo (o cada página) es una factura. En segundo plano.
+const uploadMasiva = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 300 } });
+app.post('/api/compras/masiva', uploadMasiva.array('archivos', 300), async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' });
+    if (!(req.files || []).length) return res.status(400).json({ error: 'No llegó ningún archivo' });
+    res.json(await require('./compras').subidaMasiva(req.files, { porPagina: ['1', 'true'].includes(String((req.body || {}).porPagina)), por: { kind: q.kind, userId: String(q.userId), name: q.name } })); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/compras/masiva/:id', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(require('./compras').estadoMasiva(req.params.id)); }
+  catch (err) { res.status(404).json({ error: err.message }); }
+});
+// Tickets que faltan de los pagos con tarjeta: el trabajador ve los suyos (desde su enlace); oficina, todos.
+app.get('/api/compras/tickets-pendientes', async (req, res) => {
+  try { const q = await _quienPush(req); if (!q) return res.status(401).json({ error: 'No autorizado' });
+    const T = require('./ticketsAviso');
+    if (q.kind === 'admin') { const l = await T.pendientes({ dias: 90 }); return res.json(l.map(({ tel, ...p }) => p)); }
+    const l = await T.pendientes({ dias: 90, userId: q.userId });
+    res.json(l.map(p => ({ id: p.id, fecha: p.fecha, comercio: p.comercio, importe: Math.abs(p.importe), tarjeta: p.tarjeta }))); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/compras/tickets/:movId/respuesta', express.json(), async (req, res) => {
+  try { const q = await _quienPush(req); if (!q) return res.status(401).json({ error: 'No autorizado' });
+    res.json(await require('./ticketsAviso').responder(req.params.movId, (req.body || {}).respuesta, { userId: q.userId, name: q.name })); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+// Probar o lanzar a mano los avisos (dryRun: solo enseña los textos).
+app.post('/api/tickets/avisar', requireAuthOficina, express.json(), async (req, res) => {
+  try { const b = req.body || {}; res.json(await require('./ticketsAviso').avisar({ modo: b.modo === 'recordatorio' ? 'recordatorio' : 'nuevos', dryRun: b.dryRun !== false })); }
+  catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.get('/api/compras/mias', async (req, res) => {
   try { const q = await _quienPush(req); if (!q) return res.status(401).json({ error: 'No autorizado' }); res.json(await require('./compras').mias({ kind: q.kind, userId: String(q.userId) })); }
@@ -2079,7 +2119,7 @@ app.get('/api/tarjetas', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./tarjetas').listaTarjetas()); } catch (err) { res.status(500).json({ error: err.message }); }
 });
 app.post('/api/tarjetas/:last4', requireAuthOficina, express.json(), async (req, res) => {
-  try { res.json(await require('./tarjetas').setPersona(req.params.last4, (req.body || {}).persona)); } catch (err) { res.status(400).json({ error: err.message }); }
+  try { const b = req.body || {}; res.json(await require('./tarjetas').setPersona(req.params.last4, b.persona, b.userId)); } catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.get('/api/trimestre/resumen-emitidas', requireAuthOficina, async (req, res) => {
   try {

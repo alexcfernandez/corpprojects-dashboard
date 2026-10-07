@@ -436,6 +436,20 @@ function comercio(concepto) {
 const dias2 = (a, b) => Math.round((new Date(a + 'T12:00:00Z') - new Date(b + 'T12:00:00Z')) / 86400000);
 
 // Resolver a mano un movimiento: subir su factura (va a Compras y queda casada) o decir que no lleva.
+// Ticket subido por el trabajador desde su enlace (ticketsAviso): esa compra paga ese movimiento.
+async function enlazarCompra(movId, compraId, por) {
+  olvidarMapaPagos();
+  const db = await getDB();
+  let total = null, proveedor = null;
+  try { const c = await require('./compras').getCompra(compraId); total = c.total != null ? r2(c.total) : null; proveedor = c.proveedor || null; } catch (e) {}
+  const { ObjectId } = require('mongodb');
+  let mov = null;
+  try { mov = await db.collection('tarjetaMovimientos').findOne({ _id: new ObjectId(String(movId)) }) || await db.collection('bancoMovimientos').findOne({ _id: new ObjectId(String(movId)) }); } catch (e) {}
+  const cuadra = total == null || !mov ? null : Math.abs(total - Math.abs(Number(mov.importe) || 0)) < 0.02;
+  await quitarDeObra(db, movId);
+  await db.collection('punteoManual').updateOne({ _id: String(movId) }, { $set: { compraId: String(compraId), proveedor, total, cuadra, decision: null, nota: null, obraId: null, obraRef: null, por: (por && por.name) || por || null, at: new Date() } }, { upsert: true });
+  return { ok: true, cuadra };
+}
 async function justificar({ movId, archivo, decision, nota, obraId, mov = {}, por, extra = {} }) {
   olvidarMapaPagos();
   const db = await getDB();
@@ -791,4 +805,4 @@ async function buscar(texto) {
   };
 }
 
-module.exports = { rango, trimestrePorDefecto, estado, excel, revisionDiaria, resumenEmitidasXlsx, zipEmitidas, zipRecibidasCompras, punteo, paqueteGestoria, borrador303, textoGestoria, justificar, deshacerJustificacion, comercio, confirmarDesdePunteo, buscar, recibidasPunteo, mapaPagos, todasEmitidas };
+module.exports = { olvidarMapaPagos, enlazarCompra, rango, trimestrePorDefecto, estado, excel, revisionDiaria, resumenEmitidasXlsx, zipEmitidas, zipRecibidasCompras, punteo, paqueteGestoria, borrador303, textoGestoria, justificar, deshacerJustificacion, comercio, confirmarDesdePunteo, buscar, recibidasPunteo, mapaPagos, todasEmitidas };

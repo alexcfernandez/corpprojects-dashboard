@@ -371,6 +371,8 @@ function startScheduler() {
   // Flota: avisos de ITV, seguro, revisión y fin de renting (conductor + oficina).
   // Banco automático (Enable Banking): la normativa deja leer cada cuenta ~4 veces al día sin la persona delante.
   cron.schedule('15 7,11,15,19 * * *', () => require('./bancoSync').sincronizar().then(r => { if (r.configurado && r.nuevos) console.log(`[BancoSync] ${r.nuevos} movimiento(s) nuevos`); }).catch(e => console.warn('[BancoSync] sync:', e.message)), { timezone: 'Europe/Madrid' });
+  // Tickets que faltan de las compras con tarjeta: recordatorio cada mañana a quien pagó (hasta que lo suba).
+  cron.schedule('30 9 * * 1-6', () => { if (process.env.TICKETS_AVISOS !== 'off') require('./ticketsAviso').avisar({ modo: 'recordatorio' }).catch(e => console.warn('[Tickets] recordatorio:', e.message)); }, { timezone: 'Europe/Madrid' });
   cron.schedule('0 9 * * *', () => require('./bancoSync').revisarCaducidad().catch(e => console.warn('[BancoSync] caducidad:', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('5 9 * * *', () => require('./vehiculos').revisarVencimientos().then(r => r.avisos.length && console.log('[Vehículos] avisos:', r.avisos.length)).catch(e => console.warn('[Vehículos] avisos:', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('40 8 * * 1-5', () => require('./trimestre').revisionDiaria()

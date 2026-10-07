@@ -193,7 +193,7 @@ async function buscarDuplicado(db, doc) {
 // fotos: [{data: Buffer, mimetype}]. Devuelve lo que se le confirma al que la sube.
 // estadoInicial 'archivo': factura recuperada del correo solo para cuadrar el banco (no entra en la cola
 // «por revisar», ni en costes de obra ni precios; se puede confirmar después desde Compras).
-async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaPor, origen, gmailId, email, soloSiDocumento = false, grupo = null, silencioso = false, estadoInicial = null }) {
+async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaPor, origen, gmailId, email, soloSiDocumento = false, grupo = null, silencioso = false, estadoInicial = null, archivoHash = null }) {
   if (!fotos || !fotos.length) throw new Error('Haz al menos una foto del documento');
   const db = await getDB();
   let obraRef = null;
@@ -213,6 +213,7 @@ async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaP
     nota: String(nota || '').trim().slice(0, 300) || null, subidaPor: subidaPor || null, nFotos: fotos.length,
     origen: origen || 'app', gmailId: gmailId || null, email: email || null,   // 'email' = llegó al correo (n8n ya la manda a StelOrder)
     grupo: grupo || null,   // { jid, nombre } si llegó por un grupo de WhatsApp
+    archivoHash: archivoHash || null,   // subida masiva: el mismo archivo dos veces no entra
     ia: { ok: false }, duplicadoDe: null, revisadaPor: null, revisadaAt: null, enviadaStel: null, createdAt: now, updatedAt: now,
   };
   const r = await db.collection(COL).insertOne(doc);
@@ -245,6 +246,83 @@ async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaP
   } catch (e) {}
   return { ok: true, id: String(doc._id), ...resumenParaTrabajador(doc) };
 }
+// ── SUBIDA MASIVA (oficina): las facturas que se bajan de golpe de la web de Obramat, Leroy… ──
+// Cada archivo es una factura (o cada página, si el PDF las junta). La IA las lee una a una en segundo plano y
+// descarta solas las repetidas: el mismo archivo, el mismo nº del mismo proveedor, o la factura de un pago que ya
+// estaba como ticket (entonces la factura sustituye al ticket y se queda con su obra).
+const _trabajos = new Map();
+const _hash = b => require('crypto').createHash('sha256').update(b).digest('hex');
+async function _partirPdf(buf) {
+  const { PDFDocument } = require('pdf-lib');
+  const src = await PDFDocument.load(buf, { ignoreEncryption: true });
+  const out = [];
+  for (let i = 0; i < src.getPageCount(); i++) { const d = await PDFDocument.create(); const [pg] = await d.copyPages(src, [i]); d.addPage(pg); out.push(Buffer.from(await d.save())); }
+  return out;
+}
+// ¿Es la misma compra que otra ya subida? Mismo proveedor (nombre o NIF), total y fecha (±1 día).
+async function _gemelaTicket(db, c) {
+  if (c.total == null || !c.fecha || !(c.proveedorNorm || c.nif)) return null;
+  const d = new Date(c.fecha + 'T12:00:00Z'), f = x => new Date(d.getTime() + x * 86400000).toISOString().slice(0, 10);
+  const prov = [c.proveedorNorm ? { proveedorNorm: c.proveedorNorm } : null, c.nif ? { nif: c.nif } : null].filter(Boolean);
+  return db.collection(COL).findOne({ empresaId: EMPRESA, _id: { $ne: c._id }, estado: { $ne: 'descartada' }, $or: prov, fecha: { $in: [f(-1), f(0), f(1)] }, total: { $gte: c.total - 0.01, $lte: c.total + 0.01 } });
+}
+async function _unaMasiva(db, it, por) {
+  if (await db.collection(COL).findOne({ empresaId: EMPRESA, archivoHash: it.hash, estado: { $ne: 'descartada' } }, { projection: { _id: 1 } })) return { estado: 'repetida', motivo: 'Ese mismo archivo ya estaba subido' };
+  const r = await crear({ fotos: [{ data: it.data, mimetype: it.mimetype }], destino: 'obra', origen: 'masiva', nota: `Subida masiva: ${it.nombre}`.slice(0, 300), subidaPor: por, silencioso: true, archivoHash: it.hash });
+  const c = await db.collection(COL).findOne({ _id: new ObjectId(r.id) });
+  const base = { id: r.id, proveedor: c.proveedor, numero: c.numero, fecha: c.fecha, total: c.total };
+  if (!c.ia || !c.ia.ok) return { ...base, estado: 'sin_leer', motivo: 'La IA no la ha podido leer: revísala a mano' };
+  const descartar = async motivo => { await db.collection(COL).updateOne({ _id: c._id }, { $set: { estado: 'descartada', descarteMotivo: motivo, descartadaPor: (por && por.name) || 'subida masiva', updatedAt: new Date() } }); return { ...base, estado: 'repetida', motivo }; };
+  if (c.duplicadoDe) return descartar('Repetida: ya estaba en Compras con el mismo nº');
+  const gem = await _gemelaTicket(db, c);
+  if (gem) {
+    // Factura del mismo pago que un ticket (lo subió el trabajador): si el ticket aún no está revisado, la factura lo
+    // sustituye y hereda su obra; si ya se revisó, la repetida es esta.
+    if (gem.estado === 'revisada' || c.tipo !== 'factura' || gem.tipo === 'factura') return descartar(`Repetida: es la misma compra que ${TIPO_TXT[gem.tipo] || 'el documento'} ${gem.numero || ''} del ${String(gem.fecha || '').split('-').reverse().join('/')}`.replace(/\s+/g, ' '));
+    const heredar = {}; for (const k of ['destino', 'obraId', 'obraRef', 'varias', 'reparto', 'categoria', 'paraWorker', 'vehiculoId', 'vehiculoNombre', 'clienteNombre']) if (gem[k] != null && !(Array.isArray(gem[k]) && !gem[k].length)) heredar[k] = gem[k];
+    await db.collection(COL).updateOne({ _id: c._id }, { $set: { ...heredar, sustituyeA: String(gem._id), updatedAt: new Date() } });
+    await db.collection(COL).updateOne({ _id: gem._id }, { $set: { estado: 'descartada', descarteMotivo: `Sustituido por la factura ${c.numero || ''} (subida masiva)`.trim(), descartadaPor: 'subida masiva', updatedAt: new Date() } });
+    try { await db.collection('punteoManual').updateMany({ compraId: String(gem._id) }, { $set: { compraId: r.id } }); } catch (e) {}
+    return { ...base, estado: 'nueva', motivo: `Sustituye al ticket que ya estaba${gem.obraRef ? ' (obra ' + gem.obraRef + ')' : ''}` };
+  }
+  return { ...base, estado: 'nueva', tipo: c.tipo };
+}
+async function subidaMasiva(archivos, { porPagina = false, por = null } = {}) {
+  const items = [];
+  for (const a of archivos) {
+    const esPdf = /pdf/i.test(a.mimetype || '') || /\.pdf$/i.test(a.originalname || '');
+    if (!esPdf && !/^image\//.test(a.mimetype || '')) { items.push({ nombre: a.originalname, error: 'No es PDF ni foto' }); continue; }
+    let trozos = [a.buffer];
+    if (esPdf && porPagina) { try { trozos = await _partirPdf(a.buffer); } catch (e) { trozos = [a.buffer]; } }
+    trozos.forEach((b, i) => items.push({ nombre: a.originalname + (trozos.length > 1 ? ` (pág. ${i + 1})` : ''), data: b, mimetype: esPdf ? 'application/pdf' : a.mimetype, hash: _hash(b) }));
+  }
+  // Repetidos dentro de la misma subida
+  const vistos = new Set();
+  for (const it of items) { if (it.hash && vistos.has(it.hash)) { it.error = null; it.repetidoEnLote = true; } else if (it.hash) vistos.add(it.hash); }
+  const id = require('crypto').randomBytes(8).toString('hex');
+  const job = { id, total: items.length, hechos: 0, nuevas: 0, repetidas: 0, errores: 0, terminado: false, items: items.map(it => ({ nombre: it.nombre, estado: it.error ? 'error' : it.repetidoEnLote ? 'repetida' : 'pendiente', motivo: it.error || (it.repetidoEnLote ? 'Repetida dentro de esta misma subida' : null) })), empezado: new Date() };
+  _trabajos.set(id, job);
+  (async () => {
+    const db = await getDB();
+    let sig = 0;
+    const worker = async () => {
+      while (sig < items.length) {
+        const i = sig++; const it = items[i];
+        if (it.error || it.repetidoEnLote) { job.hechos++; if (it.error) job.errores++; else job.repetidas++; continue; }
+        try { const r = await _unaMasiva(db, it, por); Object.assign(job.items[i], r); if (r.estado === 'repetida') job.repetidas++; else if (r.estado === 'nueva') job.nuevas++; else job.errores++; }
+        catch (e) { Object.assign(job.items[i], { estado: 'error', motivo: e.message }); job.errores++; }
+        job.hechos++;
+      }
+    };
+    await Promise.all([worker(), worker()]);           // dos a la vez: la IA tarda 10-30 s por factura
+    job.terminado = true; job.terminadoAt = new Date();
+    try { require('./trimestre').olvidarMapaPagos(); } catch (e) {}
+    console.log(`[Compras] subida masiva ${id}: ${job.nuevas} nuevas, ${job.repetidas} repetidas, ${job.errores} con problema`);
+    setTimeout(() => _trabajos.delete(id), 6 * 3600000);
+  })().catch(e => { job.terminado = true; job.error = e.message; });
+  return { id, total: items.length };
+}
+function estadoMasiva(id) { const j = _trabajos.get(String(id)); if (!j) throw new Error('No encuentro esa subida (¿se reinició el servidor?)'); return j; }
 // Lo que ve quien la sube: tipo, proveedor, número, nº de líneas y calidad. SIN importes.
 function resumenParaTrabajador(c) {
   const r = { id: String(c._id), estado: c.estado, tipo: c.tipo, tipoTxt: TIPO_TXT[c.tipo] || 'Documento', proveedor: c.proveedor, numero: c.numero, fecha: c.fecha, nLineas: (c.lineas || []).length, obraRef: c.obraRef, varias: !!c.varias, destino: c.destino || (c.varias ? 'varias' : 'obra'), destinoTxt: DESTINO_TXT[c.destino] || (c.varias ? 'Varias obras' : 'Obra'), paraWorker: c.paraWorker || null, nFotos: c.nFotos, createdAt: c.createdAt, leida: !!(c.ia && c.ia.ok), calidad: c.ia && c.ia.calidad || null, duplicado: !!c.duplicadoDe, motivoDescarte: c.estado === 'descartada' ? (c.descarteMotivo || 'sin motivo') : null };
@@ -878,4 +956,4 @@ async function resumenPendientes({ dryRun = false } = {}) {
   return { pendientes: pend.length, enviado: ok > 0 };
 }
 
-module.exports = { propuestaLineas, _repartoDeLineas, separarFoto, n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, albaranesDelCorreo, repartoPorAlbaran, obraDeTexto, _aprenderAliasObras: aprenderAliasObras, clasificacionesParaStel, reglaProveedorDe, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };
+module.exports = { subidaMasiva, estadoMasiva, _unaMasiva, _gemelaTicket, _partirPdf, propuestaLineas, _repartoDeLineas, separarFoto, n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, albaranesDelCorreo, repartoPorAlbaran, obraDeTexto, _aprenderAliasObras: aprenderAliasObras, clasificacionesParaStel, reglaProveedorDe, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };

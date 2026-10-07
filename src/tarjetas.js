@@ -43,10 +43,14 @@ async function listaTarjetas() {
   const cob = {}; cobertura.forEach(c => { cob[c._id] = c; });
   return ts.map(t => ({ ...t, last4: t._id, desde: cob[t._id] ? cob[t._id].desde : null, hasta: cob[t._id] ? cob[t._id].hasta : null, nMovimientos: cob[t._id] ? cob[t._id].n : 0 }));
 }
-async function setPersona(last4, persona) {
+// persona: el nombre que se ve; userId: a quién se le pide el ticket por WhatsApp al pagar (ticketsAviso).
+async function setPersona(last4, persona, userId) {
   const db = await getDB();
   if (!/^\d{4}$/.test(String(last4))) throw new Error('Tarjeta no válida');
-  await db.collection('tarjetas').updateOne({ _id: String(last4) }, { $set: { persona: String(persona || '').trim().slice(0, 60) } }, { upsert: true });
+  const set = {};
+  if (persona !== undefined) set.persona = String(persona || '').trim().slice(0, 60);
+  if (userId !== undefined) set.userId = userId && /^[a-f0-9]{24}$/.test(String(userId)) ? String(userId) : null;
+  await db.collection('tarjetas').updateOne({ _id: String(last4) }, { $set: set }, { upsert: true });
   return { ok: true };
 }
 

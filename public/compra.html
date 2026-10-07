@@ -76,6 +76,7 @@ textarea{width:100%;padding:12px;border-radius:12px;border:1px solid var(--borde
 
 <!-- NUEVA COMPRA -->
 <div class="page" id="page-nueva"><div class="container">
+  <div id="tickets"></div>
   <div id="resultado"></div>
   <div class="card">
     <span class="lbl">Foto del albarán, factura o ticket</span>
@@ -133,7 +134,7 @@ async function tryRestore(){
   for(const [t,adm] of [[localStorage.getItem('cp_token'),true],[localStorage.getItem('cpWT'),false]]){if(!t)continue;
     try{const r=await fetch('/api/compras/mias',{headers:{'Authorization':'Bearer '+t}});if(!r.ok)continue;workerToken=t;esAdmin=adm;entrar(adm?'Oficina':(localStorage.getItem('cpWN')||''));return true;}catch(e){}}
   return false;}
-function entrar(nombre){cargarQuien();document.getElementById('cargando').style.display='none';document.getElementById('header-sub').textContent=nombre||'';const lb=document.getElementById('logout-btn');lb.textContent=esAdmin?'← Dashboard':'Salir';lb.style.display='block';showPage('nueva');cargarObras();}
+function entrar(nombre){cargarQuien();document.getElementById('cargando').style.display='none';document.getElementById('header-sub').textContent=nombre||'';const lb=document.getElementById('logout-btn');lb.textContent=esAdmin?'← Dashboard':'Salir';lb.style.display='block';showPage('nueva');cargarObras();cargarTickets();}
 function logout(){if(esAdmin){location.href='/';return;}workerToken=null;localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');document.getElementById('logout-btn').style.display='none';showPage('login');}
 
 // ── OBRA ──
@@ -179,10 +180,12 @@ async function enviar(){
     if(dest==='obra'&&pick&&pick.value){fd.append('obraId',pick.value);localStorage.setItem('cpObra',pick.value);}
     if((dest==='herramientas'||dest==='ropa')&&document.getElementById('quien').value){const q=document.getElementById('quien');fd.append('paraWorkerId',q.value);fd.append('paraWorkerName',q.options[q.selectedIndex]?.dataset.n||'');}
     fd.append('nota',document.getElementById('nota').value.trim());
+    if(_movSel){fd.append('movId',_movSel.id);}
     const c=new AbortController();const t=setTimeout(()=>c.abort(),90000);
     const r=await fetch('/api/compras',{method:'POST',headers:authH(),body:fd,signal:c.signal}).finally(()=>clearTimeout(t));
     const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'No se pudo enviar');
     mostrarResultado(d);
+    if(_movSel){_movSel=null;cargarTickets();}
     fotos.forEach(f=>f.url&&URL.revokeObjectURL(f.url));fotos=[];renderFotos();document.getElementById('nota').value='';setDest('obra');
   }catch(e){toast(e.name==='AbortError'?'Ha tardado demasiado. Comprueba la cobertura y vuelve a enviar.':e.message,'error');}
   finally{b.disabled=false;b.textContent='Enviar a oficina';}}
@@ -201,6 +204,36 @@ function mostrarResultado(d){
   document.getElementById('resultado').innerHTML=`<div class="res ${mal?'warn':''}"><div class="h">${mal?'⚠️':'✅'} ${esc(d.mensaje)}</div>${d.repetir?guiaFoto():''}${que?`<div class="d">${que}${d.obraRef?' → 🏗️ '+esc(d.obraRef):d.destino&&d.destino!=='obra'?' → '+esc(d.destinoTxt)+(d.paraWorker?' para '+esc(d.paraWorker.name):' (en oficina)'):''}</div>`:''}${mal&&!d.repetir?'<button class="sec-btn" onclick="document.getElementById(\'resultado\').innerHTML=\'\';document.getElementById(\'cam\').click()">📷 Repetir la foto</button>':''}</div>`;
   window.scrollTo(0,0);}
 
+// ── TICKETS QUE FALTAN (llega por WhatsApp un enlace al pagar con la tarjeta) ──
+let _tickets=[],_movSel=null;
+const eurT=n=>Number(n||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+const fT=f=>String(f||'').split('-').reverse().slice(0,2).join('/');
+async function cargarTickets(){const el=document.getElementById('tickets');if(!el||esAdmin){if(el)el.innerHTML='';return;}
+  try{const r=await fetch('/api/compras/tickets-pendientes',{headers:authH()});_tickets=r.ok?await r.json():[];}catch(e){_tickets=[];}
+  const want=new URLSearchParams(location.search).get('mov')||_movPedido;if(want&&!_movSel){_movSel=_tickets.find(t=>t.id===want)||null;_movPedido=null;}
+  pintarTickets();}
+function pintarTickets(){const el=document.getElementById('tickets');if(!el)return;
+  if(!_tickets.length){el.innerHTML='';return;}
+  el.innerHTML=`<div class="card" style="border-color:var(--amber)"><span class="lbl">🧾 Tickets que faltan de tu tarjeta</span>
+    <div style="font-size:13px;color:var(--text2);line-height:1.45;margin-bottom:8px">Elige el pago, haz la foto del ticket o la factura y pulsa «Enviar».</div>
+    ${_tickets.map(t=>`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 0;border-top:1px dashed var(--border)${_movSel&&_movSel.id===t.id?';background:rgba(77,156,248,.08);border-radius:8px;padding:8px':''}">
+      <div style="flex:1;min-width:150px"><b>${esc(t.comercio)}</b><div style="font-size:12.5px;color:var(--text3)">${fT(t.fecha)} · ${eurT(t.importe)} · tarjeta …${esc(t.tarjeta||'')}</div></div>
+      ${_movSel&&_movSel.id===t.id?'<span style="font-size:12.5px;color:var(--blue);font-weight:600">← este</span>':`<button class="sec-btn" style="margin:0;width:auto;padding:8px 10px" onclick="elegirTicket('${esc(t.id)}')">📷 Subir ticket</button>`}
+      <button class="sec-btn" style="margin:0;width:auto;padding:8px 10px;font-size:12px" onclick="responderTicket('${esc(t.id)}','personal')">Era personal</button>
+      <button class="sec-btn" style="margin:0;width:auto;padding:8px 10px;font-size:12px" onclick="responderTicket('${esc(t.id)}','sin_ticket')">No tengo ticket</button></div>`).join('')}</div>
+    ${_movSel?`<div class="card" style="border-color:var(--blue)"><b>Subiendo el ticket de ${esc(_movSel.comercio)}</b> · ${fT(_movSel.fecha)} · ${eurT(_movSel.importe)} <button class="sec-btn" style="margin:6px 0 0;width:auto;padding:6px 10px;font-size:12px" onclick="_movSel=null;pintarTickets()">Cancelar</button></div>`:''}`;}
+function elegirTicket(id){_movSel=_tickets.find(t=>t.id===id)||null;pintarTickets();document.getElementById('cam').click();}
+async function responderTicket(id,resp){const t=_tickets.find(x=>x.id===id);if(!t)return;
+  if(!confirm(resp==='personal'?`¿El pago de ${eurT(t.importe)} en ${t.comercio} era personal (no de la empresa)?`:`¿No te dieron ticket del pago de ${eurT(t.importe)} en ${t.comercio}? Oficina lo mirará.`))return;
+  try{const r=await fetch('/api/compras/tickets/'+encodeURIComponent(id)+'/respuesta',{method:'POST',headers:authH({'Content-Type':'application/json'}),body:JSON.stringify({respuesta:resp})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');
+    toast('Apuntado, gracias','ok');if(_movSel&&_movSel.id===id)_movSel=null;cargarTickets();}catch(e){toast(e.message,'error');}}
+let _movPedido=null;
+// Enlace personal del WhatsApp (?t=…): entra sin PIN.
+async function magicLogin(t){try{const r=await fetch('/api/fichaje/magic-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Enlace no válido');
+  workerToken=d.token;esAdmin=false;localStorage.setItem('cpWT',d.token);localStorage.setItem('cpWN',d.workerName||'');
+  const p=new URLSearchParams(location.search);_movPedido=p.get('mov');history.replaceState(null,'',location.pathname+'#tickets');entrar(d.workerName);return true;}
+  catch(e){toast(e.message,'error');return false;}}
+
 // ── MIS COMPRAS ──
 async function abrirMias(){showPage('mias');const el=document.getElementById('mias-lista');el.innerHTML='<div style="text-align:center"><span class="spinner"></span></div>';
   try{const r=await fetch('/api/compras/mias',{headers:authH()});const l=await r.json();if(!r.ok)throw new Error(l.error||'Error');
@@ -208,7 +241,7 @@ async function abrirMias(){showPage('mias');const el=document.getElementById('mi
     el.innerHTML=l.length?l.map(c=>`<div class="mia"><div class="t">${esc(c.tipoTxt)}${c.proveedor?' · '+esc(c.proveedor):''}<span class="est ${esc(c.estado)}">${E[c.estado]||c.estado}</span></div>${c.motivoDescarte?`<div class="s" style="color:var(--red)">Motivo: ${esc(c.motivoDescarte)}</div>`:''}${c.repetir?`<div class="s" style="color:var(--amber)">📸 Hay que repetir la foto <a href="#" onclick="event.preventDefault();showPage('nueva');document.getElementById('resultado').innerHTML='<div class=&quot;res warn&quot;>'+guiaFoto()+'</div>';window.scrollTo(0,0)" style="color:var(--blue)">ver cómo</a></div>`:''}<div class="s">${c.numero?'nº '+esc(c.numero)+' · ':''}${new Date(c.createdAt).toLocaleDateString('es-ES',{day:'numeric',month:'short'})} ${new Date(c.createdAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})} · ${c.obraRef?'🏗️ '+esc(c.obraRef):c.destino&&c.destino!=='obra'?esc(c.destinoTxt)+(c.paraWorker?' · '+esc(c.paraWorker.name):''):'sin obra'}${c.nLineas?' · '+c.nLineas+' líneas':''}${!c.leida?' · la IA no pudo leerla':''}</div></div>`).join(''):'<div style="color:var(--text3);text-align:center;padding:20px">Todavía no has enviado ninguna compra.</div>';
   }catch(e){el.innerHTML='<div style="color:var(--red)">'+esc(e.message)+'</div>';}}
 
-(async function(){await loadWorkers();const ok=await tryRestore();if(!ok){document.getElementById('cargando').style.display='none';showPage('login');}})();
+(async function(){await loadWorkers();const mt=new URLSearchParams(location.search).get('t');const ok=(mt&&await magicLogin(mt))||await tryRestore();if(!ok){document.getElementById('cargando').style.display='none';showPage('login');}})();
 </script>
 </body>
 </html>
