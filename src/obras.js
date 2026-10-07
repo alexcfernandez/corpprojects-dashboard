@@ -242,7 +242,7 @@ async function getObra(id) {
 
 async function updateObra(id, data) {
   const db = await getDB();
-  const allowed = ['clientName','reference','description','address','status','startDate','endDate','budgetAmount','notes','tags','materiales','aliases','presupuestosStel'];
+  const allowed = ['clientName','reference','description','address','status','startDate','endDate','budgetAmount','notes','tags','materiales','aliases','presupuestosStel','facturasStel'];
   const set = { updatedAt: new Date() };
   allowed.forEach(k => { if (data[k] !== undefined) set[k] = data[k]; });
   // Presupuestos de StelOrder enlazados a la obra (base sin IVA): el presupuesto de la obra es su suma.
@@ -257,6 +257,16 @@ async function updateObra(id, data) {
       })
       .filter(p => p.id);
     if (set.presupuestosStel.length) set.budgetAmount = r2(set.presupuestosStel.reduce((a, p) => a + p.base, 0));
+  }
+  // Facturas de StelOrder enlazadas a la obra (trabajos sin presupuesto, o para ver lo realmente facturado):
+  // lo facturado de la obra es la suma de sus bases sin IVA.
+  if (set.facturasStel !== undefined) {
+    const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+    set.facturasStel = (Array.isArray(set.facturasStel) ? set.facturasStel : []).slice(0, 40)
+      .map(f => ({ id: String(f.id || ''), numero: String(f.numero || '').slice(0, 30), fecha: String(f.fecha || '').slice(0, 10), cliente: String(f.cliente || '').slice(0, 120),
+        base: r2(f.base != null ? f.base : (Number(f.total) || 0) / 1.21), total: r2(f.total) }))
+      .filter(f => f.id);
+    set.invoicedAmount = r2(set.facturasStel.reduce((a, f) => a + f.base, 0));
   }
   if (Array.isArray(set.aliases)) set.aliases = set.aliases.map(s => String(s || '').trim()).filter(Boolean);
   if (set.reference !== undefined && !String(set.reference || '').trim()) throw new Error('Ponle un nombre a la obra');

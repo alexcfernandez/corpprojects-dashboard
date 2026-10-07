@@ -2712,6 +2712,16 @@ app.get('/api/obras/:id/presupuestos', requireAuth, async (req, res) => {
 app.get('/api/obras/presupuestos-stel/:id/lineas', requireAuth, async (req, res) => {
   try { res.json(await require('./stelorder').lineasPresupuesto(req.params.id)); } catch (err) { res.status(400).json({ error: err.message }); }
 });
+// Facturas emitidas de StelOrder para enlazar a una obra (buscar por nº o cliente; las más recientes primero).
+app.get('/api/obras/facturas-stel', requireAuth, async (req, res) => {
+  try {
+    if (!users.canSeeMoney(req.user?.role || 'owner')) return res.status(403).json({ error: 'Solo Dueño y Oficina' });
+    const n = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const qs = n(req.query.q).split(/\s+/).filter(w => w.length >= 2);
+    const l = (await require('./trimestre').todasEmitidas()).sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+    res.json((qs.length ? l.filter(f => { const t = n(`${f.numero} ${f.cliente}`); return qs.every(w => t.includes(w)); }) : l).slice(0, 40));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 app.get('/api/obras/presupuestos-stel', requireAuth, async (req, res) => {
   try {
     const n = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');

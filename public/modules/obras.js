@@ -367,7 +367,9 @@
           <div class="modal-header">
             <div>
               <div style="font-size:16px;font-weight:700">${est.emoji} ${obra.reference}</div>
-              <div style="font-size:12px;color:var(--text3)">${obra.clientName} ${obra.address?'· '+obra.address:''}</div>
+              <div style="font-size:12px;color:var(--text3);display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:2px">${obra.clientName?`👤 <b style="color:var(--text2)">${ce(obra.clientName)}</b>`:'<span style="color:var(--amber)">Sin cliente</span>'}
+                <button class="btn bgh" style="padding:1px 9px;font-size:11px" onclick="CP.Obras.ponerCliente('${id}')">${obra.clientName?'cambiar':'👤 Poner cliente'}</button>${obra.address?`<span>· ${ce(obra.address)}</span>`:''}</div>
+              <div id="ob-cli-box"></div>
             </div>
             <button class="modal-close" onclick="document.getElementById('ob-modal').remove()">✕</button>
           </div>
@@ -378,7 +380,7 @@
             ${diag.recomendacion?`<div style="font-size:12px;color:var(--text2)">${diag.recomendacion}</div>`:''}
           </div>` : `
           <div style="padding:10px;background:var(--bg3);border-radius:var(--rs);margin-bottom:14px;font-size:12px;color:var(--text3)">
-            Sin facturación registrada. Añade el presupuesto para ver la rentabilidad.
+            Sin facturación registrada. Enlaza el presupuesto o la factura (abajo) para ver la rentabilidad.
           </div>`}
 
           <div class="card" style="margin-bottom:14px">
@@ -400,6 +402,18 @@
                 <span style="color:${t[1]};border:1px solid ${t[1]};border-radius:20px;padding:0 7px;font-size:10.5px">${t[0]}</span><b>${eur(p.base)}</b></a>`; }).join('')
               + `<div style="font-size:11px;color:var(--text3);margin-top:6px;border-top:1px solid var(--border);padding-top:6px">${presObra.some(p=>p.estado==='aceptado') ? `El presupuesto de la obra es la suma de los <b>aceptados</b> (el inicial y las ampliaciones): <b>${eur(presObra.filter(p=>p.estado==='aceptado').reduce((a,p)=>a+p.base,0))}</b> sin IVA.` : 'Aún no hay ninguno aceptado: como estimación cuenta el último que no esté rechazado.'}</div>`
             : `<div style="font-size:12px;color:var(--text3)">Todavía no hay presupuestos en esta obra. Pulsa «＋ Nuevo presupuesto», o cuelga uno que ya tengas desde la app de presupuestos.</div>`}
+          </div>
+
+          <div class="card" style="margin-bottom:14px">
+            <div class="card-title" style="display:flex;align-items:center;gap:8px">🧾 Facturas al cliente <span style="font-weight:400;color:var(--text3);font-size:11px">${(obra.facturasStel||[]).length?`(${obra.facturasStel.length}) · ${eur(obra.invoicedAmount)} sin IVA`:''}</span>
+              <button class="btn bgh" style="margin-left:auto;padding:4px 10px;font-size:11px" onclick="CP.Obras.buscarFactStel('${id}')">＋ Enlazar factura</button></div>
+            ${(obra.facturasStel||[]).length ? obra.facturasStel.map(f=>`
+              <div style="display:flex;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--border);font-size:12.5px">
+                <span style="color:var(--text3);min-width:78px">${ce(f.numero)}</span><span style="color:var(--text3)">${ce(String(f.fecha||'').split('-').reverse().join('/'))}</span>
+                <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ce(f.cliente)}</span><b>${eur(f.base)}</b>
+                <button class="btn bgh" style="padding:2px 8px;font-size:11px" title="Quitar de esta obra" onclick="CP.Obras.quitarFactStel('${id}','${ce(f.id)}')">✕</button></div>`).join('')
+              : `<div style="font-size:12px;color:var(--text3)">Ninguna factura enlazada. Si el trabajo se hizo sin presupuesto (o para ver lo facturado de verdad), enlaza aquí la factura de StelOrder, o varias: «Facturado» es su suma sin IVA.</div>`}
+            <div id="ob-fact-stel"></div>
           </div>
 
           <div class="card" style="margin-bottom:14px">
@@ -604,6 +618,55 @@
     } catch(err) { say('❌ ' + err.message, 'var(--red)'); }
   }
 
+  // ── Facturas de StelOrder enlazadas (lo facturado de la obra es su suma sin IVA). Se guardan al momento. ──
+  async function guardarFacturas(id, lista, extra) {
+    const r = await api(`/api/obras/${id}`, { method:'PUT', body: JSON.stringify({ facturasStel: lista, ...(extra || {}) }) });
+    if (r && r.error) throw new Error(r.error);
+    openObra(id); loadResumen();
+  }
+  async function buscarFactStel(id) {
+    const el = document.getElementById('ob-fact-stel'); if (!el) return;
+    const o = (_obraData && _obraData.obra) || {};
+    el.innerHTML = `<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:10px;margin-top:8px"><input id="ob-fact-q" class="field-input" placeholder="Buscar por cliente o nº (FAC…)" value="${ceMod(o.clientName || '')}"><div id="ob-fact-res" style="margin-top:8px;max-height:260px;overflow:auto;font-size:12.5px;color:var(--text3)">Buscando…</div></div>`;
+    const q = document.getElementById('ob-fact-q'); q.focus();
+    const ya = new Set((o.facturasStel || []).map(f => String(f.id)));
+    const run = async () => { const r = document.getElementById('ob-fact-res'); if (!r) return;
+      try { const l = await api('/api/obras/facturas-stel?q=' + encodeURIComponent(q.value)); if (l && l.error) throw new Error(l.error); window._factRes = l;
+        r.innerHTML = l.length ? l.map((f, i) => `<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);color:var(--text)"><div style="flex:1;min-width:0"><b>${ceMod(f.numero)}</b> · ${ceMod(f.cliente)} <span style="color:var(--text3)">${ceMod(String(f.fecha || '').split('-').reverse().join('/'))}</span>${f.pendiente > 0.01 ? ` <span style="color:var(--amber);font-size:11px">pte. ${eur(f.pendiente)}</span>` : ''}</div><b>${eur(f.base != null ? f.base : f.total / 1.21)}</b>${ya.has(String(f.id)) ? '<span style="font-size:11px;color:var(--green)">enlazada</span>' : `<button class="btn bp" style="padding:3px 10px;font-size:11px" onclick="CP.Obras.enlazarFactStel('${id}',${i})">Enlazar</button>`}</div>`).join('')
+          : 'No encuentro facturas con eso. Prueba con el nº (FAC…) o parte del nombre del cliente.'; }
+      catch (e) { r.textContent = '❌ ' + e.message; } };
+    let t = null; q.oninput = () => { clearTimeout(t); t = setTimeout(run, 300); }; run();
+  }
+  async function enlazarFactStel(id, i) {
+    const f = (window._factRes || [])[i]; if (!f) return;
+    const o = (_obraData && _obraData.obra) || {};
+    const lista = (o.facturasStel || []).filter(x => String(x.id) !== String(f.id)).concat([{ id: f.id, numero: f.numero, fecha: f.fecha, cliente: f.cliente, base: f.base, total: f.total }]);
+    try { await guardarFacturas(id, lista, o.clientName ? null : { clientName: f.cliente }); }   // el cliente, si no estaba
+    catch (e) { alert('No se pudo enlazar: ' + e.message); }
+  }
+  async function quitarFactStel(id, fid) {
+    const o = (_obraData && _obraData.obra) || {};
+    try { await guardarFacturas(id, (o.facturasStel || []).filter(x => String(x.id) !== String(fid))); }
+    catch (e) { alert('No se pudo quitar: ' + e.message); }
+  }
+  // Cliente de la obra: se busca en los clientes de StelOrder (o se escribe a mano) y se guarda al momento.
+  function ponerCliente(id) {
+    const el = document.getElementById('ob-cli-box'); if (!el) return;
+    const o = (_obraData && _obraData.obra) || {};
+    el.innerHTML = `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><input id="ob-cli-q" class="field-input" list="ob-cli-dl" style="flex:1;min-width:220px" placeholder="Nombre del cliente (ej. Comunidad Plaza Ciutat de Figueres 1)" value="${ceMod(o.clientName || '')}"><datalist id="ob-cli-dl"></datalist>
+      <button class="btn bp" style="padding:6px 12px;font-size:12px" onclick="CP.Obras.guardarCliente('${id}')">Guardar</button></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">Escribe y elige de los clientes de StelOrder, o déjalo escrito a mano.</div>`;
+    const q = document.getElementById('ob-cli-q'); q.focus(); q.select();
+    let t = null; q.oninput = () => { clearTimeout(t); t = setTimeout(async () => { if (q.value.trim().length < 2) return;
+      try { const l = await api('/api/documentos/clientes?q=' + encodeURIComponent(q.value.trim())); document.getElementById('ob-cli-dl').innerHTML = (Array.isArray(l) ? l : []).map(c => `<option value="${ceMod(c.nombre)}">${ceMod(c.direccion || '')}</option>`).join(''); } catch (e) {} }, 250); };
+    q.onkeydown = e => { if (e.key === 'Enter') guardarCliente(id); };
+  }
+  async function guardarCliente(id) {
+    const v = (document.getElementById('ob-cli-q')?.value || '').trim();
+    try { const r = await api(`/api/obras/${id}`, { method:'PUT', body: JSON.stringify({ clientName: v }) }); if (r && r.error) throw new Error(r.error); openObra(id); loadResumen(); }
+    catch (e) { alert('No se pudo guardar: ' + e.message); }
+  }
+
   // ── Presupuestos de StelOrder enlazados (base sin IVA; el presupuesto de la obra es la suma) ──
   let _presuSel = null;
   function pintarPresuStel() {
@@ -611,7 +674,7 @@
     const l = _presuSel || [];
     const eu = v => Number(v || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
     el.innerHTML = l.length ? `<div style="font-size:12px;color:var(--text3);margin-bottom:4px">Presupuestos de StelOrder enlazados (la suma sin IVA es el presupuesto de la obra):</div>` + l.map((p, i) => `<span style="display:inline-flex;gap:6px;align-items:center;background:var(--bg3);border:1px solid var(--border2);border-radius:14px;padding:3px 10px;margin:0 6px 6px 0;font-size:12px">📄 ${ceMod(p.numero)} · ${eu(p.base)} <span style="color:var(--text3)">(${p.lineas ? 'por partidas' : eu(p.total) + ' con IVA'} · ${ceMod(p.estado || '')})</span><b style="cursor:pointer" title="Cantidades de cada partida (m² reales)" onclick="CP.Obras.partidasPresuStel(${i})">✏️</b><b style="cursor:pointer;color:var(--red)" onclick="CP.Obras.quitarPresuStel(${i})">×</b></span>`).join('') + '<div id="ob-partidas"></div>' : '';
-    const b = document.getElementById('ob-edit-budget'); if (b && l.length) b.value = Math.round(l.reduceMod((a, p) => a + p.base, 0) * 100) / 100;
+    const b = document.getElementById('ob-edit-budget'); if (b && l.length) b.value = Math.round(l.reduce((a, p) => a + p.base, 0) * 100) / 100;
   }
   async function buscarPresuStel() {
     const el = document.getElementById('ob-presu-stel'); if (!el) return;
@@ -977,6 +1040,6 @@ ${pago}
     } catch (err) { alert('No se pudo borrar: ' + err.message); }
   }
 
-  CP.Obras = { buscarPresuStel, anadirPresuStel, quitarPresuStel, partidasPresuStel, certMedicion, render, showTab, loadResumen, loadLista, loadEstudio, nuevaEstudio, estadoEstudio, openObra, saveObraChanges, ubicacion, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, addCert, certRapida, certEstado, conciliarCert, _ccPick, delCert, reciboCert, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick, _fpBack, _fpToggleAll, _fpSum, _fpAsignar };
+  CP.Obras = { buscarFactStel, enlazarFactStel, quitarFactStel, ponerCliente, guardarCliente, buscarPresuStel, anadirPresuStel, quitarPresuStel, partidasPresuStel, certMedicion, render, showTab, loadResumen, loadLista, loadEstudio, nuevaEstudio, estadoEstudio, openObra, saveObraChanges, ubicacion, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, addCert, certRapida, certEstado, conciliarCert, _ccPick, delCert, reciboCert, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick, _fpBack, _fpToggleAll, _fpSum, _fpAsignar };
 
 })(window.CP = window.CP || {});
