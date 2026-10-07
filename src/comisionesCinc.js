@@ -17,11 +17,39 @@ function numDeLinea(txt) {
   return m ? 'FAC' + m[1].padStart(5, '0') : null;
 }
 
+// La IA lee como mucho ~60 líneas por documento y resume el resto («… y 333 líneas más»). CINC a veces manda
+// todas las facturas de un año en UN PDF (pasó con las de 2025: casi 400 líneas): así se comprobaban solo las
+// 60 primeras. Si la lectura salió cortada, se relee el PDF página a página y se guardan TODAS las líneas.
+const CORTADA = /(?:…|\.\.\.)\s*y\s*\d+\s*l[ií]neas?\s*m[aá]s/i;
+async function completarLineas(c) {
+  if (!(c.lineas || []).some(l => CORTADA.test(l.descripcion || ''))) return c;
+  const compras = require('./compras');
+  const fotos = (await compras.fotosDe(String(c._id || c.id))).filter(f => /pdf/i.test(f.mimetype || ''));
+  if (!fotos.length) return c;
+  const lineas = [];
+  for (const f of fotos) {
+    const buf = f.data && f.data.buffer ? Buffer.from(f.data.buffer) : f.data;
+    const paginas = await compras._partirPdf(buf);
+    for (const pg of paginas) {
+      const r = await compras._leerConIA([{ data: pg, mimetype: 'application/pdf' }]);
+      if (!r.ok) throw new Error('No se pudo releer una página del PDF de CINC: ' + r.error);
+      const d = compras._aplicarLectura({}, r.datos || {});
+      lineas.push(...(d.lineas || []).filter(l => !CORTADA.test(l.descripcion)));
+    }
+  }
+  if (lineas.length <= (c.lineas || []).length) return c;
+  const db = await getDB();
+  await db.collection('compras').updateOne({ _id: new (require('mongodb').ObjectId)(String(c._id)) }, { $set: { lineas, lineasCompletas: { n: lineas.length, at: new Date(), por: 'relectura por páginas' } } });
+  console.log(`[CINC] ${c.numero || c._id}: releída por páginas, ${lineas.length} líneas (antes ${(c.lineas || []).length}).`);
+  return { ...c, lineas };
+}
+
 async function revisar(compraId) {
   const db = await getDB();
   const compras = require('./compras');
-  const c = await compras.getCompra(compraId);
+  let c = await compras.getCompra(compraId);
   if (!c) throw new Error('Compra no encontrada');
+  c = await completarLineas(c);
   const T = require('./trimestre');
   const [em, mapa, otras] = await Promise.all([
     T.todasEmitidas(),
@@ -66,4 +94,4 @@ async function revisar(compraId) {
   };
 }
 
-module.exports = { revisar, numDeLinea };
+module.exports = { revisar, numDeLinea, _completarLineas: completarLineas };
