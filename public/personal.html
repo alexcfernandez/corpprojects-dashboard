@@ -28,6 +28,7 @@ td{padding:7px 6px;border-bottom:1px solid var(--border);vertical-align:middle}t
 <body><script>try{if(localStorage.getItem("cp_theme")==="light")document.body.classList.add("light");}catch(e){}</script>
 <div class="header"><div class="logo">CP</div><div><div style="font-weight:700">Documentación del personal</div><div style="font-size:12px;color:var(--text2)">Carpeta de cada trabajador y de la empresa · paquete para obras</div></div><a class="hbtn" href="/">← Dashboard</a></div>
 <div class="wrap">
+  <div id="kpis" class="cp-kpis"></div>
   <div class="tabs">
     <button class="tab on" data-t="plantilla" onclick="verTab('plantilla')">👷 Plantilla</button>
     <button class="tab" data-t="nominas" onclick="verTab('nominas')">💶 Nóminas y pagos</button>
@@ -48,7 +49,15 @@ let R=null,tab='plantilla',carpetaDe=null,_obras=null;
 async function api(m,u,b){const o={method:m,headers:{...H}};if(b instanceof FormData)o.body=b;else if(b){o.headers['Content-Type']='application/json';o.body=JSON.stringify(b);}const r=await fetch(u,o);if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.error||'HTTP '+r.status);}return r.headers.get('content-type')&&r.headers.get('content-type').includes('json')?r.json():r;}
 async function cargar(){if(!tok){document.getElementById('out').innerHTML='<div class="vacio">Abre esta página desde el dashboard.</div>';return;}
   try{R=await api('GET','/api/personal/resumen');}catch(e){document.getElementById('out').innerHTML='<div class="vacio" style="color:var(--red)">'+esc(e.message)+'</div>';return;}
-  document.getElementById('n-prop').textContent=R.propuestas.length?'('+R.propuestas.length+')':'';pintar();}
+  document.getElementById('n-prop').textContent=R.propuestas.length?'('+R.propuestas.length+')':'';pintarKpis();pintar();}
+// Cifras de arriba: cómo está la documentación de la plantilla y lo que queda por confirmar.
+function pintarKpis(){const req=R.trabajadores.flatMap(w=>Object.entries(w.requisitos).filter(([k])=>R.tipos[k]&&R.tipos[k].obra).map(([,r])=>r.estado));
+  const n=e=>req.filter(x=>x===e).length;const todoOk=R.trabajadores.filter(w=>Object.entries(w.requisitos).every(([k,r])=>!(R.tipos[k]&&R.tipos[k].obra)||r.estado==='ok')).length;
+  const k=(l,v,s,c,t)=>`<div class="cp-kpi" onclick="verTab('${t}')"><div class="l">${l}</div><div class="n" style="color:${c}">${v}</div><div class="s">${s}</div></div>`;
+  document.getElementById('kpis').innerHTML=k('Plantilla',R.trabajadores.length,`${todoOk} con todo en regla`,'var(--text)','plantilla')
+    +k('Caducados',n('caducado'),'documentos para obra',n('caducado')?'var(--red)':'var(--green)','plantilla')
+    +k('Caducan pronto',n('pronto'),`en 30 días · ${n('falta')} sin subir`,n('pronto')?'var(--amber)':'var(--green)','plantilla')
+    +k('Por confirmar',R.propuestas.length,'documentos subidos',R.propuestas.length?'var(--blue)':'var(--green)','subir');}
 function verTab(t){tab=t;carpetaDe=null;document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('on',b.dataset.t===t));pintar();}
 const sem=r=>r.estado==='falta'?'<span class="sem falta">—</span>':`<span class="sem ${r.estado}" title="${r.caduca?'Válido hasta '+fd(r.caduca):''}">${r.estado==='ok'?'✓':r.estado==='pronto'?'⚠':'✗'}${r.caduca?' '+fd(r.caduca).slice(0,5):''}</span>`;
 function pintar(){const el=document.getElementById('out');if(!R)return;

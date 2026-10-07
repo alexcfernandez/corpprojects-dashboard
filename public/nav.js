@@ -65,6 +65,9 @@
     : `<div class="sc${s === seccionActiva ? ' act' : ''}" data-k="${k}"><button class="bt" type="button"><span>${s.i}</span>${esc(s.t)} <span style="font-size:10px;opacity:.6">▾</span></button><div class="dd">${s.items.map(([t, h]) => `<a href="${h}"${h === actual || h === location.pathname ? ' class="act"' : ''}>${esc(t)}</a>`).join('')}</div></div>`).join('') +
     `<span class="sp"></span><button class="bt hb" type="button" aria-label="Abrir menú">☰ Menú</button>`;
   document.body.insertBefore(nav, document.body.firstChild);
+  // El título de la pantalla, alineado con su contenido (cada pantalla tiene su ancho).
+  const hd = document.querySelector('body > .header'), wr = document.querySelector('.wrap, .container');
+  if (hd && wr) { const mw = getComputedStyle(wr).maxWidth; if (mw && mw !== 'none') hd.style.maxWidth = mw; }
   const cerrar = () => nav.querySelectorAll('.sc.on').forEach(x => x.classList.remove('on'));
   nav.querySelectorAll('.sc[data-k] > .bt').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); const sc = b.parentElement; const on = sc.classList.contains('on'); cerrar(); if (!on) sc.classList.add('on'); }));
   nav.querySelector('.hb').addEventListener('click', () => { nav.classList.toggle('abierto'); nav.querySelector('.hb').textContent = nav.classList.contains('abierto') ? '✕ Cerrar' : '☰ Menú'; if (seccionActiva && nav.classList.contains('abierto')) { const k = MENU.indexOf(seccionActiva); const sc = nav.querySelector(`.sc[data-k="${k}"]`); if (sc) sc.classList.add('on'); } });

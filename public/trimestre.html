@@ -39,6 +39,7 @@ td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}
 .pk .l{overflow-y:auto;padding:0 8px 12px}
 .pk .it{display:block;width:100%;text-align:left;background:none;border:none;border-radius:10px;color:inherit;font:inherit;padding:10px;cursor:pointer}
 .pk .it:hover{background:var(--bg3)}
+.paso-final{border-color:rgba(34,196,135,.35) !important}.bar{margin-bottom:16px}
 </style><link rel="stylesheet" href="/cp-ui.css">
 <script src="/nav.js" defer></script>
 </head>
@@ -50,8 +51,11 @@ td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}
     <button class="btn" onclick="cargar()">Actualizar</button>
     <button class="btn p" onclick="excel(this)">⬇️ Excel de control</button>
   </div>
-  <div class="card" style="font-size:13.5px;line-height:1.6">
-    <h3>Paquete para la gestoría (mismo formato que el 2º trimestre en Drive)</h3>
+  <div id="out"><div class="vacio">Cargando… (la primera vez tarda unos segundos: lee StelOrder)</div></div>
+  <div id="punteo"></div>
+  <div class="card paso-final" style="font-size:13.5px;line-height:1.6">
+    <h3>Último paso · paquete para la gestoría</h3>
+    <div style="color:var(--text2);margin-bottom:6px">Cuando la lista de arriba esté en verde, baja el paquete (mismo formato que el 2º trimestre en Drive).</div>
     <div>Carpeta <b>PARA_GESTORIA_Q…</b>: <b>1</b> facturas emitidas (PDF por mes) · <b>2</b> facturas recibidas (las que revisas en Compras, en PDF por mes) · <b>3</b> resumen de emitidas · <b>5</b> extractos de tarjetas · <b>6</b> extracto del banco.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
       <button class="btn p" onclick="bajar(this,'/api/trimestre/paquete','PARA_GESTORIA.zip','Preparando el paquete completo… (1-2 min)')">⬇️ Paquete completo (1, 2, 3, 4 y LÉEME)</button>
@@ -61,24 +65,22 @@ td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}
     </div>
     <div style="font-size:12px;color:var(--text3);margin-top:6px">Descomprime el ZIP y arrastra la carpeta a Drive. Si algún PDF no se pudo bajar, va apuntado en <i>_FALTAN.txt</i> dentro del ZIP.</div>
   </div>
-  <div class="card" id="bancos"><h3>🏦 Bancos conectados (los movimientos entran solos)</h3><div id="bancos-res" style="font-size:13px;color:var(--text3)">Cargando…</div></div>
-  <div class="card">
-    <h3>Extractos del trimestre (banco y tarjetas)</h3>
+  <div class="card" id="bancos"><h3>🏦 Bancos conectados · los movimientos entran solos</h3><div id="bancos-res" style="font-size:13px;color:var(--text3)">Cargando…</div>
+    <details style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px"><summary style="cursor:pointer;font-size:14px;font-weight:600">Subir un extracto a mano (CSV de Revolut, Excel de tarjetas o de Santander)</summary>
     <div style="font-size:13.5px;color:var(--text2);line-height:1.6">Con los bancos conectados arriba no hace falta; sirve para lo que no esté conectado o para fechas antiguas. Sube aquí el <b>CSV de Revolut</b>, los <b>Excel de las tarjetas de crédito</b> y el <b>Excel de la cuenta de Santander</b> (puedes elegir varios a la vez). Se reconocen solos y no se duplica nada si subes un archivo dos veces.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
       <input type="file" id="ext-file" multiple accept=".csv,.xls,.xlsx" style="font-size:13px;color:var(--text2);max-width:100%">
       <button class="btn" onclick="subirExtractos(this)">Subir</button>
     </div>
     <div id="ext-res" style="font-size:13px;margin-top:8px;line-height:1.6"></div>
+    </details>
     <details style="margin-top:10px"><summary style="cursor:pointer;font-size:14px;font-weight:600">Tarjetas y quién lleva cada una</summary><div id="tarjetas" style="margin-top:8px"></div></details>
   </div>
-  <div id="punteo"></div>
-  <div id="out"><div class="vacio">Cargando… (la primera vez tarda unos segundos: lee StelOrder)</div></div>
 </div>
 <script>
 const tok=localStorage.getItem('cp_token');const H={'Authorization':'Bearer '+tok};
 const esc=x=>String(x==null?'':x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const eur=v=>v==null?'—':new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(v);
+const eur=v=>v==null?'—':new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',useGrouping:'always'}).format(v);
 const dt=f=>f?f.slice(8,10)+'/'+f.slice(5,7):'—';
 (function(){const s=document.getElementById('q');const h=new Date();let y=h.getFullYear(),n=Math.ceil((h.getMonth()+1)/3);
   const def=(()=>{const m=h.getMonth()+1,d=h.getDate();if(m===(n-1)*3+1&&d<=20)return n===1?(y-1)+'-T4':y+'-T'+(n-1);return y+'-T'+n;})();
@@ -109,7 +111,7 @@ async function cargar(){
     ${chk(!p.sinContabilidad.length,'Revisadas que no han pasado a StelOrder',p.sinContabilidad.length,'Facturas o tickets confirmados que no constan enviados a contabilidad. Ábrelas y reenvíalas.',p.sinContabilidad.map(linCompra).join(''))}
     ${chk(!p.correosSinAdjunto.length,'Correos de factura sin PDF',p.correosSinAdjunto.length,'Correos que parecen una factura pero no traen el archivo: hay que pedírsela al proveedor.',p.correosSinAdjunto.map(linCorreo).join(''))}
     ${chk(!p.correosSinRevisar.length,'Facturas llegadas por correo sin revisar',p.correosSinRevisar.length,'Ya están en Compras; falta confirmarlas.',p.correosSinRevisar.map(linCorreo).join(''))}
-    ${chk(!!(p.banco&&p.banco.cubre),'Extracto del banco hasta el final del trimestre',p.banco&&p.banco.hasta?'hasta '+dt(p.banco.hasta):'sin subir','Sube el Excel de Santander en Banco y gastos para que la gestoría pueda cuadrar pagos y cobros. Revolut: pendiente de conectar (próximo paso).',null)}
+    ${chk(!!(p.banco&&p.banco.cubre),'Extracto del banco hasta el final del trimestre',p.banco&&p.banco.hasta?'hasta '+dt(p.banco.hasta):'sin subir','Con los bancos conectados (abajo) llega solo. Si falta algún tramo, sube el extracto a mano en la tarjeta de bancos.',null)}
     ${chk(!p.albaranes.length,'Albaranes sin factura (informativo)',p.albaranes.length,'No van a la gestoría, pero si un proveedor no ha facturado, no tendrás el gasto en el trimestre.',p.albaranes.map(linCompra).join(''),!!p.albaranes.length)}
     <div class="ayuda" style="margin:10px 0 0">Se recalcula cada mañana a las 8:40. Los lunes, si hay pendientes, oficina recibe un resumen.</div>
   </div>`;

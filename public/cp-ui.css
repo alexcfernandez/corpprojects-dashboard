@@ -80,3 +80,38 @@ body.light table th { color: #64748b; }
 .ini-kpi .k-s { font-size: 12px; color: var(--text3); margin-top: 4px; }
 @media (max-width: 900px) { .ini-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 520px) { .ini-kpis { gap: 8px; } .ini-kpi { padding: 12px !important; } .ini-kpi .k-l { font-size: 10px; letter-spacing: .04em; } .ini-kpi .k-v { font-size: 21px; } .ini-kpi .k-s { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
+
+/* Encabezado de cada pantalla de oficina (con el menú común encima): título grande en vez de la barra con el
+   logo repetido. Solo cuando está el menú (.cpnav); las pantallas de los trabajadores no cambian. */
+.cpnav ~ .header { position: static !important; background: none !important; border: 0 !important; max-width: 1100px; margin: 0 auto; padding: 24px 16px 6px !important; flex-wrap: wrap; }
+.cpnav ~ .header > .logo { display: none !important; }
+.cpnav ~ .header > .logo + div > div:first-child { font-family: var(--font-display); font-size: 27px !important; font-weight: 800 !important; letter-spacing: -.015em; line-height: 1.15; }
+.cpnav ~ .header > .logo + div > div:nth-child(2) { font-size: 13.5px !important; color: var(--text3) !important; margin-top: 3px; }
+@media (max-width: 600px) { .cpnav ~ .header { padding: 16px 14px 4px !important; } .cpnav ~ .header > .logo + div > div:first-child { font-size: 23px !important; } }
+
+/* Pestañas en píldora, iguales en todas las pantallas */
+.tabs { gap: 6px; }
+.tab { border-radius: 999px !important; transition: background .15s ease, border-color .15s ease, color .15s ease; }
+.tab:hover { color: var(--text); border-color: var(--border2); }
+.tab.on { background: rgba(77,156,248,.14) !important; border-color: rgba(77,156,248,.55) !important; color: var(--text) !important; }
+body.light .tab.on { color: #0f172a !important; }
+.cp-grupo { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.cp-grupo > .cp-gl { font-size: 10.5px; color: var(--text3); text-transform: uppercase; letter-spacing: .08em; font-weight: 700; min-width: 92px; }
+@media (max-width: 600px) {
+  .tabs:not([style*="block"]), .cp-grupo { flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; margin-left: -16px; margin-right: -16px; padding: 0 16px 2px; }
+  .tabs::-webkit-scrollbar, .cp-grupo::-webkit-scrollbar { display: none; }
+  .tab { flex-shrink: 0; white-space: nowrap; }
+  .cp-grupo > .cp-gl { min-width: 0; flex-shrink: 0; }
+}
+
+/* Cifras de cabecera de pantalla (Cierre, Personal…) */
+.kpi { border-radius: var(--r) !important; background: linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,0) 60%), var(--bg2) !important; border: 1px solid var(--border) !important; }
+.kpi .n, .cp-kpi .n { font-family: var(--font-display); font-weight: 800; letter-spacing: -.01em; }
+.cp-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.cp-kpi { background: linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,0) 60%), var(--bg2); border: 1px solid var(--border); border-radius: var(--r); padding: 14px 16px; cursor: pointer; transition: border-color .2s ease, transform .2s ease; }
+.cp-kpi:hover { border-color: var(--border2); transform: translateY(-1px); }
+.cp-kpi .l { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; font-weight: 600; }
+.cp-kpi .n { font-size: 26px; margin-top: 4px; line-height: 1.1; }
+.cp-kpi .s { font-size: 12px; color: var(--text3); margin-top: 3px; }
+@media (max-width: 760px) { .cp-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } .cp-kpi { padding: 12px; } .cp-kpi .n { font-size: 21px; } }
+body.light .cp-kpi { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(15,23,42,.05); }

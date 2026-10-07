@@ -54,6 +54,12 @@ td input{padding:6px 7px;font-size:13px;border-radius:7px}th{font-size:10.5px;co
 #toast.show{opacity:1}#toast.ok{border-color:var(--green)}#toast.error{border-color:var(--red)}
 .zoom{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:900;display:flex;align-items:center;justify-content:center;cursor:zoom-out;overflow:auto}
 .zoom img{max-width:none;width:auto;max-height:none}
+.subir-fila{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;margin-bottom:16px}
+.subir-1{display:inline-flex;align-items:center;gap:8px;text-decoration:none;padding:13px 20px;font-size:15px}.subir-1 span{font-weight:500;font-size:12.5px;opacity:.85}
+#masiva{margin:0;padding:0;background:none !important;border:0 !important}#masiva>summary{list-style:none;display:inline-flex;align-items:center;padding:13px 18px;font-size:14px}#masiva>summary::-webkit-details-marker{display:none}
+#masiva[open]{flex-basis:100%;padding:14px 16px;background:var(--bg2) !important;border:1px solid var(--border) !important}#masiva[open]>summary{padding:8px 14px;font-size:13px}
+.lista .it{border-radius:14px;transition:border-color .15s ease,transform .15s ease}.lista .it:hover{transform:translateY(-1px)}
+@media(max-width:600px){.subir-1,#masiva>summary{width:100%;justify-content:center}#masiva{width:100%}.subir-1 span{display:none}}
 </style>
 <link rel="stylesheet" href="/cp-ui.css">
 <script src="/nav.js" defer></script>
@@ -65,12 +71,17 @@ td input{padding:6px 7px;font-size:13px;border-radius:7px}th{font-size:10.5px;co
 <div class="wrap">
   <div id="push-aviso"></div>
   <div id="vista-lista">
-    <a href="/compra" class="btn ok" style="display:block;text-align:center;text-decoration:none;padding:16px;font-size:16px;margin-bottom:14px">📸 Subir una compra (albarán, factura, ticket)</a>
-    <details class="card" id="masiva" style="margin-bottom:14px"><summary style="cursor:pointer;font-weight:600">📥 Subir muchas facturas a la vez (las de la web de Obramat, Leroy Merlin…)</summary>
+    <div class="subir-fila">
+    <a href="/compra" class="btn ok subir-1">📸 Subir una compra <span>albarán, factura o ticket</span></a>
+    <details class="card" id="masiva"><summary class="btn g">📥 Subir muchas facturas a la vez</summary>
       <div style="font-size:13px;color:var(--text2);line-height:1.55;margin-top:8px">Elige o arrastra todos los PDF (o fotos) de golpe: <b>cada archivo es una factura</b>. La IA las lee en segundo plano y <b>descarta sola las repetidas</b>: el mismo archivo, el mismo nº del mismo proveedor, o la factura de una compra que ya estaba como ticket (entonces la factura sustituye al ticket y se queda con su obra). Luego se cuadran solas con los pagos del banco. Si te bajas un ZIP, descomprímelo antes (doble clic).</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px"><input type="file" id="mv-files" multiple accept="application/pdf,image/*" style="font-size:13px;max-width:100%"><label style="display:flex;gap:6px;align-items:center;font-size:13px;color:var(--text2);cursor:pointer"><input type="checkbox" id="mv-pag" style="width:18px;height:18px"> Un PDF trae varias facturas: cada página es una</label><button class="btn" onclick="subirMasiva(this)">Subir</button></div>
       <div id="mv-res" style="margin-top:10px"></div></details>
-    <div class="tabs"><button class="tab on" data-e="por_revisar" onclick="verTab(this)">🔎 Por revisar <span id="n-pend"></span></button><button class="tab" data-e="revisada" onclick="verTab(this)">✅ Revisadas</button><button class="tab" data-e="archivo" onclick="verTab(this)">🗄️ Archivo</button><button class="tab" data-e="descartada" onclick="verTab(this)">🚫 Descartadas</button><button class="tab" data-e="sinfact" onclick="verTab(this)">📄 Albaranes sin factura <span id="n-sf"></span></button><button class="tab" data-e="reclam" onclick="verTab(this)">⚠️ CINC nos debe <span id="n-rec"></span></button><button class="tab" data-e="stel" onclick="verTab(this)">🗂️ StelOrder sin clasificar</button><button class="tab" data-e="precios" onclick="verTab(this)">💶 Precios por tienda</button><button class="tab" data-e="cuentas" onclick="verTab(this)">💶 Cuentas</button><button class="tab" data-e="provs" onclick="verTab(this)">🏭 Por proveedor</button><a class="tab" href="/almacen" style="text-decoration:none">📦 Almacén</a></div>
+    </div>
+    <div class="tabs" style="display:block;margin-bottom:14px">
+      <div class="cp-grupo"><span class="cp-gl">Compras</span><button class="tab on" data-e="por_revisar" onclick="verTab(this)">🔎 Por revisar <span id="n-pend"></span></button><button class="tab" data-e="revisada" onclick="verTab(this)">✅ Revisadas</button><button class="tab" data-e="archivo" onclick="verTab(this)">🗄️ Archivo</button><button class="tab" data-e="descartada" onclick="verTab(this)">🚫 Descartadas</button></div>
+      <div class="cp-grupo"><span class="cp-gl">Proveedores</span><button class="tab" data-e="cuentas" onclick="verTab(this)">💶 Cuentas</button><button class="tab" data-e="provs" onclick="verTab(this)">🏭 Por proveedor</button><button class="tab" data-e="precios" onclick="verTab(this)">🏷️ Precios por tienda</button><button class="tab" data-e="sinfact" onclick="verTab(this)">📄 Albaranes sin factura <span id="n-sf"></span></button><button class="tab" data-e="reclam" onclick="verTab(this)">⚠️ CINC nos debe <span id="n-rec"></span></button><button class="tab" data-e="stel" onclick="verTab(this)">🗂️ StelOrder sin clasificar</button><a class="tab" href="/almacen" style="text-decoration:none">📦 Almacén</a></div>
+    </div>
     <div id="cuentas" style="display:none"><div class="card" style="margin-bottom:12px"><h3>Cuenta de cada proveedor</h3><div style="font-size:12.5px;color:var(--text2);line-height:1.5">Sus facturas, lo pagado (con qué movimiento del banco o tarjeta) y <b>lo que queda pendiente</b>, al céntimo. Pulsa un proveedor para ver el detalle. Las facturas desde enero de 2025.</div><input id="cu-q" placeholder="Buscar proveedor…" oninput="pintarCuentas()" style="margin-top:10px;width:100%;max-width:360px"></div><div id="cuentas-res"></div></div>
     <div id="reclam" style="display:none"><div id="reclam-res"></div></div>
     <div id="stel" style="display:none"><div class="card" style="margin-bottom:12px"><h3>Facturas de StelOrder sin clasificar</h3><div style="font-size:12.5px;color:var(--text2);line-height:1.5">Las que están en StelOrder y no han pasado por Compras ni tienen obra o gasto puesto (las de antes de Compras, o las que llegan a StelOrder por otro camino). Las revisadas en Compras ya no salen aquí. <a href="/asignar-facturas" style="color:var(--blue)">⚙️ Reglas por proveedor y repartos</a></div>
@@ -92,7 +103,7 @@ const DEST_TXT={obra:'🏗️ Una obra',cliente:'👤 Un cliente (reparación si
 const TIPO_TXT={albaran:'Albarán',factura:'Factura',ticket:'Ticket',devolucion:'Devolución',otro:'Documento'};
 const CATS=['material','combustible','herramientas','subcontrata','comisiones','dietas','gestoria','seguros','suministros','alquiler','otros'];   // dietas: comidas del personal (restaurante, cafetería…)   // comisiones: CINC cobra el 10 % de los trabajos que nos pasa
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function eur(v){return v==null?'—':Number(v).toLocaleString('es-ES',{style:'currency',currency:'EUR'});}
+function eur(v){return v==null?'—':Number(v).toLocaleString('es-ES',{style:'currency',currency:'EUR',useGrouping:'always'});}
 function fh(d){return d?new Date(d).toLocaleString('es-ES',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';}
 let _tt=null;function toast(t,ty){const e=document.getElementById('toast');e.textContent=t;e.className='show '+(ty||'ok');clearTimeout(_tt);_tt=setTimeout(()=>e.className='',3000);}
 async function api(m,u,b){const o={method:m,headers:{'Authorization':'Bearer '+tok}};if(b){o.headers['Content-Type']='application/json';o.body=JSON.stringify(b);}const r=await fetch(u,o);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Error');return d;}
