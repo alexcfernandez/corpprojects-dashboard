@@ -527,6 +527,12 @@
               <input type="number" id="ob-cert-importe" class="field-input" placeholder="€" style="width:88px" min="0">
               <button class="btn bp" onclick="CP.Obras.addCert('${obra._id}')">+ Certificar</button>
             </div>
+            ${(() => { const ls = (obra.presupuestosStel || []).flatMap(p => p.lineas || []); if (!ls.length) return '';
+              const hecho = {}; (cert.certs || []).forEach(c => { if (c.medicion && c.medicion.partida) hecho[c.medicion.partida] = (hecho[c.medicion.partida] || 0) + (Number(c.medicion.cantidad) || 0); });
+              return `<div style="margin-top:10px;padding:10px;border:1px dashed var(--border2);border-radius:10px"><div style="font-size:12px;font-weight:600;margin-bottom:6px">📐 Certificar por medición</div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><select id="ob-cm-partida" class="field-input" style="flex:1;min-width:200px">${ls.map(l => `<option value='${JSON.stringify(l).replace(/'/g, '&#39;')}'>${ce(l.nombre)} · ${eur(l.precio)}${l.unidad === 'm²' ? '/m²' : ''}${l.unidad === 'm²' ? ` · llevas ${String(hecho[l.nombre] || 0).replace('.', ',')} de ${String(l.unidades).replace('.', ',')} m²` : (hecho[l.nombre] ? ' · ya certificada' : '')}</option>`).join('')}</select>
+                <input type="number" id="ob-cm-cant" class="field-input" placeholder="m²" style="width:80px" min="0" step="0.01"><button class="btn bp" onclick="CP.Obras.certMedicion('${obra._id}')">+ Certificar m²</button></div>
+                <div style="font-size:11px;color:var(--text3);margin-top:4px">El importe sale solo: m² × precio de la partida. Para la limpieza u otras «por el total», pon 1.</div></div>`; })()}
             <div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap">
               <button class="btn bgh" style="padding:4px 10px;font-size:11px" onclick="CP.Obras.certRapida('${obra._id}','40% inicio',40,0)">40% inicio</button>
               <button class="btn bgh" style="padding:4px 10px;font-size:11px" onclick="CP.Obras.certRapida('${obra._id}','30% avance',30,0)">30% avance</button>
@@ -604,7 +610,7 @@
     const el = document.getElementById('ob-presu-stel'); if (!el) return;
     const l = _presuSel || [];
     const eu = v => Number(v || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
-    el.innerHTML = l.length ? `<div style="font-size:12px;color:var(--text3);margin-bottom:4px">Presupuestos de StelOrder enlazados (la suma sin IVA es el presupuesto de la obra):</div>` + l.map((p, i) => `<span style="display:inline-flex;gap:6px;align-items:center;background:var(--bg3);border:1px solid var(--border2);border-radius:14px;padding:3px 10px;margin:0 6px 6px 0;font-size:12px">📄 ${ceMod(p.numero)} · ${eu(p.base)} <span style="color:var(--text3)">(${eu(p.total)} con IVA · ${ceMod(p.estado || '')})</span><b style="cursor:pointer;color:var(--red)" onclick="CP.Obras.quitarPresuStel(${i})">×</b></span>`).join('') : '';
+    el.innerHTML = l.length ? `<div style="font-size:12px;color:var(--text3);margin-bottom:4px">Presupuestos de StelOrder enlazados (la suma sin IVA es el presupuesto de la obra):</div>` + l.map((p, i) => `<span style="display:inline-flex;gap:6px;align-items:center;background:var(--bg3);border:1px solid var(--border2);border-radius:14px;padding:3px 10px;margin:0 6px 6px 0;font-size:12px">📄 ${ceMod(p.numero)} · ${eu(p.base)} <span style="color:var(--text3)">(${p.lineas ? 'por partidas' : eu(p.total) + ' con IVA'} · ${ceMod(p.estado || '')})</span><b style="cursor:pointer" title="Cantidades de cada partida (m² reales)" onclick="CP.Obras.partidasPresuStel(${i})">✏️</b><b style="cursor:pointer;color:var(--red)" onclick="CP.Obras.quitarPresuStel(${i})">×</b></span>`).join('') + '<div id="ob-partidas"></div>' : '';
     const b = document.getElementById('ob-edit-budget'); if (b && l.length) b.value = Math.round(l.reduceMod((a, p) => a + p.base, 0) * 100) / 100;
   }
   async function buscarPresuStel() {
@@ -618,11 +624,45 @@
       catch (e) { r.textContent = '❌ ' + e.message; } };
     let t = null; q.oninput = () => { clearTimeout(t); t = setTimeout(run, 300); }; run();
   }
-  function anadirPresuStel(i) {
+  async function anadirPresuStel(i) {
     const p = (window._presuRes || [])[i]; if (!p) return;
-    _presuSel = (_presuSel || []).filter(x => x.id !== p.id).concat([p]);
+    _presuSel = (_presuSel || []).filter(x => x.id !== p.id).concat([{ ...p, baseStel: p.base }]);
     const c = document.getElementById('ob-edit-client'); if (c && !c.value.trim()) c.value = p.cliente;   // el cliente, si no estaba
     pintarPresuStel();
+    // Precios por m² (p. ej. SATE a 98 €/m² con unidades 1): se abren las partidas para poner los m² reales.
+    try { const ls = await api('/api/obras/presupuestos-stel/' + p.id + '/lineas'); if (ls.some(l => l.unidad === 'm²')) partidasPresuStel(_presuSel.length - 1, ls); } catch (e) {}
+  }
+  // Partidas de un presupuesto enlazado: cantidad real de cada una (m² de la obra; «total» = 1 vez).
+  async function partidasPresuStel(i, lineasStel) {
+    const p = (_presuSel || [])[i]; if (!p) return;
+    let ls = p.lineas;
+    if (!ls) { try { ls = lineasStel || await api('/api/obras/presupuestos-stel/' + p.id + '/lineas'); } catch (e) { alert(e.message); return; } }
+    ls = ls.map(l => ({ nombre: l.nombre, precio: l.precio, unidades: l.unidades, unidad: l.unidad }));
+    const el = document.getElementById('ob-partidas'); if (!el) return;
+    const eu = v => Number(v || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
+    const pinta = () => {
+      const tot = ls.reduce((a, l) => a + l.precio * (Number(l.unidades) || 0), 0);
+      el.innerHTML = `<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:10px;margin-top:4px"><div style="font-size:12px;color:var(--text2);margin-bottom:6px"><b>${ceMod(p.numero)}</b> · pon los <b>m² totales</b> de cada partida (lo que se va a hacer); las que van «por el total» (limpieza…) se quedan en 1.</div>
+        <table style="width:100%;font-size:12.5px;border-collapse:collapse">${ls.map((l, k) => `<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px">${ceMod(l.nombre)}</td><td style="text-align:right;white-space:nowrap">${eu(l.precio)}${l.unidad === 'm²' ? '/m²' : ''}</td>
+          <td style="width:150px;white-space:nowrap"><input type="number" step="0.01" min="0" value="${l.unidades}" data-k="${k}" class="field-input pt-u" style="width:80px;padding:4px 6px;display:inline-block"> <select data-k="${k}" class="pt-t" style="padding:3px;font-size:12px"><option value="m²" ${l.unidad === 'm²' ? 'selected' : ''}>m²</option><option value="total" ${l.unidad !== 'm²' ? 'selected' : ''}>total</option></select></td>
+          <td style="text-align:right;white-space:nowrap"><b>${eu(l.precio * (Number(l.unidades) || 0))}</b></td></tr>`).join('')}
+          <tr><td colspan="3" style="text-align:right;padding:6px">Presupuesto de la obra (sin IVA)</td><td style="text-align:right"><b>${eu(tot)}</b></td></tr></table>
+        <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:6px"><button class="btn bgh" style="padding:4px 10px;font-size:12px" onclick="document.getElementById('ob-partidas').innerHTML=''">Cancelar</button><button class="btn bp" style="padding:4px 10px;font-size:12px" id="pt-ok">Aplicar</button></div></div>`;
+      el.querySelectorAll('.pt-u').forEach(x => x.oninput = () => { ls[+x.dataset.k].unidades = Number(String(x.value).replace(',', '.')) || 0; const tr = x.closest('tr'); tr.lastElementChild.innerHTML = '<b>' + eu(ls[+x.dataset.k].precio * ls[+x.dataset.k].unidades) + '</b>'; });
+      el.querySelectorAll('.pt-t').forEach(x => x.onchange = () => { ls[+x.dataset.k].unidad = x.value; if (x.value === 'total') ls[+x.dataset.k].unidades = 1; pinta(); });
+      document.getElementById('pt-ok').onclick = () => { p.lineas = ls; p.base = Math.round(ls.reduce((a, l) => a + l.precio * (Number(l.unidades) || 0), 0) * 100) / 100; pintarPresuStel(); };
+    };
+    pinta();
+  }
+  // Certificar por medición: m² hechos de una partida × su precio.
+  async function certMedicion(id) {
+    const sel = document.getElementById('ob-cm-partida'), q = document.getElementById('ob-cm-cant');
+    const l = JSON.parse(sel.value || 'null'); const cant = Number(String(q.value).replace(',', '.')) || 0;
+    if (!l || !(cant > 0)) { alert('Elige la partida y pon los m² (o unidades) a certificar.'); return; }
+    const importe = Math.round(l.precio * cant * 100) / 100;
+    const concepto = `${l.nombre} · ${String(cant).replace('.', ',')} ${l.unidad === 'm²' ? 'm²' : 'ud'} × ${String(l.precio).replace('.', ',')} €${l.unidad === 'm²' ? '/m²' : ''}`;
+    try { await api(`/api/obras/${id}/certificacion`, { method: 'POST', body: JSON.stringify({ concepto, importe, medicion: { partida: l.nombre, cantidad: cant, unidad: l.unidad, precio: l.precio } }) }); openObra(id); loadResumen(); }
+    catch (err) { alert('Error: ' + err.message); }
   }
   function quitarPresuStel(i) { _presuSel = (_presuSel || []).filter((_, j) => j !== i); pintarPresuStel(); }
 
@@ -937,6 +977,6 @@ ${pago}
     } catch (err) { alert('No se pudo borrar: ' + err.message); }
   }
 
-  CP.Obras = { buscarPresuStel, anadirPresuStel, quitarPresuStel, render, showTab, loadResumen, loadLista, loadEstudio, nuevaEstudio, estadoEstudio, openObra, saveObraChanges, ubicacion, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, addCert, certRapida, certEstado, conciliarCert, _ccPick, delCert, reciboCert, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick, _fpBack, _fpToggleAll, _fpSum, _fpAsignar };
+  CP.Obras = { buscarPresuStel, anadirPresuStel, quitarPresuStel, partidasPresuStel, certMedicion, render, showTab, loadResumen, loadLista, loadEstudio, nuevaEstudio, estadoEstudio, openObra, saveObraChanges, ubicacion, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, addCert, certRapida, certEstado, conciliarCert, _ccPick, delCert, reciboCert, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick, _fpBack, _fpToggleAll, _fpSum, _fpAsignar };
 
 })(window.CP = window.CP || {});

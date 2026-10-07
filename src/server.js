@@ -2547,6 +2547,9 @@ app.get('/api/obras/:id/presupuestos', requireAuth, async (req, res) => {
 });
 
 // Presupuestos de StelOrder para enlazar a una obra (buscador): número, cliente, título, base sin IVA, estado.
+app.get('/api/obras/presupuestos-stel/:id/lineas', requireAuth, async (req, res) => {
+  try { res.json(await require('./stelorder').lineasPresupuesto(req.params.id)); } catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/obras/presupuestos-stel', requireAuth, async (req, res) => {
   try {
     const n = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');

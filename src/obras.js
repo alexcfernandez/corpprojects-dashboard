@@ -249,7 +249,12 @@ async function updateObra(id, data) {
   if (set.presupuestosStel !== undefined) {
     const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
     set.presupuestosStel = (Array.isArray(set.presupuestosStel) ? set.presupuestosStel : []).slice(0, 20)
-      .map(p => ({ id: String(p.id || ''), numero: String(p.numero || '').slice(0, 30), fecha: String(p.fecha || '').slice(0, 10), cliente: String(p.cliente || '').slice(0, 120), base: r2(p.base), total: r2(p.total), estado: String(p.estado || '').slice(0, 20) }))
+      .map(p => {
+        // Partidas con su cantidad real (m² de la obra; la limpieza u otras «por el total», 1): base = Σ precio × cantidad.
+        const lineas = Array.isArray(p.lineas) ? p.lineas.slice(0, 60).map(l => ({ nombre: String(l.nombre || '').slice(0, 140), precio: r2(l.precio), unidades: Math.max(0, Number(String(l.unidades).replace(',', '.')) || 0), unidad: l.unidad === 'm²' ? 'm²' : 'total' })) : null;
+        const base = lineas && lineas.length ? r2(lineas.reduce((a, l) => a + l.precio * l.unidades, 0)) : r2(p.base);
+        return { id: String(p.id || ''), numero: String(p.numero || '').slice(0, 30), fecha: String(p.fecha || '').slice(0, 10), cliente: String(p.cliente || '').slice(0, 120), base, baseStel: r2(p.baseStel != null ? p.baseStel : p.base), total: r2(p.total), estado: String(p.estado || '').slice(0, 20), ...(lineas ? { lineas } : {}) };
+      })
       .filter(p => p.id);
     if (set.presupuestosStel.length) set.budgetAmount = r2(set.presupuestosStel.reduce((a, p) => a + p.base, 0));
   }
@@ -438,7 +443,7 @@ async function deleteMaterial(obraId, matId) {
 // Cada certificación es una parte a cobrar: {id, concepto, pct, importe, fecha,
 // estado:'pendiente'|'cobrado', cobradoAt, cobradoNota}. El % se calcula sobre
 // el presupuesto (budgetAmount) o se pone el importe a mano.
-async function addCertificacion(obraId, { concepto, pct, importe } = {}) {
+async function addCertificacion(obraId, { concepto, pct, importe, medicion } = {}) {
   const db = await getDB();
   const obra = await db.collection('obras').findOne({ _id: new ObjectId(obraId) });
   if (!obra) throw new Error('Obra no encontrada');
@@ -455,6 +460,8 @@ async function addCertificacion(obraId, { concepto, pct, importe } = {}) {
     fecha: new Date(),
     estado: 'pendiente', cobradoAt: null, cobradoNota: '',
   };
+  // Certificación por medición (m² × precio de la partida): queda guardado para el recibo y para sumar m².
+  if (medicion && typeof medicion === 'object') cert.medicion = { partida: String(medicion.partida || '').slice(0, 140), cantidad: Number(medicion.cantidad) || 0, unidad: medicion.unidad === 'm²' ? 'm²' : 'ud', precio: Number(medicion.precio) || 0 };
   await db.collection('obras').updateOne({ _id: obra._id }, { $push: { certificaciones: cert }, $set: { updatedAt: new Date() } });
   return cert;
 }

@@ -298,6 +298,23 @@ async function listaPresupuestos() {
   }).sort((a, b) => b.fecha.localeCompare(a.fecha));
 }
 
+// Líneas de un presupuesto (partidas): nombre, precio unitario y unidades. Muchos son precios por m² con
+// unidades 1 (la obra se certifica luego por m² reales); otras partidas van por el total (limpieza…).
+async function lineasPresupuesto(id) {
+  const x = (await getWorkEstimates()).find(e => String(e.id) === String(id));
+  if (!x) throw new Error('Presupuesto no encontrado');
+  const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+  return (x.lines || []).filter(l => l && !l.deleted && (l['line-type'] || 'ITEM') === 'ITEM').map(l => {
+    const u = Number(l.units) || 0, tot = Number(l['total-amount']) || 0;
+    const precio = Number(l['item-base-price']) || (u ? tot / u : tot);
+    const nombre = String(l['item-name'] || l['item-description'] || 'Partida').trim().slice(0, 140);
+    // Por m² si lo dice el nombre/descripción (aislamiento, pintura, fachada…); si no, por unidad/total.
+    const txt = `${l['item-name'] || ''} ${l['item-description'] || ''}`;
+    const unidad = /\bm2\b|m²|metro|fachada|aislamiento|sate|pintura|revestimiento|enfoscado|alicatado|pavimento/i.test(txt) && !/limpieza|residuos|partida alzada|desplazamiento/i.test(l['item-name'] || '') && precio < 400 ? 'm²' : 'total';
+    return { nombre, precio: r2(precio), unidades: u || 1, unidad, total: r2(tot) };
+  });
+}
+
 async function getEstimatesSummary() {
   try {
     const [estimates, { clientMap, families }] = await Promise.all([getWorkEstimates(), getClients()]);
@@ -1958,7 +1975,7 @@ async function modificarImportePresupuesto({ id = null, modo, valor = null, part
 
 
 module.exports = {
-  listaPresupuestos,
+  listaPresupuestos, lineasPresupuesto,
   getInvoices, getAllReceipts, getAllOrdinaryInvoices, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary, diagProveedores,
   getSuppliers, getPurchaseInvoices, getPurchaseInvoiceDetalle, getExpenses,
