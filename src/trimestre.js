@@ -286,7 +286,7 @@ async function recibidasPunteo(stel) {
   const palabra = x => (n(x).match(/[a-z0-9]{4,}/g) || []).filter(w => !/^(s\.?l|sociedad|girona|distribucions?|materials?|derivats?)$/.test(w));
   const pareceProv = (a, b) => { const pa = palabra(a), pb = palabra(b); return pa.some(w => pb.includes(w)); };
   const cs = await db.collection('compras').find({ estado: { $ne: 'descartada' }, tipo: { $in: ['factura', 'devolucion', 'ticket'] }, total: { $ne: null }, fecha: { $ne: null }, duplicadoDe: null })
-    .project({ proveedor: 1, numero: 1, fecha: 1, total: 1, base: 1, iva: 1, estado: 1 }).toArray();
+    .project({ proveedor: 1, razonSocial: 1, numero: 1, fecha: 1, total: 1, base: 1, iva: 1, estado: 1 }).toArray();
   const out = [];
   for (const c of cs) {
     const dc = dig(c.numero);
@@ -299,8 +299,9 @@ async function recibidasPunteo(stel) {
     if (/corp\s*projects/i.test(c.proveedor || '')) continue;   // factura nuestra que llegó al correo: no es de proveedor
     // Mismo nombre que en StelOrder («Oliveras» → «OLIVERAS DERIVATS I MATERIALS, SLU») para que el motor
     // junte sus facturas con las de StelOrder al cuadrar un recibo.
-    const nombreStel = (stel.find(r => pareceProv(c.proveedor, r.proveedor)) || {}).proveedor;
-    out.push({ id: 'c:' + String(c._id), compraId: String(c._id), numero: c.numero || 'Compra', refProveedor: c.numero || '', proveedor: nombreStel || c.proveedor || '', fecha: c.fecha, total: r2(c.total), base: c.base, iva: c.iva, pendienteStel: null, deCompras: true });
+    const alias = c.razonSocial && !/corp\.?\s*projects/i.test(c.razonSocial) && !pareceProv(c.razonSocial, c.proveedor) ? c.razonSocial : null;   // «9electric» = Rachid Ayada
+    const nombreStel = (stel.find(r => pareceProv(c.proveedor, r.proveedor)) || (alias && stel.find(r => pareceProv(alias, r.proveedor))) || {}).proveedor;
+    out.push({ id: 'c:' + String(c._id), compraId: String(c._id), numero: c.numero || 'Compra', refProveedor: c.numero || '', proveedor: nombreStel || c.proveedor || '', alias, fecha: c.fecha, total: r2(c.total), base: c.base, iva: c.iva, pendienteStel: null, deCompras: true });
   }
   return [...stel, ...out];
 }

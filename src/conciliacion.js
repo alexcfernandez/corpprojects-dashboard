@@ -59,6 +59,8 @@ function _clavesTercero(nombre) {
   return [...out];
 }
 const nombraA = (concepto, nombre) => { const c = norm(concepto); return clavesTercero(nombre).some(k => c.includes(k)); };
+// Factura de proveedor: por su nombre o por su razón social (Compras «9electric» → banco «Rachid Ayada Ahriaouil»).
+const nombraR = (concepto, r) => nombraA(concepto, r.proveedor) || (!!r.alias && nombraA(concepto, r.alias));
 
 // Qué es el movimiento (antes de buscar factura).
 function tipoMovimiento(m) {
@@ -157,7 +159,7 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
       // La misma factura suele estar también en StelOrder (llegó por correo / n8n): esa queda pagada con este
       // pago, para que no salga en «sin pago encontrado». Mismo proveedor, mismo importe y fechas cercanas.
       const imp = a.total != null ? Math.abs(a.total) : Math.abs(f.importe);
-      const gemela = recibidas.find(r => !String(r.id).startsWith('c:') && !usadasRec.has(r.id) && Math.abs(Math.abs(r.total) - imp) < 0.03 && Math.abs(dias(f.fecha, r.fecha)) <= 60 && nombraA(`${f.concepto} ${a.proveedor || ''}`, r.proveedor));
+      const gemela = recibidas.find(r => !String(r.id).startsWith('c:') && !usadasRec.has(r.id) && Math.abs(Math.abs(r.total) - imp) < 0.03 && Math.abs(dias(f.fecha, r.fecha)) <= 60 && nombraR(`${f.concepto} ${a.proveedor || ''}`, r));
       if (gemela) { usadasRec.add(gemela.id); f.docs = [{ ref: gemela.numero, tercero: gemela.proveedor, total: gemela.total, fecha: gemela.fecha, refProveedor: gemela.refProveedor, compraId: a.compraId }]; }
     }
     else if (a.decision === 'vehiculo') { f.estado = 'punteado'; f.confianza = 'manual'; f.tipo = 'gasto_vehiculo'; f.docs = [{ ref: 'Gasto de vehículo', tercero: a.vehiculoNombre || '' }]; f.nota = `Gasto del vehículo ${a.vehiculoNombre || ''} (${a.categoria || 'otros'}, sin factura)`; }
@@ -202,7 +204,7 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
       // El recibo cita la fecha de su factura («Fecha Factura: 24/08/2026»): no vale otra de otro mes por el mismo importe.
       const fCit = fechaCitada(f.concepto);
       if (fCit && !(dias(fCit, r.fecha) >= 0 && dias(fCit, r.fecha) <= 10)) continue;
-      const nombre = nombraA(f.concepto, r.proveedor);
+      const nombre = nombraR(f.concepto, r);
       parejas.push({ f, r, score: (nombre ? 100 : 0) + 50 - Math.min(Math.abs(d), 50), nombre });
     }
   }
@@ -230,7 +232,7 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
   for (const f of filas.filter(x => !x.estado && x.importe < 0)) {
     const nums = (String(f.concepto).match(/\d[\d\/\-]{3,}\d/g) || []).map(digitos).filter(x => x.length >= 4);
     if (!nums.length) continue;
-    const r = recibidas.find(x => !usadasRec.has(x.id) && digitos(x.refProveedor).length >= 4 && nums.some(nn => nn === digitos(x.refProveedor) || nn.endsWith(digitos(x.refProveedor)) || digitos(x.refProveedor).endsWith(nn)) && nombraA(f.concepto, x.proveedor));
+    const r = recibidas.find(x => !usadasRec.has(x.id) && digitos(x.refProveedor).length >= 4 && nums.some(nn => nn === digitos(x.refProveedor) || nn.endsWith(digitos(x.refProveedor)) || digitos(x.refProveedor).endsWith(nn)) && nombraR(f.concepto, x));
     if (r) {
       f.estado = 'punteado'; f.confianza = igual(r.total, -f.importe) ? 'alta' : 'media';
       if (!igual(r.total, -f.importe)) f.nota = `El recibo cita la factura ${r.refProveedor} (${r.total} €)`;
@@ -244,17 +246,17 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
   for (const r of recibidas.filter(x => !usadasRec.has(x.id) && x.total > 0)) {
     // Cada canal por separado: la factura de Esclat es la gasolina pagada con la app desde la cuenta,
     // no las compras de súper hechas con una tarjeta de Revolut.
-    const canales = [...new Set(filas.filter(f => !f.estado && f.importe < 0 && nombraA(f.concepto, r.proveedor)).map(f => f.origen || ''))];
+    const canales = [...new Set(filas.filter(f => !f.estado && f.importe < 0 && nombraR(f.concepto, r)).map(f => f.origen || ''))];
     let grupo = null;
     for (const canal of canales) {
     const deCanal = f => (f.origen || '') === canal;
-    const pagos = filas.filter(f => !f.estado && f.importe < 0 && deCanal(f) && nombraA(f.concepto, r.proveedor) && dias(r.fecha, f.fecha) >= -3 && dias(r.fecha, f.fecha) <= 35);
+    const pagos = filas.filter(f => !f.estado && f.importe < 0 && deCanal(f) && nombraR(f.concepto, r) && dias(r.fecha, f.fecha) >= -3 && dias(r.fecha, f.fecha) <= 35);
     if (pagos.length < 2) continue;
     const tot = r2(-pagos.reduce((a, f) => a + f.importe, 0));
     grupo = igual(tot, r.total) ? pagos : null;
     if (!grupo) { // pagos del mismo mes natural que la factura, o del mes anterior si la factura es de principios de mes
       for (const mes of [r.fecha.slice(0, 7), new Date(Date.UTC(Number(r.fecha.slice(0, 4)), Number(r.fecha.slice(5, 7)) - 2, 1)).toISOString().slice(0, 7)]) {
-        const g = filas.filter(f => !f.estado && f.importe < 0 && deCanal(f) && f.fecha.slice(0, 7) === mes && nombraA(f.concepto, r.proveedor));
+        const g = filas.filter(f => !f.estado && f.importe < 0 && deCanal(f) && f.fecha.slice(0, 7) === mes && nombraR(f.concepto, r));
         if (g.length >= 2 && igual(-g.reduce((a, f) => a + f.importe, 0), r.total)) { grupo = g; break; }
       }
     }
@@ -262,7 +264,7 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
       const ant = recibidas.filter(x => x.id !== r.id && x.total > 0 && norm(x.proveedor) === norm(r.proveedor) && x.fecha < r.fecha).map(x => x.fecha).sort().pop();
       const desde = ant || new Date(Date.UTC(Number(r.fecha.slice(0, 4)), Number(r.fecha.slice(5, 7)) - 1, Number(r.fecha.slice(8, 10)) - 31)).toISOString().slice(0, 10);
       for (const incluyeDia of [false, true]) {
-        const g = filas.filter(f => !f.estado && f.importe < 0 && deCanal(f) && nombraA(f.concepto, r.proveedor) && f.fecha > desde && (incluyeDia ? f.fecha <= r.fecha : f.fecha < r.fecha));
+        const g = filas.filter(f => !f.estado && f.importe < 0 && deCanal(f) && nombraR(f.concepto, r) && f.fecha > desde && (incluyeDia ? f.fecha <= r.fecha : f.fecha < r.fecha));
         if (g.length >= 2 && igual(-g.reduce((a, f) => a + f.importe, 0), r.total)) { grupo = g; break; }
       }
     }
@@ -277,7 +279,7 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
   //     Bon Preu: parte de las compras pueden ser personales): se agrupan y se señala la diferencia.
   const porProvMes = new Map();
   for (const f of filas.filter(x => !x.estado && x.tipo === 'pago_tarjeta')) {
-    const r = recibidas.find(x => x.total > 0 && nombraA(f.concepto, x.proveedor));
+    const r = recibidas.find(x => x.total > 0 && nombraR(f.concepto, x));
     if (!r) continue;
     const k = `${norm(r.proveedor)}|${f.fecha.slice(0, 7)}|${f.origen || ''}`;
     (porProvMes.get(k) || porProvMes.set(k, { proveedor: r.proveedor, mes: f.fecha.slice(0, 7), pagos: [] }).get(k)).pagos.push(f);
@@ -311,7 +313,7 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
     // Si el recibo cita la fecha de la factura («Fecha Factura: 17/08/2026», Saltoki), solo las de esa semana.
     const fCit = fechaCitada(f.concepto);
     // Las que StelOrder ya da por pagadas (pendiente 0) no entran: se pagaron en otro trimestre.
-    const todas = recibidas.filter(r => !usadasRec.has(r.id) && Math.abs(r.total) > 0.005 && !(r.pendienteStel != null && Math.abs(r.pendienteStel) < 0.01) && nombraA(f.concepto, r.proveedor) && dias(f.fecha, r.fecha) >= -7 && dias(f.fecha, r.fecha) <= 150
+    const todas = recibidas.filter(r => !usadasRec.has(r.id) && Math.abs(r.total) > 0.005 && !(r.pendienteStel != null && Math.abs(r.pendienteStel) < 0.01) && nombraR(f.concepto, r) && dias(f.fecha, r.fecha) >= -7 && dias(f.fecha, r.fecha) <= 150
       && (!fCit || (dias(fCit, r.fecha) >= 0 && dias(fCit, r.fecha) <= 10)));
     // Cada proveedor por separado («Sant Narcis» puede nombrar a más de uno): el de más facturas candidatas primero.
     const porProv = {}; todas.forEach(r => { (porProv[r.proveedor] = porProv[r.proveedor] || []).push(r); });
