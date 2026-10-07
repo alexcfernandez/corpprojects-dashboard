@@ -3,21 +3,22 @@ const axios = require('axios');
 const { cached, invalidate } = require('./cache');
 
 // ─── TTL de caché por tipo de dato (ms). Configurable por entorno. ──────────
-// Datos que cambian poco -> TTL largo. Datos de dinero -> TTL corto.
+// StelOrder da 1.000 peticiones AL DÍA para todas las claves de la cuenta (dashboard, n8n, IA…) y 60/min.
+// Con 10 min de TTL el dashboard solo se las comía (8/10/2026): ahora lo más vivo es 1 h. «Actualizar» fuerza.
 const MIN = 60 * 1000;
 const TTL = {
   accountCategories: parseInt(process.env.STEL_TTL_FAMILIES  || 360) * MIN, // 6 h
-  clients:           parseInt(process.env.STEL_TTL_CLIENTS   || 60)  * MIN, // 1 h
-  receipts:          parseInt(process.env.STEL_TTL_RECEIPTS  || 10)  * MIN, // 10 min
-  workEstimates:     parseInt(process.env.STEL_TTL_ESTIMATES || 15)  * MIN, // 15 min
+  clients:           parseInt(process.env.STEL_TTL_CLIENTS   || 360) * MIN, // 6 h
+  receipts:          parseInt(process.env.STEL_TTL_RECEIPTS  || 60)  * MIN, // 1 h
+  workEstimates:     parseInt(process.env.STEL_TTL_ESTIMATES || 120) * MIN, // 2 h
   bankAccounts:      parseInt(process.env.STEL_TTL_BANK      || 360) * MIN, // 6 h
   documentStates:    parseInt(process.env.STEL_TTL_DOCSTATES || 360) * MIN, // 6 h
-  workOrders:        parseInt(process.env.STEL_TTL_WORKORDERS || 10)  * MIN, // 10 min
-  incidents:         parseInt(process.env.STEL_TTL_INCIDENTS  || 30)  * MIN, // 30 min
+  workOrders:        parseInt(process.env.STEL_TTL_WORKORDERS || 60)  * MIN, // 1 h
+  incidents:         parseInt(process.env.STEL_TTL_INCIDENTS  || 120) * MIN, // 2 h
   incidentTypes:     parseInt(process.env.STEL_TTL_INCTYPES   || 360) * MIN, // 6 h
-  purchases:         parseInt(process.env.STEL_TTL_PURCHASES  || 15)  * MIN, // 15 min
-  suppliers:         parseInt(process.env.STEL_TTL_SUPPLIERS  || 60)  * MIN, // 1 h
-  expenses:          parseInt(process.env.STEL_TTL_EXPENSES   || 15)  * MIN  // 15 min
+  purchases:         parseInt(process.env.STEL_TTL_PURCHASES  || 120) * MIN, // 2 h
+  suppliers:         parseInt(process.env.STEL_TTL_SUPPLIERS  || 360) * MIN, // 6 h
+  expenses:          parseInt(process.env.STEL_TTL_EXPENSES   || 120) * MIN  // 2 h
 };
 
 const BASE_URL = 'https://app.stelorder.com/app';
@@ -41,16 +42,39 @@ function marcarBloqueo(status) {
   _pausaHasta = Date.now() + PAUSA_MS; _ultimoBloqueo = { at: new Date().toISOString(), status };
   console.warn(`[StelOrder] ⛔ ${status}: bloqueo de StelOrder. Sin llamadas hasta las ${new Date(_pausaHasta).toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid' })}.`);
 }
-function estadoPausa() { return { enPausa: enPausa(), hasta: _pausaHasta ? new Date(_pausaHasta).toISOString() : null, ultimoBloqueo: _ultimoBloqueo }; }
+// CUPO DIARIO del dashboard (STEL_CUPO_DIA, 600 de los 1.000 de la cuenta): pasado el cupo, las LECTURAS
+// no salen (la caché sirve lo último bueno); las escrituras (marcar cobros, crear…) sí. Se cuenta por día de
+// Madrid y se guarda en Mongo (stelUso) para que un reinicio no lo ponga a cero.
+const CUPO_DIA = parseInt(process.env.STEL_CUPO_DIA || 600);
+const _dia = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Madrid' });
+let _uso = { dia: _dia(), n: 0, cargado: false };
+async function _cargarUso() {
+  try { const db = await require('./db').getDB(); const d = await db.collection('stelUso').findOne({ _id: _dia() }); _uso = { dia: _dia(), n: Math.max(_uso.dia === _dia() ? _uso.n : 0, (d && d.n) || 0), cargado: true }; } catch (e) {}
+}
+setTimeout(_cargarUso, 2000).unref?.();
+function _contar(metodo, url) {
+  if (_uso.dia !== _dia()) _uso = { dia: _dia(), n: 0, cargado: true };
+  _uso.n++;
+  (async () => { try { const db = await require('./db').getDB(); await db.collection('stelUso').updateOne({ _id: _uso.dia }, { $inc: { n: 1, [`por.${String(url || '').split('?')[0].split('/')[1] || 'otro'}`]: 1 }, $set: { at: new Date() } }, { upsert: true }); } catch (e) {} })();
+}
+function cupoAgotado() { return _uso.dia === _dia() && _uso.n >= CUPO_DIA; }
+function estadoPausa() { return { enPausa: enPausa() || cupoAgotado(), cupoAgotado: cupoAgotado(), hasta: _pausaHasta > 1 ? new Date(_pausaHasta).toISOString() : null, ultimoBloqueo: _ultimoBloqueo, usoHoy: _uso.n, cupoDia: CUPO_DIA }; }
 client.interceptors.request.use(cfg => {
   if (enPausa()) {
     const e = new Error(`StelOrder en pausa por bloqueo hasta las ${new Date(_pausaHasta).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' })} (no se le llama para que se desbloquee)`);
     e.code = 'STEL_PAUSA'; e.response = { status: 503, data: { error: e.message } };
     return Promise.reject(e);
   }
+  const metodo = String(cfg.method || 'get').toLowerCase();
+  if (metodo === 'get' && cupoAgotado()) {
+    const e = new Error(`Cupo diario de StelOrder del dashboard gastado (${_uso.n}/${CUPO_DIA}); se enseñan los últimos datos buenos`);
+    e.code = 'STEL_PAUSA'; e.response = { status: 503, data: { error: e.message } };
+    return Promise.reject(e);
+  }
   // Tras una pausa, solo UNA llamada de prueba a la vez: si vuelve a dar 403, no le llega una ráfaga.
   if (_pausaHasta && !_probando) { _probando = true; cfg._prueba = true; }
   else if (_pausaHasta && _probando) { const e = new Error('StelOrder: comprobando si ya se ha desbloqueado; prueba en un momento'); e.code = 'STEL_PAUSA'; e.response = { status: 503, data: { error: e.message } }; return Promise.reject(e); }
+  _contar(cfg.method, cfg.url);
   return cfg;
 });
 client.interceptors.response.use(r => { if (r.config && r.config._prueba) { _probando = false; _pausaHasta = 0; console.log('[StelOrder] ✅ desbloqueado'); } return r; },
@@ -2016,7 +2040,7 @@ async function modificarImportePresupuesto({ id = null, modo, valor = null, part
 }
 
 
-module.exports = { _client: client, enPausa, marcarBloqueo, estadoPausa, fetchAllPages, invalidate,
+module.exports = { _client: client, enPausa, marcarBloqueo, estadoPausa, cupoAgotado, fetchAllPages, invalidate,
   listaPresupuestos, lineasPresupuesto,
   getInvoices, getAllReceipts, getAllOrdinaryInvoices, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary, diagProveedores,

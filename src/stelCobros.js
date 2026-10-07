@@ -14,7 +14,7 @@ const S = () => require('./stelorder');
 const espera = ms => new Promise(r => setTimeout(r, ms));
 // StelOrder corta la conexión si se pasa de ~60 llamadas/min (pasó al marcar 81 de golpe): una llamada cada 2,5 s,
 // como mucho MAX_POR_VUELTA facturas por lectura del banco, y si corta, se para y sigue en la siguiente.
-const PAUSA = Number(process.env.STEL_COBROS_PAUSA_MS) || 2500, MAX_POR_VUELTA = Number(process.env.STEL_COBROS_MAX) || 25;
+const PAUSA = Number(process.env.STEL_COBROS_PAUSA_MS) || 2500, MAX_POR_VUELTA = Number(process.env.STEL_COBROS_MAX) || 15;
 const sinRed = e => !e.response && /socket|ECONNRESET|TLS|timeout|ETIMEDOUT|ENOTFOUND|EAI_AGAIN/i.test(String(e.message || e.code || ''));
 // La API de StelOrder no deja poner una fecha de cobro anterior (guarda la del momento en que se marca): la fecha real
 // del banco va al principio del concepto.
@@ -131,6 +131,9 @@ async function aplicarUno(p, { por = 'auto' } = {}) {
 let _enCurso = false;
 async function sincronizar({ dryRun = true, desde = '2026-01-01', soloNumero = null, por = 'auto' } = {}) {
   if (_enCurso) return { enCurso: true };
+  // Cupo de StelOrder (1.000 al día para toda la cuenta): las vueltas automáticas solo si queda más de un tercio
+  // del cupo del dashboard; lo que falte se marca en la siguiente lectura del banco.
+  if (!dryRun && por === 'auto') { const e = S().estadoPausa(); if (e.enPausa || e.usoHoy > e.cupoDia * 0.66) return { saltado: true, motivo: `StelOrder: ${e.usoHoy}/${e.cupoDia} peticiones hoy` }; }
   _enCurso = true;
   try {
     let l = await plan({ desde });

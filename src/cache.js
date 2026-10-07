@@ -12,7 +12,7 @@
 // quien la usa.
 
 const store = new Map();    // key -> { value, expires }
-const MAX_STALE = parseInt(process.env.CACHE_MAX_STALE_MIN || 120) * 60 * 1000; // hasta 2 h se sirve caducado mientras se refresca
+const MAX_STALE = parseInt(process.env.CACHE_MAX_STALE_MIN || 720) * 60 * 1000; // hasta 12 h se sirve caducado mientras se refresca
 const inflight = new Map(); // key -> Promise (descarga en curso)
 
 // COPIA EN MONGO (7/10/2026): cada reinicio (cada publicación) vaciaba la caché y volvía a descargar TODO de
@@ -97,12 +97,19 @@ async function cached(key, ttlMs, fetcher) {
   // 3) Caché fría: lanzar la descarga, registrarla como "en vuelo"
   //    (se registra de forma síncrona, antes de cualquier await, para que
   //     las peticiones que llegan en el mismo instante la encuentren).
+  const viejo = store.get(key);
   const promise = (async () => {
     try {
       const value = await fetcher();
       store.set(key, { value, expires: Date.now() + ttlMs });
       _guardarSnap(key, value);
       return value;
+    } catch (e) {
+      // StelOrder sin cupo o caído: mejor lo último bueno (aunque sea viejo) que un error o una lista vacía.
+      if (viejo) return viejo.value;
+      const snap = await _leerSnap(key).catch(() => null);
+      if (snap) return snap.value;
+      throw e;
     } finally {
       // pase lo que pase, esta descarga deja de estar "en vuelo"
       inflight.delete(key);
