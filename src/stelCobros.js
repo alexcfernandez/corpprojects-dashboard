@@ -12,7 +12,11 @@ async function getDB() { return require('./db').getDB(); }
 const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
 const S = () => require('./stelorder');
 const espera = ms => new Promise(r => setTimeout(r, ms));
+// La API de StelOrder no deja poner una fecha de cobro anterior (guarda la del momento en que se marca): la fecha real
+// del banco va al principio del concepto.
 const isoT = f => `${String(f).slice(0, 10)}T00:00:00+0000`;
+const dmy = f => String(f).slice(0, 10).split('-').reverse().join('/');
+const conFecha = (fp, fecha, tipo) => ({ ...fp, concept: `${tipo === 'emitida' ? 'Cobrado' : 'Pagado'} el ${dmy(fecha)} · ${fp.concept || ''}`.slice(0, 250) });
 
 // Lo cobrado de cada factura según el banco: [{fecha, importe, origen, movId}] (un pago de varias facturas
 // cuenta entero para cada una de ellas: el cuadre ya comprobó que la suma da).
@@ -77,8 +81,8 @@ async function aplicarUno(p, { por = 'auto' } = {}) {
   // pagados con la fecha del último pago; si fueron varios pagos, el concepto lo dice.
   if (p.completo) {
     const ult = p.pagos[p.pagos.length - 1];
-    const fp = formaPago(ult);
-    if (p.pagos.length > 1) fp.concept = `${p.pagos.length} pagos del ${p.pagos[0].fecha.split('-').reverse().join('/')} al ${ult.fecha.split('-').reverse().join('/')} · ${fp.concept || ''}`.slice(0, 250);
+    let fp = conFecha(formaPago(ult), ult.fecha, p.tipo);
+    if (p.pagos.length > 1) fp = { ...fp, concept: `${p.tipo === 'emitida' ? 'Cobrado' : 'Pagado'} en ${p.pagos.length} pagos del ${dmy(p.pagos[0].fecha)} al ${dmy(ult.fecha)} · ${formaPago(ult).concept || ''}`.slice(0, 250) };
     for (const rc of sinPagar) {
       await S()._client.put(`${ep}/${rc.id}`, { paid: true, 'payment-date': isoT(ult.fecha), ...fp }, { timeout: 25000 });
       hechos.push({ recibo: rc.id, accion: 'pagado', importe: Math.abs(Number(rc.amount) || 0), fecha: ult.fecha, forma: fp['payment-option-id'] || null });
@@ -97,13 +101,13 @@ async function aplicarUno(p, { por = 'auto' } = {}) {
       const rc = sinPagar[0];
       const amt = Math.abs(Number(rc.amount) || 0), signo = Number(rc.amount) < 0 ? -1 : 1;
       if (resto >= amt - 0.01) {
-        const fp = formaPago(pg);
+        const fp = conFecha(formaPago(pg), pg.fecha, p.tipo);
         await S()._client.put(`${ep}/${rc.id}`, { paid: true, 'payment-date': isoT(pg.fecha), ...fp }, { timeout: 25000 });
         hechos.push({ recibo: rc.id, accion: 'pagado', importe: amt, fecha: pg.fecha, forma: fp['payment-option-id'] || null });
         sinPagar.shift(); resto = r2(resto - amt); porMarcar = r2(porMarcar - amt);
       } else {
         // Pago parcial: el recibo queda por lo cobrado (pagado) y se crea otro pendiente por la diferencia.
-        await S()._client.put(`${ep}/${rc.id}`, { amount: r2(signo * resto), paid: true, 'payment-date': isoT(pg.fecha), ...formaPago(pg) }, { timeout: 25000 });
+        await S()._client.put(`${ep}/${rc.id}`, { amount: r2(signo * resto), paid: true, 'payment-date': isoT(pg.fecha), ...conFecha(formaPago(pg), pg.fecha, p.tipo) }, { timeout: 25000 });
         const nuevo = { 'original-element-id': Number(p.id), amount: r2(signo * (amt - resto)), paid: false, 'payment-term-date': rc['payment-term-date'] };
         for (const k of ['payment-option-id', 'bank-account-id']) if (rc[k] != null) nuevo[k] = rc[k];
         const rn = await S()._client.post(ep, nuevo, { timeout: 25000 });

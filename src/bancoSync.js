@@ -256,6 +256,8 @@ async function sincronizar({ soloId = null, _api: api = _api } = {}) {
     const T = require('./ticketsAviso');
     T.avisar({ modo: 'nuevos' }).catch(e => console.warn('[Tickets] avisos:', e.message));
     T.revisarLimites().catch(e => console.warn('[Tickets] límites:', e.message));
+    // Lo que el banco ya ha casado, cobrado/pagado también en StelOrder (stelCobros).
+    if (process.env.STEL_COBROS !== 'off') setTimeout(() => require('./stelCobros').sincronizar({ dryRun: false, por: 'banco automático' }).catch(e => console.warn('[StelCobros]', e.message)), 60000);
   }
   if (out.length) console.log('[BancoSync]', out.map(o => `${o.banco}${o.cuenta ? ' · ' + o.cuenta : ''}: ${o.error || o.nuevos + ' nuevos'}`).join(' | '));
   return { configurado: true, nuevos: total, detalle: out };
