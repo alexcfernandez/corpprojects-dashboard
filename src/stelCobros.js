@@ -18,7 +18,7 @@ const isoT = f => `${String(f).slice(0, 10)}T00:00:00+0000`;
 // cuenta entero para cada una de ellas: el cuadre ya comprobó que la suma da).
 function pagosDe(mapa, doc) {
   const l = mapa.porDoc.get(String(doc.numero)) || mapa.porDoc.get(String(doc.id)) || [];
-  return l.map(p => ({ fecha: p.fecha, importe: p.conOtras > 0 ? Math.abs(doc.total) : Math.abs(p.importe), origen: p.origen, movId: p.movId, varias: p.conOtras > 0 }))
+  return l.map(p => ({ fecha: p.fecha, importe: p.conOtras > 0 ? Math.abs(doc.total) : Math.abs(p.importe), origen: p.origen, movId: p.movId, varias: p.conOtras > 0, concepto: p.concepto || '', persona: p.persona || null }))
     .sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
 }
 
@@ -41,6 +41,22 @@ async function plan({ desde = '2026-01-01' } = {}) {
   em.forEach(d => mira(d, 'emitida', d.pendiente));
   rec.forEach(d => mira(d, 'recibida', d.pendienteStel));
   return out.sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
+}
+
+// Con qué se pagó, en las formas de pago y cuentas de StelOrder (lo que se veía «domiciliación» en Obramat era la
+// forma por defecto del proveedor; manda lo que dice el banco). Tarjeta sin forma propia (Manolo …1643): solo concepto.
+const FORMA_TARJETA = { '7925': 125113, '9259': 125013, '6302': 125098, '3139': 125025, '8305': 125112, '3836': 125114, '6983': 127022, '6439': 183315, '4522': 183349 };
+const CUENTA_REVOLUT = { '6439': 8142591, '4522': 8142584 };
+const CUENTA_SANTANDER = 5621452, TRANSFERENCIA = 106782, DOMICILIACION = 106783;
+function formaPago(pg) {
+  const o = String(pg.origen || ''), c = String(pg.concepto || '');
+  const t = (/…\s*(\d{4})/.exec(o) || /tarj[^*]*\*\s*\d*?(\d{4})\b/i.exec(c) || [])[1] || null;
+  const out = { concept: [c.replace(/\s+/g, ' ').trim(), pg.persona ? `(${pg.persona})` : null].filter(Boolean).join(' ').slice(0, 250) || null };
+  if (/revolut/i.test(o)) { if (t && FORMA_TARJETA[t]) out['payment-option-id'] = FORMA_TARJETA[t]; out['bank-account-id'] = (t && CUENTA_REVOLUT[t]) || 8142584; }
+  else if (/cr[eé]dito/i.test(o)) { if (t && FORMA_TARJETA[t]) out['payment-option-id'] = FORMA_TARJETA[t]; out['bank-account-id'] = CUENTA_SANTANDER; }
+  else if (t) { if (FORMA_TARJETA[t]) out['payment-option-id'] = FORMA_TARJETA[t]; out['bank-account-id'] = CUENTA_SANTANDER; }
+  else { out['payment-option-id'] = /^recibo\b|adeudo|domicili/i.test(c) ? DOMICILIACION : TRANSFERENCIA; out['bank-account-id'] = CUENTA_SANTANDER; }
+  return out;
 }
 
 // Recibos sin pagar de una factura, en StelOrder.
@@ -66,12 +82,13 @@ async function aplicarUno(p, { por = 'auto' } = {}) {
       const rc = sinPagar[0];
       const amt = Math.abs(Number(rc.amount) || 0), signo = Number(rc.amount) < 0 ? -1 : 1;
       if (resto >= amt - 0.01) {
-        await S()._client.put(`${ep}/${rc.id}`, { paid: true, 'payment-date': isoT(pg.fecha) }, { timeout: 25000 });
-        hechos.push({ recibo: rc.id, accion: 'pagado', importe: amt, fecha: pg.fecha });
+        const fp = formaPago(pg);
+        await S()._client.put(`${ep}/${rc.id}`, { paid: true, 'payment-date': isoT(pg.fecha), ...fp }, { timeout: 25000 });
+        hechos.push({ recibo: rc.id, accion: 'pagado', importe: amt, fecha: pg.fecha, forma: fp['payment-option-id'] || null });
         sinPagar.shift(); resto = r2(resto - amt); porMarcar = r2(porMarcar - amt);
       } else {
         // Pago parcial: el recibo queda por lo cobrado (pagado) y se crea otro pendiente por la diferencia.
-        await S()._client.put(`${ep}/${rc.id}`, { amount: r2(signo * resto), paid: true, 'payment-date': isoT(pg.fecha) }, { timeout: 25000 });
+        await S()._client.put(`${ep}/${rc.id}`, { amount: r2(signo * resto), paid: true, 'payment-date': isoT(pg.fecha), ...formaPago(pg) }, { timeout: 25000 });
         const nuevo = { 'original-element-id': Number(p.id), amount: r2(signo * (amt - resto)), paid: false, 'payment-term-date': rc['payment-term-date'] };
         for (const k of ['payment-option-id', 'bank-account-id']) if (rc[k] != null) nuevo[k] = rc[k];
         const rn = await S()._client.post(ep, nuevo, { timeout: 25000 });
@@ -107,4 +124,4 @@ async function sincronizar({ dryRun = true, desde = '2026-01-01', soloNumero = n
   } finally { _enCurso = false; }
 }
 
-module.exports = { plan, sincronizar, aplicarUno, pagosDe };
+module.exports = { plan, sincronizar, aplicarUno, pagosDe, formaPago };
