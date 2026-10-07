@@ -359,7 +359,8 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
     else {
       // Varias facturas del mismo cliente pagadas de una vez
       const delCliente = emitidas.filter(e => !usadasEm.has(e.id) && e.total > 0 && nombraA(f.concepto, e.cliente) && dias(f.fecha, e.fecha) >= -5 && dias(f.fecha, e.fecha) <= 365).sort((x, y) => y.fecha.localeCompare(x.fecha));
-      const combo = delCliente.length >= 2 ? combinacion(delCliente, f.importe, 5) : null;
+      // Hasta 8 facturas de golpe: Vista Girona pagó 6 en una transferencia («PRT744 valla me y 5 más»).
+      const combo = delCliente.length >= 2 ? combinacion(delCliente, f.importe, 8) : null;
       if (combo && combo.length > 1) {
         f.estado = 'punteado'; f.confianza = 'media'; f.nota = `Cobra ${combo.length} facturas juntas`;
         f.docs = combo.map(e => ({ ref: e.numero, tercero: e.cliente, total: e.total, fecha: e.fecha }));

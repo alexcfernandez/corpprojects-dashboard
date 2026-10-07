@@ -32,3 +32,11 @@ test('compra con tarjeta devuelta entera: se anula con su devolución (no pide f
   assert.equal(by('d').estado, 'no_requiere');
   assert.notEqual(by('e').estado, 'no_requiere');
 });
+
+test('un cobro que paga 6 facturas del mismo cliente (Vista Girona, 14.587,14 €)', () => {
+  const tot = [6479, 3414, 2115.3, 1553.64, 750.2, 275, 7126.9, 3405.61, 3715.79];
+  const emitidas = tot.map((t, i) => ({ id: 'e' + i, numero: 'FAC' + i, cliente: 'Residencial Vista', fecha: '2026-05-' + String(10 + i).padStart(2, '0'), total: t }));
+  const movs = [{ id: 'm', fecha: '2026-07-02', importe: 14587.14, concepto: 'Transferencia De Ctat De Prop Residencial Vista Girona, Concepto Corp. 40 Prt744 Valla Me Y 5 Mas.', codigo: '' }];
+  const f = C.conciliar({ movimientos: movs, emitidas, recibidas: [] }).filas[0];
+  assert.equal(f.estado, 'punteado'); assert.equal(f.docs.length, 6);
+});
