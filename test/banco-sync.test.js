@@ -24,7 +24,7 @@ let seq = 0;
 const db = { collection: n => ({
   find: q => { let arr = col(n).filter(d => cumple(d, q || {})); const c = { limit: k => { arr = arr.slice(0, k); return c; }, sort: () => c, project: () => c, toArray: async () => arr }; return c; },
   findOne: async q => col(n).find(d => cumple(d, q)) || null,
-  insertOne: async d => { col(n).push({ _id: 'id' + (++seq), ...d }); },
+  insertOne: async d => { const _id = 'id' + (++seq); col(n).push({ _id, ...d }); return { insertedId: _id }; },
   updateOne: async (q, u, o = {}) => { let d = col(n).find(x => cumple(x, q)); if (!d && o.upsert) { d = { _id: 'id' + (++seq), ...q, ...(u.$setOnInsert || {}) }; col(n).push(d); Object.assign(d, u.$set || {}); return { upsertedCount: 1 }; } if (d) Object.assign(d, u.$set || {}); return { upsertedCount: 0 }; },
   createIndex: async () => {},
 }) };
@@ -47,10 +47,10 @@ test('lo ya subido en Excel no se duplica, y lo nuevo entra solo una vez', async
   col('bancoMovimientos').push({ _id: 'x1', huella: `${IBAN}|2026-09-26|-300.00|9450.00|transferencia a favor de rachid`, iban: IBAN, fechaOperacion: '2026-09-26', importe: -300, saldo: 9450, concepto: 'Transferencia A Favor De Rachid' });
   const txs = [tx({ imp: -300, fecha: '2026-09-26', ref: 'R2', a: 'RACHID', saldo: 9450 }), tx({ imp: -484, fecha: '2026-10-03', ref: 'R3', a: 'RACHID EL', rem: 'IN2609-0069', saldo: 8966 }), { ...tx({ imp: -5, fecha: '2026-10-06', ref: 'R4' }), status: 'PDNG' }];
   const r1 = await S.guardarMovimientos(db, SANT, txs, new Set());
-  assert.deepEqual(r1, { nuevos: 1, repetidos: 1 });                       // el pendiente no entra
+  assert.equal(r1.nuevos, 1); assert.equal(r1.repetidos, 1); assert.equal(r1.ids.length, 1);                       // el pendiente no entra
   assert.equal(col('bancoMovimientos').find(d => d._id === 'x1').ebRef, `eb|${IBAN}|R2`);  // enlazado con el del Excel
   const r2 = await S.guardarMovimientos(db, SANT, txs, new Set());          // segunda lectura: nada nuevo
-  assert.deepEqual(r2, { nuevos: 0, repetidos: 2 });
+  assert.equal(r2.nuevos, 0); assert.equal(r2.repetidos, 2);
   // Y si luego se sube el Excel con el pago del 3/10, se enlaza con el que entró solo.
   const gem = await S.gemelaDeExcel(db, { iban: IBAN, fechaOperacion: '2026-10-03', fechaValor: '2026-10-03', importe: -484, saldo: 8966 });
   assert.ok(gem && gem.ebRef === `eb|${IBAN}|R3`);
@@ -68,6 +68,6 @@ test('Revolut va con las tarjetas aunque tenga IBAN; los traspasos entre cuentas
 test('la misma cuenta enlazada dos veces (Revolut repetida) no duplica movimientos', async () => {
   const a = { uid: 'r1', iban: 'ES9115830001199300813708', nombre: 'Main', destino: 'tarjeta', banco: 'Revolut' }, b = { ...a, uid: 'r2' };
   const t = [tx({ imp: -63.2, fecha: '2026-10-02', ref: 'TX9', rem: 'Obramat Girona' })];
-  assert.deepEqual(await S.guardarMovimientos(db, a, t, new Set()), { nuevos: 1, repetidos: 0 });
-  assert.deepEqual(await S.guardarMovimientos(db, b, t, new Set()), { nuevos: 0, repetidos: 1 });
+  assert.equal((await S.guardarMovimientos(db, a, t, new Set())).nuevos, 1);
+  assert.equal((await S.guardarMovimientos(db, b, t, new Set())).repetidos, 1);
 });

@@ -184,6 +184,7 @@ async function gemelaDeTarjeta(db, m) {
 
 async function guardarMovimientos(db, cuenta, txs, propias) {
   let nuevos = 0, repetidos = 0;
+  const ids = [];
   const col = cuenta.destino === 'banco' ? 'bancoMovimientos' : 'tarjetaMovimientos';
   for (const t of txs) {
     if (!t || !t.transaction_amount) continue;
@@ -202,10 +203,10 @@ async function guardarMovimientos(db, cuenta, txs, propias) {
     const gem = cuenta.destino === 'banco' ? await _gemelaExcelDe(db, m) : await _gemelaCsvDe(db, m);
     if (gem) { await db.collection(col).updateOne({ _id: gem._id }, { $set: { ebRef: m.ebRef, vistoEl: new Date() } }); repetidos++; continue; }
     const { _fechas: _f, ...doc } = m;
-    await db.collection(col).insertOne({ ...doc, importadoEl: new Date(), origen: 'enablebanking', archivo: null, mapeo: MAPEO });
-    nuevos++;
+    const ins = await db.collection(col).insertOne({ ...doc, importadoEl: new Date(), origen: 'enablebanking', archivo: null, mapeo: MAPEO });
+    nuevos++; if (ins && ins.insertedId) ids.push({ col, id: String(ins.insertedId) });
   }
-  return { nuevos, repetidos };
+  return { nuevos, repetidos, ids };
 }
 
 // Desde cuándo pedir: lo último que ya tenemos de esa cuenta menos 5 días (por si el banco apunta tarde), o 90 días.
@@ -226,7 +227,7 @@ async function sincronizar({ soloId = null, _api: api = _api } = {}) {
   const db = await getDB();
   const conns = await db.collection('bancoConexiones').find(soloId ? { _id: soloId } : { estado: 'activa' }).toArray();
   const propias = new Set(conns.flatMap(c => (c.cuentas || []).flatMap(a => String(a.nombre || '').split(' · ').map(x => require('./banco').norm(x)))).concat(['corp projects holding sl', 'corp projects holding', 'corp projects']).filter(Boolean));
-  const out = []; let total = 0;
+  const out = []; let total = 0; const nuevosIds = [];
   for (const c of conns) {
     if (c.validoHasta && new Date(c.validoHasta) < new Date()) { await _caducada(db, c); out.push({ banco: c.banco, error: 'permiso caducado' }); continue; }
     for (const [i, cuenta] of (c.cuentas || []).entries()) {
@@ -239,7 +240,7 @@ async function sincronizar({ soloId = null, _api: api = _api } = {}) {
           txs.push(...(d.transactions || [])); ck = d.continuation_key || null; pags++;
         } while (ck && pags < 30);
         const r = await guardarMovimientos(db, cu, txs, propias);
-        n = r.nuevos; total += n;
+        n = r.nuevos; total += n; nuevosIds.push(...(r.ids || []));
         const fechas = txs.flatMap(_fechas).sort();
         await db.collection('bancoConexiones').updateOne({ _id: c._id }, { $set: { [`cuentas.${i}.ultimaSync`]: new Date(), [`cuentas.${i}.nuevos`]: n, [`cuentas.${i}.error`]: null, [`cuentas.${i}.mapeo`]: MAPEO, ...(fechas.length ? { [`cuentas.${i}.hasta`]: fechas[fechas.length - 1] } : {}) } });
         out.push({ banco: c.banco, cuenta: cu.nombre, desde, recibidos: txs.length, nuevos: n, repetidos: r.repetidos });
@@ -256,6 +257,8 @@ async function sincronizar({ soloId = null, _api: api = _api } = {}) {
     const T = require('./ticketsAviso');
     T.avisar({ modo: 'nuevos' }).catch(e => console.warn('[Tickets] avisos:', e.message));
     T.revisarLimites().catch(e => console.warn('[Tickets] límites:', e.message));
+    // Resumen por WhatsApp a Álex y oficina de lo que acaba de entrar: cobros, pagos y lo que falta de cada factura.
+    if (nuevosIds.length && process.env.AVISO_PAGOS !== 'off') require('./avisoPagos').avisar(nuevosIds).catch(e => console.warn('[AvisoPagos]', e.message));
     // Lo que el banco ya ha casado, cobrado/pagado también en StelOrder (stelCobros).
     if (process.env.STEL_COBROS !== 'off') setTimeout(() => require('./stelCobros').sincronizar({ dryRun: false, por: 'banco automático' }).catch(e => console.warn('[StelCobros]', e.message)), 60000);
   }
