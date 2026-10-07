@@ -446,6 +446,15 @@ async function procesarEmail(gmail, messageId) {
       } catch (e) { console.warn('[Email] compra desde correo:', e.message); }
     }
 
+    // NÓMINAS de la gestoría: entran solas en Personal (separadas por trabajador, con líquido, IRPF y SS).
+    try {
+      const NC = require('./nominasCorreo');
+      if (process.env.NOMINAS_CORREO !== 'off' && NC.esCorreoNominas({ de, asunto, adjuntos })) {
+        const r = await NC.desdeCorreo(messageId, adjuntos, { de, asunto, fecha });
+        console.log(`[Email] nóminas: ${JSON.stringify(r)}`);
+      }
+    } catch (e) { console.warn('[Email] nóminas:', e.message); }
+
     // Fase 6a: aviso inmediato al owner por WhatsApp SOLO para gestoría. Una vez por
     // correo (procesarEmail deduplica por gmailId, así que esto corre una sola vez).
     if (clasificacion.categoria === 'GESTORIA') {

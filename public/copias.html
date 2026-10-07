@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Copias de seguridad — Corp Projects</title><link rel="stylesheet" href="/tool-theme.css">
+<meta name="theme-color" content="#4d9cf8">
+<style>*{box-sizing:border-box;margin:0;padding:0}:root{--bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.15);--text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;--green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 18px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:10}
+.logo{width:32px;height:32px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;flex-shrink:0}
+.hbtn{margin-left:auto;background:none;border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:6px 12px;font-size:13px;text-decoration:none;white-space:nowrap}
+.wrap{max-width:960px;margin:0 auto;padding:16px}
+select,input,textarea,.btn{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;color:var(--text);padding:9px 12px;font:inherit;font-size:14px;text-decoration:none;max-width:100%}
+.btn{cursor:pointer;display:inline-block}.btn.pri{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}.btn.peq{padding:6px 10px;font-size:13px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:12px}
+h3{font-size:13px;margin:0 0 10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em}
+.pls{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px}
+.pl{background:var(--bg3);border:1px solid var(--border2);border-radius:12px;padding:10px 12px;cursor:pointer;text-align:left;color:var(--text);font:inherit}.pl.on{border-color:var(--blue);background:rgba(77,156,248,.12)}
+.pl b{display:block;font-size:14px;margin-bottom:4px}.pl span{font-size:12px;color:var(--text3);line-height:1.4}
+label.f{display:block;font-size:12px;color:var(--text3);margin:10px 0 4px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}@media(max-width:600px){.g2{grid-template-columns:1fr}}
+.g2 input,.g2 textarea,.g2 select{width:100%}
+.sug{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;margin-top:4px;max-height:220px;overflow:auto}
+.sug div{padding:8px 10px;cursor:pointer;font-size:13.5px;border-bottom:1px solid var(--border)}.sug div:hover{background:rgba(77,156,248,.12)}.sug small{color:var(--text3)}
+.it{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:9px 0;border-bottom:1px dashed var(--border);font-size:14px}
+.it .n{flex:1;min-width:200px}.it .s{font-size:12px;color:var(--text3)}
+.est{font-size:12px;border-radius:20px;padding:2px 9px;border:1px solid var(--border2)}.est.ok{color:var(--green);border-color:rgba(34,196,135,.4)}.est.pe{color:var(--amber);border-color:rgba(245,158,11,.5)}
+iframe{width:100%;height:70vh;border:1px solid var(--border2);border-radius:10px;background:#fff}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--border2);padding:10px 16px;border-radius:10px;display:none;z-index:50}
+</style></head><body>
+<div class="header"><div class="logo">CP</div><div><div style="font-weight:600">Copias de seguridad</div><div style="font-size:12px;color:var(--text3)">Todo el programa, cada noche, en Google Drive</div></div><a class="hbtn" href="/">← Dashboard</a></div>
+<div id="toast"></div>
+<div class="wrap">
+  <div class="card"><h3>Estado</h3><div id="estado" style="font-size:14px;line-height:1.6">Cargando…</div></div>
+  <div class="card"><h3>Últimas copias</h3><div id="copias"></div></div>
+  <div class="card"><h3>Cómo funciona</h3><div style="font-size:13.5px;color:var(--text2);line-height:1.65">
+    · Cada noche a las 3:30 se copia <b>todo</b> (obras, compras, banco, fichajes, nóminas, documentos, vehículos…) a la carpeta de Drive <b>«Copias Corp Projects»</b>.<br>
+    · Las fotos y PDF se suben solo cuando son nuevos, para no llenar el Drive. Se guardan <b>14 días</b> de copias diarias y la del día 1 de cada mes durante <b>12 meses</b>.<br>
+    · Si una copia falla, llega un aviso al móvil.<br>
+    · Para recuperar: se descarga la carpeta y se ejecuta <code>node scripts/restaurar-backup.js</code> (está en el programa). Es mejor pedírmelo y lo hago yo.</div></div>
+</div>
+<script>
+const tok=localStorage.getItem('cp_token');const H={'Authorization':'Bearer '+tok};
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fh=d=>d?new Date(d).toLocaleString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+function toast(t){const e=document.getElementById('toast');e.textContent=t;e.style.display='block';clearTimeout(window._tt);window._tt=setTimeout(()=>e.style.display='none',3500);}
+async function cargar(){if(!tok){document.querySelector('.wrap').innerHTML='<div class="card">Abre esta página desde el dashboard.</div>';return;}
+  try{const r=await fetch('/api/backup/estado',{headers:H});const d=await r.json();if(!r.ok)throw new Error(d.error);
+    const ult=d.copias[0];
+    document.getElementById('estado').innerHTML=(d.drive.conectado?`✅ Google Drive conectado${d.drive.email?' ('+esc(d.drive.email)+')':''} desde el ${fh(d.drive.desde)}`:'⚠️ <b>Google Drive sin conectar</b>: las copias no se pueden hacer hasta que lo conectes (un minuto, con la cuenta de Google de la empresa).')+
+      `<br>${ult?(ult.ok?'✅':'❌')+' Última copia: '+fh(ult.inicio)+(ult.segundos!=null?' ('+ult.segundos+' s)':''):'Aún no se ha hecho ninguna copia.'}${d.enCurso?'<br>⏳ Hay una copia en marcha…':''}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn${d.drive.conectado?'':' pri'}" onclick="conectar(this)">${d.drive.conectado?'🔄 Volver a conectar Drive':'🔗 Conectar Google Drive'}</button>${d.drive.conectado?'<button class="btn pri" onclick="ahora(this)">💾 Hacer una copia ahora</button>':''}</div>`;
+    document.getElementById('copias').innerHTML=d.copias.length?d.copias.map(c=>`<div class="it"><div class="n">${c.ok?'✅':'❌'} <b>${fh(c.inicio)}</b><div class="s">${c.colecciones} colecciones · ${c.segundos||0} s · ${esc(c.por||'')}${c.error?' · '+esc(c.error):''}${c.conError&&c.conError.length?' · con error: '+esc(c.conError.join(', ')):''}</div></div></div>`).join(''):'<div style="color:var(--text3);font-size:13.5px">Ninguna todavía.</div>';
+  }catch(e){document.getElementById('estado').textContent=e.message;}}
+async function conectar(b){b.disabled=true;try{const r=await fetch('/api/backup/drive/conectar',{method:'POST',headers:H});const d=await r.json();if(!r.ok)throw new Error(d.error);location.href=d.url;}catch(e){toast(e.message);b.disabled=false;}}
+async function ahora(b){b.disabled=true;try{const r=await fetch('/api/backup/ahora',{method:'POST',headers:H});const d=await r.json();if(!r.ok)throw new Error(d.error);toast('Copia en marcha: tarda unos minutos');setTimeout(cargar,5000);}catch(e){toast(e.message);b.disabled=false;}}
+(function(){const p=new URLSearchParams(location.search);if(p.get('drive')==='ok')setTimeout(()=>toast('✅ Google Drive conectado'),300);if(p.get('drive_error'))setTimeout(()=>toast('No se pudo conectar: '+p.get('drive_error')),300);if(p.toString())history.replaceState(null,'',location.pathname);})();
+cargar();
+</script></body></html>

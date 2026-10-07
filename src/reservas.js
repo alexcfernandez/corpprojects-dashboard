@@ -80,6 +80,14 @@ async function panel({ hoy = new Date(), fresco = false } = {}) {
     if (e.totales.nominas) items.push({ clave: 'nom:' + mesAnt, concepto: `Nóminas de ${mesAnt}`, importe: e.totales.falta, vence: `${hoyIso.slice(0, 7)}-05`, detalle: `${e.totales.pagadas} de ${e.totales.nominas} pagadas${e.totales.sinImporte ? `, ${e.totales.sinImporte} sin importe leído` : ''}` });
   } catch (e) {}
 
+  // Proveedores: lo que se cargará o habrá que pagar en los próximos 30 días (y lo ya vencido).
+  let prov = null;
+  try {
+    prov = await require('./vencimientos').prevision({ dias: 30, hoy });
+    const imp = r2(prov.totales.proximos30 + prov.totales.vencido);
+    if (imp > 0) items.push({ clave: 'prov', concepto: 'Proveedores (próximos 30 días)', importe: imp, vence: prov.vencidas.length ? hoyIso : (prov.proximas[0] || {}).fecha || hoyIso,
+      detalle: `${prov.proximas.length} cargos previstos${prov.vencidas.length ? ` + ${prov.vencidas.length} vencidos (${prov.totales.vencido.toFixed(2)})` : ''}` });
+  } catch (e) { console.warn('[Reservas] proveedores:', e.message); }
   const res = await _saldoReserva(db);
   // Lo guardado cubre primero lo que vence antes.
   let queda = res.saldo || 0;
@@ -93,6 +101,7 @@ async function panel({ hoy = new Date(), fresco = false } = {}) {
   const total = r2(lista.reduce((a, i) => a + (i.importe || 0), 0));
   _cache = {
     hoy: hoyIso, reserva: res, items: [...lista, ...items.filter(i => i.error)],
+    proveedores: prov ? { vencidas: prov.vencidas.slice(0, 15), proximas: prov.proximas.slice(0, 20), totales: prov.totales } : null,
     totales: { necesario: total, guardado: res.saldo, falta: r2(Math.max(0, total - (res.saldo || 0))), sobra: r2(Math.max(0, (res.saldo || 0) - total)),
       porSemana: r2(lista.reduce((a, i) => a + i.porSemana, 0)) },
   };

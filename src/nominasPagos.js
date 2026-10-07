@@ -34,7 +34,8 @@ async function estado(mes, { hoy = new Date() } = {}) {
     db.collection('docsPersonal').find({ tipo: 'nomina', mes: { $in: meses } }).project({ data: 0 }).toArray(),
     db.collection('bancoMovimientos').find({ fechaOperacion: { $gte: desde, $lte: hasta }, importe: { $lt: 0 } }).toArray(),
   ]);
-  const plantilla = users.filter(u => u.active !== false && ['tecnico', 'encargado', 'oficina'].includes(require('./users').normalizeRole(u.role)));
+  // Asalariados: ni autónomos (facturan) ni el dueño; y un nombre de una sola palabra («Alex») casaría con cualquiera.
+  const plantilla = users.filter(u => u.active !== false && !u.autonomo && ['tecnico', 'encargado', 'oficina'].includes(require('./users').normalizeRole(u.role)) && nombresDe(u).some(ws => ws.length >= 2));
   const out = [];
   for (const u of plantilla) {
     const suyas = noms.filter(n => String(n.userId) === String(u._id)).sort((a, b) => a.mes.localeCompare(b.mes));

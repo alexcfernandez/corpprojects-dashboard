@@ -787,6 +787,11 @@ app.get('/auth/google', (req, res) => {
 });
 
 app.get('/auth/google/callback', async (req, res) => {
+  // Autorización de Google Drive para las copias de seguridad (state «backup:…»).
+  if (String(req.query.state || '').startsWith('backup:')) {
+    try { await require('./backup').callback(req.query.code, req.query.state); return res.redirect('/copias?drive=ok'); }
+    catch (err) { return res.redirect('/copias?drive_error=' + encodeURIComponent(err.message)); }
+  }
   try {
     const { code } = req.query;
     const { tokens } = await oauth2Client.getToken(code);
@@ -1954,15 +1959,40 @@ app.get('/api/trimestre/paquete', requireAuthOficina, async (req, res) => {
     res.set('Content-Disposition', `attachment; filename="${nombre}"`).type('application/zip').send(buf);
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
+// ── COPIAS DE SEGURIDAD en Google Drive ──
+app.get('/api/backup/estado', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./backup').estado()); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/backup/drive/conectar', requireAuthOficina, async (req, res) => {
+  try { if (!_soloDueno(req)) return res.status(403).json({ error: 'Solo el dueño' }); res.json({ url: await require('./backup').urlConectar() }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/backup/ahora', requireAuthOficina, async (req, res) => {
+  if (!_soloDueno(req)) return res.status(403).json({ error: 'Solo el dueño' });
+  require('./backup').hacerCopia({ por: (req.oficina || {}).name || 'a mano' }).catch(e => console.warn('[Backup]', e.message));
+  res.json({ ok: true, enCurso: true });
+});
 // ── RESERVAS: lo que hay que ir apartando (IVA, IRPF, Seguridad Social, nóminas) y lo que ya está guardado ──
 app.get('/api/reservas', requireAuthOficina, async (req, res) => {
   req.setTimeout && req.setTimeout(120000);
   try { res.json(await require('./reservas').panel({ fresco: req.query.fresco === '1' })); } catch (err) { res.status(500).json({ error: err.message }); }
 });
+app.get('/api/proveedores/prevision', requireAuthOficina, async (req, res) => {
+  req.setTimeout && req.setTimeout(120000);
+  try { res.json(await require('./vencimientos').prevision({ dias: Number(req.query.dias) || 45 })); } catch (err) { res.status(500).json({ error: err.message }); }
+});
 // ── NÓMINAS: líquido de cada nómina frente a lo transferido en el banco ──
 app.get('/api/personal/nominas-pagos', requireAuthOficina, async (req, res) => {
   req.setTimeout && req.setTimeout(120000);
   try { res.json(await require('./nominasPagos').estado(req.query.mes || null)); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+// Recuperar las nóminas que ya llegaron por correo de la gestoría (una vez; luego entran solas).
+let _importandoNominas = false;
+app.post('/api/personal/nominas/importar-correo', requireAuthOficina, express.json(), async (req, res) => {
+  if (_importandoNominas) return res.json({ enCurso: true });
+  _importandoNominas = true;
+  require('./nominasCorreo').importarDelCorreo({ desde: (req.body || {}).desde || '2026-01-01' }).then(r => console.log('[Nóminas] del correo:', JSON.stringify(r))).catch(e => console.warn('[Nóminas] correo:', e.message)).finally(() => { _importandoNominas = false; });
+  res.json({ ok: true, enCurso: true });
 });
 let _leyendoNominas = false;
 app.post('/api/personal/nominas/leer-importes', requireAuthOficina, async (req, res) => {
@@ -3980,6 +4010,7 @@ app.get('/conversaciones', (req, res) => res.sendFile(path.join(__dirname, '../p
 app.get('/trimestre', (req, res) => res.sendFile(path.join(__dirname, '../public/trimestre.html')));
 app.get('/vehiculos', (req, res) => res.sendFile(path.join(__dirname, '../public/vehiculos.html')));
 app.get('/documentos', (req, res) => res.sendFile(path.join(__dirname, '../public/documentos.html')));
+app.get('/copias', (req, res) => res.sendFile(path.join(__dirname, '../public/copias.html')));
 app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
 app.get('/fichar', (req, res) => res.sendFile(path.join(__dirname, '../public/fichar.html')));
 app.get('/fichajes', (req, res) => res.sendFile(path.join(__dirname, '../public/fichajes.html')));

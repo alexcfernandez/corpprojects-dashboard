@@ -101,4 +101,18 @@ async function deuda(nombre) {
   catch (e) { return null; }
 }
 
-module.exports = { cuentas, cuenta, deuda, olvidar, clave, _factura };
+// Todas las facturas agrupadas por proveedor (con sus pagos), para la previsión de pagos (vencimientos.js).
+async function grupos({ desde = '2025-01-01' } = {}) {
+  const { rec, mapa } = await _datos();
+  const g = new Map();
+  for (const r of rec) {
+    if (!r.fecha || r.fecha < desde || !r.proveedor) continue;
+    const k = clave(r.proveedor);
+    const c = g.get(k) || { clave: k, proveedor: r.proveedor, facturas: [] };
+    c.facturas.push({ ...(_factura(r, mapa)), stelId: String(r.id || '') });
+    g.set(k, c);
+  }
+  return [...g.values()];
+}
+
+module.exports = { cuentas, cuenta, deuda, grupos, olvidar, clave, _factura };
