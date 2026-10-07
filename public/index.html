@@ -1740,5 +1740,12 @@ window.addEventListener('load',()=>{
   window._cargarCosteFijo=cargar;setTimeout(cargar,1500);
 })();
 </script>
+<script>
+// Enlaces del menú común (nav.js): /?tab=<id> abre esa pestaña con su grupo.
+(function(){const t=new URLSearchParams(location.search).get('tab');if(!t)return;
+  const ir=()=>{const b=document.querySelector(`.nav-btn[onclick*="showTab('${t}'"]`);if(!b)return false;const g=b.closest('.subgrp');
+    if(g&&window.showGrupo){const gb=document.querySelector(`.nav-grp[onclick*="'${g.dataset.grp}'"]`);showGrupo(g.dataset.grp,gb);}b.click();history.replaceState(null,'','/');return true;};
+  let n=0;const iv=setInterval(()=>{if(ir()||++n>40)clearInterval(iv);},250);})();
+</script>
 </body>
 </html>
