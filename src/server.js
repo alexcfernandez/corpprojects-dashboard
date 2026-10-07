@@ -2119,7 +2119,7 @@ app.get('/api/tarjetas', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./tarjetas').listaTarjetas()); } catch (err) { res.status(500).json({ error: err.message }); }
 });
 app.post('/api/tarjetas/:last4', requireAuthOficina, express.json(), async (req, res) => {
-  try { const b = req.body || {}; res.json(await require('./tarjetas').setPersona(req.params.last4, b.persona, b.userId)); } catch (err) { res.status(400).json({ error: err.message }); }
+  try { const b = req.body || {}; res.json(await require('./tarjetas').setPersona(req.params.last4, b.persona, b.userId, { limiteMes: b.limiteMes, avisoMes: b.avisoMes })); } catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.get('/api/trimestre/resumen-emitidas', requireAuthOficina, async (req, res) => {
   try {

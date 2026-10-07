@@ -23,6 +23,9 @@ const _tel = t => { const d = String(t || '').replace(/\D/g, ''); if (!d) return
 const fechaTxt = (f, hoy = new Date()) => f === iso(hoy) ? 'hoy' : f === iso(hoy.getTime() - DIA) ? 'ayer' : f.split('-').reverse().slice(0, 2).join('/');
 // No llevan ticket que pedir a nadie (se resuelven en el cierre): parking por app, peajes.
 const SIN_TICKET = /estacioname|easypark|telpark|elparking|peaje|autopista|parking app/;
+// Facturan una vez al mes todo lo pagado con tarjeta (la gasolina de Esclat, Feixas): no se pide ticket de cada pago.
+const FACTURA_MES = /bon ?preu|esclat|feixas aulet/;
+const CIF = process.env.EMPRESA_CIF || 'B09899253';
 
 // Pagos con tarjeta de los últimos `dias` (Revolut y tarjetas por su lado; la de Santander va en la cuenta: «Tarj. :*907925»).
 async function _pagos(db, dias, hoy) {
@@ -35,7 +38,7 @@ async function _pagos(db, dias, hoy) {
   return [
     ...tm.filter(m => !/declined|reverted|failed/i.test(m.estado || '')).map(m => ({ id: String(m._id), fecha: m.fecha, importe: m.importe, concepto: m.concepto, comercio: comercio(m.concepto), tarjeta: m.tarjeta || null })),
     ...bm.map(m => { const t = /\*\s*\d*?(\d{4})\b/.exec(m.concepto || ''); return { id: String(m._id), fecha: m.fechaOperacion, importe: m.importe, concepto: m.concepto, comercio: comercio(m.concepto), tarjeta: t ? t[1] : null }; }),
-  ].filter(p => p.tarjeta && !SIN_TICKET.test(nrm(p.concepto)));
+  ].filter(p => p.tarjeta && !SIN_TICKET.test(nrm(p.concepto)) && !FACTURA_MES.test(nrm(p.concepto)));
 }
 // La persona de la tarjeta: la elegida en Cierre del trimestre (userId) o, si no, la única con ese nombre y teléfono.
 function _quien(tarjetas, users, last4) {
@@ -75,10 +78,10 @@ function textoAviso(nombre, ps, url, { recordatorio = false, hoy = new Date() } 
   const n = String(nombre || '').trim().split(/\s+/)[0] || '';
   if (ps.length === 1 && !recordatorio) {
     const p = ps[0];
-    return `🧾 Hola ${n}, hemos visto un pago con tu tarjeta …${p.tarjeta}: *${p.comercio}* · ${eur(p.importe)} (${fechaTxt(p.fecha, hoy)}).\n\nHaz una foto al ticket o la factura y súbela aquí:\n${url}\n\nSi era personal o no te dieron ticket, dilo ahí mismo. El enlace es solo tuyo.`;
+    return `🧾 Hola ${n}, hemos visto un pago con tu tarjeta …${p.tarjeta}: *${p.comercio}* · ${eur(p.importe)} (${fechaTxt(p.fecha, hoy)}).\n\nHaz una foto a la factura y súbela aquí:\n${url}\n\n👉 Pide siempre *factura* a nombre de Corp Projects Holding SL (CIF ${CIF}): el ticket solo no sirve para desgravar el IVA.\nSi era personal o no te dieron nada, dilo ahí mismo. El enlace es solo tuyo.`;
   }
   const lista = ps.slice(0, 8).map(p => `• ${fechaTxt(p.fecha, hoy)} · ${p.comercio} · ${eur(p.importe)}`).join('\n') + (ps.length > 8 ? `\n• … y ${ps.length - 8} más` : '');
-  return `🧾 ${recordatorio ? 'Buenos días' : 'Hola'} ${n}, ${recordatorio ? (ps.length === 1 ? 'aún nos falta' : 'aún nos faltan') : 'hemos visto'} ${ps.length} pago${ps.length === 1 ? '' : 's'} con tu tarjeta sin ticket:\n${lista}\n\nSube las fotos aquí (o di si era personal o no hay ticket):\n${url}`;
+  return `🧾 ${recordatorio ? 'Buenos días' : 'Hola'} ${n}, ${recordatorio ? (ps.length === 1 ? 'aún nos falta' : 'aún nos faltan') : 'hemos visto'} ${ps.length} pago${ps.length === 1 ? '' : 's'} con tu tarjeta sin factura:\n${lista}\n\nSube las fotos aquí (o di si era personal o no hay ticket):\n${url}\n\n👉 Pide siempre *factura* a nombre de Corp Projects Holding SL (CIF ${CIF}): el ticket solo no desgrava el IVA.`;
 }
 
 // modo 'nuevos': tras cada lectura del banco, lo de los últimos 3 días que aún no se ha pedido.
@@ -134,4 +137,46 @@ async function responder(movId, respuesta, quien) {
   return { ok: true };
 }
 
-module.exports = { pendientes, avisar, alSubir, responder, textoAviso, _quien, SIN_TICKET };
+// ── LÍMITE AL MES POR TARJETA ──
+// En la tabla de tarjetas se pone el límite (p. ej. 580 €); al pasar del aviso (por defecto 520 €, el 90 %) y al llegar
+// al límite, WhatsApp a quien la lleva con lo que lleva gastado. Por debajo no se le dice nada.
+async function gastoMes(db, last4, mes) {
+  const desde = mes + '-01', hasta = mes + '-31';
+  const [tm, bm] = await Promise.all([
+    db.collection('tarjetaMovimientos').find({ tarjeta: String(last4), fecha: { $gte: desde, $lte: hasta }, interno: { $ne: true } }).toArray(),
+    db.collection('bancoMovimientos').find({ fechaOperacion: { $gte: desde, $lte: hasta }, concepto: { $regex: '\\*\\s*\\d*' + String(last4) + '\\b' } }).toArray(),
+  ]);
+  const t = tm.filter(m => ['CARD_PAYMENT', 'CARD_REFUND', 'REFUND'].includes(m.tipo) && !/declined|reverted|failed/i.test(m.estado || '')).reduce((a, m) => a - m.importe, 0)
+    + bm.reduce((a, m) => a - m.importe, 0);
+  return Math.round(t * 100) / 100;
+}
+async function revisarLimites({ hoy = new Date(), dryRun = false, _enviar = null } = {}) {
+  const db = await getDB();
+  const enviar = _enviar || (async (to, txt) => require('./notifications').sendWhatsAppTo(to, txt));
+  const mes = iso(hoy).slice(0, 7);
+  const [tarjetas, users] = await Promise.all([db.collection('tarjetas').find({ limiteMes: { $gt: 0 } }).toArray(), require('./users').getUsers(false)]);
+  const out = [];
+  for (const t of tarjetas) {
+    const gasto = await gastoMes(db, t._id, mes);
+    const aviso = Number(t.avisoMes) > 0 ? Number(t.avisoMes) : Math.round(t.limiteMes * 0.9);
+    const tramo = gasto >= t.limiteMes ? 'limite' : gasto >= aviso ? 'aviso' : null;
+    const hechos = ((t.avisosLimite || {})[mes]) || [];
+    out.push({ tarjeta: t._id, persona: t.persona, gasto, limite: t.limiteMes, aviso, tramo });
+    if (!tramo || hechos.includes(tramo)) continue;
+    const q = _quien(tarjetas, users, t._id);
+    if (!q || !q.tel) continue;
+    const n = String(q.user.name || '').split(/\s+/)[0];
+    const txt = tramo === 'limite'
+      ? `💳 ${n}, este mes ya llevas *${eur(gasto)}* con la tarjeta …${t._id}: has llegado al límite de ${eur(t.limiteMes)}. A partir de ahora, solo lo imprescindible de la empresa y nada personal.`
+      : `💳 ${n}, este mes llevas *${eur(gasto)}* con la tarjeta …${t._id} (el límite es ${eur(t.limiteMes)}). Ojo, que te queda poco.`;
+    if (!dryRun) {
+      let ok = false; try { ok = await enviar(q.tel, txt); } catch (e) { console.warn('[Tickets] límite:', e.message); }
+      if (ok === false) continue;
+      await db.collection('tarjetas').updateOne({ _id: t._id }, { $addToSet: { ['avisosLimite.' + mes]: tramo } });
+    }
+    out[out.length - 1].texto = txt;
+  }
+  return out;
+}
+
+module.exports = { pendientes, avisar, alSubir, responder, textoAviso, _quien, SIN_TICKET, FACTURA_MES, gastoMes, revisarLimites };

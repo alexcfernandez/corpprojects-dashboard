@@ -252,7 +252,11 @@ async function sincronizar({ soloId = null, _api: api = _api } = {}) {
   }
   if (total) { try { require('./trimestre').olvidarMapaPagos(); } catch (e) {} }
   // Compras con tarjeta recién llegadas sin ticket: WhatsApp al momento a quien pagó (ticketsAviso).
-  if (!soloId && process.env.TICKETS_AVISOS !== 'off') require('./ticketsAviso').avisar({ modo: 'nuevos' }).catch(e => console.warn('[Tickets] avisos:', e.message));
+  if (!soloId && process.env.TICKETS_AVISOS !== 'off') {
+    const T = require('./ticketsAviso');
+    T.avisar({ modo: 'nuevos' }).catch(e => console.warn('[Tickets] avisos:', e.message));
+    T.revisarLimites().catch(e => console.warn('[Tickets] límites:', e.message));
+  }
   if (out.length) console.log('[BancoSync]', out.map(o => `${o.banco}${o.cuenta ? ' · ' + o.cuenta : ''}: ${o.error || o.nuevos + ' nuevos'}`).join(' | '));
   return { configurado: true, nuevos: total, detalle: out };
 }

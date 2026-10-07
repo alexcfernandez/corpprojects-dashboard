@@ -19,3 +19,16 @@ test('sin razón social sigue sin casar con un pago que nombra a otro proveedor'
   const movs = [{ id: 'm1', fecha: '2026-09-20', importe: -100, concepto: 'Transferencia A Favor De Ruben Esteban', codigo: '072' }];
   assert.notEqual(C.conciliar({ movimientos: movs, emitidas: [], recibidas: rec }).filas[0].estado, 'punteado');
 });
+
+test('compra con tarjeta devuelta entera: se anula con su devolución (no pide factura)', () => {
+  const movs = [
+    { id: 'c', fecha: '2026-10-06', importe: -108, concepto: 'Obramat Girona', codigo: '136', origen: 'Revolut …6439' },
+    { id: 'd', fecha: '2026-10-07', importe: 108, concepto: 'Refund from Obramat Girona', codigo: '136', origen: 'Revolut …6439' },
+    { id: 'e', fecha: '2026-10-06', importe: -114, concepto: 'Obramat Girona', codigo: '136', origen: 'Revolut …6439' },
+  ];
+  const f = C.conciliar({ movimientos: movs, emitidas: [], recibidas: [] }).filas;
+  const by = id => f.find(x => x.id === id);
+  assert.equal(by('c').estado, 'no_requiere'); assert.equal(by('c').tipo, 'compra_devuelta');
+  assert.equal(by('d').estado, 'no_requiere');
+  assert.notEqual(by('e').estado, 'no_requiere');
+});

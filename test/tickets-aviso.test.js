@@ -54,3 +54,17 @@ test('al subir el ticket desde el enlace deja de pedirse', async () => {
   const l = await T.pendientes({ hoy: HOY, userId: DAVID });
   assert.equal(l.length, 0);
 });
+
+test('límite del mes: avisa al pasar de 520 € y al llegar a 580 €, una vez cada uno', async () => {
+  cols.tarjetas[0].limiteMes = 580; cols.tarjetas[0].avisoMes = 520;
+  cols.tarjetaMovimientos.push({ _id: 'g1', fecha: '2026-10-03', importe: -400, tipo: 'CARD_PAYMENT', concepto: 'Obramat', tarjeta: '6439' });
+  db.collection = (orig => n => { const c = orig(n); if (n === 'tarjetas') { c.find = q => ({ toArray: async () => cols.tarjetas.filter(t => !q.limiteMes || t.limiteMes > 0) }); c.updateOne = async (q, u) => { const t = cols.tarjetas.find(x => x._id === q._id); for (const [k, v] of Object.entries(u.$addToSet || {})) { const [a, b] = k.split('.'); t[a] = t[a] || {}; (t[a][b] = t[a][b] || []).push(v); } }; } return c; })(db.collection);
+  const env = []; const send = async (to, txt) => { env.push(txt); return true; };
+  await T.revisarLimites({ hoy: HOY, _enviar: send });                      // 116,01 + 54,98 + 2,10 + 400 = 573,09 → aviso
+  assert.equal(env.length, 1); assert.match(env[0], /llevas \*573,09 €\* con la tarjeta …6439 \(el límite es 580,00 €\)/);
+  await T.revisarLimites({ hoy: HOY, _enviar: send });
+  assert.equal(env.length, 1);                                               // no se repite
+  cols.tarjetaMovimientos.push({ _id: 'g2', fecha: '2026-10-07', importe: -10, tipo: 'CARD_PAYMENT', concepto: 'Leroy', tarjeta: '6439' });
+  await T.revisarLimites({ hoy: HOY, _enviar: send });
+  assert.equal(env.length, 2); assert.match(env[1], /has llegado al límite/);
+});

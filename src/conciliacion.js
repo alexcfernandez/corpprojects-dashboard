@@ -368,6 +368,16 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
     }
   }
 
+  // 4c) COMPRA DEVUELTA con tarjeta: la devolución («Refund from Obramat») del mismo importe, misma tarjeta y comercio,
+  // en ≤45 días: las dos se anulan y no hace falta factura de ninguna (ni pedir el ticket de la compra).
+  const _com = c => norm(c).replace(/^(refund from|devolucion( de)?|compra( internet)? en|pago movil en|transaccion contactless)\s+/, '').replace(/[,.].*$/, '').replace(/\s+(girona|gerona)\b.*$/, '').trim();
+  for (const dv of filas.filter(x => x.tipo === 'devolucion' && !x.estado)) {
+    const c = filas.find(x => !x.estado && x.importe < 0 && igual(-x.importe, dv.importe) && (x.origen || '') === (dv.origen || '') && _com(x.concepto) && _com(x.concepto) === _com(dv.concepto) && dias(dv.fecha, x.fecha) >= 0 && dias(dv.fecha, x.fecha) <= 45);
+    if (!c) continue;
+    for (const f of [c, dv]) { f.estado = 'no_requiere'; f.tipo = 'compra_devuelta'; }
+    c.nota = `Devuelta el ${dv.fecha.split('-').reverse().join('/')}: se anula con su devolución`; dv.nota = `Devolución de la compra del ${c.fecha.split('-').reverse().join('/')}`;
+  }
+
   // 5) DEVOLUCIONES de proveedor: casan con una rectificativa (total negativo) del mismo importe
   for (const f of filas.filter(x => x.tipo === 'devolucion' && !x.estado)) {
     const r = recibidas.find(x => !usadasRec.has(x.id) && x.total < 0 && igual(-x.total, f.importe) && Math.abs(dias(f.fecha, x.fecha)) <= 30);
