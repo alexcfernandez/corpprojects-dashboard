@@ -1431,13 +1431,20 @@ async function renderInformes(){
   const anos=d.anos||[]; const actual=anos.find(a=>a.year===d.anoActual)||{ventas:0,gastos:0,resultado:0};
   const eur=n=>(Number(n)||0).toLocaleString('es-ES',{maximumFractionDigits:0})+' €';
   c.innerHTML=`
-    <div class="alert ain" style="margin-bottom:16px"><div>📈</div><div><strong>Informes</strong> — ventas, gastos y resultado por año, y la evolución mes a mes frente al año pasado.</div></div>
+    <div class="alert ain" style="margin-bottom:16px"><div>📈</div><div><strong>Informes</strong> — cuenta de resultados por año <b>sin IVA</b>: ventas (por fecha de factura) menos compras y proveedores, personal (nóminas, Seguridad Social e IRPF) y comisiones del banco.</div></div>
+    ${(d.avisos||[]).map(a=>`<div class="alert" style="margin-bottom:10px;border-color:var(--amber)"><div>⚠️</div><div>${a}</div></div>`).join('')}
     <div class="metrics-row" style="margin-bottom:16px">
       <div class="mc"><div class="ml">Ventas ${d.anoActual}</div><div class="mv b">${eur(actual.ventas)}</div></div>
       <div class="mc"><div class="ml">Gastos ${d.anoActual}</div><div class="mv r">${eur(actual.gastos)}</div></div>
       <div class="mc"><div class="ml">Resultado ${d.anoActual}</div><div class="mv ${actual.resultado>=0?'g':'r'}">${eur(actual.resultado)}</div></div>
     </div>
-    <div class="card" style="margin-bottom:16px"><div class="card-title">Ventas mes a mes · ${d.anoActual} vs ${d.anoAnterior}</div><div style="height:300px"><canvas id="infChart"></canvas></div></div>
+    ${actual.desglose?`<div class="card" style="margin-bottom:16px"><div class="card-title">De qué son los gastos de ${d.anoActual}</div><table><tbody>
+      <tr><td>Compras y proveedores <span style="color:var(--text3);font-size:12px">(StelOrder ${eur(actual.desglose.comprasStel)} · gastos ${eur(actual.desglose.gastosStel)} · Compras sin StelOrder ${eur(actual.desglose.comprasApp)})</span></td><td style="text-align:right">${eur(actual.desglose.compras)}</td></tr>
+      <tr><td>Personal <span style="color:var(--text3);font-size:12px">(nóminas ${eur(actual.desglose.nominas)} · Seg. Social ${eur(actual.desglose.ss)} · IRPF ${eur(actual.desglose.irpf)})</span></td><td style="text-align:right">${eur(actual.desglose.personal)}</td></tr>
+      <tr><td>Comisiones del banco</td><td style="text-align:right">${eur(actual.desglose.comisiones)}</td></tr>
+      <tr><td><strong>Total gastos</strong></td><td style="text-align:right"><strong>${eur(actual.gastos)}</strong></td></tr>
+      <tr><td><strong>Resultado</strong>${actual.margen!=null?` <span style="color:var(--text3);font-size:12px">(${actual.margen} % de las ventas)</span>`:''}</td><td style="text-align:right;color:${actual.resultado>=0?'var(--green)':'var(--red)'}"><strong>${eur(actual.resultado)}</strong></td></tr></tbody></table></div>`:''}
+    <div class="card" style="margin-bottom:16px"><div class="card-title">Ventas mes a mes (sin IVA) · ${d.anoActual} vs ${d.anoAnterior}</div><div style="height:300px"><canvas id="infChart"></canvas></div></div>
     <div class="card"><div class="card-title">Por año</div><table><thead><tr><th>Año</th><th style="text-align:right">Ventas</th><th style="text-align:right">Gastos</th><th style="text-align:right">Resultado</th></tr></thead>
       <tbody>${anos.length?anos.slice().reverse().map(a=>`<tr><td><strong>${a.year}</strong></td><td style="text-align:right">${eur(a.ventas)}</td><td style="text-align:right;color:var(--red)">${eur(a.gastos)}</td><td style="text-align:right;color:${a.resultado>=0?'var(--green)':'var(--red)'};font-weight:600">${eur(a.resultado)}</td></tr>`).join(''):'<tr><td colspan="4" style="color:var(--text3)">Sin datos</td></tr>'}</tbody></table></div>`;
   if(_informesChart){ _informesChart.destroy(); _informesChart=null; }
