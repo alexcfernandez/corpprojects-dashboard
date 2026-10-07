@@ -878,6 +878,7 @@ app.get('/api/inicio', requireAuth, async (req, res) => {
     out.banco = conns.flatMap(c => (c.cuentas || []).filter(a => a.saldo != null).map(a => ({ banco: c.banco, cuenta: (a.nombre || '').split(' · ').pop(), fin: a.iban ? a.iban.slice(-4) : null, saldo: a.saldo, saldoAt: a.saldoAt, reserva: !!(a.iban && a.iban.endsWith(process.env.RESERVA_IBAN || '6452')) })));
   } catch (e) { out.banco = []; } })());
   t.push((async () => { try { out.compras = { porRevisar: await require('./compras').contarPendientes() }; } catch (e) { out.compras = { porRevisar: null }; } })());
+  try { out.stel = require('./stelorder').estadoPausa(); } catch (e) {}
   await Promise.all(t);
   res.json(out);
 });

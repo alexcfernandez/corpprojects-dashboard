@@ -29,6 +29,39 @@ const client = axios.create({
   timeout: 25000
 });
 
+// FRENO ante el bloqueo de StelOrder (403/429). StelOrder corta la clave ~1 hora si se le pide mucho; si se
+// sigue llamando durante el corte, la hora vuelve a empezar y no se desbloquea nunca (pasó el 7-8/10/2026:
+// sin nada en caché, cada página y cada tarea volvía a pedirlo todo). Al primer 403/429 se dejan de hacer
+// llamadas durante STEL_PAUSA_MIN minutos (65); luego pasa UNA y, si vuelve a fallar, otra pausa.
+const PAUSA_MS = (parseInt(process.env.STEL_PAUSA_MIN || 65)) * 60 * 1000;
+// Al arrancar, la primera llamada es de prueba (las demás esperan): si sigue bloqueado, no sale una ráfaga.
+let _pausaHasta = 1, _probando = false, _ultimoBloqueo = null;
+function enPausa() { return Date.now() < _pausaHasta; }
+function marcarBloqueo(status) {
+  _pausaHasta = Date.now() + PAUSA_MS; _ultimoBloqueo = { at: new Date().toISOString(), status };
+  console.warn(`[StelOrder] ⛔ ${status}: bloqueo de StelOrder. Sin llamadas hasta las ${new Date(_pausaHasta).toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid' })}.`);
+}
+function estadoPausa() { return { enPausa: enPausa(), hasta: _pausaHasta ? new Date(_pausaHasta).toISOString() : null, ultimoBloqueo: _ultimoBloqueo }; }
+client.interceptors.request.use(cfg => {
+  if (enPausa()) {
+    const e = new Error(`StelOrder en pausa por bloqueo hasta las ${new Date(_pausaHasta).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' })} (no se le llama para que se desbloquee)`);
+    e.code = 'STEL_PAUSA'; e.response = { status: 503, data: { error: e.message } };
+    return Promise.reject(e);
+  }
+  // Tras una pausa, solo UNA llamada de prueba a la vez: si vuelve a dar 403, no le llega una ráfaga.
+  if (_pausaHasta && !_probando) { _probando = true; cfg._prueba = true; }
+  else if (_pausaHasta && _probando) { const e = new Error('StelOrder: comprobando si ya se ha desbloqueado; prueba en un momento'); e.code = 'STEL_PAUSA'; e.response = { status: 503, data: { error: e.message } }; return Promise.reject(e); }
+  return cfg;
+});
+client.interceptors.response.use(r => { if (r.config && r.config._prueba) { _probando = false; _pausaHasta = 0; console.log('[StelOrder] ✅ desbloqueado'); } return r; },
+  err => {
+    const st = err && err.response && err.response.status;
+    if (err && err.config && err.config._prueba) _probando = false;
+    if (st === 403 || st === 429) marcarBloqueo(st);
+    else if (err && err.config && err.config._prueba) _pausaHasta = 0;   // otro error (red…): no es bloqueo
+    return Promise.reject(err);
+  });
+
 function getAlertLevel(days) {
   const W = parseInt(process.env.ALERT_WARNING_DAYS  || 15);
   const S = parseInt(process.env.ALERT_SECOND_DAYS   || 30);
@@ -80,7 +113,8 @@ async function fetchAllPages(endpoint, extraParams = '', { estricto = false } = 
       await new Promise(r => setTimeout(r, 1100));
     } catch (err) {
       console.error(`[StelOrder] Error ${endpoint} start=${start}:`, err.response?.status, err.message);
-      if (estricto) throw new Error(`StelOrder ${endpoint}: ${err.response?.status || ''} ${err.message}`.trim());
+      // En pausa por bloqueo, siempre se lanza: devolver una lista vacía la dejaría en caché como si no hubiera nada.
+      if (estricto || err.code === 'STEL_PAUSA') throw new Error(`StelOrder ${endpoint}: ${err.response?.status || ''} ${err.message}`.trim());
       break;
     }
   }
@@ -1982,7 +2016,7 @@ async function modificarImportePresupuesto({ id = null, modo, valor = null, part
 }
 
 
-module.exports = { _client: client, fetchAllPages, invalidate,
+module.exports = { _client: client, enPausa, marcarBloqueo, estadoPausa, fetchAllPages, invalidate,
   listaPresupuestos, lineasPresupuesto,
   getInvoices, getAllReceipts, getAllOrdinaryInvoices, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary, diagProveedores,

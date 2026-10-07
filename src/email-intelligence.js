@@ -261,12 +261,15 @@ Urgencia: ALTA (avería grave, agua, gas, plazo) | MEDIA | BAJA
 // ── Buscar remitente en StelOrder ─────────────────────────────────
 async function buscarRemitenteEnStelOrder(emailDe) {
   const { email: emailLimpio, nombreMostrado } = parsearRemitente(emailDe);
+  const S = require('./stelorder');
+  if (S.enPausa()) return { encontrado: false, nombreMostrado, emailRemitente: emailLimpio };   // StelOrder bloqueado: no se le llama
   try {
     const base = 'https://app.stelorder.com/app';
     const headers = { 'APIKEY': process.env.STELORDER_API_KEY };
 
     // Buscar en clientes
     const rcli = await fetch(`${base}/clients?email=${encodeURIComponent(emailLimpio)}&limit=5`, { headers });
+    if (rcli.status === 403 || rcli.status === 429) { S.marcarBloqueo(rcli.status); return { encontrado: false, nombreMostrado, emailRemitente: emailLimpio }; }
     const clientes = await rcli.json();
     if (Array.isArray(clientes) && clientes.length > 0) {
       const c = clientes[0];
