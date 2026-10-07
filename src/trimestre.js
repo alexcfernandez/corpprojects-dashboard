@@ -241,7 +241,7 @@ async function _archivosRecibidasCompras(R, carpeta = '2_Facturas_recibidas') {
     const pg = pagos ? (pagos.porDoc.get(String(c._id)) || (gm && pagos.porDoc.get(String(gm.numero))) || []) : [];
     filas.push({ Fecha: c.fecha.split('-').reverse().join('/'), Proveedor: c.proveedor || '', 'Nº factura': c.numero || '', Tipo: c.tipo === 'devolucion' ? 'Abono' : c.tipo === 'ticket' ? 'Ticket' : 'Factura',
       Base: c.base != null ? r2(c.base) : null, IVA: c.iva != null ? r2(c.iva) : null, Total: c.total != null ? r2(c.total) : null,
-      Destino: c.destino === 'obra' ? `Obra ${c.obraRef || ''}`.trim() : c.destino === 'varias' ? (c.reparto || []).map(p => p.obraRef).join(' + ') : c.destino === 'general' ? `Gasto general${c.categoria ? ' · ' + c.categoria : ''}` : (c.destino || ''),
+      Destino: c.destino === 'obra' ? `Obra ${c.obraRef || ''}`.trim() : c.destino === 'varias' ? (c.reparto || []).map(p => p.obraRef).join(' + ') : c.destino === 'lineas' ? ['Por líneas', ...(c.reparto || []).map(p => p.obraRef), ...(c.repartoOtros || []).map(o => ({ herramientas: 'herramientas', ropa: 'EPIs', almacen: 'almacén', general: 'gasto general' })[o.t] || o.t)].join(' · ') : c.destino === 'general' ? `Gasto general${c.categoria ? ' · ' + c.categoria : ''}` : (c.destino || ''),
       Pagada: pg.length ? pg.map(p => `${p.fecha.split('-').reverse().join('/')} ${p.origen}${p.persona ? ' (' + p.persona + ')' : ''}`).join(' + ') : 'Sin pago encontrado',
       'En StelOrder': gm ? `Sí (${gm.numero})` : 'No', Archivo: nombres.join(', ') || 'SIN ARCHIVO', Origen: c.estado === 'archivo' ? 'Correo' : ({ email: 'Correo', whatsapp: 'WhatsApp' })[c.origen] || 'Foto en Compras' });
   }

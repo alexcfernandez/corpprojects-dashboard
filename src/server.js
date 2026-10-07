@@ -1661,6 +1661,11 @@ app.post('/api/compras/:id/separar/:idx', async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').separarFoto(req.params.id, req.params.idx, q.name)); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+// Factura mezclada (obras, herramientas, EPIs…): propuesta de a dónde va cada línea.
+app.get('/api/compras/:id/lineas-destino', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').propuestaLineas(req.params.id)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.post('/api/compras/:id/releer', async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').releer(req.params.id)); }
   catch (err) { res.status(400).json({ error: err.message }); }
