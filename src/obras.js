@@ -712,6 +712,8 @@ async function getRentabilidad(obraId) {
     costePresupuestado,                       // lo que esperábamos gastar (del presupuesto)
     desvioCoste: Math.round((totalCoste - costePresupuestado) * 100) / 100, // real − presupuestado (+ = de más)
     facturado,
+    presupuesto: obra.budgetAmount || 0, facturadoReal: obra.invoicedAmount || 0, sobrePresupuesto: !obra.invoicedAmount,
+    presupuestosStel: obra.presupuestosStel || [],
     beneficio,
     margen,
     byWorker: Object.values(byWorker),

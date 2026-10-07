@@ -446,17 +446,21 @@
             ${(rent.costePresupuestado>0 || (estDias!=null)) ? `<div style="font-size:11px;color:var(--text3);margin-top:8px">${rent.costePresupuestado>0?(rent.desvioCoste>0?'⚠️ Vas gastando más de lo presupuestado.':'✅ En coste, por debajo de lo presupuestado.'):''}${(estDias!=null&&desvDias>0)?' ⚠️ Llevas más días de los estimados.':((estDias!=null&&desvDias<=0)?' ✅ En plazo de tiempo.':'')}</div>` : ''}
           </div>` : ''}
 
-          <div class="metrics-row" style="margin-bottom:14px">
-            <div class="mc"><div class="ml">Facturado</div><div class="mv b">${eur(rent.facturado)}</div></div>
-            <div class="mc"><div class="ml">Coste personal</div><div class="mv r">${eur(rent.totalCostePersonal)}</div></div>
-            <div class="mc"><div class="ml">Materiales</div><div class="mv r">${eur(rent.totalMateriales)}</div></div>
-            <div class="mc"><div class="ml">Proveedores</div><div class="mv r">${eur(rent.totalProveedores||0)}</div></div>
-            ${(rent.totalCompras||(rent.compras||[]).length)?`<div class="mc"><div class="ml">Compras (fotos)</div><div class="mv r">${eur(rent.totalCompras||0)}</div></div>`:''}
-            ${(rent.almacen&&(rent.almacen.importe||rent.almacen.salidas?.length))?`<div class="mc"><div class="ml">Almacén</div><div class="mv r">${eur(rent.almacen.importe||0)}</div></div>`:''}
-            <div class="mc"><div class="ml">Beneficio</div><div class="mv ${ok?'g':'r'}">${eur(rent.beneficio)}</div></div>
-            <div class="mc"><div class="ml">Horas totales</div><div class="mv b">${(rent.totalHoras||0).toFixed(0)} h</div></div>
-            <div class="mc"><div class="ml">Partes</div><div class="mv b">${rent.partes}</div></div>
+          ${(() => {
+            const compras = (rent.totalMateriales||0) + (rent.totalProveedores||0) + (rent.totalCompras||0) + ((rent.almacen&&rent.almacen.importe)||0);
+            const desglose = [[rent.totalCompras,'compras'],[rent.totalProveedores,'facturas proveedor'],[rent.totalMateriales,'material a mano'],[rent.almacen&&rent.almacen.importe,'almacén']].filter(([v])=>v>0).map(([v,t])=>`${eur(v)} ${t}`).join(' · ');
+            const pct = rent.facturado>0 ? Math.round(rent.beneficio/rent.facturado*1000)/10 : null;
+            const prev = rent.sobrePresupuesto && rent.presupuesto>0;
+            return `<div class="metrics-row" style="margin-bottom:6px">
+            <div class="mc"><div class="ml">Presupuesto (sin IVA)</div><div class="mv b">${rent.presupuesto?eur(rent.presupuesto):'—'}</div>${(rent.presupuestosStel||[]).length?`<div style="font-size:10px;color:var(--text3)">${rent.presupuestosStel.map(p=>ce(p.numero)).join(' + ')}</div>`:''}</div>
+            <div class="mc"><div class="ml">Facturado (sin IVA)</div><div class="mv b">${rent.facturadoReal?eur(rent.facturadoReal):'<span style="font-size:14px;color:var(--text3)">aún nada</span>'}</div></div>
+            <div class="mc"><div class="ml">Mano de obra</div><div class="mv r">${eur(rent.totalCostePersonal)}</div><div style="font-size:10px;color:var(--text3)">${(rent.totalHoras||0).toFixed(0)} h</div></div>
+            <div class="mc"><div class="ml">Compras y proveedores</div><div class="mv r">${eur(compras)}</div>${desglose?`<div style="font-size:10px;color:var(--text3)">${desglose}</div>`:''}</div>
+            <div class="mc"><div class="ml">Coste total</div><div class="mv r">${eur(rent.totalCoste)}</div></div>
+            <div class="mc"><div class="ml">Beneficio${prev?' previsto':''}</div><div class="mv ${ok?'g':'r'}">${eur(rent.beneficio)}</div><div style="font-size:10px;color:var(--text3)">${pct!=null?pct.toString().replace('.',',')+' %':''}${prev?' · sobre el presupuesto':''}</div></div>
           </div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:14px">Todo sin IVA. ${prev?'Aún no hay nada facturado: el beneficio se calcula con el presupuesto. ':''}${rent.partes?rent.partes+' partes · ':''}Compras y proveedores no se cuentan dos veces si una factura está en los dos sitios.</div>`;
+          })()}
 
           ${rent.byWorker?.length ? `
           <div class="card" style="margin-bottom:12px">
