@@ -1905,6 +1905,34 @@ app.get('/api/trimestre/paquete', requireAuthOficina, async (req, res) => {
     res.set('Content-Disposition', `attachment; filename="${nombre}"`).type('application/zip').send(buf);
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
+// ── BANCO AUTOMÁTICO (Enable Banking, PSD2): los movimientos entran solos, sin subir extractos ──
+// Conectar y desconectar, solo el dueño; el permiso lo da en la web de su banco (aquí no pasan contraseñas).
+const _soloDueno = req => users.normalizeRole((req.oficina || {}).role || 'owner') === 'owner';
+app.get('/api/banco-sync/estado', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./bancoSync').estado()); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/banco-sync/bancos', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./bancoSync').bancos(req.query.psu === 'personal' ? 'personal' : 'business')); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/banco-sync/conectar', requireAuthOficina, async (req, res) => {
+  try { if (!_soloDueno(req)) return res.status(403).json({ error: 'Solo el dueño conecta bancos' });
+    const b = req.body || {}; res.json(await require('./bancoSync').conectar(b.banco, { psuType: b.psuType === 'personal' ? 'personal' : 'business', por: (req.oficina || {}).name || '' })); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+// Aquí vuelve el navegador desde el banco (sin sesión del dashboard: vale el «state» guardado al empezar).
+app.get('/api/banco-sync/callback', async (req, res) => {
+  try { const r = await require('./bancoSync').callback({ code: req.query.code, state: req.query.state, error: req.query.error });
+    res.redirect(`/trimestre?banco=ok&nombre=${encodeURIComponent(r.banco)}&nuevos=${(r.sync && r.sync.nuevos) || 0}#bancos`); }
+  catch (err) { console.warn('[BancoSync] callback:', err.message); res.redirect(`/trimestre?banco_error=${encodeURIComponent(err.message)}#bancos`); }
+});
+app.post('/api/banco-sync/sincronizar', requireAuthOficina, async (req, res) => {
+  req.setTimeout && req.setTimeout(120000);
+  try { res.json(await require('./bancoSync').sincronizar()); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.delete('/api/banco-sync/:id', requireAuthOficina, async (req, res) => {
+  try { if (!_soloDueno(req)) return res.status(403).json({ error: 'Solo el dueño desconecta bancos' }); res.json(await require('./bancoSync').desconectar(req.params.id)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 // Extractos de tarjetas (Revolut CSV, tarjeta de crédito Santander) y de la cuenta: un solo botón.
 const uploadExtracto = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 app.post('/api/trimestre/extracto', requireAuthOficina, uploadExtracto.single('file'), async (req, res) => {

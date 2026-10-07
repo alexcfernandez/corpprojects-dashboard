@@ -118,6 +118,15 @@ async function guardar(movs, tipo, nombre) {
   for (const m of movs) {
     // «estado» va solo en $set (cambia: Autorizado → Liquidado); repetirlo en $setOnInsert da conflicto en Mongo.
     const { estado, ...resto } = m;
+    // Ya entró por la conexión automática con el banco (bancoSync): el CSV completa sus datos (tarjeta, quién, tipo).
+    if (!m.ebRef && !(await db.collection('tarjetaMovimientos').findOne({ $or: [{ huella: m.huella }, { csvHuella: m.huella }] }, { projection: { _id: 1 } }))) {
+      const gem = await require('./bancoSync').gemelaDeTarjeta(db, m);
+      if (gem) {
+        const { huella, fuente, fecha, importe, ...extra } = resto;
+        await db.collection('tarjetaMovimientos').updateOne({ _id: gem._id }, { $set: { ...extra, csvHuella: m.huella, archivo: nombre || null, estado: estado == null ? null : estado } });
+        repetidos++; continue;
+      }
+    }
     const r = await db.collection('tarjetaMovimientos').updateOne({ huella: m.huella }, { $setOnInsert: { ...resto, importadoEl: new Date(), archivo: nombre || null }, $set: { estado: estado == null ? null : estado } }, { upsert: true });
     if (r.upsertedCount) nuevos++; else repetidos++;
   }

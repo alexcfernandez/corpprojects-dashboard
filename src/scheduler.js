@@ -369,6 +369,9 @@ function startScheduler() {
   // Documentación del personal y de empresa que caduca (reconocimientos, certificados…): aviso a oficina.
   cron.schedule('10 9 * * 1-5', () => require('./personalDocs').revisarCaducidades().catch(e => console.warn('[Personal] caducidades:', e.message)), { timezone: 'Europe/Madrid' });
   // Flota: avisos de ITV, seguro, revisión y fin de renting (conductor + oficina).
+  // Banco automático (Enable Banking): la normativa deja leer cada cuenta ~4 veces al día sin la persona delante.
+  cron.schedule('15 7,11,15,19 * * *', () => require('./bancoSync').sincronizar().then(r => { if (r.configurado && r.nuevos) console.log(`[BancoSync] ${r.nuevos} movimiento(s) nuevos`); }).catch(e => console.warn('[BancoSync] sync:', e.message)), { timezone: 'Europe/Madrid' });
+  cron.schedule('0 9 * * *', () => require('./bancoSync').revisarCaducidad().catch(e => console.warn('[BancoSync] caducidad:', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('5 9 * * *', () => require('./vehiculos').revisarVencimientos().then(r => r.avisos.length && console.log('[Vehículos] avisos:', r.avisos.length)).catch(e => console.warn('[Vehículos] avisos:', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('40 8 * * 1-5', () => require('./trimestre').revisionDiaria()
     .then(r => console.log('[Trimestre] revisión diaria →', JSON.stringify(r)))

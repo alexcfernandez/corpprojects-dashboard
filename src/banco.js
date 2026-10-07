@@ -244,6 +244,11 @@ async function ingestExcelBuffer(buf, meta = {}) {
   let nuevos = 0, repetidos = 0;
   for (const m of parsed.movimientos) {
     try {
+      // Ya entró por la conexión automática con el banco (bancoSync): se enlaza, no se duplica.
+      if (!(await db.collection('bancoMovimientos').findOne({ $or: [{ huella: m.huella }, { excelHuella: m.huella }] }, { projection: { _id: 1 } }))) {
+        const gem = await require('./bancoSync').gemelaDeExcel(db, m);
+        if (gem) { await db.collection('bancoMovimientos').updateOne({ _id: gem._id }, { $set: { excelHuella: m.huella, codigo: gem.codigo || m.codigo, vistoEl: new Date() } }); repetidos++; continue; }
+      }
       const res = await db.collection('bancoMovimientos').updateOne(
         { huella: m.huella },
         {
@@ -413,7 +418,7 @@ function acc(bucket, cat, map, yKey, val) {
 
 module.exports = {
   // núcleo
-  parseExcelBuffer, ingestExcelBuffer,
+  parseExcelBuffer, ingestExcelBuffer, norm,
   // lectura dashboard
   getMovimientos, getResumen, getRecurrentesMensuales, getUltimoImport, getDashboardData,
   // utilidades expuestas por si las quiere reusar el asistente

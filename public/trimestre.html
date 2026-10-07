@@ -59,9 +59,10 @@ td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}
     </div>
     <div style="font-size:12px;color:var(--text3);margin-top:6px">Descomprime el ZIP y arrastra la carpeta a Drive. Si algún PDF no se pudo bajar, va apuntado en <i>_FALTAN.txt</i> dentro del ZIP.</div>
   </div>
+  <div class="card" id="bancos"><h3>🏦 Bancos conectados (los movimientos entran solos)</h3><div id="bancos-res" style="font-size:13px;color:var(--text3)">Cargando…</div></div>
   <div class="card">
     <h3>Extractos del trimestre (banco y tarjetas)</h3>
-    <div style="font-size:13.5px;color:var(--text2);line-height:1.6">Sube aquí el <b>CSV de Revolut</b>, los <b>Excel de las tarjetas de crédito</b> y el <b>Excel de la cuenta de Santander</b> (puedes elegir varios a la vez). Se reconocen solos y no se duplica nada si subes un archivo dos veces.</div>
+    <div style="font-size:13.5px;color:var(--text2);line-height:1.6">Con los bancos conectados arriba no hace falta; sirve para lo que no esté conectado o para fechas antiguas. Sube aquí el <b>CSV de Revolut</b>, los <b>Excel de las tarjetas de crédito</b> y el <b>Excel de la cuenta de Santander</b> (puedes elegir varios a la vez). Se reconocen solos y no se duplica nada si subes un archivo dos veces.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
       <input type="file" id="ext-file" multiple accept=".csv,.xls,.xlsx" style="font-size:13px;color:var(--text2);max-width:100%">
       <button class="btn" onclick="subirExtractos(this)">Subir</button>
@@ -331,7 +332,46 @@ async function excel(b){const t=b.textContent;b.disabled=true;b.textContent='Pre
   try{const r=await fetch('/api/trimestre/excel?q='+document.getElementById('q').value,{headers:H});if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.error||'HTTP '+r.status);}
     const u=URL.createObjectURL(await r.blob());const a=document.createElement('a');a.href=u;a.download='Corp_'+document.getElementById('q').value+'_gestoria.xlsx';document.body.appendChild(a);a.click();a.remove();}
   catch(e){alert('No se pudo generar: '+e.message);}finally{b.disabled=false;b.textContent=t;}}
-cargar();cargarPunteo();cargarTarjetas();
+
+// ── BANCOS CONECTADOS (Enable Banking): los movimientos entran solos 4 veces al día ──
+let _bancosLista=null;
+async function cargarBancos(){const el=document.getElementById('bancos-res');
+  try{const r=await fetch('/api/banco-sync/estado',{headers:H});const d=await r.json();if(!r.ok)throw new Error(d.error);
+    if(!d.configurado){el.innerHTML=`<div style="font-size:13.5px;color:var(--text2);line-height:1.7">Falta un paso que haces tú una sola vez (unos 15 minutos). Es solo de <b>lectura</b>: nadie puede pagar nada desde aquí, y tus claves del banco solo se escriben en la web del banco.
+      <ol style="margin:8px 0 0 18px;padding:0">
+      <li>Crea una cuenta gratis en <a href="https://enablebanking.com/sign-in/" target="_blank" rel="noopener" style="color:var(--blue)">enablebanking.com</a>.</li>
+      <li>En <b>API applications</b> → <b>Add a new application</b>: entorno <b>Production</b>, nombre «Corp Projects», deja la clave «Generate in the browser» y en <b>Allowed redirect URLs</b> pon:<br><code style="user-select:all;background:var(--bg3,rgba(0,0,0,.06));padding:2px 6px;border-radius:6px">${esc(d.redirectUrl)}</code><br>Al pulsar <b>Register</b> se descarga un archivo <i>.pem</i>.</li>
+      <li>En esa aplicación pulsa <b>Activate by linking accounts</b> y enlaza la cuenta de Santander y la de Revolut (modo gratuito para cuentas propias).</li>
+      <li>En Railway (variables del dashboard) añade <b>EB_APP_ID</b> = el id de la aplicación y <b>EB_PRIVATE_KEY</b> = el contenido del archivo <i>.pem</i>. Avísame y lo compruebo.</li></ol></div>`;return;}
+    const fd=x=>x?new Date(x).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'}):'—';
+    const fh=x=>x?new Date(x).toLocaleString('es-ES',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'nunca';
+    let h=d.conexiones.length?d.conexiones.map(c=>`<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>${esc(c.banco)}</b>
+        ${c.estado==='caducada'?'<span class="mal">⚠️ permiso caducado: ya no entran movimientos</span>':c.diasRestantes!=null&&c.diasRestantes<=7?`<span style="color:var(--amber)">⏳ el permiso caduca en ${c.diasRestantes} día(s)</span>`:`<span style="color:var(--text3)">permiso hasta el ${fd(c.validoHasta)}</span>`}
+        <span style="flex:1"></span>${c.estado==='caducada'||c.diasRestantes<=15?`<button class="btn" style="padding:5px 10px;font-size:12px" onclick="conectarBanco('${esc(c.banco)}','${esc(c.psuType||'business')}',this)">🔄 Renovar</button>`:''}<button class="btn g" style="padding:5px 10px;font-size:12px" onclick="desconectarBanco('${esc(c.id)}','${esc(c.banco)}')">Desconectar</button></div>
+      ${c.cuentas.map(a=>`<div style="font-size:12.5px;color:var(--text2);margin-top:5px">${a.destino==='tarjeta'?'💳':'🏦'} ${esc(a.nombre)}${a.iban?' · '+esc(a.iban):''} — al día hasta el <b>${fd(a.hasta)}</b> · última lectura ${fh(a.ultimaSync)}${a.nuevos?' · '+a.nuevos+' nuevos':''}${a.error?` <span class="mal">· ${esc(a.error)}</span>`:''}</div>`).join('')}</div>`).join(''):'<div style="font-size:13.5px;color:var(--text2)">Aún no hay ningún banco conectado.</div>';
+    h+=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px"><select id="bk-sel" style="width:auto;max-width:260px;font-size:13px"><option value="">Cargando bancos…</option></select><select id="bk-psu" style="width:auto;font-size:13px"><option value="business">Empresa</option><option value="personal">Particular</option></select><button class="btn" onclick="conectarBanco(null,null,this)">＋ Conectar</button>${d.conexiones.length?'<button class="btn g" onclick="sincronizarBancos(this)">🔄 Leer ahora</button>':''}</div>
+      <div style="font-size:12px;color:var(--text3);margin-top:6px">Se leen solos a las 7:15, 11:15, 15:15 y 19:15 y se cuadran con las facturas. Te avisamos por WhatsApp una semana antes de que caduque el permiso. Lo ya subido en Excel no se duplica.</div>`;
+    el.innerHTML=h;cargarListaBancos();}
+  catch(e){el.innerHTML='<span class="mal">'+esc(e.message)+'</span>';}}
+async function cargarListaBancos(){const s=document.getElementById('bk-sel');if(!s)return;const psu=document.getElementById('bk-psu').value;
+  try{const r=await fetch('/api/banco-sync/bancos?psu='+psu,{headers:H});const l=await r.json();if(!r.ok)throw new Error(l.error);_bancosLista=l;
+    s.innerHTML='<option value="">— elige el banco —</option>'+l.map(b=>`<option>${esc(b.nombre)}</option>`).join('');
+    const pre=l.find(b=>/^santander$/i.test(b.nombre))||l.find(b=>/santander/i.test(b.nombre));if(pre)s.value=pre.nombre;}
+  catch(e){s.innerHTML=`<option value="">No se pudo cargar: ${esc(e.message)}</option>`;}
+  document.getElementById('bk-psu').onchange=cargarListaBancos;}
+async function conectarBanco(banco,psu,b){banco=banco||(document.getElementById('bk-sel')||{}).value;psu=psu||(document.getElementById('bk-psu')||{}).value||'business';if(!banco){alert('Elige el banco');return;}
+  b.disabled=true;try{const r=await fetch('/api/banco-sync/conectar',{method:'POST',headers:{...H,'Content-Type':'application/json'},body:JSON.stringify({banco,psuType:psu})});const d=await r.json();if(!r.ok)throw new Error(d.error);location.href=d.url;}
+  catch(e){alert('No se pudo: '+e.message);b.disabled=false;}}
+async function sincronizarBancos(b){const t=b.textContent;b.disabled=true;b.textContent='Leyendo…';
+  try{const r=await fetch('/api/banco-sync/sincronizar',{method:'POST',headers:H});const d=await r.json();if(!r.ok)throw new Error(d.error);
+    const err=(d.detalle||[]).filter(x=>x.error);alert(`${d.nuevos} movimiento(s) nuevos.`+(err.length?'\n\n'+err.map(x=>x.banco+': '+x.error).join('\n'):''));cargarBancos();cargarTarjetas();cargarPunteo();}
+  catch(e){alert('No se pudo: '+e.message);}finally{b.disabled=false;b.textContent=t;}}
+async function desconectarBanco(id,banco){if(!confirm(`¿Desconectar ${banco}? Dejarán de entrar sus movimientos (los que ya están se quedan).`))return;
+  try{const r=await fetch('/api/banco-sync/'+encodeURIComponent(id),{method:'DELETE',headers:H});const d=await r.json();if(!r.ok)throw new Error(d.error);cargarBancos();}catch(e){alert('No se pudo: '+e.message);}}
+(function(){const p=new URLSearchParams(location.search);if(p.get('banco')==='ok'){setTimeout(()=>alert(`✅ ${p.get('nombre')||'Banco'} conectado. ${p.get('nuevos')||0} movimiento(s) nuevos.`),300);history.replaceState(null,'',location.pathname+'#bancos');}
+  else if(p.get('banco_error')){setTimeout(()=>alert('No se pudo conectar el banco: '+p.get('banco_error')),300);history.replaceState(null,'',location.pathname+'#bancos');}})();
+cargar();cargarPunteo();cargarTarjetas();cargarBancos();
 document.getElementById('q').addEventListener('change',()=>{document.getElementById('punteo').innerHTML='';cargarPunteo();});
 </script>
 <script src="/dialogo.js"></script>
