@@ -1945,6 +1945,29 @@ app.get('/api/trimestre/paquete', requireAuthOficina, async (req, res) => {
     res.set('Content-Disposition', `attachment; filename="${nombre}"`).type('application/zip').send(buf);
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
+// ── DOCUMENTOS para el cliente (declaraciones de IVA, conformidad de obra…) ──
+const uploadDocFirmado = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
+app.get('/api/documentos/plantillas', requireAuthOficina, (req, res) => res.json(require('./documentos').plantillas()));
+app.get('/api/documentos/clientes', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./documentos').buscarClientes(req.query.q || '')); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/documentos', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./documentos').lista({ q: req.query.q || '' })); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/documentos', requireAuthOficina, express.json(), async (req, res) => {
+  try { const b = req.body || {}; res.json(await require('./documentos').crear({ plantilla: b.plantilla, datos: b.datos, clienteId: b.clienteId || null, por: (req.oficina || {}).name || '' })); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/documentos/:id/html', requireAuthOficina, async (req, res) => {
+  try { res.type('html').send(await require('./documentos').ver(req.params.id)); } catch (err) { res.status(404).json({ error: err.message }); }
+});
+app.post('/api/documentos/:id/firmado', requireAuthOficina, uploadDocFirmado.single('file'), async (req, res) => {
+  try { res.json(await require('./documentos').subirFirmado(req.params.id, req.file, (req.oficina || {}).name || '')); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/documentos/:id/firmado', requireAuthOficina, async (req, res) => {
+  try { const a = await require('./documentos').archivoFirmado(req.params.id); res.type(a.mime || 'application/pdf').set('Content-Disposition', `inline; filename="${encodeURIComponent(a.nombre || 'firmado')}"`).send(Buffer.from(a.data.buffer || a.data)); }
+  catch (err) { res.status(404).json({ error: err.message }); }
+});
 // ── BANCO AUTOMÁTICO (Enable Banking, PSD2): los movimientos entran solos, sin subir extractos ──
 // Conectar y desconectar, solo el dueño; el permiso lo da en la web de su banco (aquí no pasan contraseñas).
 const _soloDueno = req => users.normalizeRole((req.oficina || {}).role || 'owner') === 'owner';
@@ -3930,6 +3953,7 @@ app.get('/diag', (req, res) => res.sendFile(path.join(__dirname, '../public/diag
 app.get('/conversaciones', (req, res) => res.sendFile(path.join(__dirname, '../public/conversaciones.html')));
 app.get('/trimestre', (req, res) => res.sendFile(path.join(__dirname, '../public/trimestre.html')));
 app.get('/vehiculos', (req, res) => res.sendFile(path.join(__dirname, '../public/vehiculos.html')));
+app.get('/documentos', (req, res) => res.sendFile(path.join(__dirname, '../public/documentos.html')));
 app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
 app.get('/fichar', (req, res) => res.sendFile(path.join(__dirname, '../public/fichar.html')));
 app.get('/fichajes', (req, res) => res.sendFile(path.join(__dirname, '../public/fichajes.html')));

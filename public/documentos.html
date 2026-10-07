@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Documentos — Corp Projects</title><link rel="stylesheet" href="/tool-theme.css">
+<meta name="theme-color" content="#4d9cf8">
+<style>*{box-sizing:border-box;margin:0;padding:0}:root{--bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.15);--text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;--green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 18px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:10}
+.logo{width:32px;height:32px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;flex-shrink:0}
+.hbtn{margin-left:auto;background:none;border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:6px 12px;font-size:13px;text-decoration:none;white-space:nowrap}
+.wrap{max-width:960px;margin:0 auto;padding:16px}
+select,input,textarea,.btn{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;color:var(--text);padding:9px 12px;font:inherit;font-size:14px;text-decoration:none;max-width:100%}
+.btn{cursor:pointer;display:inline-block}.btn.pri{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}.btn.peq{padding:6px 10px;font-size:13px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:12px}
+h3{font-size:13px;margin:0 0 10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em}
+.pls{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px}
+.pl{background:var(--bg3);border:1px solid var(--border2);border-radius:12px;padding:10px 12px;cursor:pointer;text-align:left;color:var(--text);font:inherit}.pl.on{border-color:var(--blue);background:rgba(77,156,248,.12)}
+.pl b{display:block;font-size:14px;margin-bottom:4px}.pl span{font-size:12px;color:var(--text3);line-height:1.4}
+label.f{display:block;font-size:12px;color:var(--text3);margin:10px 0 4px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}@media(max-width:600px){.g2{grid-template-columns:1fr}}
+.g2 input,.g2 textarea,.g2 select{width:100%}
+.sug{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;margin-top:4px;max-height:220px;overflow:auto}
+.sug div{padding:8px 10px;cursor:pointer;font-size:13.5px;border-bottom:1px solid var(--border)}.sug div:hover{background:rgba(77,156,248,.12)}.sug small{color:var(--text3)}
+.it{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:9px 0;border-bottom:1px dashed var(--border);font-size:14px}
+.it .n{flex:1;min-width:200px}.it .s{font-size:12px;color:var(--text3)}
+.est{font-size:12px;border-radius:20px;padding:2px 9px;border:1px solid var(--border2)}.est.ok{color:var(--green);border-color:rgba(34,196,135,.4)}.est.pe{color:var(--amber);border-color:rgba(245,158,11,.5)}
+iframe{width:100%;height:70vh;border:1px solid var(--border2);border-radius:10px;background:#fff}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--border2);padding:10px 16px;border-radius:10px;display:none;z-index:50}
+</style></head><body>
+<div class="header"><div class="logo">CP</div><div><div style="font-weight:600">Documentos</div><div style="font-size:12px;color:var(--text3)">Declaraciones y actas para que firme el cliente</div></div><a class="hbtn" href="/">← Dashboard</a></div>
+<div id="toast"></div>
+<div class="wrap">
+  <div class="card"><h3>1 · ¿Qué documento?</h3><div class="pls" id="pls"></div><div id="cuando" style="font-size:13px;color:var(--text2);line-height:1.5;margin-top:10px"></div></div>
+  <div class="card" id="paso2" style="display:none"><h3>2 · Cliente y datos</h3>
+    <label class="f">Buscar cliente en StelOrder (rellena nombre, NIF y dirección)</label>
+    <input id="q" placeholder="Nombre o NIF…" oninput="buscarCli()" style="width:100%"><div class="sug" id="sug" style="display:none"></div>
+    <div class="g2" id="campos"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"><button class="btn pri" onclick="generar()">📄 Generar e imprimir</button><span style="font-size:12.5px;color:var(--text3);align-self:center">Se guarda en la lista de abajo; luego puedes subir la copia firmada.</span></div>
+  </div>
+  <div class="card" id="prev" style="display:none"><h3>Vista previa</h3><iframe id="ifr"></iframe><div style="margin-top:8px"><button class="btn pri" onclick="imprimir()">🖨️ Imprimir / guardar en PDF</button></div></div>
+  <div class="card"><h3>Documentos hechos</h3><input id="fq" placeholder="Filtrar por cliente…" oninput="clearTimeout(window._ft);window._ft=setTimeout(cargarLista,300)" style="width:100%;margin-bottom:6px"><div id="lista"></div></div>
+</div>
+<input type="file" id="ffirm" accept="application/pdf,image/*" style="display:none" onchange="subirFirmado(this)">
+<script>
+const tok=localStorage.getItem('cp_token');const H={'Authorization':'Bearer '+tok};
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function toast(t){const e=document.getElementById('toast');e.textContent=t;e.style.display='block';clearTimeout(window._tt);window._tt=setTimeout(()=>e.style.display='none',3000);}
+async function api(m,u,b){const o={method:m,headers:{...H}};if(b){o.headers['Content-Type']='application/json';o.body=JSON.stringify(b);}const r=await fetch(u,o);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Error');return d;}
+let PL=[],sel=null,cli=null,_firmarId=null;
+async function init(){if(!tok){document.querySelector('.wrap').innerHTML='<div class="card">Abre esta página desde el dashboard.</div>';return;}
+  PL=await api('GET','/api/documentos/plantillas');document.getElementById('pls').innerHTML=PL.map(p=>`<button class="pl" data-k="${p.k}" onclick="elegir('${p.k}')"><b>${esc(p.titulo)}</b><span>${esc(p.cuando.slice(0,110))}…</span></button>`).join('');
+  const k=new URLSearchParams(location.search).get('plantilla');if(k)elegir(k);cargarLista();}
+function elegir(k){sel=PL.find(p=>p.k===k);if(!sel)return;document.querySelectorAll('.pl').forEach(b=>b.classList.toggle('on',b.dataset.k===k));document.getElementById('cuando').textContent=sel.cuando;document.getElementById('paso2').style.display='';
+  const hoy=new Date().toISOString().slice(0,10);
+  document.getElementById('campos').innerHTML=sel.campos.map(c=>`<div${c.area?' style="grid-column:1/-1"':''}><label class="f">${esc(c.label)}${c.req?' *':''}</label>${c.area?`<textarea id="c-${c.k}" rows="3" placeholder="${esc(c.ph||'')}"></textarea>`:`<input id="c-${c.k}" type="${c.tipo||'text'}" placeholder="${esc(c.ph||'')}" value="${esc(c.tipo==='date'&&c.k==='fecha'?hoy:(c.def||''))}">`}</div>`).join('');
+  if(cli)rellenar(cli);}
+async function buscarCli(){clearTimeout(window._bt);window._bt=setTimeout(async()=>{const q=document.getElementById('q').value.trim();const el=document.getElementById('sug');if(q.length<2){el.style.display='none';return;}
+  try{const l=await api('GET','/api/documentos/clientes?q='+encodeURIComponent(q));window._cl=l;el.style.display=l.length?'':'none';el.innerHTML=l.map((c,i)=>`<div onclick="tomarCli(${i})">${esc(c.nombre)} <small>${esc(c.nif||'sin NIF en StelOrder')} · ${esc(c.direccion||'sin dirección')}</small></div>`).join('');}catch(e){toast(e.message);}},250);}
+function tomarCli(i){cli=window._cl[i];document.getElementById('sug').style.display='none';document.getElementById('q').value=cli.nombre;rellenar(cli);}
+function rellenar(c){const put=(k,v)=>{const e=document.getElementById('c-'+k);if(e&&v&&!e.value)e.value=v;};put('nombre',c.nombre);put('nif',c.nif);put('domicilio',c.direccion);put('direccionObra',c.direccion);
+  if(!c.nif)toast('Este cliente no tiene NIF en StelOrder: escríbelo a mano');}
+function datos(){const d={};sel.campos.forEach(c=>{const e=document.getElementById('c-'+c.k);d[c.k]=e?e.value:'';});return d;}
+async function generar(){try{const r=await api('POST','/api/documentos',{plantilla:sel.k,datos:datos(),clienteId:cli&&cli.id});mostrar(r.html);cargarLista();toast('Guardado');}catch(e){toast(e.message);}}
+function mostrar(h){document.getElementById('prev').style.display='';document.getElementById('ifr').srcdoc=h;document.getElementById('prev').scrollIntoView({behavior:'smooth'});}
+function imprimir(){const f=document.getElementById('ifr');f.contentWindow.focus();f.contentWindow.print();}
+async function verDoc(id){const r=await fetch('/api/documentos/'+id+'/html',{headers:H});if(!r.ok){toast('No se pudo abrir');return;}mostrar(await r.text());}
+async function verFirmado(id){const r=await fetch('/api/documentos/'+id+'/firmado',{headers:H});if(!r.ok){toast('No se pudo abrir');return;}window.open(URL.createObjectURL(await r.blob()),'_blank');}
+function pedirFirmado(id){_firmarId=id;document.getElementById('ffirm').click();}
+async function subirFirmado(inp){const f=inp.files[0];if(!f)return;const fd=new FormData();fd.append('file',f);try{const r=await fetch('/api/documentos/'+_firmarId+'/firmado',{method:'POST',headers:H,body:fd});const d=await r.json();if(!r.ok)throw new Error(d.error);toast('Copia firmada guardada');cargarLista();}catch(e){toast(e.message);}finally{inp.value='';}}
+async function cargarLista(){const el=document.getElementById('lista');try{const l=await api('GET','/api/documentos?q='+encodeURIComponent(document.getElementById('fq').value.trim()));
+  el.innerHTML=l.length?l.map(d=>`<div class="it"><div class="n"><b>${esc(d.cliente&&d.cliente.nombre)}</b><div class="s">${esc(d.titulo)}${d.referencia?' · '+esc(d.referencia):''} · ${esc(String(d.fecha||'').split('-').reverse().join('/'))}</div></div>
+    ${d.firmado?`<span class="est ok">✔ firmado</span><button class="btn peq" onclick="verFirmado('${d.id}')">Ver firmado</button>`:`<span class="est pe">pendiente de firma</span><button class="btn peq" onclick="pedirFirmado('${d.id}')">⬆ Subir firmado</button>`}
+    <button class="btn peq" onclick="verDoc('${d.id}')">Abrir</button></div>`).join(''):'<div style="color:var(--text3);font-size:13.5px">Aún no hay ninguno.</div>';}catch(e){el.textContent=e.message;}}
+init();
+</script></body></html>
