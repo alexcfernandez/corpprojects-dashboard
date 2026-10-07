@@ -226,7 +226,7 @@ const fd=f=>f?String(f).slice(0,10).split('-').reverse().join('/'):'';
 let _rec=null;
 async function cargarReclam(){const el=document.getElementById('reclam-res');el.innerHTML='<div class="empty"><span class="spinner"></span></div>';
   try{_rec=await api('GET','/api/reclamaciones');}catch(e){el.innerHTML='<div class="empty">❌ '+esc(e.message)+'</div>';return;}
-  const R=_rec.reclamaciones,abiertas=R.filter(r=>['pendiente','reclamada'].includes(r.estado)&&r.importe>0),pend=R.filter(r=>r.estado==='pendiente'&&r.importe>0),mirar=R.flatMap(r=>(r.mirar||[]).map(m=>({...m,factura:r.factura,compraId:r.compraId})));
+  const R=_rec.reclamaciones,abiertas=R.filter(r=>['pendiente','reclamada'].includes(r.estado)&&r.importe>0),pend=R.filter(r=>r.estado==='pendiente'&&r.importe>0),mirar=R.flatMap(r=>(r.mirar||[]).filter(m=>!(m.estado==='sin_num'&&!(Math.abs(Number(m.cobra)||0)>0.005))).map(m=>({...m,factura:r.factura,compraId:r.compraId})));   // sin las líneas resumen a 0 €
   document.getElementById('n-rec').textContent=abiertas.length?'('+eur(_rec.porCobrar)+')':'';
   const chip=e=>({pendiente:'<span class="tag" style="background:rgba(245,158,11,.18);color:var(--amber)">sin reclamar</span>',reclamada:'<span class="tag" style="background:rgba(77,156,248,.18);color:var(--blue)">reclamada</span>',resuelta:'<span class="tag" style="background:rgba(34,196,135,.18);color:var(--green)">resuelta</span>',descartada:'<span class="tag">descartada</span>'})[e]||'';
   const fila=r=>`<div class="card" style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><div><b>Factura ${esc(r.factura||'?')}</b> <span style="color:var(--text3)">${fd(r.fechaFactura)}</span> ${chip(r.estado)}

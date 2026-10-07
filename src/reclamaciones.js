@@ -25,7 +25,8 @@ async function desdeCinc(compraId, por) {
   const db = await getDB();
   const lineas = res.filas.filter(f => RECLAMABLE[f.estado] && f.deMas > 0.009)
     .map(f => ({ num: f.num, cliente: f.cliente || null, descripcion: f.descripcion, cobra: f.cobra, debe: f.debe, deMas: f.deMas, estado: f.estado, motivo: RECLAMABLE[f.estado], yaEn: f.yaEn || null }));
-  const mirar = res.filas.filter(f => A_MIRAR[f.estado]).map(f => ({ num: f.num, descripcion: f.descripcion, cobra: f.cobra, debe: f.debe, estado: f.estado, motivo: A_MIRAR[f.estado] }));
+  // Una línea sin nº de factura y a 0 € (resúmenes tipo «… y 333 líneas más») no hay que mirarla.
+  const mirar = res.filas.filter(f => A_MIRAR[f.estado] && !(f.estado === 'sin_num' && !(Math.abs(Number(f.cobra) || 0) > 0.005))).map(f => ({ num: f.num, descripcion: f.descripcion, cobra: f.cobra, debe: f.debe, estado: f.estado, motivo: A_MIRAR[f.estado] }));
   const importe = r2(lineas.reduce((a, l) => a + l.deMas, 0));
   const clave = { proveedor: 'CINC', compraId: String(res.compra.id) };
   const ya = await db.collection(COL).findOne(clave);
