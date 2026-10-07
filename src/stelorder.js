@@ -206,13 +206,17 @@ async function getAllOrdinaryInvoices() {
 }
 
 // Construir facturas desde recibos agrupando por original-element-id
-function buildInvoicesFromReceipts(receipts, clientMap) {
+// emisiones (opcional): mapa id → { date } de getAllOrdinaryInvoices, para la fecha de EMISIÓN de cada factura
+// (los recibos solo traen el vencimiento). Los recibos borrados no cuentan; «'null'» en payment-date no es cobrado.
+function buildInvoicesFromReceipts(receipts, clientMap, emisiones = null) {
   const invoiceMap = new Map();
   receipts.forEach(r => {
+    if (r.deleted === true || String(r.deleted) === 'true') return;
     const invId = String(r['original-element-id'] || '');
     if (!invId || invId === '0') return;
     const amount = parseFloat(r.amount || 0);
-    const isPaid = r.paid === true || r['payment-date'] != null;
+    const pd = r['payment-date'];
+    const isPaid = r.paid === true || (pd != null && pd !== 'null' && pd !== '');
     if (!invoiceMap.has(invId)) {
       const accId = String(r['account-id'] || '');
       const clientInfo = (accId && clientMap[accId]) ? clientMap[accId] : { name: 'Sin nombre', family: 'Sin familia' };
@@ -224,6 +228,7 @@ function buildInvoicesFromReceipts(receipts, clientMap) {
         accountId:   accId,
         clientEmail: clientInfo.email || '',
         date:        r['payment-term-date'] || r['utc-last-modification-date'],
+        fechaEmision: emisiones && emisiones[invId] && emisiones[invId].date ? emisiones[invId].date : null,
         totalAmount: 0,
         paidAmount:  0
       });
@@ -317,7 +322,8 @@ async function lineasPresupuesto(id) {
 
 async function getEstimatesSummary() {
   try {
-    const [estimates, { clientMap, families }] = await Promise.all([getWorkEstimates(), getClients()]);
+    const [todos, { clientMap, families }] = await Promise.all([getWorkEstimates(), getClients()]);
+    const estimates = (todos || []).filter(e => !(e.deleted === true || String(e.deleted) === 'true'));   // los borrados no cuentan
     const now = new Date();
     const avgMonthlyExpenses = 36000;
     const result = { total: estimates.length, accepted:[], pending:[], closed:[], rejected:[], all:[], families };
@@ -369,8 +375,8 @@ async function getSummary() {
   try {
     const now = new Date();
     const thisMonth = now.getMonth(), thisYear = now.getFullYear();
-    const [receipts, { clientMap }] = await Promise.all([getAllReceipts(), getClients()]);
-    const allInvoices = buildInvoicesFromReceipts(receipts, clientMap);
+    const [receipts, { clientMap }, emisiones] = await Promise.all([getAllReceipts(), getClients(), getAllOrdinaryInvoices().catch(() => null)]);
+    const allInvoices = buildInvoicesFromReceipts(receipts, clientMap, emisiones);
 
     let totalBilled = 0, totalBilledMonth = 0, totalBilledMonthCount = 0;
     const pending = [];
@@ -380,7 +386,9 @@ async function getSummary() {
       if (total <= 0) continue;
       totalBilled += total;
       const issueDate = inv.date ? new Date(inv.date) : now;
-      if (issueDate.getMonth() === thisMonth && issueDate.getFullYear() === thisYear) {
+      // «Facturado este mes» por fecha de EMISIÓN (antes, por vencimiento: una factura de hoy que vence el mes que viene no salía).
+      const emision = inv.fechaEmision ? new Date(inv.fechaEmision) : issueDate;
+      if (emision.getMonth() === thisMonth && emision.getFullYear() === thisYear) {
         totalBilledMonth += total; totalBilledMonthCount++;
       }
       const pendingAmount = parseFloat((total - inv.paidAmount).toFixed(2));
