@@ -27,7 +27,10 @@ async function _ivaIrpf(t, db) {
   const e = await T.estado(t.q);
   const rep = Number(e.resumen && e.resumen.emitidas && e.resumen.emitidas.iva) || 0, sop = Number(e.resumen && e.resumen.recibidas && e.resumen.recibidas.iva) || 0;
   const meses = [0, 1, 2].map(i => `${t.y}-${String((t.n - 1) * 3 + 1 + i).padStart(2, '0')}`);
-  const noms = await db.collection('docsPersonal').find({ tipo: 'nomina', mes: { $in: meses } }).project({ importes: 1, mes: 1 }).toArray();
+  const todas = await db.collection('docsPersonal').find({ tipo: 'nomina', mes: { $in: meses } }).project({ importes: 1, mes: 1, userId: 1, 'ia.trabajadorLeido': 1 }).toArray();
+  // La misma nómina recibida dos veces (en el PDF del mes y suelta) cuenta una vez.
+  const vistas = new Set();
+  const noms = todas.filter(n => { const k = [n.mes, n.userId || (n.ia && n.ia.trabajadorLeido) || '', n.importes && n.importes.liquido].join('|'); if (vistas.has(k)) return false; vistas.add(k); return true; });
   const irpfNom = noms.reduce((a, n) => a + (Number(n.importes && n.importes.irpf) || 0), 0);
   const sinIrpf = noms.filter(n => !(n.importes && n.importes.irpf != null)).length;
   let irpfProf = 0;
@@ -85,8 +88,7 @@ async function panel({ hoy = new Date(), fresco = false } = {}) {
   try {
     prov = await require('./vencimientos').prevision({ dias: 30, hoy });
     const imp = r2(prov.totales.proximos30 + prov.totales.vencido);
-    if (imp > 0) items.push({ clave: 'prov', concepto: 'Proveedores (próximos 30 días)', importe: imp, vence: prov.vencidas.length ? hoyIso : (prov.proximas[0] || {}).fecha || hoyIso,
-      detalle: `${prov.proximas.length} cargos previstos${prov.vencidas.length ? ` + ${prov.vencidas.length} vencidos (${prov.totales.vencido.toFixed(2)})` : ''}` });
+    void imp;   // los proveedores se pagan con el día a día: van aparte (informativo), no suman a la reserva
   } catch (e) { console.warn('[Reservas] proveedores:', e.message); }
   const res = await _saldoReserva(db);
   // Lo guardado cubre primero lo que vence antes.
@@ -95,8 +97,9 @@ async function panel({ hoy = new Date(), fresco = false } = {}) {
     const cubre = r2(Math.min(queda, i.importe || 0)); queda = r2(queda - cubre);
     const falta = r2((i.importe || 0) - cubre);
     const dias = Math.ceil((new Date(i.vence + 'T12:00:00Z') - new Date(hoyIso + 'T12:00:00Z')) / DIA);
-    const semanas = Math.max(1, Math.ceil(Math.max(dias, 1) / 7));
-    return { ...i, cubierto: cubre, falta, dias, porSemana: falta > 0 ? r2(falta / semanas) : 0 };
+    // Lo que vence en 7 días o menos es «pagar ya»; para lo demás, cuánto apartar cada semana hasta su fecha.
+    const semanas = Math.max(1, Math.floor(dias / 7));
+    return { ...i, cubierto: cubre, falta, dias, pagarYa: dias <= 7 && falta > 0, porSemana: falta > 0 && dias > 7 ? r2(falta / semanas) : 0 };
   });
   const total = r2(lista.reduce((a, i) => a + (i.importe || 0), 0));
   _cache = {
