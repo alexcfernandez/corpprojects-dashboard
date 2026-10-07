@@ -12,6 +12,10 @@ async function getDB() { return require('./db').getDB(); }
 const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
 const S = () => require('./stelorder');
 const espera = ms => new Promise(r => setTimeout(r, ms));
+// StelOrder corta la conexión si se pasa de ~60 llamadas/min (pasó al marcar 81 de golpe): una llamada cada 2,5 s,
+// como mucho MAX_POR_VUELTA facturas por lectura del banco, y si corta, se para y sigue en la siguiente.
+const PAUSA = Number(process.env.STEL_COBROS_PAUSA_MS) || 2500, MAX_POR_VUELTA = Number(process.env.STEL_COBROS_MAX) || 25;
+const sinRed = e => !e.response && /socket|ECONNRESET|TLS|timeout|ETIMEDOUT|ENOTFOUND|EAI_AGAIN/i.test(String(e.message || e.code || ''));
 // La API de StelOrder no deja poner una fecha de cobro anterior (guarda la del momento en que se marca): la fecha real
 // del banco va al principio del concepto.
 const isoT = f => `${String(f).slice(0, 10)}T00:00:00+0000`;
@@ -68,6 +72,7 @@ function formaPago(pg) {
 async function _recibos(tipo, docId) {
   const ep = tipo === 'emitida' ? '/ordinaryInvoiceReceipts' : '/purchaseInvoiceReceipts';
   const r = await S()._client.get(`${ep}?original-element-id=${encodeURIComponent(docId)}`, { timeout: 25000 });
+  await espera(PAUSA);
   const l = (Array.isArray(r.data) ? r.data : []).filter(x => !x.deleted && String(x['original-element-id']) === String(docId));
   return { ep, todos: l, sinPagar: l.filter(x => !x.paid).sort((a, b) => String(a['payment-term-date']).localeCompare(String(b['payment-term-date']))) };
 }
@@ -86,7 +91,7 @@ async function aplicarUno(p, { por = 'auto' } = {}) {
     for (const rc of sinPagar) {
       await S()._client.put(`${ep}/${rc.id}`, { paid: true, 'payment-date': isoT(ult.fecha), ...fp }, { timeout: 25000 });
       hechos.push({ recibo: rc.id, accion: 'pagado', importe: Math.abs(Number(rc.amount) || 0), fecha: ult.fecha, forma: fp['payment-option-id'] || null });
-      await espera(1100);
+      await espera(PAUSA);
     }
     await db.collection('stelWriteLog').insertOne({ tipo: 'cobro', doc: p.numero, docId: p.id, tercero: p.tercero, hechos, por, at: new Date() }).catch(() => {});
     return hechos;
@@ -116,7 +121,7 @@ async function aplicarUno(p, { por = 'auto' } = {}) {
         sinPagar[0] = dn || { ...rc, id: null, amount: signo * (amt - resto) };
         porMarcar = r2(porMarcar - resto); resto = 0;
       }
-      await espera(1100);
+      await espera(PAUSA);
     }
   }
   await db.collection('stelWriteLog').insertOne({ tipo: 'cobro', doc: p.numero, docId: p.id, tercero: p.tercero, hechos, por, at: new Date() }).catch(() => {});
@@ -132,14 +137,18 @@ async function sincronizar({ dryRun = true, desde = '2026-01-01', soloNumero = n
     if (soloNumero) l = l.filter(p => p.numero === soloNumero);
     if (dryRun) return { dryRun: true, n: l.length, plan: l };
     const res = [];
-    for (const p of l) {
+    let cortado = false;
+    for (const p of l.slice(0, MAX_POR_VUELTA)) {
       try { res.push({ numero: p.numero, tercero: p.tercero, marcado: p.marcar, completo: p.completo, hechos: await aplicarUno(p, { por }) }); }
-      catch (e) { res.push({ numero: p.numero, tercero: p.tercero, error: (e.response && JSON.stringify(e.response.data).slice(0, 200)) || e.message }); }
+      catch (e) {
+        res.push({ numero: p.numero, tercero: p.tercero, error: (e.response && JSON.stringify(e.response.data).slice(0, 200)) || e.message });
+        if (sinRed(e)) { cortado = true; break; }      // StelOrder ha cortado: no insistir
+      }
     }
     if (res.some(r => r.hechos && r.hechos.length)) { try { S().invalidate('receipts'); S().invalidate('ordinaryInvoices'); S().invalidate('purchaseInvoices'); } catch (e) {} try { require('./trimestre').olvidarMapaPagos(); } catch (e) {} }
     const ok = res.filter(r => r.hechos && r.hechos.length).length;
     if (ok || res.some(r => r.error)) console.log(`[StelCobros] ${ok} factura(s) marcadas en StelOrder${res.some(r => r.error) ? ', ' + res.filter(r => r.error).length + ' con error' : ''}`);
-    return { dryRun: false, n: res.length, marcadas: ok, res };
+    return { dryRun: false, n: res.length, marcadas: ok, quedan: Math.max(0, l.length - res.filter(r => r.hechos).length), cortado, res };
   } finally { _enCurso = false; }
 }
 
