@@ -60,7 +60,14 @@ async function resumen(nuevos, { hoy = new Date() } = {}) {
       const d = await require('./cuentasProveedor').deuda(ter).catch(() => null);
       if (d) x.l.txt += d.pendiente > 0.01 ? ` · aún le debemos ${eur(d.pendiente)} (${d.nPendientes} fra.)` : ' · al día';
     }
-    const uno = ls.filter(x => Math.abs(x.m.importe) >= GRANDE || x.l.ok === 'parcial');
+    // Transferencias a trabajadores: cómo queda su nómina (nominasPagos), aunque sean pequeñas.
+    for (const x of ls) {
+      const pm = mapa.porMov.get(x.m.id);
+      if (pm && pm.estado === 'punteado') continue;
+      const nl = await require('./nominasPagos').lineaPago(x.m.concepto, x.m.fecha).catch(() => null);
+      if (nl) { x.l.txt += ` · ${nl}`; x.nomina = true; }
+    }
+    const uno = ls.filter(x => Math.abs(x.m.importe) >= GRANDE || x.l.ok === 'parcial' || x.nomina);
     const resto = ls.filter(x => !uno.includes(x));
     out.push(`${out.length ? '\n' : ''}*Pagos* (${pagos.length} · ${eur(pagos.reduce((a, m) => a + m.importe, 0))})`);
     uno.forEach(x => out.push(x.l.txt));

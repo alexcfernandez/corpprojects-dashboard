@@ -1954,6 +1954,18 @@ app.get('/api/trimestre/paquete', requireAuthOficina, async (req, res) => {
     res.set('Content-Disposition', `attachment; filename="${nombre}"`).type('application/zip').send(buf);
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
+// ── NÓMINAS: líquido de cada nómina frente a lo transferido en el banco ──
+app.get('/api/personal/nominas-pagos', requireAuthOficina, async (req, res) => {
+  req.setTimeout && req.setTimeout(120000);
+  try { res.json(await require('./nominasPagos').estado(req.query.mes || null)); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+let _leyendoNominas = false;
+app.post('/api/personal/nominas/leer-importes', requireAuthOficina, async (req, res) => {
+  if (_leyendoNominas) return res.json({ enCurso: true });
+  _leyendoNominas = true;
+  require('./personalDocs').leerImportesPendientes({ max: 60 }).then(r => console.log(`[Nóminas] importes leídos: ${r.filter(x => !x.error).length}, sin leer: ${r.filter(x => x.error).length}`)).catch(e => console.warn('[Nóminas]', e.message)).finally(() => { _leyendoNominas = false; });
+  res.json({ ok: true, enCurso: true });
+});
 // ── DOCUMENTOS para el cliente (declaraciones de IVA, conformidad de obra…) ──
 const uploadDocFirmado = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 app.get('/api/documentos/plantillas', requireAuthOficina, (req, res) => res.json(require('./documentos').plantillas()));

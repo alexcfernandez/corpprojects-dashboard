@@ -28,6 +28,7 @@ td{padding:7px 6px;border-bottom:1px solid var(--border);vertical-align:middle}t
 <div class="wrap">
   <div class="tabs">
     <button class="tab on" data-t="plantilla" onclick="verTab('plantilla')">👷 Plantilla</button>
+    <button class="tab" data-t="nominas" onclick="verTab('nominas')">💶 Nóminas y pagos</button>
     <button class="tab" data-t="empresa" onclick="verTab('empresa')">🏢 Empresa</button>
     <button class="tab" data-t="subir" onclick="verTab('subir')">⬆︎ Subir documentos <span id="n-prop"></span></button>
     <button class="tab" data-t="paquete" onclick="verTab('paquete')">📦 Paquete para una obra</button>
@@ -50,6 +51,7 @@ function verTab(t){tab=t;carpetaDe=null;document.querySelectorAll('.tab').forEac
 const sem=r=>r.estado==='falta'?'<span class="sem falta">—</span>':`<span class="sem ${r.estado}" title="${r.caduca?'Válido hasta '+fd(r.caduca):''}">${r.estado==='ok'?'✓':r.estado==='pronto'?'⚠':'✗'}${r.caduca?' '+fd(r.caduca).slice(0,5):''}</span>`;
 function pintar(){const el=document.getElementById('out');if(!R)return;
   if(carpetaDe)return pintarCarpeta();
+  if(tab==='nominas')return pintarNominas();
   if(tab==='plantilla'){const req=Object.entries(R.tipos).filter(([,t])=>t.obra);
     el.innerHTML=`<div class="card"><h3>Lo que piden las obras · por trabajador</h3><table><tr><th>Trabajador</th>${req.map(([,t])=>`<th>${esc(t.nombre.split(' (')[0])}</th>`).join('')}<th>Nóminas</th></tr>
       ${R.trabajadores.map(w=>`<tr class="clic" onclick="abrirCarpeta('${w.id}')"><td><b>${esc(w.name)}</b></td>${req.map(([k])=>`<td>${sem(w.requisitos[k])}</td>`).join('')}<td style="color:var(--text3)">${w.nominas||''}</td></tr>`).join('')}</table>
@@ -117,6 +119,24 @@ async function descargarPaquete(b){const ids=[...document.querySelectorAll('.pk-
     if(falt)alerta(`ZIP descargado. Ojo: ${falt} documento${falt>1?'s':''} falta${falt>1?'n':''} o está${falt>1?'n':''} caducado${falt>1?'s':''} (mira INDICE.txt).`);}
   catch(e){alerta(e.message);}finally{b.disabled=false;b.textContent='📦 Descargar ZIP';}}
 async function guardarCfg(){try{R.config=await api('PUT','/api/personal/config',{visibleTrabajadores:document.getElementById('cf-vis').checked,nominasVisibles:document.getElementById('cf-nom').checked&&document.getElementById('cf-vis').checked});pintar();}catch(e){alerta(e.message);}}
+// ── NÓMINAS Y PAGOS: el líquido de cada nómina frente a lo transferido en el banco ──
+const eurN=v=>v==null?'—':Number(v).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2,useGrouping:'always'})+' €';
+let _mesNom=null;
+async function pintarNominas(){const el=document.getElementById('out');if(!_mesNom){const d=new Date();d.setDate(d.getDate()-12);_mesNom=d.toISOString().slice(0,7);}
+  el.innerHTML='<div class="vacio">Cuadrando con el banco…</div>';
+  let N;try{N=await api('GET','/api/personal/nominas-pagos?mes='+_mesNom);}catch(e){el.innerHTML='<div class="vacio" style="color:var(--red)">'+esc(e.message)+'</div>';return;}
+  if(tab!=='nominas')return;
+  const E={pagada:['✅','var(--green)','pagada'],parcial:['🟡','var(--amber)','parcial'],pendiente:['⏳','var(--amber)','sin pagar'],sin_importe:['❔','var(--text3)','sin importe leído'],sin_nomina:['📄','var(--text3)','falta subir la nómina']};
+  const t=N.totales;
+  el.innerHTML=`<div class="card"><h3>Nóminas de ${esc(_mesNom)}</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px"><input type="month" value="${_mesNom}" onchange="_mesNom=this.value;pintarNominas()">
+      <span style="font-size:13.5px">Líquido <b>${eurN(t.liquido)}</b> · pagado <b>${eurN(t.pagado)}</b> · falta <b style="color:${t.falta>0.01?'var(--amber)':'var(--green)'}">${eurN(t.falta)}</b> · ${t.pagadas} de ${t.nominas} pagadas</span>
+      ${t.sinImporte?`<button class="btn" onclick="leerImportes(this)">🤖 Leer el importe de ${t.sinImporte} nómina(s)</button>`:''}</div>
+    <div style="font-size:12.5px;color:var(--text3);margin-bottom:8px">Cada transferencia a un trabajador se reparte a su nómina más antigua sin pagar. Las nóminas se suben en «Subir documentos» (la IA lee el líquido a percibir).</div>
+    <table><tr><th>Trabajador</th><th>Líquido</th><th>Pagado</th><th>Falta</th><th>Estado</th><th>Pagos</th></tr>
+    ${N.trabajadores.map(w=>{const [ic,co,tx]=E[w.estado]||['•','var(--text3)',w.estado];const n=w.nomina;return `<tr><td><b>${esc(w.nombre)}</b>${w.anteriores.length?`<div style="font-size:11.5px;color:var(--amber)">${w.anteriores.map(a=>'de '+a.mes+' faltan '+eurN(a.falta)).join(' · ')}</div>`:''}</td><td>${n?eurN(n.liquido):'—'}</td><td>${n?eurN(n.pagado):'—'}</td><td style="color:${n&&n.falta>0.01?'var(--amber)':'inherit'}">${n&&n.falta!=null?eurN(n.falta):'—'}</td><td style="color:${co}">${ic} ${tx}</td>
+      <td style="font-size:12px;color:var(--text2)">${n?n.pagos.map(p=>fd(p.fecha).slice(0,5)+' '+eurN(p.importe)).join('<br>'):''}${w.sinNomina.length?`<div style="color:var(--text3)">sin nómina: ${w.sinNomina.map(p=>fd(p.fecha).slice(0,5)+' '+eurN(p.importe)).join(', ')}</div>`:''}</td></tr>`;}).join('')||'<tr><td colspan="6" style="color:var(--text3)">No hay nóminas ni pagos de ese mes.</td></tr>'}</table></div>`;}
+async function leerImportes(b){b.disabled=true;b.textContent='Leyendo… (unos segundos por nómina)';try{await api('POST','/api/personal/nominas/leer-importes');setTimeout(pintarNominas,25000);}catch(e){alert(e.message);b.disabled=false;}}
+
 cargar();
 </script>
 </body></html>

@@ -62,7 +62,7 @@ function _caduca(ambito, tipo, fecha, caduca) {
   const t = tipoDe(ambito, tipo);
   return t && t.caducaMeses && fechaOk(fecha) ? addMeses(fecha, t.caducaMeses) : null;
 }
-const _publico = d => ({ id: String(d._id), ambito: d.ambito, userId: d.userId || null, tipo: d.tipo, tipoNombre: (tipoDe(d.ambito, d.tipo) || {}).nombre || d.tipo, nombre: d.nombre, fecha: d.fecha, caduca: d.caduca, dias: diasHasta(d.caduca), mes: d.mes, mime: d.mime, size: d.size, estado: d.estado, notas: d.notas || '', ia: d.ia || null, subido: d.subido, por: d.por, visibleTrabajador: d.visibleTrabajador !== false });
+const _publico = d => ({ id: String(d._id), ambito: d.ambito, userId: d.userId || null, tipo: d.tipo, tipoNombre: (tipoDe(d.ambito, d.tipo) || {}).nombre || d.tipo, nombre: d.nombre, fecha: d.fecha, caduca: d.caduca, dias: diasHasta(d.caduca), mes: d.mes, mime: d.mime, size: d.size, estado: d.estado, notas: d.notas || '', ia: d.ia || null, subido: d.subido, por: d.por, visibleTrabajador: d.visibleTrabajador !== false, importes: d.importes || null });
 
 async function subir({ ambito = 'trabajador', userId, tipo, archivo, fecha, caduca, mes, notas, visibleTrabajador = true }, por) {
   if (!archivo || !archivo.buffer) throw new Error('Falta el archivo');
@@ -91,6 +91,10 @@ const HERRAMIENTA = {
     fecha: { type: 'string', description: 'Fecha del documento (AAAA-MM-DD): del reconocimiento, del curso, de la entrega…' },
     caduca: { type: 'string', description: 'Fecha de caducidad o validez hasta (AAAA-MM-DD) si aparece' },
     mes: { type: 'string', description: 'Para nóminas y RNT/RLC: el mes al que corresponde (AAAA-MM)' },
+    liquido: { type: 'number', description: 'Solo nóminas: LÍQUIDO A PERCIBIR (neto que cobra el trabajador), en euros' },
+    bruto: { type: 'number', description: 'Solo nóminas: total devengado (bruto), en euros' },
+    irpf: { type: 'number', description: 'Solo nóminas: retención de IRPF del trabajador, en euros' },
+    ssTrabajador: { type: 'number', description: 'Solo nóminas: aportación del trabajador a la Seguridad Social, en euros' },
     resumen: { type: 'string', description: 'Una frase: qué es (p. ej. «Apto sin restricciones, Quirón Prevención»). Sin datos médicos.' },
   }, required: ['ambito', 'tipo'] } } }, required: ['documentos'] },
 };
@@ -146,12 +150,45 @@ async function analizar(archivos, por) {
       const doc = { ambito, userId: w ? w.id : null, tipo, nombre: txt(a.originalname, 100) + (lista.length > 1 && d.paginas && d.paginas.length ? ` (pág. ${d.paginas.join(',')})` : ''),
         fecha: fechaOk(d.fecha), mes: mesOk(d.mes) || ((tipoDe(ambito, tipo) || {}).mensual && fechaOk(d.fecha) ? String(d.fecha).slice(0, 7) : null),
         notas: txt(d.resumen, 300), mime: a.mimetype, size: buf.length, data: buf, estado: 'propuesta', visibleTrabajador: true,
+        importes: tipo === 'nomina' && Number(d.liquido) > 0 ? _importes(d) : null,
         ia: { ok: ia.ok, error: ia.error || null, trabajadorLeido: txt(d.trabajador, 80) || null, dni: txt(d.dni, 20) || null }, subido: new Date(), por: por || '' };
       doc.caduca = _caduca(ambito, tipo, doc.fecha, d.caduca);
       const r = await db.collection('docsPersonal').insertOne(doc);
       out.push(_publico({ ...doc, _id: r.insertedId }));
     }
   }
+  return out;
+}
+const _n2 = v => Number(v) > 0 ? Math.round(Number(v) * 100) / 100 : null;
+const _importes = x => ({ liquido: _n2(x.liquido), bruto: _n2(x.bruto), irpf: Number(x.irpf) >= 0 && x.irpf != null ? Math.round(Number(x.irpf) * 100) / 100 : null, ssTrabajador: _n2(x.ssTrabajador) });
+// Nóminas ya subidas sin importe: la IA lee el líquido a percibir (para cruzarlo con lo pagado en el banco).
+const HERR_NOMINA = { name: 'importes_nomina', description: 'Importes de la nómina', input_schema: { type: 'object', properties: {
+  liquido: { type: 'number', description: 'LÍQUIDO A PERCIBIR (neto), en euros' }, bruto: { type: 'number', description: 'Total devengado (bruto), en euros' },
+  irpf: { type: 'number', description: 'Retención de IRPF, en euros' }, ssTrabajador: { type: 'number', description: 'Aportación del trabajador a la Seguridad Social, en euros' },
+  mes: { type: 'string', description: 'Mes de la nómina (AAAA-MM)' } }, required: ['liquido'] } };
+async function leerImportesNomina(id) {
+  const key = process.env.ANTHROPIC_API_KEY; if (!key) throw new Error('ANTHROPIC_API_KEY no configurada');
+  const db = await getDB();
+  const d = await db.collection('docsPersonal').findOne({ _id: _oid(id) });
+  if (!d || d.tipo !== 'nomina') throw new Error('No es una nómina');
+  const buf = Buffer.from(d.data.buffer || d.data), b64 = buf.toString('base64');
+  const contenido = /pdf/i.test(d.mime) ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } } : { type: 'image', source: { type: 'base64', media_type: d.mime, data: b64 } };
+  const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({ model: require('./config').ia.vision, max_tokens: 500, tools: [HERR_NOMINA], tool_choice: { type: 'tool', name: HERR_NOMINA.name }, messages: [{ role: 'user', content: [contenido, { type: 'text', text: 'Saca el líquido a percibir, el total devengado, la retención de IRPF, la aportación del trabajador a la Seguridad Social y el mes de esta nómina.' }] }] }) });
+  const j = await r.json(); if (!r.ok) throw new Error(`API ${r.status}`);
+  const tu = (j.content || []).find(b => b.type === 'tool_use'); const x = (tu && tu.input) || {};
+  if (!(Number(x.liquido) > 0)) throw new Error('No se ve el líquido a percibir');
+  const importes = _importes(x);
+  const set = { importes }; if (!d.mes && mesOk(x.mes)) set.mes = mesOk(x.mes);
+  await db.collection('docsPersonal').updateOne({ _id: d._id }, { $set: set });
+  return { id: String(d._id), ...importes, mes: set.mes || d.mes };
+}
+// Todas las nóminas sin importe (de una en una; la IA tarda unos segundos por nómina).
+async function leerImportesPendientes({ max = 40 } = {}) {
+  const db = await getDB();
+  const l = await db.collection('docsPersonal').find({ tipo: 'nomina', 'importes.liquido': { $exists: false } }).project({ _id: 1 }).limit(max).toArray();
+  const out = [];
+  for (const x of l) { try { out.push(await leerImportesNomina(String(x._id))); } catch (e) { out.push({ id: String(x._id), error: e.message }); } }
   return out;
 }
 async function editar(id, cambios = {}, por) {
@@ -280,4 +317,4 @@ async function miArchivo(userId, id) {
   return d;
 }
 
-module.exports = { TIPOS, TIPOS_EMPRESA, getConfig, setConfig, subir, analizar, editar, borrar, archivo, resumen, carpeta, paqueteObra, revisarCaducidades, misDocs, miArchivo, _matchTrabajador };
+module.exports = { leerImportesNomina, leerImportesPendientes, TIPOS, TIPOS_EMPRESA, getConfig, setConfig, subir, analizar, editar, borrar, archivo, resumen, carpeta, paqueteObra, revisarCaducidades, misDocs, miArchivo, _matchTrabajador };
