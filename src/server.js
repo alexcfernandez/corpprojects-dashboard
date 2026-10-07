@@ -1965,6 +1965,13 @@ app.get('/api/banco-sync/callback', async (req, res) => {
     res.redirect(`/trimestre?banco=ok&nombre=${encodeURIComponent(r.banco)}&nuevos=${(r.sync && r.sync.nuevos) || 0}#bancos`); }
   catch (err) { console.warn('[BancoSync] callback:', err.message); res.redirect(`/trimestre?banco_error=${encodeURIComponent(err.message)}#bancos`); }
 });
+// Lo que el banco ya ha casado → cobrado/pagado también en StelOrder (dryRun: solo enseña qué cambiaría).
+app.post('/api/stel-cobros', requireAuthOficina, express.json(), async (req, res) => {
+  req.setTimeout && req.setTimeout(300000);
+  try { const b = req.body || {}; if (b.dryRun === false && !_soloDueno(req)) return res.status(403).json({ error: 'Solo el dueño' });
+    res.json(await require('./stelCobros').sincronizar({ dryRun: b.dryRun !== false, desde: b.desde || '2026-01-01', soloNumero: b.soloNumero || null, por: (req.oficina || {}).name || 'oficina' })); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.post('/api/banco-sync/sincronizar', requireAuthOficina, async (req, res) => {
   req.setTimeout && req.setTimeout(120000);
   try { res.json(await require('./bancoSync').sincronizar()); } catch (err) { res.status(400).json({ error: err.message }); }

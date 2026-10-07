@@ -1974,7 +1974,7 @@ async function modificarImportePresupuesto({ id = null, modo, valor = null, part
 }
 
 
-module.exports = {
+module.exports = { _client: client, fetchAllPages, invalidate,
   listaPresupuestos, lineasPresupuesto,
   getInvoices, getAllReceipts, getAllOrdinaryInvoices, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary, diagProveedores,
