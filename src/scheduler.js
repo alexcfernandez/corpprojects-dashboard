@@ -380,6 +380,8 @@ function startScheduler() {
   cron.schedule('30 3 * * *', () => { if (process.env.BACKUP !== 'off') require('./backup').hacerCopia().catch(e => console.warn('[Backup]', e.message)); }, { timezone: 'Europe/Madrid' });
   // Pagos a proveedores de los próximos días (los lunes, las 2 próximas semanas) por WhatsApp a Álex y oficina.
   cron.schedule('45 8 * * 1-5', () => { if (process.env.AVISO_VENCIMIENTOS !== 'off') require('./vencimientos').avisoManana().catch(e => console.warn('[Vencimientos]', e.message)); }, { timezone: 'Europe/Madrid' });
+  // Cobros (8/10/2026): quién dijo que paga hoy, promesas incumplidas y recordatorios por revisar en /cobrar.
+  cron.schedule('10 9 * * 1-5', () => { if (process.env.AVISO_COBROS !== 'off') require('./recordatoriosCobro').avisoManana().catch(e => console.warn('[Cobros]', e.message)); }, { timezone: 'Europe/Madrid' });
   cron.schedule('0 9 * * *', () => require('./bancoSync').revisarCaducidad().catch(e => console.warn('[BancoSync] caducidad:', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('5 9 * * *', () => require('./vehiculos').revisarVencimientos().then(r => r.avisos.length && console.log('[Vehículos] avisos:', r.avisos.length)).catch(e => console.warn('[Vehículos] avisos:', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('40 8 * * 1-5', () => require('./trimestre').revisionDiaria()

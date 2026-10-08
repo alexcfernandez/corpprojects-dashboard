@@ -1522,6 +1522,19 @@ async function renderInicio(){
   const planHoy=(d.planning&&d.planning.hoy&&d.planning.hoy.length)
     ? `<div style="display:flex;flex-direction:column;gap:6px">${d.planning.hoy.map(p=>`<div style="display:flex;align-items:center;gap:8px;font-size:13px;padding:7px 10px;background:${p.color}14;border-left:3px solid ${p.color};border-radius:8px"><span>${p.tipo==='visita'?'👤':'🔧'}</span><strong>${(p.workerName||'').split(' ')[0]||'—'}</strong>${p.client?`<span style="color:var(--text2)">· ${p.client}</span>`:''}${p.horaInicio?`<span style="margin-left:auto;color:var(--text3);font-size:12px">${p.horaInicio}</span>`:''}</div>`).join('')}</div>`
     : `<div style="color:var(--text3);font-size:13px;padding:6px 0">Nada planificado para hoy.</div>`;
+  // ¿Cómo vamos de dinero? (8/10/2026): lo que nos deben, lo que hay en el banco y lo que hay que pagar en 30 días.
+  const cj=d.caja;
+  const cajaHtml=(!cj)?'':cj.calculando?`<div class="card" style="margin:0 0 14px;font-size:13px;color:var(--text3)">💶 Calculando cómo vamos de dinero… sale en la siguiente carga.</div>`:`
+    <div class="card" style="margin:0 0 14px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><div class="card-title" style="margin:0">💶 ¿Cómo vamos de dinero?</div><a href="/cobrar" style="margin-left:auto;font-size:12.5px;color:var(--blue);text-decoration:none">Recordatorios y promesas de pago →</a></div>
+      <div class="ini-caja">
+        <div onclick="irA('dinero','pendientes')" style="cursor:pointer"><div class="k-l">Nos deben</div><div class="k-v" style="color:var(--amber)">${eur(cj.nosDeben)}</div><div class="k-s">${cj.nFacturas} facturas · <b style="color:var(--red)">${eur(cj.vencido)} vencido</b>${cj.masAntigua?` · la más antigua ${cj.masAntigua.dias} d (${cj.masAntigua.cliente})`:''}</div></div>
+        <div onclick="irA('dinero','banco')" style="cursor:pointer"><div class="k-l">En el banco hoy</div><div class="k-v" style="color:var(--blue)">${eur(cj.banco)}</div><div class="k-s">sin la cuenta de reserva</div></div>
+        <div onclick="location.href='/compras#cuentas'" style="cursor:pointer"><div class="k-l">A pagar en 30 días</div><div class="k-v" style="color:var(--red)">${eur(cj.aPagar)}</div><div class="k-s">proveedores ${cj.desglosePagar.proveedores!=null?eur(cj.desglosePagar.proveedores):'—'}${cj.desglosePagar.impuestos.length?' · '+cj.desglosePagar.impuestos.map(i=>`${i.concepto} ${eur(i.importe)}`).join(' · '):''}</div></div>
+      </div>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:13.5px;line-height:1.55">Con lo que hay en el banco y pagando lo de los próximos 30 días quedarían <b style="color:${cj.hoy>=0?'var(--green)':'var(--red)'}">${eur(cj.hoy)}</b>. <b>Si cobrarais lo vencido</b>, serían <b style="color:${cj.siCobraraVencido>=0?'var(--green)':'var(--red)'}">${eur(cj.siCobraraVencido)}</b>.</div>
+      ${cj.avisos&&cj.avisos.length?`<div style="font-size:11.5px;color:var(--amber);margin-top:6px">Incompleto: ${cj.avisos.map(a=>String(a).split(':')[0]).join(', ')} no se ha podido leer.</div>`:''}
+    </div>`;
   c.innerHTML=`
     <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin:6px 0 14px">
       <div><div style="font-family:var(--font-display);font-size:28px;font-weight:800;letter-spacing:-.01em">${saludo} 👋</div><div style="color:var(--text3);font-size:13.5px">${fechaTxt}</div></div>
@@ -1535,6 +1548,7 @@ async function renderInicio(){
       ${kpi2('En el banco',bancoPpal.length?eur(saldoPpal):'—',bancoPpal.length?bancoPpal.map(b=>`${b.banco}${b.fin?' …'+b.fin:''}`).join(' · '):'el saldo llega con la lectura de la mañana','var(--blue)',"irA('dinero','banco')")}
       ${kpi2('En la reserva',reserva.length?eur(reserva.reduce((a,b)=>a+(Number(b.saldo)||0),0)):'—',reserva.length?'cuenta …'+(reserva[0].fin||'')+' · impuestos y nóminas':'cuenta de reserva sin conectar','var(--amber)',"document.getElementById('inicio-reservas')&&document.getElementById('inicio-reservas').scrollIntoView({behavior:'smooth'})")}
     </div>
+    ${cajaHtml}
     <div class="ini-grid" style="display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:14px;align-items:start">
       <div>
         <div class="card"><div class="card-title">📈 Facturación de los últimos 6 meses</div>${grafica}</div>

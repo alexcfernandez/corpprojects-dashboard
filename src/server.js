@@ -879,6 +879,8 @@ app.get('/api/inicio', requireAuth, async (req, res) => {
   } catch (e) { out.banco = []; } })());
   t.push((async () => { try { out.compras = { porRevisar: await require('./compras').contarPendientes() }; } catch (e) { out.compras = { porRevisar: null }; } })());
   try { out.stel = require('./stelorder').estadoPausa(); } catch (e) {}
+  // 10) ¿Cómo vamos de dinero?: como mucho 5 s; si tarda más (primera vez), sigue por detrás y sale en la siguiente carga.
+  t.push((async () => { try { if (users.canSeeMoney(req.user?.role || 'owner')) { const p = require('./caja').resumen(); p.catch(() => {}); out.caja = await Promise.race([p, new Promise(r => setTimeout(() => r({ calculando: true }), 5000))]); } } catch (e) { out.caja = null; } })());
   await Promise.all(t);
   res.json(out);
 });
@@ -2713,6 +2715,30 @@ app.get('/api/obras/:id/presupuestos', requireAuth, async (req, res) => {
 app.get('/api/obras/presupuestos-stel/:id/lineas', requireAuth, async (req, res) => {
   try { res.json(await require('./stelorder').lineasPresupuesto(req.params.id)); } catch (err) { res.status(400).json({ error: err.message }); }
 });
+// ── Cobros: recordatorios a clientes (siempre con el sí de oficina) y lo que ha dicho cada cliente ──
+const _dinero = req => users.canSeeMoney(req.user?.role || 'owner');
+const R_COB = () => require('./recordatoriosCobro');
+app.get('/api/cobros/recordatorios', requireAuth, async (req, res) => {
+  try { if (!_dinero(req)) return res.status(403).json({ error: 'Solo Dueño y Oficina' }); res.json(await R_COB().propuestas()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/cobros/recordatorios/:id/:accion', requireAuth, async (req, res) => {
+  try {
+    if (!_dinero(req)) return res.status(403).json({ error: 'Solo Dueño y Oficina' });
+    const b = req.body || {}, por = req.user?.name || '', id = req.params.id;
+    const A = { email: () => R_COB().enviarEmail(id, { texto: b.texto, asunto: b.asunto, por }),
+      marcar: () => R_COB().marcar(id, { paso: b.paso, canal: b.canal || 'whatsapp', por, promesa: b.promesa || null }),
+      saltar: () => R_COB().saltar(id, por),
+      nota: () => R_COB().apuntar(id, { texto: b.texto, fechaPago: b.fechaPago, por, numero: b.numero, cliente: b.cliente }),
+      'quitar-promesa': () => R_COB().quitarPromesa(id) }[req.params.accion];
+    if (!A) return res.status(404).json({ error: 'Acción no válida' });
+    res.json(await A());
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/cobros/clientes/pausa', requireAuth, async (req, res) => {
+  try { if (!_dinero(req)) return res.status(403).json({ error: 'Solo Dueño y Oficina' }); res.json(await R_COB().pausarCliente((req.body || {}).cliente, (req.body || {}).pausa !== false, req.user?.name)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 // «¿Son de esta obra?»: compras sin obra que probablemente son de esta (por lo que ponen o por las fechas).
 app.get('/api/obras/:id/sugerencias-compras', requireAuth, async (req, res) => {
   try {
@@ -4033,6 +4059,7 @@ app.get('/trimestre', (req, res) => res.sendFile(path.join(__dirname, '../public
 app.get('/vehiculos', (req, res) => res.sendFile(path.join(__dirname, '../public/vehiculos.html')));
 app.get('/documentos', (req, res) => res.sendFile(path.join(__dirname, '../public/documentos.html')));
 app.get('/copias', (req, res) => res.sendFile(path.join(__dirname, '../public/copias.html')));
+app.get('/cobrar', (req, res) => res.sendFile(path.join(__dirname, '../public/cobrar.html')));
 app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
 app.get('/fichar', (req, res) => res.sendFile(path.join(__dirname, '../public/fichar.html')));
 app.get('/fichajes', (req, res) => res.sendFile(path.join(__dirname, '../public/fichajes.html')));

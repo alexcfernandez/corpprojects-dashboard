@@ -10,7 +10,7 @@
       ['Comunidades', '/?tab=comunidades'], ['Mediciones', '/medir'], ['Presupuestos', '/presupuestos'], ['Catálogo de precios', '/catalogo'],
       ['Amidaments', '/amidaments'], ['Competencia', '/competencia']] },
     { t: 'Dinero', i: '💰', items: [
-      ['Informes · resultado', '/?tab=informes'], ['Facturación', '/?tab=facturas'], ['Pendientes de cobro', '/?tab=pendientes'], ['Cobros', '/?tab=cobros'],
+      ['Informes · resultado', '/?tab=informes'], ['Facturación', '/?tab=facturas'], ['Pendientes de cobro', '/?tab=pendientes'], ['Recordatorios y promesas de pago', '/cobrar'], ['Cobros', '/?tab=cobros'],
       ['Presupuestos StelOrder', '/?tab=presupuestos'], ['Banco y gastos', '/?tab=banco'], ['Cierre del trimestre', '/trimestre'], ['Pagos y autónomos', '/?tab=pagos']] },
     { t: 'Compras', i: '🧾', items: [
       ['Compras por revisar', '/compras'], ['Cuentas de proveedores', '/compras#cuentas'], ['Subir una compra', '/compra'], ['Almacén', '/almacen']] },

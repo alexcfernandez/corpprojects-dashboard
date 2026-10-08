@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cobros — Corp Projects</title><link rel="stylesheet" href="/tool-theme.css">
+<meta name="theme-color" content="#4d9cf8">
+<style>*{box-sizing:border-box;margin:0;padding:0}:root{--bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.15);--text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;--green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 18px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:10}
+.logo{width:32px;height:32px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;flex-shrink:0}
+.hbtn{margin-left:auto;background:none;border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:6px 12px;font-size:13px;text-decoration:none;white-space:nowrap}
+.wrap{max-width:1000px;margin:0 auto;padding:16px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:12px}
+h3{font-size:12px;margin:0 0 10px;color:var(--text2);text-transform:uppercase;letter-spacing:.05em}
+.btn,input,textarea,select{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;color:var(--text);padding:8px 12px;font:inherit;font-size:14px;text-decoration:none;max-width:100%}
+.btn{cursor:pointer;display:inline-flex;align-items:center;gap:6px}.btn.pri{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}.btn.wa{background:#1f7a4d;border-color:#1f7a4d;color:#fff;font-weight:600}.btn.peq{padding:5px 10px;font-size:13px}
+.rec{border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-top:10px;background:var(--bg)}
+.rec .top{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.rec .cli{font-weight:700;font-size:15.5px}.rec .imp{margin-left:auto;font-weight:800;font-size:17px}
+.sub{font-size:12.5px;color:var(--text3);margin-top:2px}
+.rec textarea{width:100%;margin-top:10px;min-height:150px;font-size:13.5px;line-height:1.5}
+.acc{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.chip{display:inline-block;font-size:11.5px;border-radius:99px;padding:2px 9px;border:1px solid var(--border2);color:var(--text2)}
+.chip.ro{color:var(--red);border-color:rgba(240,82,82,.5)}.chip.am{color:var(--amber);border-color:rgba(245,158,11,.5)}.chip.ok{color:var(--green);border-color:rgba(34,196,135,.5)}.chip.az{color:var(--blue);border-color:rgba(77,156,248,.5)}
+.nota{font-size:12.5px;color:var(--text2);margin-top:6px;border-left:2px solid var(--border2);padding-left:8px}
+table{width:100%;border-collapse:collapse;font-size:13.5px}td,th{padding:8px 6px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}th{font-size:11px;color:var(--text3);text-transform:uppercase}
+td.r,th.r{text-align:right;white-space:nowrap}
+.ap{display:none;margin-top:8px;gap:8px;flex-wrap:wrap;align-items:center}.ap.on{display:flex}.ap textarea{flex:1;min-width:220px;min-height:44px}
+.kp{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.kp div{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:12px 14px}.kp b{display:block;font-size:24px;font-weight:800;margin-top:2px}.kp span{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
+@media(max-width:600px){.kp{grid-template-columns:1fr 1fr}.tw{overflow-x:auto}}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--border2);padding:10px 16px;border-radius:10px;display:none;z-index:50}
+.vacio{color:var(--text3);font-size:13.5px;padding:6px 0}
+</style><link rel="stylesheet" href="/cp-ui.css">
+<script src="/nav.js" defer></script>
+</head><body>
+<div class="header"><div class="logo">CP</div><div><div style="font-weight:600">Cobros</div><div style="font-size:12px;color:var(--text3)">Recordatorios a clientes (siempre con tu sí) y lo que ha dicho cada uno</div></div><a class="hbtn" href="/">← Dashboard</a></div>
+<div id="toast"></div>
+<div class="wrap">
+  <div class="kp" id="kp"></div>
+  <div class="card" id="c-prom" style="display:none"><h3>📅 Dijeron que pagarán</h3><div id="prom"></div></div>
+  <div class="card"><h3>💶 Recordatorios para enviar</h3>
+    <div class="sub" style="margin:-4px 0 6px">A los 7, 15, 30, 45, 60 y 90 días de vencida, una vez cada vez. Revisa el texto, cámbialo si quieres y envíalo por email o abre WhatsApp y mándalo tú desde el móvil. Nada sale solo.</div>
+    <div id="recs"><div class="vacio">Cargando… (lee las facturas pendientes de StelOrder)</div></div></div>
+  <div class="card"><h3>📝 Todas las facturas pendientes · apunta lo que te dicen</h3>
+    <input id="q" placeholder="Buscar cliente o nº…" oninput="pintarTodas()" style="width:100%;max-width:360px;margin-bottom:8px">
+    <div class="tw" id="todas"></div></div>
+</div>
+<script>
+const tok=localStorage.getItem('cp_token');const H={'Authorization':'Bearer '+tok};
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const eur=v=>(Number(v)||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2,useGrouping:'always'})+' €';
+const fd=d=>d?String(d).slice(0,10).split('-').reverse().join('/'):'';
+function toast(t){const e=document.getElementById('toast');e.textContent=t;e.style.display='block';clearTimeout(window._tt);window._tt=setTimeout(()=>e.style.display='none',3200);}
+async function api(m,u,b){const o={method:m,headers:{...H}};if(b){o.headers['Content-Type']='application/json';o.body=JSON.stringify(b);}const r=await fetch(u,o);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Error');return d;}
+let D=null;
+async function cargar(){if(!tok){document.querySelector('.wrap').innerHTML='<div class="card">Abre esta página desde el dashboard.</div>';return;}
+  try{D=await api('GET','/api/cobros/recordatorios');}catch(e){document.getElementById('recs').innerHTML='<div class="vacio" style="color:var(--red)">'+esc(e.message)+'</div>';return;}
+  pintar();}
+function notasHtml(ns){return (ns||[]).slice(-2).map(n=>`<div class="nota">${n.fechaPago?`<b>Pagará el ${fd(n.fechaPago)}</b> · `:''}${esc(n.texto||'')} <span style="color:var(--text3)">— ${esc(n.por||'')} ${fd(n.at)}</span></div>`).join('');}
+function apuntarHtml(f){return `<div class="ap" id="ap-${f.id}"><textarea placeholder="¿Qué te ha dicho? (ej. «paga el día 20 cuando cobren la derrama»)"></textarea><label style="font-size:12.5px;color:var(--text2)">Pagará el <input type="date"></label><button class="btn pri peq" onclick="guardarNota('${f.id}','${esc(f.numero)}','${esc(String(f.cliente).replace(/'/g,''))}')">Guardar</button></div>`;}
+function pintar(){
+  const ps=D.propuestas||[],pr=D.promesas||[],inc=D.incumplidas||[];
+  document.getElementById('kp').innerHTML=`<div><span>Hoy dicen que pagan</span><b style="color:var(--blue)">${(D.hoyPagan||[]).length}</b></div><div><span>Prometieron y no ha llegado</span><b style="color:${inc.length?'var(--red)':'var(--green)'}">${inc.length}</b></div><div><span>Recordatorios por enviar</span><b style="color:${ps.length?'var(--amber)':'var(--green)'}">${ps.length}</b><span style="text-transform:none;letter-spacing:0">${eur(D.total)}</span></div>`;
+  const cp=document.getElementById('c-prom');cp.style.display=(pr.length||inc.length)?'':'none';
+  document.getElementById('prom').innerHTML=[...inc.map(p=>({...p,est:'inc'})),...pr].map(p=>`<div class="rec"><div class="top"><span class="cli">${esc(p.cliente)}</span><span class="sub">${esc(p.numero)}</span>${p.est==='inc'?`<span class="chip ro">prometido el ${fd(p.fechaPromesa)} · no ha llegado</span>`:p.fechaPromesa===D.hoy?'<span class="chip az">paga hoy</span>':`<span class="chip">pagará el ${fd(p.fechaPromesa)}</span>`}<span class="imp">${eur(p.pendiente)}</span></div>${p.nota?`<div class="nota">${esc(p.nota)}</div>`:''}<div class="acc"><button class="btn peq" onclick="quitarPromesa('${p.id}')">Quitar la fecha</button><button class="btn peq" onclick="abrirAp('${p.id}')">📝 Apuntar otra cosa</button></div>${apuntarHtml(p)}</div>`).join('');
+  document.getElementById('recs').innerHTML=ps.length?ps.map(p=>`<div class="rec" id="r-${p.id}"><div class="top"><span class="cli">${esc(p.cliente)}</span><span class="sub">${esc(p.numero)} · del ${fd(p.fecha)} · vencía el ${fd(p.vence)}</span>
+      <span class="chip ${p.dias>=45?'ro':p.dias>=15?'am':''}">${p.dias} días vencida</span>${p.promesaIncumplida?`<span class="chip ro">dijo que pagaba el ${fd(p.promesaIncumplida.fecha)}</span>`:''}${p.ultimoEnviado?`<span class="chip">último aviso ${fd(p.ultimoEnviado.at)} (${esc(p.ultimoEnviado.canal)})</span>`:''}<span class="imp">${eur(p.pendiente)}</span></div>
+      ${p.yaPorEmail?'<div class="sub" style="color:var(--amber)">Su familia ya recibe recordatorios automáticos por email (Ajustes → Alertas): mira si hace falta este.</div>':''}
+      ${notasHtml(p.notas)}
+      <input class="asu" value="${esc(p.asunto)}" style="width:100%;margin-top:10px;font-size:13px"><textarea class="txt">${esc(p.texto)}</textarea>
+      <div class="acc">${p.email?`<button class="btn pri" onclick="enviarEmail('${p.id}')">📧 Enviar a ${esc(p.email)}</button>`:'<span class="chip">sin email en StelOrder</span>'}
+        ${p.whatsapp?`<button class="btn wa" onclick="abrirWa('${p.id}','${p.whatsapp}',${p.paso},'${p.promesaIncumplida?p.promesaIncumplida.fecha:''}')">💬 Abrir WhatsApp</button>`:`<span class="chip">${p.telefono?'su teléfono no es un móvil':'sin teléfono'}</span>`}
+        <button class="btn peq" onclick="copiar('${p.id}')">Copiar texto</button>
+        <button class="btn peq" onclick="marcar('${p.id}',${p.paso},'otro','${p.promesaIncumplida?p.promesaIncumplida.fecha:''}')">Ya se lo he dicho</button>
+        <button class="btn peq" onclick="abrirAp('${p.id}')">📝 Apuntar lo que ha dicho</button>
+        <button class="btn peq" onclick="saltar('${p.id}')">No recordar esta</button>
+        <button class="btn peq" onclick="pausar('${esc(String(p.cliente).replace(/'/g,''))}')">Nunca a este cliente</button></div>
+      ${apuntarHtml(p)}</div>`).join(''):'<div class="vacio">Hoy no hay recordatorios que enviar. 👍</div>';
+  pintarTodas();}
+function pintarTodas(){const q=(document.getElementById('q').value||'').toLowerCase();const l=(D&&D.todas||[]).filter(f=>!q||(f.cliente+' '+f.numero).toLowerCase().includes(q));
+  document.getElementById('todas').innerHTML=l.length?`<table><tr><th>Cliente</th><th>Factura</th><th class="r">Días</th><th class="r">Pendiente</th><th>Lo último</th><th></th></tr>${l.map(f=>`<tr><td><b>${esc(f.cliente)}</b></td><td>${esc(f.numero)}<div class="sub">vence ${fd(f.vence)}</div></td><td class="r" style="color:${f.dias>=45?'var(--red)':f.dias>=15?'var(--amber)':'var(--text2)'}">${f.dias||'—'}</td><td class="r"><b>${eur(f.pendiente)}</b></td>
+    <td style="font-size:12.5px;color:var(--text2)">${f.promesa?`<span class="chip az">pagará el ${fd(f.promesa.fecha)}</span> `:''}${f.notas.length?esc(f.notas[f.notas.length-1].texto||'').slice(0,80):''}${f.ultimoEnviado?`<div class="sub">avisado ${fd(f.ultimoEnviado.at)}</div>`:''}</td>
+    <td><button class="btn peq" onclick="abrirAp('${f.id}',true)">📝</button></td></tr><tr id="tap-${f.id}" style="display:none"><td colspan="6">${apuntarHtml(f).replace('id="ap-','id="tap-ap-')}</td></tr>`).join('')}</table>`:'<div class="vacio">No hay facturas pendientes.</div>';}
+function abrirAp(id,tabla){if(tabla){const tr=document.getElementById('tap-'+id);tr.style.display=tr.style.display?'':'none';const ap=document.getElementById('tap-ap-'+id);ap.classList.add('on');ap.querySelector('textarea').focus();return;}
+  const ap=document.getElementById('ap-'+id);if(ap){ap.classList.toggle('on');ap.querySelector('textarea').focus();}}
+async function guardarNota(id,numero,cliente){const ap=[document.getElementById('ap-'+id),document.getElementById('tap-ap-'+id)].find(x=>x&&x.classList.contains('on'));if(!ap)return;
+  const texto=ap.querySelector('textarea').value.trim(),fechaPago=ap.querySelector('input[type=date]').value;
+  try{await api('POST',`/api/cobros/recordatorios/${encodeURIComponent(id)}/nota`,{texto,fechaPago,numero,cliente});toast(fechaPago?`Apuntado: pagará el ${fd(fechaPago)}. Ese día te lo recuerdo.`:'Apuntado');cargar();}catch(e){toast(e.message);}}
+function textoDe(id){const r=document.getElementById('r-'+id);return{texto:r.querySelector('.txt').value,asunto:r.querySelector('.asu').value};}
+async function enviarEmail(id){const p=(D.propuestas||[]).find(x=>x.id===id);if(!confirm(`¿Enviar el recordatorio de ${p.numero} a ${p.email}?`))return;
+  try{const r=await api('POST',`/api/cobros/recordatorios/${encodeURIComponent(id)}/email`,textoDe(id));toast('Enviado a '+r.a);cargar();}catch(e){toast(e.message);}}
+function abrirWa(id,tel,paso,promesa){window.open(`https://wa.me/${tel.replace('+','')}?text=${encodeURIComponent(textoDe(id).texto)}`,'_blank');
+  const r=document.getElementById('r-'+id);const a=r.querySelector('.acc');if(!a.querySelector('.conf'))a.insertAdjacentHTML('afterbegin',`<button class="btn pri conf" onclick="marcar('${id}',${paso},'whatsapp','${promesa}')">✔ Ya lo he enviado por WhatsApp</button>`);}
+async function copiar(id){try{await navigator.clipboard.writeText(textoDe(id).texto);toast('Texto copiado');}catch(e){toast('No se pudo copiar');}}
+async function marcar(id,paso,canal,promesa){try{await api('POST',`/api/cobros/recordatorios/${encodeURIComponent(id)}/marcar`,{paso,canal,promesa:promesa||null});toast('Apuntado como avisado');cargar();}catch(e){toast(e.message);}}
+async function saltar(id){if(!confirm('¿No volver a proponer recordatorios de esta factura?'))return;try{await api('POST',`/api/cobros/recordatorios/${encodeURIComponent(id)}/saltar`,{});cargar();}catch(e){toast(e.message);}}
+async function pausar(cliente){if(!confirm(`¿No proponer nunca recordatorios a «${cliente}»?`))return;try{await api('POST','/api/cobros/clientes/pausa',{cliente,pausa:true});cargar();}catch(e){toast(e.message);}}
+async function quitarPromesa(id){try{await api('POST',`/api/cobros/recordatorios/${encodeURIComponent(id)}/quitar-promesa`,{});cargar();}catch(e){toast(e.message);}}
+cargar();
+</script></body></html>
