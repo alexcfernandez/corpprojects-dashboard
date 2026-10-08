@@ -38,3 +38,14 @@ test('un mensaje con cobros, lo que falta de una factura, pagos y tarjeta', asyn
 test('sin movimientos nuevos no se manda nada', async () => {
   assert.equal(await A.resumen([]), null);
 });
+
+test('si StelOrder no responde, el resumen del banco sale igual (sin cuadrar con facturas)', async () => {
+  const tr = require(path.join(root, 'src/trimestre.js')); const antes = tr.mapaPagos;
+  tr.mapaPagos = async () => { throw new Error('StelOrder en pausa por bloqueo'); };
+  try {
+    const txt = await A.resumen([{ col: 'bancoMovimientos', id: String(B[1]._id) }], { hoy: new Date('2026-10-08T05:15:00Z') });
+    assert.match(txt, /Banco\* · lectura de las 07:15/);
+    assert.match(txt, /2\.000,00 €/);
+    assert.match(txt, /Sin cruzar con las facturas/);
+  } finally { tr.mapaPagos = antes; }
+});

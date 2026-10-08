@@ -34,7 +34,10 @@ async function resumen(nuevos, { hoy = new Date() } = {}) {
   const db = await getDB();
   const T = require('./trimestre');
   T.olvidarMapaPagos();
-  const mapa = await T.mapaPagos();
+  // Si StelOrder no responde (cupo o caída), el resumen sale igual, sin cruzar con facturas (8/10/2026: a las
+  // 7:15 y 11:15 no salió nada por esto).
+  let sinCuadre = false;
+  const mapa = await T.mapaPagos().catch(e => { console.warn('[AvisoPagos] sin cuadre:', e.message); sinCuadre = true; return { porMov: new Map() }; });
   const ids = col => nuevos.filter(n => n.col === col).map(n => { try { return new ObjectId(String(n.id)); } catch (e) { return null; } }).filter(Boolean);
   const [bm, tm] = await Promise.all([
     db.collection('bancoMovimientos').find({ _id: { $in: ids('bancoMovimientos') } }).toArray(),
@@ -78,7 +81,7 @@ async function resumen(nuevos, { hoy = new Date() } = {}) {
     out.push(`${out.length ? '\n' : ''}💳 Compras con tarjeta: ${tarjeta.length} (${eur(tarjeta.reduce((a, m) => a + m.importe, 0))}), ${con} ya con factura; el resto se le pide a cada uno.`);
   }
   const hora = hoy.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' });
-  return `🏦 *Banco* · lectura de las ${hora}\n\n${out.join('\n')}`;
+  return `🏦 *Banco* · lectura de las ${hora}\n\n${out.join('\n')}${sinCuadre ? '\n\n_(Sin cruzar con las facturas: StelOrder no responde ahora. Se cuadra en la siguiente lectura.)_' : ''}`;
 }
 
 async function avisar(nuevos, { dryRun = false, _enviar = null, hoy = new Date() } = {}) {

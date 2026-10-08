@@ -43,8 +43,17 @@ function fmtEur(amount) {
 }
 
 // ─── Enviar WhatsApp al OWNER (WHATSAPP_TO) por el canal activo (twilio|bridge) ──
+// A quién van los avisos «al dueño». WHATSAPP_TO no estaba puesto en el servidor (8/10/2026) y todo lo enviado
+// con sendWhatsApp se perdía sin avisar («destinatario inválido: undefined»): resumen de buenos días, correos de la
+// gestoría… Si falta, el primer número de OWNER_NUMBERS.
+function destinoDueno() {
+  const v = String(process.env.WHATSAPP_TO || '').trim() || String(process.env.OWNER_NUMBERS || '').split(',')[0].trim();
+  return v || null;
+}
 async function sendWhatsApp(message) {
-  return require('./canalWhatsapp').enviarUno(process.env.WHATSAPP_TO, message);
+  const to = destinoDueno();
+  if (!to) { console.warn('[WhatsApp] sin destino para el dueño: pon WHATSAPP_TO u OWNER_NUMBERS'); return false; }
+  return require('./canalWhatsapp').enviarUno(to, message);
 }
 
 // ─── Enviar WhatsApp a UN destinatario concreto por el canal activo ──
@@ -409,4 +418,4 @@ async function sendWorkOrdersSummary(orders, to) {
   return { sent: true, to: dest, count: orders.length };
 }
 
-module.exports = { sendInvoiceAlert, sendDailySummary, sendFamilySummary, buildFamilySummaryEmail, buildWorkOrdersEmail, sendWorkOrdersSummary, sendWhatsApp, sendWhatsAppTo, sendEmail };
+module.exports = { destinoDueno, sendInvoiceAlert, sendDailySummary, sendFamilySummary, buildFamilySummaryEmail, buildWorkOrdersEmail, sendWorkOrdersSummary, sendWhatsApp, sendWhatsAppTo, sendEmail };
