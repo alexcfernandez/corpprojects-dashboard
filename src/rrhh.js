@@ -216,4 +216,36 @@ async function contratar(id, { pin, costeHora } = {}, por) {
   return { ok: true, userId, pin: p, docsPasados: pasados };
 }
 
-module.exports = { lista, ver, crear, editar, borrar, subirDoc, archivoDoc, borrarDoc, preguntas, guardarEntrevista, contratar, leerCV, ESTADOS, OFICIOS, TIPOS_DOC, _limpiar: limpiar };
+// ── Solicitudes desde la web («Trabaja con nosotros») ──
+// Llega por /api/rrhh/publico desde el servidor de corpprojects.es (con clave compartida). Si ya hay un candidato
+// con el mismo teléfono de los últimos 60 días, se le añade la nota y el CV en vez de duplicarlo. Aviso a oficina.
+async function desdeWeb(d = {}) {
+  const tel = String(d.telefono || '').replace(/\D/g, '');
+  if (!txt(d.nombre) || tel.length < 9) throw new Error('Faltan el nombre o el teléfono');
+  const db = await getDB();
+  const desde = new Date(Date.now() - 60 * 86400000);
+  const ya = (await db.collection(COL).find({ creado: { $gte: desde } }).toArray()).find(c => String(c.telefono || '').replace(/\D/g, '').endsWith(tel.slice(-9)));
+  const nota = [`Desde la web${d.idioma === 'ca' ? ' (en catalán)' : ''} el ${new Date().toLocaleDateString('es-ES', { timeZone: 'Europe/Madrid' })}:`, txt(d.mensaje, 2000)].filter(Boolean).join(' ');
+  let c;
+  if (ya) {
+    await db.collection(COL).updateOne({ _id: ya._id }, { $set: { notas: [ya.notas, nota].filter(Boolean).join('\n\n').slice(0, 3000), actualizado: new Date() }, $push: { historial: { at: new Date(), por: 'web', que: 'volvió a escribir desde la web' } } });
+    c = { id: String(ya._id) };
+  } else {
+    c = await crear({ nombre: d.nombre, telefono: d.telefono, email: d.email, poblacion: d.poblacion, oficio: d.oficio, anosExperiencia: d.anosExperiencia, carnet: d.carnet, coche: d.coche, disponible: d.disponible, procedencia: 'Web corpprojects.es', notas: nota }, 'web');
+  }
+  let cv = false;
+  if (d.cv && d.cv.base64) {
+    const buf = Buffer.from(String(d.cv.base64), 'base64');
+    if (buf.length && buf.length <= 8 * 1024 * 1024) { await subirDoc(c.id, { tipo: 'cv', archivo: { buffer: buf, mimetype: d.cv.mime, originalname: txt(d.cv.nombre || 'cv', 120), size: buf.length } }, 'web').catch(e => console.warn('[RRHH] CV web:', e.message)); cv = true; }
+  }
+  const f = await ver(c.id);
+  const of = (OFICIOS[f.oficio] || OFICIOS.otro).nombre;
+  const url = `${process.env.DASHBOARD_URL || 'https://dashboard.corpprojects.es'}/rrhh#${c.id}`;
+  const texto = `🧑‍🔧 *${ya ? 'Ha vuelto a escribir' : 'Nuevo candidato'} desde la web*: ${f.nombre} · ${of}${f.poblacion ? ' · ' + f.poblacion : ''}${f.anosExperiencia ? ` · ${f.anosExperiencia} años` : ''}${cv ? ' · con CV' : ''}\n${url}`;
+  const destinos = String(process.env.RRHH_AVISOS_TO || process.env.FICHAJE_AVISOS_TO || require('./notifications').destinoDueno() || '').split(',').map(x => x.trim().replace(/^whatsapp:/, '')).filter(Boolean);
+  for (const to of destinos) { try { await require('./notifications').sendWhatsAppTo(to, texto); } catch (e) { console.warn('[RRHH] aviso:', e.message); } }
+  try { await require('./push').sendToOficina({ title: 'Nuevo candidato', body: `${f.nombre} · ${of}`, url: '/rrhh#' + c.id }); } catch (e) {}
+  return { ok: true, id: c.id, repetido: !!ya };
+}
+
+module.exports = { desdeWeb, lista, ver, crear, editar, borrar, subirDoc, archivoDoc, borrarDoc, preguntas, guardarEntrevista, contratar, leerCV, ESTADOS, OFICIOS, TIPOS_DOC, _limpiar: limpiar };

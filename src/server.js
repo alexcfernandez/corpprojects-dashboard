@@ -2179,6 +2179,17 @@ app.get('/api/rrhh/candidatos/:id', requireAuthOficina, _rr(req => RRHH().ver(re
 app.put('/api/rrhh/candidatos/:id', requireAuthOficina, _rr(req => RRHH().editar(req.params.id, req.body || {}, req.user?.name)));
 app.delete('/api/rrhh/candidatos/:id', requireAuthOficina, _rr(req => RRHH().borrar(req.params.id)));
 app.post('/api/rrhh/candidatos/:id/docs', requireAuthOficina, uploadPersonal.single('archivo'), _rr(req => RRHH().subirDoc(req.params.id, { tipo: (req.body || {}).tipo, archivo: req.file }, req.user?.name)));
+// «Trabaja con nosotros» de corpprojects.es: lo reenvía el servidor de la web con una clave compartida
+// (WEB_RRHH_TOKEN, la misma en los dos lados). Sin clave configurada, cerrado.
+app.post('/api/rrhh/publico', async (req, res) => {
+  try {
+    const tk = String(process.env.WEB_RRHH_TOKEN || ''), dado = String(req.headers['x-web-token'] || '');
+    if (tk.length < 24) return res.status(503).json({ error: 'No configurado' });
+    const a = Buffer.from(tk), b = Buffer.from(dado);
+    if (a.length !== b.length || !require('crypto').timingSafeEqual(a, b)) return res.status(401).json({ error: 'No autorizado' });
+    res.json(await RRHH().desdeWeb(req.body || {}));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
 // Subir un CV sin ficha: se crea el candidato y la IA lo rellena.
 app.post('/api/rrhh/cv', requireAuthOficina, uploadPersonal.single('archivo'), _rr(async req => { const c = await RRHH().crear({ nombre: 'Sin nombre', procedencia: (req.body || {}).procedencia || '' }, req.user?.name); return RRHH().subirDoc(c.id, { tipo: 'cv', archivo: req.file }, req.user?.name); }));
 app.get('/api/rrhh/candidatos/:id/docs/:docId', requireAuthOficina, async (req, res) => {

@@ -8,7 +8,7 @@ const stub = (rel, exports) => { const p = require.resolve(path.join(root, rel))
 
 const cols = { candidatos: [], candidatosDocs: [], users: [] };
 const igual = (a, b) => String(a) === String(b);
-const casa = (d, q) => Object.entries(q).every(([k, v]) => v && typeof v === 'object' && '$in' in v ? v.$in.includes(d[k]) : igual(d[k], v));
+const casa = (d, q) => Object.entries(q).every(([k, v]) => v && typeof v === 'object' && '$in' in v ? v.$in.includes(d[k]) : v && typeof v === 'object' && '$gte' in v ? d[k] >= v.$gte : igual(d[k], v));
 const col = n => ({
   insertOne: async d => { const _id = new ObjectId(); cols[n].push({ ...d, _id }); return { insertedId: _id }; },
   findOne: async q => cols[n].find(d => casa(d, q)) || null,
@@ -44,4 +44,23 @@ test('pasar a trabajador: pide el coste/hora, crea el usuario con PIN y pasa DNI
   assert.deepEqual(pasados.sort(), ['carnet', 'dni']);    // el CV no va a Personal
   assert.equal((await R.ver(c.id)).estado, 'contratado');
   await assert.rejects(R.contratar(c.id, { costeHora: 18 }, 'Álex'), /Ya es trabajador/);
+});
+
+test('desde la web: crea el candidato con su CV y avisa; si vuelve a escribir, no se duplica', async () => {
+  const avisos = [];
+  stub('src/notifications.js', { destinoDueno: () => '+34600000000', sendWhatsAppTo: async (to, t) => { avisos.push({ to, t }); return true; } });
+  stub('src/push.js', { sendToOficina: async () => {} });
+  const antes = cols.candidatos.length;
+  const r = await R.desdeWeb({ nombre: 'Laia Puig', telefono: '611 22 33 44', oficio: 'pintor', poblacion: 'Mataró', mensaje: 'Tengo 6 años de experiencia', idioma: 'ca',
+    cv: { nombre: 'cv.pdf', mime: 'application/pdf', base64: Buffer.from('%PDF-1.4').toString('base64') } });
+  assert.equal(r.repetido, false);
+  assert.equal(cols.candidatos.length, antes + 1);
+  const c = await R.ver(r.id);
+  assert.equal(c.procedencia, 'Web corpprojects.es');
+  assert.equal(c.documentos.length, 1);
+  assert.match(avisos[0].t, /Nuevo candidato desde la web\*: Laia Puig · Pintor · Mataró · con CV/);
+  const r2 = await R.desdeWeb({ nombre: 'Laia Puig', telefono: '+34611223344', mensaje: 'Os vuelvo a escribir' });
+  assert.equal(r2.repetido, true); assert.equal(r2.id, r.id);
+  assert.equal(cols.candidatos.length, antes + 1);
+  await assert.rejects(R.desdeWeb({ nombre: 'X', telefono: '123' }), /teléfono/);
 });
