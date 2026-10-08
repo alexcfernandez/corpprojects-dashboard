@@ -15,7 +15,7 @@
     { t: 'Compras', i: '🧾', items: [
       ['Compras por revisar', '/compras'], ['Cuentas de proveedores', '/compras#cuentas'], ['Subir una compra', '/compra'], ['Almacén', '/almacen']] },
     { t: 'Personal', i: '👷', items: [
-      ['Presencia', '/?tab=presencia'], ['Fichajes', '/fichajes'], ['Horas fichadas', '/horas'], ['Documentación y nóminas', '/personal'],
+      ['Candidatos (RRHH)', '/rrhh'], ['Presencia', '/?tab=presencia'], ['Fichajes', '/fichajes'], ['Horas fichadas', '/horas'], ['Documentación y nóminas', '/personal'],
       ['¿Dónde hemos estado?', '/sitios'], ['Fichar jornada', '/fichar'], ['Parte de trabajo', '/parte']] },
     { t: 'Flota', i: '🚐', items: [['Vehículos', '/vehiculos'], ['Llaves y herramientas', '/activos']] },
     { t: 'Documentos', i: '📄', items: [['Documentos para clientes', '/documentos'], ['Conversaciones WhatsApp', '/conversaciones']] },

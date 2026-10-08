@@ -2169,6 +2169,27 @@ app.get('/api/personal/resumen', requireAuthOficina, async (req, res) => {
 app.get('/api/personal/carpeta', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./personalDocs').carpeta({ userId: req.query.userId, ambito: req.query.ambito })); } catch (err) { res.status(400).json({ error: err.message }); }
 });
+// ── RRHH: candidatos (ficha, documentos, CV leído con IA, entrevista guiada, pasar a trabajador) ──
+const RRHH = () => require('./rrhh');
+const _rr = fn => async (req, res) => { try { res.json(await fn(req)); } catch (err) { res.status(400).json({ error: err.message }); } };
+app.get('/api/rrhh/candidatos', requireAuthOficina, _rr(req => RRHH().lista({ estado: req.query.estado })));
+app.post('/api/rrhh/candidatos', requireAuthOficina, _rr(req => RRHH().crear(req.body || {}, req.user?.name)));
+app.get('/api/rrhh/preguntas', requireAuthOficina, _rr(req => ({ ...RRHH().preguntas(req.query.oficio), oficios: Object.fromEntries(Object.entries(RRHH().OFICIOS).map(([k, o]) => [k, o.nombre])) })));
+app.get('/api/rrhh/candidatos/:id', requireAuthOficina, _rr(req => RRHH().ver(req.params.id)));
+app.put('/api/rrhh/candidatos/:id', requireAuthOficina, _rr(req => RRHH().editar(req.params.id, req.body || {}, req.user?.name)));
+app.delete('/api/rrhh/candidatos/:id', requireAuthOficina, _rr(req => RRHH().borrar(req.params.id)));
+app.post('/api/rrhh/candidatos/:id/docs', requireAuthOficina, uploadPersonal.single('archivo'), _rr(req => RRHH().subirDoc(req.params.id, { tipo: (req.body || {}).tipo, archivo: req.file }, req.user?.name)));
+// Subir un CV sin ficha: se crea el candidato y la IA lo rellena.
+app.post('/api/rrhh/cv', requireAuthOficina, uploadPersonal.single('archivo'), _rr(async req => { const c = await RRHH().crear({ nombre: 'Sin nombre', procedencia: (req.body || {}).procedencia || '' }, req.user?.name); return RRHH().subirDoc(c.id, { tipo: 'cv', archivo: req.file }, req.user?.name); }));
+app.get('/api/rrhh/candidatos/:id/docs/:docId', requireAuthOficina, async (req, res) => {
+  try { const d = await RRHH().archivoDoc(req.params.id, req.params.docId); if (!d) return res.status(404).json({ error: 'No encontrado' });
+    res.setHeader('Content-Type', d.mime || 'application/octet-stream'); res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(d.nombre || 'documento')}"`); res.setHeader('Cache-Control', 'private, no-store');
+    res.end(d.data && d.data.buffer ? Buffer.from(d.data.buffer) : d.data); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.delete('/api/rrhh/candidatos/:id/docs/:docId', requireAuthOficina, _rr(req => RRHH().borrarDoc(req.params.id, req.params.docId)));
+app.post('/api/rrhh/candidatos/:id/entrevista', requireAuthOficina, _rr(req => RRHH().guardarEntrevista(req.params.id, req.body || {}, req.user?.name)));
+app.post('/api/rrhh/candidatos/:id/contratar', requireAuthOficina, _rr(req => RRHH().contratar(req.params.id, req.body || {}, req.user?.name)));
 app.post('/api/personal/docs', requireAuthOficina, uploadPersonal.single('archivo'), async (req, res) => {
   try { const b = req.body || {}; res.json(await require('./personalDocs').subir({ ambito: b.ambito, userId: b.userId, tipo: b.tipo, archivo: req.file, fecha: b.fecha, caduca: b.caduca, mes: b.mes, notas: b.notas, visibleTrabajador: b.visibleTrabajador }, await _porPers(req))); }
   catch (err) { res.status(400).json({ error: err.message }); }
@@ -4060,6 +4081,7 @@ app.get('/vehiculos', (req, res) => res.sendFile(path.join(__dirname, '../public
 app.get('/documentos', (req, res) => res.sendFile(path.join(__dirname, '../public/documentos.html')));
 app.get('/copias', (req, res) => res.sendFile(path.join(__dirname, '../public/copias.html')));
 app.get('/cobrar', (req, res) => res.sendFile(path.join(__dirname, '../public/cobrar.html')));
+app.get('/rrhh', (req, res) => res.sendFile(path.join(__dirname, '../public/rrhh.html')));
 app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
 app.get('/fichar', (req, res) => res.sendFile(path.join(__dirname, '../public/fichar.html')));
 app.get('/fichajes', (req, res) => res.sendFile(path.join(__dirname, '../public/fichajes.html')));

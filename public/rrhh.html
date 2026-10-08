@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Candidatos — Corp Projects</title><link rel="stylesheet" href="/tool-theme.css">
+<meta name="theme-color" content="#4d9cf8">
+<style>*{box-sizing:border-box;margin:0;padding:0}:root{--bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.15);--text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;--green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 18px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:10}
+.logo{width:32px;height:32px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;flex-shrink:0}
+.hbtn{margin-left:auto;background:none;border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:6px 12px;font-size:13px;text-decoration:none;white-space:nowrap}
+.wrap{max-width:1000px;margin:0 auto;padding:16px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:12px}
+h3{font-size:12px;margin:0 0 10px;color:var(--text2);text-transform:uppercase;letter-spacing:.05em}
+.btn,input,textarea,select{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;color:var(--text);padding:9px 12px;font:inherit;font-size:14.5px;text-decoration:none;max-width:100%}
+.btn{cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:42px}.btn.pri{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}.btn.ok{background:var(--green);border-color:var(--green);color:#fff;font-weight:600}.btn.peq{padding:5px 10px;font-size:13px;min-height:34px}.btn.rojo{color:var(--red)}
+.fila{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 12px}
+.chip{border:1px solid var(--border2);border-radius:99px;padding:6px 12px;font-size:13px;color:var(--text2);background:var(--bg2);cursor:pointer}.chip.on{color:var(--text);border-color:rgba(77,156,248,.6);background:rgba(77,156,248,.14)}
+.cand{display:flex;gap:12px;align-items:center;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:var(--bg2);margin-bottom:8px;cursor:pointer}
+.cand:hover{border-color:var(--border2)}
+.av{width:42px;height:42px;border-radius:50%;background:var(--bg3);display:grid;place-items:center;font-weight:700;color:var(--text2);flex-shrink:0}
+.cand .n{flex:1;min-width:0}.cand b{font-size:15.5px}.sub{font-size:12.5px;color:var(--text3);margin-top:2px}
+.est{font-size:11.5px;border-radius:99px;padding:2px 9px;border:1px solid var(--border2);white-space:nowrap}
+.est.nuevo{color:var(--blue);border-color:rgba(77,156,248,.5)}.est.entrevista,.est.prueba{color:var(--amber);border-color:rgba(245,158,11,.5)}.est.contratado{color:var(--green);border-color:rgba(34,196,135,.5)}.est.descartado{color:var(--text3)}
+.nota{font-weight:800;font-size:18px;min-width:44px;text-align:right}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}.g2 label{display:grid;gap:5px;font-size:12.5px;color:var(--text3)}.g2 .full{grid-column:1/-1}.g2 input,.g2 select,.g2 textarea{width:100%}
+.doc{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px}.doc .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.preg{padding:12px 0;border-bottom:1px solid var(--border)}.preg .q{font-weight:600;font-size:15px}.preg .bu{font-size:12.5px;color:var(--text3);margin:4px 0 8px}
+.preg textarea{width:100%;min-height:56px}
+.notas{display:flex;gap:6px;margin-top:8px}.notas button{width:44px;height:40px;border-radius:10px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-weight:700;cursor:pointer}.notas button.on{background:var(--blue);border-color:var(--blue);color:#fff}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--border2);padding:10px 16px;border-radius:10px;display:none;z-index:50;max-width:92%}
+.vacio{color:var(--text3);font-size:14px;padding:12px 0}
+@media(max-width:600px){.g2{grid-template-columns:1fr}.fila .btn{flex:1}}
+</style><link rel="stylesheet" href="/cp-ui.css">
+<script src="/nav.js" defer></script>
+</head><body>
+<div class="header"><div class="logo">CP</div><div><div style="font-weight:600">Candidatos</div><div style="font-size:12px;color:var(--text3)">De la llamada a trabajador dado de alta: ficha, documentos, entrevista y alta</div></div><a class="hbtn" href="/">← Dashboard</a></div>
+<div id="toast"></div>
+<div class="wrap" id="app"><div class="vacio">Cargando…</div></div>
+<input type="file" id="f-cv" accept="application/pdf,image/*" style="display:none" onchange="subirCV(this)">
+<input type="file" id="f-doc" accept="application/pdf,image/*" style="display:none" onchange="subirDoc(this)">
+<script>
+const tok=localStorage.getItem('cp_token');const H={'Authorization':'Bearer '+tok};
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fd=d=>d?String(d).slice(0,10).split('-').reverse().join('/'):'';
+function toast(t){const e=document.getElementById('toast');e.textContent=t;e.style.display='block';clearTimeout(window._tt);window._tt=setTimeout(()=>e.style.display='none',3500);}
+async function api(m,u,b){const o={method:m,headers:{...H}};if(b instanceof FormData)o.body=b;else if(b){o.headers['Content-Type']='application/json';o.body=JSON.stringify(b);}const r=await fetch(u,o);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Error');return d;}
+const ESTADOS={nuevo:'Nuevo',entrevista:'Entrevista',prueba:'A prueba',contratado:'Contratado',descartado:'Descartado'};
+let L=[],filtro='activos',OF={},C=null,ENT=null,_docTipo='cv';
+async function init(){if(!tok){document.getElementById('app').innerHTML='<div class="card">Abre esta página desde el dashboard.</div>';return;}
+  try{OF=(await api('GET','/api/rrhh/preguntas')).oficios;}catch(e){}
+  const id=location.hash.slice(1);if(id)return abrir(id);lista();}
+async function lista(){C=null;ENT=null;history.replaceState(null,'',location.pathname);
+  try{L=await api('GET','/api/rrhh/candidatos');}catch(e){document.getElementById('app').innerHTML='<div class="card" style="color:var(--red)">'+esc(e.message)+'</div>';return;}
+  pintarLista();}
+function pintarLista(){const n=e=>L.filter(c=>e==='activos'?['nuevo','entrevista','prueba'].includes(c.estado):c.estado===e).length;
+  const ls=L.filter(c=>filtro==='activos'?['nuevo','entrevista','prueba'].includes(c.estado):filtro==='todos'||c.estado===filtro);
+  document.getElementById('app').innerHTML=`<div class="fila" style="margin-bottom:12px"><button class="btn pri" onclick="nuevo()">＋ Nuevo candidato</button><button class="btn" onclick="document.getElementById('f-cv').click()">📄 Subir un CV (la IA rellena la ficha)</button></div>
+    <div class="chips">${[['activos','En marcha'],['nuevo','Nuevos'],['entrevista','Entrevista'],['prueba','A prueba'],['contratado','Contratados'],['descartado','Descartados'],['todos','Todos']].map(([k,t])=>`<span class="chip ${filtro===k?'on':''}" onclick="filtro='${k}';pintarLista()">${t}${k!=='todos'?' ('+n(k)+')':''}</span>`).join('')}</div>
+    ${ls.length?ls.map(c=>`<div class="cand" onclick="abrir('${c.id}')"><div class="av">${esc((c.nombre||'?').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase())}</div>
+      <div class="n"><b>${esc(c.nombre)}</b><div class="sub">${esc(OF[c.oficio]||'Otro oficio')}${c.anosExperiencia?` · ${c.anosExperiencia} años`:''}${c.poblacion?' · '+esc(c.poblacion):''}${c.docs&&c.docs.length?' · 📎 '+c.docs.length:''}</div></div>
+      ${c.entrevista&&c.entrevista.puntuacion!=null?`<span class="nota" style="color:${c.entrevista.puntuacion>=70?'var(--green)':c.entrevista.puntuacion>=50?'var(--amber)':'var(--red)'}">${c.entrevista.puntuacion}</span>`:''}<span class="est ${c.estado}">${ESTADOS[c.estado]}</span></div>`).join(''):'<div class="vacio">Nadie por aquí todavía. Añade un candidato o sube su CV.</div>'}`;}
+async function nuevo(){try{const c=await api('POST','/api/rrhh/candidatos',{nombre:'Sin nombre'});abrir(c.id,true);}catch(e){toast(e.message);}}
+async function subirCV(inp){const f=inp.files[0];inp.value='';if(!f)return;toast('🤖 Leyendo el CV… (unos segundos)');const fdt=new FormData();fdt.append('archivo',f);
+  try{const c=await api('POST','/api/rrhh/cv',fdt);toast(c.leido&&!c.leido.error?'Ficha rellenada con el CV: revísala':'CV guardado; la IA no pudo leerlo, rellena la ficha');abrir(c.id);}catch(e){toast(e.message);}}
+async function abrir(id,foco){try{C=await api('GET','/api/rrhh/candidatos/'+id);}catch(e){toast(e.message);return lista();}history.replaceState(null,'','#'+id);ENT=null;pintarFicha();if(foco)setTimeout(()=>document.getElementById('c-nombre').select(),50);}
+const campo=(k,l,t='text',x='')=>`<label${x}>${l}<input id="c-${k}" type="${t}" value="${esc(C[k]==null?'':C[k])}"></label>`;
+function pintarFicha(){const c=C;
+  document.getElementById('app').innerHTML=`<div class="fila" style="margin-bottom:12px"><button class="btn peq" onclick="lista()">← Candidatos</button><span class="est ${c.estado}" style="margin-left:auto">${ESTADOS[c.estado]}</span></div>
+  <div class="card"><div class="fila" style="margin-bottom:12px"><b style="font-size:20px;flex:1">${esc(c.nombre)}</b>${c.telefono?`<a class="btn peq" href="tel:${esc(c.telefono)}">📞 Llamar</a><a class="btn peq" target="_blank" href="https://wa.me/${esc(String(c.telefono).replace(/\D/g,'').replace(/^(?=[67]\d{8}$)/,'34'))}">💬 WhatsApp</a>`:''}</div>
+    ${c.resumen?`<div style="font-size:13.5px;color:var(--text2);line-height:1.5;margin-bottom:12px">🤖 ${esc(c.resumen)}${(c.empresasAnteriores||[]).length?`<div class="sub">${c.empresasAnteriores.map(esc).join(' · ')}</div>`:''}</div>`:''}
+    <div class="g2">${campo('nombre','Nombre')}${campo('telefono','Teléfono','tel')}${campo('email','Email','email')}${campo('poblacion','Dónde vive')}
+      <label>Oficio<select id="c-oficio">${Object.entries(OF).map(([k,n])=>`<option value="${k}" ${c.oficio===k?'selected':''}>${esc(n)}</option>`).join('')}</select></label>
+      ${campo('anosExperiencia','Años de experiencia','number')}${campo('carnet','Carnés (conducir, plataforma…)')}
+      <label>¿Tiene coche?<select id="c-coche"><option value="">—</option><option value="si" ${c.coche===true?'selected':''}>Sí</option><option value="no" ${c.coche===false?'selected':''}>No</option></select></label>
+      ${campo('disponible','Puede empezar el','date')}${campo('salarioPedido','Qué pide cobrar')}${campo('procedencia','De dónde viene (anuncio, recomendado…)')}${campo('recomendadoPor','Recomendado por')}
+      <label class="full">Notas<textarea id="c-notas" rows="3">${esc(c.notas||'')}</textarea></label></div>
+    <div class="fila" style="margin-top:12px"><button class="btn pri" onclick="guardar()">💾 Guardar</button></div></div>
+  <div class="card"><h3>Documentos</h3>${(c.documentos||[]).length?c.documentos.map(d=>`<div class="doc"><span>📄</span><span class="n"><a href="#" onclick="event.preventDefault();verDoc('${d.id}')" style="color:var(--text)">${esc(d.tipoTxt)}</a> <span class="sub">${esc(d.nombre)} · ${fd(d.subido)}</span></span><button class="btn peq rojo" onclick="borrarDoc('${d.id}')">✕</button></div>`).join(''):'<div class="vacio" style="padding:4px 0 8px">Sin documentos todavía.</div>'}
+    <div class="fila" style="margin-top:10px">${[['cv','📄 CV'],['dni','🪪 DNI / NIE'],['carnet','🚗 Carné'],['prl','🦺 PRL'],['otro','📎 Otro']].map(([t,l])=>`<button class="btn peq" onclick="pedirDoc('${t}')">${l}</button>`).join('')}</div>
+    <div class="sub" style="margin-top:6px">En el móvil abre la cámara: haz la foto del documento. El DNI, el carné y la PRL pasan solos a su carpeta de Personal cuando lo des de alta.</div></div>
+  <div class="card" id="ent"></div>
+  <div class="card"><h3>Decisión</h3><div class="fila">
+    ${c.estado!=='contratado'?`<button class="btn" onclick="estado('prueba')">🧪 A prueba</button><button class="btn ok" onclick="contratar()">✅ Pasar a trabajador</button><button class="btn" onclick="descartar()">Descartar</button>`:`<span class="sub">Dado de alta el ${fd(c.contratado)}. Está en Usuarios y su carpeta en Personal.</span>`}
+    <button class="btn peq rojo" style="margin-left:auto" onclick="borrar()">Borrar candidato</button></div>
+    ${c.motivoDescarte?`<div class="sub" style="margin-top:8px">Descartado: ${esc(c.motivoDescarte)}</div>`:''}
+    <div class="sub" style="margin-top:8px">Protección de datos: si no se le contrata, borra su ficha cuando ya no la necesites (como mucho, un año).</div></div>`;
+  pintarEntrevista();}
+function datosForm(){const g=k=>document.getElementById('c-'+k);const d={};['nombre','telefono','email','poblacion','oficio','anosExperiencia','carnet','disponible','salarioPedido','procedencia','recomendadoPor','notas'].forEach(k=>{if(g(k))d[k]=g(k).value;});const co=g('coche').value;if(co)d.coche=co;return d;}
+async function guardar(){try{C=await api('PUT','/api/rrhh/candidatos/'+C.id,datosForm());toast('Guardado');pintarFicha();}catch(e){toast(e.message);}}
+function pedirDoc(t){_docTipo=t;document.getElementById('f-doc').click();}
+async function subirDoc(inp){const f=inp.files[0];inp.value='';if(!f)return;const fdt=new FormData();fdt.append('archivo',f);fdt.append('tipo',_docTipo);if(_docTipo==='cv')toast('🤖 Leyendo el CV…');
+  try{C=await api('POST',`/api/rrhh/candidatos/${C.id}/docs`,fdt);toast(_docTipo==='cv'&&C.leido&&!C.leido.error?'CV guardado y ficha completada':'Documento guardado');pintarFicha();}catch(e){toast(e.message);}}
+async function verDoc(docId){const w=window.open('','_blank');try{const r=await fetch(`/api/rrhh/candidatos/${C.id}/docs/${docId}`,{headers:H});if(!r.ok)throw new Error('No se pudo abrir');const u=URL.createObjectURL(await r.blob());if(w)w.location=u;}catch(e){if(w)w.close();toast(e.message);}}
+async function borrarDoc(docId){if(!confirm('¿Borrar este documento?'))return;try{C=await api('DELETE',`/api/rrhh/candidatos/${C.id}/docs/${docId}`);pintarFicha();}catch(e){toast(e.message);}}
+// ── Entrevista guiada ──
+async function empezarEntrevista(){const of=document.getElementById('c-oficio').value;try{const P=await api('GET','/api/rrhh/preguntas?oficio='+of);const prev=C.entrevista&&C.entrevista.oficio===P.oficio?C.entrevista:null;
+  ENT={...P,res:Object.fromEntries(P.preguntas.map(p=>{const r=prev&&prev.respuestas.find(x=>x.id===p.id);return [p.id,{nota:r?r.nota:null,respuesta:r?r.respuesta:''}];})),conclusion:prev?prev.conclusion:''};pintarEntrevista();document.getElementById('ent').scrollIntoView({behavior:'smooth'});}catch(e){toast(e.message);}}
+function pintarEntrevista(){const el=document.getElementById('ent');if(!el)return;const e=C.entrevista;
+  if(!ENT){el.innerHTML=`<h3>Entrevista</h3>${e?`<div class="fila"><span class="nota" style="font-size:26px;color:${e.puntuacion>=70?'var(--green)':e.puntuacion>=50?'var(--amber)':'var(--red)'}">${e.puntuacion!=null?e.puntuacion:'—'}</span><span class="sub">/100 · ${esc(OF[e.oficio]||'')} · ${fd(e.fecha)} · ${esc(e.por||'')}</span></div>${e.conclusion?`<div style="margin-top:8px;font-size:14px">${esc(e.conclusion)}</div>`:''}<details style="margin-top:8px"><summary class="sub" style="cursor:pointer">Ver respuestas</summary>${e.respuestas.map(r=>`<div class="preg"><div class="q">${esc(r.pregunta)} ${r.nota?`<span class="est">${r.nota}/5</span>`:''}</div><div class="sub" style="color:var(--text2)">${esc(r.respuesta||'—')}</div></div>`).join('')}</details>`:'<div class="sub" style="margin-bottom:10px">Preguntas generales y las de su oficio, con lo que hay que buscar en cada respuesta. Puntúa de 1 a 5 y sale una nota sobre 100.</div>'}
+    <div class="fila" style="margin-top:10px"><button class="btn pri" onclick="empezarEntrevista()">🎤 ${e?'Repetir / continuar la entrevista':'Empezar la entrevista'}</button></div>`;return;}
+  el.innerHTML=`<h3>Entrevista · ${esc(ENT.nombre)}</h3>${ENT.preguntas.map((p,i)=>`<div class="preg"><div class="q">${i+1}. ${esc(p.q)}</div><div class="bu">👀 ${esc(p.busca)}</div>
+      <textarea placeholder="Lo que contesta…" oninput="ENT.res['${p.id}'].respuesta=this.value">${esc(ENT.res[p.id].respuesta||'')}</textarea>
+      <div class="notas">${[1,2,3,4,5].map(n=>`<button class="${ENT.res[p.id].nota===n?'on':''}" onclick="ENT.res['${p.id}'].nota=${n};this.parentElement.querySelectorAll('button').forEach((b,k)=>b.classList.toggle('on',k===${n-1}))">${n}</button>`).join('')}</div></div>`).join('')}
+    <label style="display:grid;gap:5px;font-size:12.5px;color:var(--text3);margin-top:12px">Conclusión<textarea id="ent-concl" rows="3" oninput="ENT.conclusion=this.value">${esc(ENT.conclusion||'')}</textarea></label>
+    <div class="fila" style="margin-top:12px"><button class="btn pri" onclick="guardarEntrevista()">💾 Guardar la entrevista</button><button class="btn" onclick="ENT=null;pintarEntrevista()">Cancelar</button></div>`;}
+async function guardarEntrevista(){try{C=await api('POST',`/api/rrhh/candidatos/${C.id}/entrevista`,{oficio:ENT.oficio,respuestas:Object.entries(ENT.res).map(([id,r])=>({id,...r})),conclusion:ENT.conclusion});ENT=null;toast(C.entrevista.puntuacion!=null?`Entrevista guardada: ${C.entrevista.puntuacion}/100`:'Entrevista guardada');pintarFicha();}catch(e){toast(e.message);}}
+async function estado(e){try{C=await api('PUT','/api/rrhh/candidatos/'+C.id,{estado:e});pintarFicha();}catch(x){toast(x.message);}}
+async function descartar(){const m=prompt('¿Por qué se descarta? (para acordarte si vuelve a llamar)');if(m===null)return;try{C=await api('PUT','/api/rrhh/candidatos/'+C.id,{estado:'descartado',motivoDescarte:m});pintarFicha();}catch(e){toast(e.message);}}
+async function contratar(){await guardar();const ch=prompt(`Coste por hora de ${C.nombre} para la empresa (€/h, con Seguridad Social):`);if(ch===null)return;const pin=prompt('PIN para fichar (4 cifras). Déjalo vacío y se pone uno solo:','');if(pin===null)return;
+  try{const r=await api('POST',`/api/rrhh/candidatos/${C.id}/contratar`,{costeHora:String(ch).replace(',','.'),pin});alert(`✅ ${C.nombre} ya es trabajador.\n\nPIN para fichar: ${r.pin}\nDocumentos pasados a su carpeta de Personal: ${r.docsPasados}\n\nRevisa su ficha en Ajustes → Usuarios.`);abrir(C.id);}catch(e){toast(e.message);}}
+async function borrar(){if(!confirm(`¿Borrar a ${C.nombre} y todos sus documentos? No se puede deshacer.`))return;try{await api('DELETE','/api/rrhh/candidatos/'+C.id);toast('Borrado');lista();}catch(e){toast(e.message);}}
+init();
+</script></body></html>
