@@ -24,3 +24,18 @@ test('septiembre: Saltoki 1.200 + tarjeta 160 (116,01 + 60 − 16,01); el traspa
   assert.equal(Math.round(d.BD['2026'].g[8] * 100) / 100, 1360);
   assert.equal(d.BD['2026'].i[8], 3000);
 });
+
+test('el «Com. 10%» a la reserva es ahorro: no es gasto y su entrada en la reserva no es ingreso; saldos del año', async () => {
+  banco.push(
+    { mes: '2026-10', iban: 'ES0000000000000000000012', fechaOperacion: '2026-10-01', importe: -800, saldo: 9200, concepto: 'Traspaso: Com. 10%', categoria: 'otros', flujo: 'salida' },
+    { mes: '2026-10', iban: 'ES0000000000000000006452', fechaOperacion: '2026-10-01', importe: 800, saldo: 5800, concepto: 'Transferencia De Corp Projects Holding Sl Concepto: Com 10%', categoria: 'otros', flujo: 'entrada' },
+    { mes: '2026-10', iban: 'ES0000000000000000000012', fechaOperacion: '2026-10-02', importe: 2000, saldo: 11200, concepto: 'Transferencia De Cliente', categoria: 'ingreso', flujo: 'entrada' },
+  );
+  const d = await B.getDashboardData();
+  assert.equal(d.BD['2026'].i[9], 2000);
+  assert.equal(d.BD['2026'].g[9], 0);
+  assert.equal(d.BD['2026'].a[9], 800);
+  const s12 = d.saldos.cuentas.find(c => c.cuenta === '0012'), s52 = d.saldos.cuentas.find(c => c.cuenta === '6452');
+  assert.deepEqual([s12.inicio, s12.fin], [10000, 11200]);
+  assert.deepEqual([s52.inicio, s52.fin], [5000, 5800]);
+});

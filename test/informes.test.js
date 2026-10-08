@@ -27,3 +27,18 @@ test('2026: ventas 10.000 sin IVA; gastos = 3.000 + 100 + 100 (ticket) + 1.500 +
   assert.equal(y.resultado, 4538);
   assert.equal(d.anos.find(a => a.year === 2025).ventas, 5000);   // por fecha de factura, no de vencimiento
 });
+
+test('el pago de la tarjeta de crédito y el «Com. 10%» no son comisiones; un pago sin factura sí es gasto', async () => {
+  banco.push(
+    { _id: 'l1', fechaOperacion: '2026-09-05', importe: -5000, categoria: 'comision', concepto: 'Liquidacion De Las Tarjetas De Credito' },
+    { _id: 'c1', fechaOperacion: '2026-09-06', importe: -800, categoria: 'comision', concepto: 'Traspaso: Com. 10%' },
+    { _id: 'x1', fechaOperacion: '2026-09-07', importe: -250, categoria: 'material', concepto: 'Transferencia A Favor De Pinturas Sl' },
+    { _id: 'x2', fechaOperacion: '2026-09-08', importe: -400, categoria: 'material', concepto: 'Recibo Saltoki' },
+  );
+  require(path.join(root, 'src/trimestre.js')).mapaPagos = async () => ({ porMov: new Map([['x1', { estado: 'revisar' }], ['x2', { estado: 'punteado' }]]) });
+  const d = await I.cuentaResultados({ fresco: true });
+  const y = d.anos.find(a => a.year === 2026);
+  assert.equal(y.desglose.comisiones, 12);        // solo la comisión de verdad
+  assert.equal(y.desglose.sinFactura, 250);       // x2 ya tiene factura: cuenta por la factura
+  assert.equal(y.desglose.compras, 3450);
+});

@@ -267,7 +267,8 @@ function cpUpdateBanner(){
     <button class="btab" onclick="showBTab('subir',this)">📤 Subir extracto</button>
   </div>
   <div id="btab-resumen" class="bpanel active">
-    <div class="alert apu" style="margin-bottom:16px"><div>💜</div><div><strong>Gastos reales corregidos</strong> — traspasos "Com. 10%" excluidos (son ahorro propio). Balance real 2026: <strong id="k-alert">+56.706 €</strong> <span id="k-alerts">en 5 meses</span>.</div></div>
+    <div class="alert apu" style="margin-bottom:16px"><div>💜</div><div style="line-height:1.55"><strong>Ojo: el balance no es dinero guardado.</strong> Es todo lo que ha entrado en el banco menos todo lo que ha salido (<strong id="k-alert">—</strong> <span id="k-alerts"></span>), sin los traspasos entre vuestras cuentas ni el «Com. 10%». No resta lo que aún se debe: facturas de proveedor sin pagar, IVA, nóminas o Seguridad Social pendientes (eso está en «🐷 Reservas»).
+      <div id="k-saldos" style="margin-top:6px"></div></div></div>
     <div class="metrics-row">
       <div class="mc"><div class="ml">Ingresos 2025</div><div class="mv g" id="k-i25">639.776 €</div><div class="ms">12 meses completos</div></div>
       <div class="mc"><div class="ml">Gastos reales 2025</div><div class="mv r" id="k-g25">643.645 €</div><div class="ms">Sin ahorro 10%</div></div>
@@ -1320,6 +1321,10 @@ async function loadBanco(){
   set('k-b26s',eS(k6.balanceMes)+' /mes');
   set('k-b25s',(k5.balance>=0?'Año positivo':'Año ajustado'));
   set('k-alert',eS(k6.balance)); set('k-alerts',`en ${k6.meses||0} meses`);
+  // Lo que de verdad ha cambiado el dinero en las cuentas de Santander este año (saldo del 1 de enero → último movimiento).
+  { const sd=d.saldos, el=document.getElementById('k-saldos'); if(el&&sd&&sd.cuentas&&sd.cuentas.length){ const f=x=>String(x||'').split('-').reverse().join('/');
+    el.innerHTML=`<strong>Dinero en las cuentas de Santander:</strong> ${eur(sd.inicio)} el ${f(sd.cuentas.map(c=>c.desde).sort()[0])} → <strong>${eur(sd.fin)}</strong> el ${f(sd.cuentas.map(c=>c.hasta).sort().pop())} (<strong style="color:${sd.variacion>=0?'var(--green)':'var(--red)'}">${eS(sd.variacion)}</strong>)`
+      +` · `+sd.cuentas.map(c=>`…${c.cuenta}: ${eur(c.inicio)} → ${eur(c.fin)}`).join(' · ')+`<span style="color:var(--text3)"> · Revolut aparte.</span>`; } }
   const al=document.getElementById('k-alert'); if(al)al.style.color=k6.balance>=0?'var(--green)':'var(--red)';
   set('m-i25',eur(k5.ingresosMes)); set('m-i26',eur(k6.ingresosMes));
   set('m-g25',eur(k5.gastosMes));  set('m-g26',eur(k6.gastosMes));
@@ -1417,7 +1422,7 @@ async function renderInformes(){
       <div class="mc"><div class="ml">Resultado ${d.anoActual}</div><div class="mv ${actual.resultado>=0?'g':'r'}">${eur(actual.resultado)}</div></div>
     </div>
     ${actual.desglose?`<div class="card" style="margin-bottom:16px"><div class="card-title">De qué son los gastos de ${d.anoActual}</div><table><tbody>
-      <tr><td>Compras y proveedores <span style="color:var(--text3);font-size:12px">(StelOrder ${eur(actual.desglose.comprasStel)} · gastos ${eur(actual.desglose.gastosStel)} · Compras sin StelOrder ${eur(actual.desglose.comprasApp)})</span></td><td style="text-align:right">${eur(actual.desglose.compras)}</td></tr>
+      <tr><td>Compras y proveedores <span style="color:var(--text3);font-size:12px">(StelOrder ${eur(actual.desglose.comprasStel)} · gastos ${eur(actual.desglose.gastosStel)} · Compras sin StelOrder ${eur(actual.desglose.comprasApp)}${actual.desglose.sinFactura?` · <b>pagado sin factura en el sistema ${eur(actual.desglose.sinFactura)}</b>`:''})</span></td><td style="text-align:right">${eur(actual.desglose.compras)}</td></tr>
       <tr><td>Personal <span style="color:var(--text3);font-size:12px">(nóminas ${eur(actual.desglose.nominas)} · Seg. Social ${eur(actual.desglose.ss)} · IRPF ${eur(actual.desglose.irpf)})</span></td><td style="text-align:right">${eur(actual.desglose.personal)}</td></tr>
       <tr><td>Comisiones del banco</td><td style="text-align:right">${eur(actual.desglose.comisiones)}</td></tr>
       <tr><td><strong>Total gastos</strong></td><td style="text-align:right"><strong>${eur(actual.gastos)}</strong></td></tr>

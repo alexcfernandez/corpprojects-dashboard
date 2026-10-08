@@ -399,16 +399,17 @@ async function getDashboardData() {
   const db = await getDB();
   const [movs, tarjetas] = await Promise.all([
     db.collection('bancoMovimientos').find({}).toArray(),
-    db.collection('tarjetaMovimientos').find({ interno: { $ne: true } }).project({ fecha: 1, importe: 1, concepto: 1, tipo: 1, estado: 1 }).toArray(),
+    db.collection('tarjetaMovimientos').find({ interno: { $ne: true } }).project({ fecha: 1, importe: 1, concepto: 1, tipo: 1, estado: 1, fuente: 1 }).toArray(),
   ]);
   // COMPRAS CON TARJETA (Revolut y crédito Santander), una a una y con su categoría. Para no contarlas dos veces,
   // en los meses con detalle de tarjeta se quitan de la cuenta el traspaso a Revolut y la liquidación de la de crédito.
   const { tipoMovimiento } = require('./conciliacion');
-  const tarjetaMes = new Set();
+  // Meses con detalle de cada tarjeta, por separado: tener el de Revolut no quiere decir tener el de la de crédito.
+  const mesRevolut = new Set(), mesCredito = new Set();
   const compTarjeta = [];
   for (const t of tarjetas) {
     if (!t.fecha || /declined|reverted|failed/i.test(t.estado || '') || !['CARD_PAYMENT', 'CARD_REFUND', 'REFUND', 'FEE'].includes(t.tipo)) continue;
-    tarjetaMes.add(t.fecha.slice(0, 7));
+    (t.fuente === 'santander_credito' ? mesCredito : mesRevolut).add(t.fecha.slice(0, 7));
     compTarjeta.push({ mes: t.fecha.slice(0, 7), importe: Number(t.importe) || 0, categoria: t.tipo === 'FEE' ? 'comision' : clasificar(t.concepto, '136', Number(t.importe) || 0).categoria, flujo: 'salida' });
   }
 
@@ -416,9 +417,23 @@ async function getDashboardData() {
   const ec = {}, ic = {};
   let ahorroTotal = 0;
 
+  // Movimientos entre cuentas propias (8/10/2026): no son ni ingreso ni gasto. Antes solo se quitaban en los meses
+  // con detalle de tarjeta y por el lado del pago, así que el dinero que llegaba a la cuenta de reserva (…6452)
+  // contaba como INGRESO y el balance salía inflado; y la liquidación de la tarjeta de crédito se quitaba
+  // cualquier mes con detalle de Revolut, aunque no hubiera el de la de crédito (gasto que desaparecía).
+  //   · «Com. 10%» hacia la reserva → ahorro (ni gasto ni ingreso); su entrada en la reserva, fuera.
+  //   · traspaso a Revolut / pago de la tarjeta de crédito → fuera SOLO si ese mes hay detalle de esa tarjeta
+  //     (si no, se cuenta como gasto: es lo único que se sabe de ese dinero).
+  //   · cualquier otro traspaso entre cuentas propias → fuera, en los dos sentidos.
   const lista = [];
   for (const m of movs) {
-    if (m.importe < 0 && tarjetaMes.has(m.mes)) { const tp = tipoMovimiento(m).tipo; if (tp === 'liquidacion_tarjeta' || (tp === 'traspaso_propio' && m.categoria !== 'ahorro')) continue; }
+    const tp = tipoMovimiento(m).tipo, nc = norm(m.concepto);
+    if (tp === 'liquidacion_tarjeta') { if (m.importe < 0 && mesCredito.has(m.mes)) continue; }
+    else if (tp === 'traspaso_propio') {
+      if (/c[o0]m\W*10/.test(nc)) { if (m.importe < 0) lista.push({ ...m, categoria: 'ahorro' }); continue; }
+      if (/revolut|compras tarjetas/.test(nc)) { if (m.importe < 0 && mesRevolut.has(m.mes)) continue; }
+      else continue;
+    }
     lista.push(m);
   }
   // Devoluciones con tarjeta: restan del gasto de su categoría.
@@ -456,7 +471,28 @@ async function getDashboardData() {
                  ingresosMes: ing / meses, gastosMes: gas / meses, ahorroMes: aho / meses, balanceMes: (ing - gas) / meses };
   }
 
-  return { BD, EC, IC, kpis, ahorroTotal };
+  return { BD, EC, IC, kpis, ahorroTotal, saldos: saldosAnio(movs, new Date().getFullYear()) };
+}
+// Dinero que había de verdad en cada cuenta el 1 de enero y el último día con movimientos (del saldo que trae cada
+// movimiento): es la respuesta a «¿dónde está ese balance?». Dentro de un mismo día, el primer movimiento es el
+// que su saldo anterior (saldo − importe) no es el saldo de ningún otro de ese día, y el último al revés.
+function saldosAnio(movs, anio) {
+  const r2 = n => Math.round(n * 100) / 100;
+  const porCuenta = {};
+  for (const m of movs) if (m.iban && m.saldo != null && m.fechaOperacion) (porCuenta[m.iban] = porCuenta[m.iban] || []).push(m);
+  const extremo = (dia, primero) => {
+    const ss = new Set(dia.map(m => r2(m.saldo))), antes = new Set(dia.map(m => r2(m.saldo - m.importe)));
+    return dia.find(m => primero ? !ss.has(r2(m.saldo - m.importe)) : !antes.has(r2(m.saldo))) || dia[primero ? 0 : dia.length - 1];
+  };
+  const out = [];
+  for (const [iban, ms] of Object.entries(porCuenta)) {
+    const delAnio = ms.filter(m => String(m.fechaOperacion).startsWith(String(anio))).sort((a, b) => String(a.fechaOperacion).localeCompare(String(b.fechaOperacion)));
+    if (!delAnio.length) continue;
+    const d0 = delAnio[0].fechaOperacion, d1 = delAnio[delAnio.length - 1].fechaOperacion;
+    const ini = extremo(delAnio.filter(m => m.fechaOperacion === d0), true), fin = extremo(delAnio.filter(m => m.fechaOperacion === d1), false);
+    out.push({ cuenta: iban.slice(-4), desde: d0, inicio: r2(ini.saldo - ini.importe), hasta: d1, fin: r2(fin.saldo), variacion: r2(fin.saldo - (ini.saldo - ini.importe)) });
+  }
+  return { anio, cuentas: out, inicio: r2(out.reduce((a, c) => a + c.inicio, 0)), fin: r2(out.reduce((a, c) => a + c.fin, 0)), variacion: r2(out.reduce((a, c) => a + c.variacion, 0)) };
 }
 // Coste fijo real al mes (Bancos y gastos → Personal): media de los 3 últimos meses completos con banco.
 // Personal = nóminas + Seguridad Social + autónomos (pagos a usuarios marcados como autónomos); fijos = gestoría,
@@ -491,7 +527,7 @@ function acc(bucket, cat, map, yKey, val) {
   bucket[cat][yKey] += val;
 }
 
-module.exports = {
+module.exports = { saldosAnio,
   // núcleo
   parseExcelBuffer, ingestExcelBuffer, norm, cargarTrabajadores, reclasificarNominas, costeFijoMes,
   // lectura dashboard
