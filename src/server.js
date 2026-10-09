@@ -934,6 +934,19 @@ app.post('/api/diag/whatsapp/prueba', requireAuth, express.json({ limit: '4kb' }
   if ((req.user?.role || 'owner') !== 'owner') return res.status(403).json({ error: 'Solo Dueño' });
   const b = req.body || {}; res.json(await require('./canalWhatsapp').probar(String(b.to || '').trim(), b.canal === 'bridge' ? 'bridge' : 'twilio'));
 });
+// Mensaje suelto de Corpy a un número (Dueño): p. ej. escribir al corredor de seguros de parte de Álex.
+app.post('/api/whatsapp/enviar', requireAuth, express.json({ limit: '16kb' }), async (req, res) => {
+  if ((req.user?.role || 'owner') !== 'owner') return res.status(403).json({ error: 'Solo Dueño' });
+  try {
+    const b = req.body || {}; const movil = require('./recordatoriosCobro')._movil(b.to);
+    const texto = String(b.texto || '').trim().slice(0, 4000);
+    if (!movil) throw new Error('Teléfono no válido');
+    if (!texto) throw new Error('Falta el texto');
+    const ok = await require('./notifications').sendWhatsAppTo(movil, texto);
+    if (ok === false) throw new Error('No se pudo enviar el WhatsApp');
+    res.json({ ok: true, a: movil });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
 // Diagnóstico de velocidad (Dueño): cuánto tarda una consulta a Mongo y una llamada a StelOrder desde el servidor.
 app.get('/api/diag/ping', requireAuth, async (req, res) => {
   if ((req.user?.role || 'owner') !== 'owner') return res.status(403).json({ error: 'Solo Dueño' });
