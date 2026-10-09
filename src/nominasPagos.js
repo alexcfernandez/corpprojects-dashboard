@@ -11,7 +11,8 @@
 async function getDB() { return require('./db').getDB(); }
 const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
 const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9ñ ]/g, ' ').replace(/\s+/g, ' ').trim();
-const ALIAS = { 'david taladros': ['david valencia'] };      // los que ya sabemos; el resto en users.aliasBanco
+const ALIAS = { 'david taladros': ['david valencia'], 'melvin ramirez': ['melvin'] };      // los que ya sabemos; el resto en users.aliasBanco
+// («Melvin» solo: le pagan con el concepto «Nómina septiembre» o «Melvin adelanto», sin apellido.)
 const mesMas = (mes, n) => { const [y, m] = mes.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); return d.toISOString().slice(0, 7); };
 
 function nombresDe(u) {
@@ -45,8 +46,10 @@ async function estado(mes, { hoy = new Date() } = {}) {
     const suyas = Object.entries(porMes).map(([mesN, l]) => {
       const rect = l.filter(n => /rectific/i.test(`${n.nombre} ${n.notas} ${(n.origen && n.origen.asunto) || ''}`)).sort((a, b) => String(b.subido).localeCompare(String(a.subido)));
       const extra = l.filter(n => /paga|extra/i.test(`${n.nombre} ${n.notas}`) && !rect.includes(n));
-      // La misma nómina recibida dos veces (en el PDF del mes y suelta): mismo líquido → cuenta una vez.
-      const unicas = []; l.forEach(n => { const q = n.importes && n.importes.liquido; if (q == null || !unicas.some(u => u.importes && u.importes.liquido === q)) unicas.push(n); });
+      // La misma nómina recibida dos veces (en el PDF del mes y suelta): mismo líquido, o mismo bruto aunque el líquido
+      // cambie (una versión corregida, p. ej. con un embargo que la primera no tenía) → cuenta una vez, la más reciente.
+      const igual = (a, b) => { const A = a.importes || {}, B = b.importes || {}; return (A.liquido != null && A.liquido === B.liquido) || (A.bruto != null && A.bruto === B.bruto); };
+      const unicas = []; [...l].sort((a, b) => String(b.subido).localeCompare(String(a.subido))).forEach(n => { if (!(n.importes && n.importes.liquido != null) || !unicas.some(u => igual(u, n))) unicas.push(n); });
       const usar = rect.length ? [rect[0], ...extra.filter(n => unicas.includes(n))] : unicas;
       const liq = usar.reduce((a, n) => a + ((n.importes && n.importes.liquido) || 0), 0);
       return { _id: usar[0]._id, mes: mesN, importes: { liquido: usar.every(n => n.importes && n.importes.liquido != null) ? r2(liq) : null } };
