@@ -3340,7 +3340,7 @@ async function handlerPresencia(texto, from, ctx = {}) {
   }
   const offset = parsed.fecha === 'manana' ? 1 : (parsed.fecha === 'ayer' ? -1 : 0);
   const date = hoyISO(offset);
-  const validos = ['obra', 'oficina', 'vacaciones', 'baja', 'falta_j', 'falta_i', 'libre'];
+  const validos = ['obra', 'oficina', 'vacaciones', 'baja', 'falta_j', 'falta_i', 'libre', 'festivo'];
   const entries = []; const cola = [];
   for (const a of parsed.asignaciones) {
     const estado = validos.includes(a.estado) ? a.estado : 'obra';

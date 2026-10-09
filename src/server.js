@@ -1448,6 +1448,16 @@ app.get('/api/fichaje/mios', async (req, res) => {
 // Portada del dashboard: quién está hoy en obra ahora mismo (fichaje + presencia).
 // Horas por día: real fichado vs a facturar (mínimo 8 h por día trabajado), por obra y trabajador.
 // Obras fijas (oficina pone a alguien en una obra varios días) y pregunta de sitios a los de partes.
+// Festivos (nacionales, Cataluña, locales de Girona y los que añada la oficina): calendario de presencia y fichaje.
+app.get('/api/festivos', requireAuth, async (req, res) => {
+  try { res.json(await require('./festivos').lista(/^\d{4}$/.test(String(req.query.anio || '')) ? req.query.anio : null)); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/festivos', requireAuthOficina, express.json(), async (req, res) => {
+  try { res.json(await require('./festivos').poner((req.body || {}).fecha, (req.body || {}).nombre, req.user?.name)); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.delete('/api/festivos/:fecha', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./festivos').quitar(req.params.fecha, req.user?.name)); } catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/presencia/obras-fijas', requireAuth, async (req, res) => {
   try {
     const [fijas, ws] = await Promise.all([require('./obraDelDia').listarFijas({ fecha: require('./fichajeMarcas').fechaHoy() }), require('./fichajeMarcas').trabajadoresQueFichan()]);

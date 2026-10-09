@@ -64,6 +64,7 @@ const CONFIG = {
     falta_j:    { label: 'Falta justificada', emoji: '📋', color: '#f59e0b' },
     falta_i:    { label: 'Falta injust.',     emoji: '❌', color: '#f05252' },
     libre:      { label: 'Libre',             emoji: '⏸️', color: '#5a6278' },
+    festivo:    { label: 'Festivo',           emoji: '🎉', color: '#ec4899' },
   },
 
   // ── Estados de expedientes ────────────────────────────────────
@@ -74,7 +75,7 @@ const CONFIG = {
   },
 
   // ── Estados que generan coste pero NO horas productivas ───────
-  estadosSinHorasProductivas: ['baja', 'vacaciones', 'falta_j', 'falta_i'],
+  estadosSinHorasProductivas: ['baja', 'vacaciones', 'falta_j', 'falta_i', 'festivo'],   // festivo: se paga, no se trabaja
 
   // ── Estados con coste cero ────────────────────────────────────
   estadosSinCoste: ['libre'],

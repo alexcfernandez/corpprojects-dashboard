@@ -59,6 +59,7 @@ window.CP_CONFIG = {
     falta_j:    { label: 'Falta justificada',  emoji: '📋', color: '#f59e0b' },
     falta_i:    { label: 'Falta injust.',      emoji: '❌', color: '#f05252' },
     libre:      { label: 'Libre',              emoji: '⏸️', color: '#5a6278' },
+    festivo:    { label: 'Festivo',            emoji: '🎉', color: '#ec4899' },
   },
 
   // ── Estados de presencia para informe PDF ─────────────────────
@@ -71,6 +72,7 @@ window.CP_CONFIG = {
     falta_j:    { l: 'J', bg: '#fef3c7', c: '#d97706', label: 'Falta just.' },
     falta_i:    { l: 'X', bg: '#fee2e2', c: '#dc2626', label: 'Falta injust.' },
     libre:      { l: 'L', bg: '#f1f5f9', c: '#94a3b8', label: 'Libre' },
+    festivo:    { l: 'FE', bg: '#fce7f3', c: '#db2777', label: 'Festivo' },
   },
 
   // ── Estados de obras ──────────────────────────────────────────

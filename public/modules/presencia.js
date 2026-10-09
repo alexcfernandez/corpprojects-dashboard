@@ -10,6 +10,7 @@
   let calYear  = new Date().getFullYear();
   let calMonth = new Date().getMonth() + 1;
   let calData  = {};
+  let festivos = {};   // { 'AAAA-MM-DD': 'nombre' } del año que se ve (src/festivos.js)
   let selectedEstado   = null;
   let modalWorker = null, modalDate = null;
   let _equipoPresencia = [];
@@ -173,12 +174,29 @@
     if (el) el.textContent = MN[calMonth-1] + ' ' + calYear;
   }
 
+  // Clic en el número del día: marcar o quitar festivo (lo ve todo el mundo; el fichaje no avisa ese día).
+  async function toggleFestivo(date) {
+    const f = date.split('-').reverse().join('/');
+    try {
+      if (festivos[date]) {
+        if (!confirm(`¿Quitar el festivo «${festivos[date]}» del ${f}?`)) return;
+        await api('/api/festivos/' + date, { method: 'DELETE' });
+      } else {
+        const nombre = prompt(`¿Marcar el ${f} como festivo para todos? Ponle nombre:`, 'Festivo local');
+        if (nombre === null) return;
+        await api('/api/festivos', { method: 'POST', body: JSON.stringify({ fecha: date, nombre }) });
+      }
+      festivos = await api(`/api/festivos?anio=${calYear}`); buildGrid();
+    } catch (e) { alert(e.message || 'No se pudo guardar'); }
+  }
+
   async function loadCalendar() {
     updateMonthLabel();
     const from = `${calYear}-${String(calMonth).padStart(2,'0')}-01`;
     const to   = `${calYear}-${String(calMonth).padStart(2,'0')}-31`;
     calData = {};
     buildGrid();
+    api(`/api/festivos?anio=${calYear}`).then(f => { if (f && typeof f === 'object') { festivos = f; buildGrid(); } }).catch(() => {});
     try {
       const data = await api(`/api/attendance?from=${from}&to=${to}`);
       if (Array.isArray(data)) {
@@ -201,17 +219,18 @@
     for (let d = 1; d <= daysInMonth; d++) {
       const date = `${calYear}-${String(calMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
       const dow  = new Date(calYear, calMonth-1, d).getDay();
-      days.push({ d, date, dow, weekend: dow===0||dow===6 });
+      days.push({ d, date, dow, weekend: dow===0||dow===6, fest: festivos[date] || null });
     }
 
     let html = `<div style="display:grid;grid-template-columns:100px repeat(${days.length},minmax(26px,1fr));gap:1px;font-size:10px">`;
 
     html += `<div style="padding:4px 6px;color:var(--text3);font-size:9px;font-weight:600;border-bottom:1px solid var(--border)">Trabajador</div>`;
-    days.forEach(({ d, date, dow, weekend }) => {
+    days.forEach(({ d, date, dow, weekend, fest }) => {
       const isToday = date === today;
-      html += `<div style="text-align:center;padding:2px 1px;border-bottom:1px solid var(--border);background:${weekend?'rgba(245,158,11,.05)':''}">
-        <div style="font-size:7px;color:${weekend?'var(--amber)':'var(--text3)'}">${DN[dow]}</div>
-        <div style="font-size:10px;font-weight:${isToday?'700':'400'};color:${isToday?'var(--blue)':weekend?'var(--amber)':'var(--text2)'}">${d}</div>
+      const tit = fest ? `Festivo: ${fest} (clic para quitarlo)` : 'Clic para marcar este día como festivo';
+      html += `<div data-fdate="${date}" title="${tit.replace(/"/g,'&quot;')}" style="cursor:pointer;text-align:center;padding:2px 1px;border-bottom:1px solid var(--border);background:${fest?'rgba(236,72,153,.12)':weekend?'rgba(245,158,11,.05)':''}">
+        <div style="font-size:7px;color:${fest?'#ec4899':weekend?'var(--amber)':'var(--text3)'}">${fest?'🎉':DN[dow]}</div>
+        <div style="font-size:10px;font-weight:${isToday?'700':'400'};color:${isToday?'var(--blue)':fest?'#ec4899':weekend?'var(--amber)':'var(--text2)'}">${d}</div>
       </div>`;
     });
 
@@ -220,13 +239,13 @@
         <div style="width:6px;height:6px;border-radius:50%;background:${w.color};flex-shrink:0"></div>
         ${w.name.split(' ')[0]}
       </div>`;
-      days.forEach(({ date, weekend }) => {
+      days.forEach(({ date, weekend, fest }) => {
         const entry       = calData[w.id + '_' + date];
         const est         = entry ? ESTADOS[entry.estado] : null;
         const tieneEquipo = entry?.equipo?.length > 0;
         const numObras    = (entry?.obras?.length) || 0;
-        const bg          = est ? est.color+'28' : weekend ? 'rgba(245,158,11,.06)' : 'var(--bg3)';
-        const border      = est ? est.color+'55'  : weekend ? 'rgba(245,158,11,.25)' : 'var(--border)';
+        const bg          = est ? est.color+'28' : fest ? 'rgba(236,72,153,.08)' : weekend ? 'rgba(245,158,11,.06)' : 'var(--bg3)';
+        const border      = est ? est.color+'55'  : fest ? 'rgba(236,72,153,.3)' : weekend ? 'rgba(245,158,11,.25)' : 'var(--border)';
         // Etiqueta: cliente principal + "+N" si hubo varias obras ese día
         const clientLabel = entry?.clientName
           ? entry.clientName.slice(0,8) + (numObras > 1 ? ' +'+(numObras-1) : '')
@@ -235,13 +254,13 @@
           ? (numObras > 1
               ? `${est.label} — ${entry.obras.map(o=>o.clientName+' ('+o.horas+'h)').join(', ')}${tieneEquipo?' · '+entry.equipo.length+' personas':''}`
               : `${est.label}${entry.clientName?' — '+entry.clientName:''}${tieneEquipo?' · '+entry.equipo.length+' personas':''}`) + (entry?.horasFichadas!=null?` · ${entry.horas} h (fichó ${entry.horasFichadas} h)`:'')
-          : weekend ? 'Fin de semana' : 'Sin registrar';
+          : fest ? 'Festivo: ' + fest : weekend ? 'Fin de semana' : 'Sin registrar';
 
         html += `<div
           data-wid="${w.id}" data-wname="${w.name}" data-date="${date}" data-clickable="true"
           style="min-height:36px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;background:${bg};border:1px solid ${border};border-radius:3px;cursor:pointer;padding:1px;transition:opacity .15s"
           title="${tooltip}">
-          <div style="font-size:11px;line-height:1">${est ? est.emoji : weekend ? '⭐' : ''}</div>
+          <div style="font-size:11px;line-height:1">${est ? est.emoji : fest ? '🎉' : weekend ? '⭐' : ''}</div>
           <div style="font-size:7px;color:${numObras>1?'var(--blue)':'var(--text3)'};overflow:hidden;max-width:100%;white-space:nowrap;text-overflow:ellipsis;padding:0 2px">${clientLabel}</div>
           <div style="font-size:8px;line-height:1;display:flex;gap:1px">
             ${entry?.revisar ? `<span title="Revisar: ${(entry.revisarMotivo||'').replace(/"/g,'&quot;')}">⚠️</span>` : ''}
@@ -262,13 +281,16 @@
     html += '</div>';
     grid.innerHTML = html;
 
-    grid.addEventListener('click', e => {
+    // (onclick y no addEventListener: buildGrid se llama varias veces y los listeners se acumulaban)
+    grid.onclick = e => {
+      const h = e.target.closest('[data-fdate]');
+      if (h) return toggleFestivo(h.dataset.fdate);
       const cell = e.target.closest('[data-date]');
       if (!cell || cell.dataset.clickable !== 'true') return;
       openModal(cell.dataset.wid, cell.dataset.wname, cell.dataset.date);
-    });
-    grid.addEventListener('mouseover', e => { const c=e.target.closest('[data-clickable="true"]'); if(c) c.style.opacity='.7'; });
-    grid.addEventListener('mouseout',  e => { const c=e.target.closest('[data-clickable="true"]'); if(c) c.style.opacity='1'; });
+    };
+    grid.onmouseover = e => { const c=e.target.closest('[data-clickable="true"]'); if(c) c.style.opacity='.7'; };
+    grid.onmouseout  = e => { const c=e.target.closest('[data-clickable="true"]'); if(c) c.style.opacity='1'; };
   }
 
   function prevMonth() { if(calMonth===1){calMonth=12;calYear--;}else calMonth--; loadCalendar(); }

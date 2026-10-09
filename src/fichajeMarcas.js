@@ -423,14 +423,14 @@ function _esLaborable(fecha) {
   return dow >= 1 && dow <= 5;
 }
 
-// Quién de la plantilla NO ha fichado ese día y DEBERÍA: solo laborables (y no festivos
-// de FICHAJE_FESTIVOS=AAAA-MM-DD,...), y nunca quien en presencia esté de vacaciones,
+// Quién de la plantilla NO ha fichado ese día y DEBERÍA: solo laborables (y no festivos,
+// ver festivos.js), y nunca quien en presencia esté de vacaciones,
 // baja, falta o libre. Devuelve también cuánta gente sí ha fichado (para detectar un
 // festivo no configurado: si no ha fichado NADIE, lo más probable es que no se trabaje).
 async function sinFichar(fecha, pre = {}) {
   const f = fecha || fechaHoy();
-  const festivos = String(process.env.FICHAJE_FESTIVOS || '').split(',').map(s => s.trim()).filter(Boolean);
-  if (!_esLaborable(f) || festivos.includes(f)) return { fecha: f, laborable: false, faltan: [], fichados: 0, plantilla: 0, ausentes: [] };
+  const festivo = await require('./festivos').esFestivo(f).catch(() => false);
+  if (!_esLaborable(f) || festivo) return { fecha: f, laborable: false, faltan: [], fichados: 0, plantilla: 0, ausentes: [] };
   const db = await getDB();
   const [dia, plantilla] = await Promise.all([pre.dia || getDia(f), pre.plantilla || trabajadoresQueFichan()]);
   const conMarcas = new Set(dia.map(d => String(d.userId)));
