@@ -42,3 +42,19 @@ test('recibo: paga la factura anterior del mismo importe, no una posterior más 
   const f = C.conciliar({ movimientos: [{ id: 'm', fecha: '2026-08-25', importe: -22.87, concepto: 'Recibo Recuperacions Marcel Navarro I Fills,sl Nº Recibo 0049 2439 755', codigo: '061' }], emitidas: [], recibidas: rec }).filas[0];
   assert.equal(f.estado, 'punteado'); assert.equal(f.docs[0].ref, 'A-00113337');
 });
+
+test('mismo proveedor con varios nombres: una sola cuenta (prefijo propio o razón social)', () => {
+  const rec = [{ proveedor: 'SPASS, SLU' }, { proveedor: 'SPASS, SLU' }, { proveedor: 'SPASS-SERVICIO DE PREVENCIÓN AJENO EN SEGURIDAD Y SALUD LABORAL SLU' },
+    { proveedor: 'COSSI COWORKING', alias: 'Gerard Codina Mas' }, { proveedor: 'Gerard Codina Mas' },
+    { proveedor: 'Pintures Sant Narcis S.L.U' }, { proveedor: 'Pintures Bruguer SA' }];
+  const g = CP._agrupador(rec);
+  assert.equal(g(rec[0]), g(rec[2])); assert.equal(g(rec[3]), g(rec[4]));
+  assert.notEqual(g(rec[5]), g(rec[6]));   // «pintures» es genérico: no se juntan
+});
+
+test('Amazon: un cargo con tarjeta paga un pedido con varias facturas', () => {
+  const rec = [{ id: 'z1', numero: 'FPR00856', refProveedor: 'ES612QLC1AEUS', proveedor: 'Amazon EU S.à r.l., Sucursal en España', fecha: '2026-06-18', total: 22.74 },
+    { id: 'z2', numero: 'FPR00857', refProveedor: 'ES612QLC2', proveedor: 'Amazon EU S.à r.l., Sucursal en España', fecha: '2026-06-17', total: 60 }];
+  const f = C.conciliar({ movimientos: [{ id: 'k', fecha: '2026-06-18', importe: -98.01, concepto: 'Compra Www.amazon* Nf4752sa5, Luxembourg, Tarjeta 4176570174907925', fijo: { tipo: 'pago_tarjeta' } }], emitidas: [], recibidas: rec }).filas[0];
+  assert.equal(f.estado, 'punteado'); assert.equal(f.docs.length, 2); assert.match(f.nota, /faltan facturas por 15\.27/);
+});

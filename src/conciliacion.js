@@ -312,6 +312,19 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
     facts.forEach(x => usadasRec.add(x.id));
   }
 
+  // 2e) PEDIDOS DE MARKETPLACE (Amazon…): un cargo con tarjeta paga un pedido con varias facturas (de Amazon y de
+  //     otros vendedores). Cada factura sin pago, a un cargo de ese marketplace de ±3 días que la cubra.
+  const MKT = /amazon|aliexpress|temu|ebay|pccomponentes|miravia|shein/;
+  for (const r of recibidas.filter(x => !usadasRec.has(x.id) && x.total > 0 && MKT.test(norm(x.proveedor)))) {
+    const marca = (norm(r.proveedor).match(MKT) || [])[0];
+    const f = filas.find(x => x.importe < 0 && (!x.estado || x.marketplace) && norm(x.concepto).includes(marca) && Math.abs(dias(x.fecha, r.fecha)) <= 3 && r2(-x.importe - (x.marketplace || 0)) >= r.total - 0.01);
+    if (!f) continue;
+    f.marketplace = r2((f.marketplace || 0) + r.total);
+    f.estado = 'punteado'; f.confianza = 'baja'; f.docs = [...(f.docs || []), { ref: r.numero, tercero: r.proveedor, total: r.total, fecha: r.fecha, refProveedor: r.refProveedor }];
+    f.nota = `Pedido de ${(-f.importe).toFixed(2)} € con ${f.docs.length} factura${f.docs.length > 1 ? 's' : ''} (${f.marketplace.toFixed(2)} €)${-f.importe - f.marketplace >= 1 ? `: faltan facturas por ${(-f.importe - f.marketplace).toFixed(2)} €` : ''}`;
+    usadasRec.add(r.id);
+  }
+
   // 3) RECIBOS y transferencias que pagan VARIAS facturas del mismo proveedor (remesas: Oliveras cobra el 25
   //    lo del mes anterior, Saltoki junta albarán + abono…). Cuentan los abonos (facturas en negativo).
   //    Del recibo más antiguo al más nuevo, para que cada uno se lleve las facturas más viejas; primero un

@@ -15,6 +15,23 @@ const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ
   .replace(/\b(s\.?\s?l\.?\s?u?|s\.?\s?a\.?\s?u?|slu|sau|sl|sa|scp|s\.c\.p)\b\.?/g, ' ').replace(/\([^)]*\)/g, ' ').replace(/[^a-z0-9ñç]+/g, ' ').trim();
 const clave = s => norm(s).split(' ').filter(w => w.length >= 3 && !['del', 'les', 'els', 'los', 'las', 'girona'].includes(w)).slice(0, 3).join(' ') || norm(s);
 
+// El MISMO proveedor con varios nombres (StelOrder «SPASS, SLU» y «SPASS-SERVICIO DE PREVENCIÓN…», Compras «Amazon» y
+// «Amazon EU S.à r.l.», el coworking que factura como «Cossi Coworking» y cobra como «Gerard Codina Mas»): una sola
+// cuenta. Se junta por la razón social (alias) y cuando un nombre es el principio del otro (palabra propia ≥5 letras).
+const GEN1 = /^(pintur\w*|ferreter\w*|construcc\w*|material\w*|taller\w*|recambio\w*|recanvi\w*|servei\w*|servicio\w*|transport\w*|cafeteria|restaurant\w*|hermanos|germans|grupo?|comercial|distribuc\w*|suministro\w*|instal\w*|reformas?|obras?|gestio\w*|asesor\w*|assessor\w*|autos?|electric\w*|fontaner\w*|fusteria|maderas?|hotel|estacion|gasolinera)$/;
+function agrupador(rec) {
+  const base = r => clave(r.alias || r.proveedor);
+  const cnt = new Map(); rec.forEach(r => { if (r.proveedor) { const k = base(r); cnt.set(k, (cnt.get(k) || 0) + 1); } });
+  const keys = [...cnt.keys()], canon = new Map();
+  for (const k of keys) {
+    const ws = k.split(' ');
+    if (ws[0].length < 5 || GEN1.test(ws[0])) { canon.set(k, k); continue; }
+    const fam = keys.filter(x => { const xs = x.split(' '); const [a, b] = xs.length <= ws.length ? [xs, ws] : [ws, xs]; return a.every((w, i) => b[i] === w); });
+    canon.set(k, fam.sort((a, b) => cnt.get(b) - cnt.get(a) || a.localeCompare(b))[0]);
+  }
+  return r => canon.get(base(r)) || base(r);
+}
+
 let _cache = null, _cacheAt = 0;
 async function _datos() {
   if (_cache && Date.now() - _cacheAt < 5 * 60 * 1000) return _cache;
@@ -39,7 +56,7 @@ function _factura(r, mapa) {
   let pagado = r2(Math.min(Math.abs(total), pagos.reduce((a, p) => a + p.importe, 0)));
   let segun = pagos.length ? 'banco' : null;
   if (!pagos.length && r.pendienteStel != null && Math.abs(r.pendienteStel) < 0.01 && Math.abs(total) > 0) { pagado = Math.abs(total); segun = 'stelorder'; }
-  if (Math.abs(Math.abs(total) - pagado) <= 0.02) pagado = Math.abs(total);
+  if (Math.abs(Math.abs(total) - pagado) <= 0.05) pagado = Math.abs(total);   // céntimos de redondeo
   if (total < 0) { pagado = 0; segun = null; }   // un abono no es un pago: resta de lo facturado
   const pendiente = total < 0 ? 0 : r2(total - pagado);
   return { id: r.id, compraId: r.compraId || null, pdfPath: r.pdfPath || null, numero: r.numero, refProveedor: r.refProveedor || null, fecha: r.fecha, total, pagado, pendiente, estado: total < 0 ? 'abono' : pendiente <= 0.01 ? 'pagada' : pagado > 0 ? 'parcial' : 'pendiente', segun, pagos, deCompras: !!r.compraId && !r.pendienteStel && String(r.id).startsWith('c:') };
@@ -84,10 +101,11 @@ function aplicarTienda(facturas) {
 // Todas las cuentas (una por proveedor) con lo pendiente.
 async function cuentas({ desde = '2025-01-01' } = {}) {
   const { rec, mapa } = await _datos();
+  const grupoDe = agrupador(rec);
   const g = new Map();
   for (const r of rec) {
     if (!r.fecha || r.fecha < desde || !r.proveedor) continue;
-    const k = clave(r.proveedor);
+    const k = grupoDe(r);
     const c = g.get(k) || { clave: k, proveedor: r.proveedor, facturas: [] };
     c.facturas.push(_factura(r, mapa));
     g.set(k, c);
@@ -118,9 +136,12 @@ async function cuenta(nombre, { desde = '2025-01-01' } = {}) {
     const mejor = Object.entries(cand).sort((a, b) => b[1] - a[1])[0];
     if (mejor) k = mejor[0];
   }
-  const facturas = rec.filter(r => r.fecha && r.fecha >= desde && r.proveedor && clave(r.proveedor) === k).map(r => _factura(r, mapa)).sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+  const grupoDe = agrupador(rec);
+  const uno = rec.find(r => r.proveedor && (clave(r.proveedor) === k || grupoDe(r) === k));
+  const K = uno ? grupoDe(uno) : k;
+  const facturas = rec.filter(r => r.fecha && r.fecha >= desde && r.proveedor && grupoDe(r) === K).map(r => _factura(r, mapa)).sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
   if (!facturas.length) throw new Error('No encuentro facturas de ese proveedor');
-  const nombreProv = (rec.find(r => r.proveedor && clave(r.proveedor) === k) || {}).proveedor || nombre;
+  const nombreProv = (uno || {}).proveedor || nombre;
   // Para ver la factura de un clic: la de StelOrder que vino de Compras tiene allí su documento ORIGINAL (PDF o foto
   // del proveedor). Se busca su gemela por el nº del proveedor (solo dígitos).
   try {
@@ -176,10 +197,11 @@ async function deuda(nombre) {
 // Todas las facturas agrupadas por proveedor (con sus pagos), para la previsión de pagos (vencimientos.js).
 async function grupos({ desde = '2025-01-01' } = {}) {
   const { rec, mapa } = await _datos();
+  const grupoDe = agrupador(rec);
   const g = new Map();
   for (const r of rec) {
     if (!r.fecha || r.fecha < desde || !r.proveedor) continue;
-    const k = clave(r.proveedor);
+    const k = grupoDe(r);
     const c = g.get(k) || { clave: k, proveedor: r.proveedor, facturas: [] };
     c.facturas.push({ ...(_factura(r, mapa)), stelId: String(r.id || '') });
     g.set(k, c);
@@ -187,4 +209,4 @@ async function grupos({ desde = '2025-01-01' } = {}) {
   return [...g.values()];
 }
 
-module.exports = { _domiciliado: domiciliado, _aplicarTienda: aplicarTienda, _aplicarRectificativas: aplicarRectificativas, cuentas, cuenta, deuda, grupos, olvidar, clave, _factura };
+module.exports = { _agrupador: agrupador, _domiciliado: domiciliado, _aplicarTienda: aplicarTienda, _aplicarRectificativas: aplicarRectificativas, cuentas, cuenta, deuda, grupos, olvidar, clave, _factura };
