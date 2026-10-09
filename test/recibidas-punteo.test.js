@@ -24,3 +24,13 @@ test('una factura de Classicauto Girona Taller no va a la cuenta de Auto-Taller 
   assert.equal(de('b'), 'AUTO-TALLER KIN');
   assert.equal(de('c'), 'Tallers Puig');   // solo comparte «tallers»: se queda con su nombre
 });
+
+test('nombre comercial ≠ razón social: las facturas de StelOrder heredan el alias para casar con el recibo', async () => {
+  const stel = [{ id: '3', proveedor: 'COSSI COWORKING', refProveedor: '26-CW-91', fecha: '2026-07-08', total: 90.75 }];
+  compras = [{ _id: 'd', proveedor: 'Cossi Coworking', razonSocial: 'Gerard Codina Mas', numero: '25-CW-147', fecha: '2025-10-09', total: 90.75 }];
+  const r = await T.recibidasPunteo(stel);
+  assert.equal(r.find(x => x.id === '3').alias, 'Gerard Codina Mas');
+  const C = require(path.join(root, 'src/conciliacion.js'));
+  const f = C.conciliar({ movimientos: [{ id: 'm', fecha: '2026-07-14', importe: -90.75, concepto: 'Recibo Gerard Codina Mas Nº Recibo 0049 2439 755 Bbrnfpj Ref. Mandato Oficina Fi', codigo: '061' }], emitidas: [], recibidas: r.filter(x => x.id === '3') }).filas[0];
+  assert.equal(f.estado, 'punteado'); assert.equal(f.docs[0].refProveedor, '26-CW-91');
+});

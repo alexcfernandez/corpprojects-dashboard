@@ -310,6 +310,11 @@ async function recibidasPunteo(stel) {
     const nombreStel = (mejorStel(c.proveedor) || (alias && mejorStel(alias)) || {}).proveedor;
     out.push({ id: 'c:' + String(c._id), compraId: String(c._id), numero: c.numero || 'Compra', refProveedor: c.numero || '', proveedor: nombreStel || c.proveedor || '', alias, fecha: c.fecha, total: r2(c.total), base: c.base, iva: c.iva, pendienteStel: null, deCompras: true });
   }
+  // Nombre comercial ≠ razón social («Cossi Coworking» factura y el banco carga «Gerard Codina Mas»): la razón social
+  // que la IA lee en Compras pasa también, como alias, a las facturas de ese proveedor en StelOrder.
+  const razon = new Map();
+  for (const c of cs) if (c.razonSocial && c.proveedor && !/corp\.?\s*projects/i.test(c.razonSocial) && !pareceProv(c.razonSocial, c.proveedor)) razon.set(compacto(c.proveedor), c.razonSocial);
+  for (const r of stel) if (!r.alias && r.proveedor && razon.has(compacto(r.proveedor))) r.alias = razon.get(compacto(r.proveedor));
   return [...stel, ...out];
 }
 async function movimientosBanco(R) {
