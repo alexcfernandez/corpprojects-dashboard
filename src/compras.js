@@ -8,7 +8,7 @@
 //     empresaId, estado: por_revisar | revisada | descartada | archivo (recuperada del correo, solo para cuadrar),
 //     tipo: albaran | factura | ticket | devolucion | otro,
 //     proveedor, proveedorNorm, nif, numero, fecha (YYYY-MM-DD), base, iva, total,
-//     lineas: [{descripcion, cantidad, unidad, precio, importe}], albaranesRef: ['4471', …],
+//     lineas: [{descripcion, cantidad, unidad, precio, dto, importe}], albaranesRef: ['4471', …],
 //     obraId, obraRef, varias (bool), reparto: [{obraId, obraRef, importe}], categoria (gasto general),
 //     nota, subidaPor: {kind: worker|admin, userId, name}, nFotos,
 //     ia: {ok, calidad: legible|borroso|cortado|no_es_documento, confianza, aviso, modelo, error},
@@ -58,6 +58,7 @@ function n2(v) {
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
 }
 const num = v => { const n = Number(v); return Number.isFinite(n) ? Math.round(n * 100) / 100 : null; };
+const numN = v => (v == null || v === '' ? null : num(v));   // sin dato = null (no 0)
 
 // ── LECTURA CON IA ───────────────────────────────────────────────
 const PROMPT = `Eres el administrativo de una empresa de reformas en Girona. Te paso la(s) foto(s) de UN documento de compra de material (albarán de entrega, factura, ticket de caja o abono/devolución). Devuelve SOLO un JSON con esta forma exacta, sin texto alrededor:
@@ -67,13 +68,13 @@ const PROMPT = `Eres el administrativo de una empresa de reformas en Girona. Te 
  "proveedor": "nombre comercial del proveedor (Saltoki, Leroy Merlin, Obramat…)", "razonSocial": "razón social completa tal cual aparece (p. ej. Obramat S.L.U.) o null", "nif": "CIF/NIF del proveedor o null",
  "numero": "número del documento tal cual aparece, o null", "fecha": "YYYY-MM-DD o null",
  "base": número o null, "iva": número o null, "total": número o null,
- "lineas": [{"descripcion": "texto de la línea", "cantidad": número o null, "unidad": "ud|m|m2|kg|saco|caja|…", "precio": número o null, "importe": número o null, "talla": "talla si es ropa (M, L, 42…) o null", "albaran": "en facturas que agrupan albaranes: nº del albarán al que pertenece la línea, o null", "obraTexto": "en facturas que agrupan albaranes: obra o dirección que pone en ese albarán (p. ej. «OBRA CARLES RAHOLA 13 ATIC»), o null"}],
+ "lineas": [{"descripcion": "texto de la línea", "cantidad": número o null, "unidad": "ud|m|m2|kg|saco|caja|…", "precio": "precio por unidad ANTES del descuento, o null", "dto": "% de descuento de la línea (columna Dto., Dte., DTE%, Desc.) o null", "importe": "importe de la línea (ya con el descuento), o null", "talla": "talla si es ropa (M, L, 42…) o null", "albaran": "en facturas que agrupan albaranes: nº del albarán al que pertenece la línea, o null", "obraTexto": "en facturas que agrupan albaranes: obra o dirección que pone en ese albarán (p. ej. «OBRA CARLES RAHOLA 13 ATIC»), o null"}],
  "albaranesRef": ["números de albarán que cite una FACTURA (si es una factura que agrupa albaranes), si no []"],
  "obraPista": "texto del documento que parezca referirse a una obra o dirección de entrega, o null",
  "confianza": 0-1,
  "aviso": "una frase corta en español si hay algo que oficina deba mirar (importe ilegible, falta una página, es un presupuesto y no una compra…), o null"
 }
-Si el documento tiene más de 60 líneas, incluye las 60 primeras y resume el resto en una línea "… y N líneas más". En facturas que agrupan varios albaranes (cada albarán empieza con su cabecera, p. ej. «SC/286689 17/09/2026 PEDIDO:», y la obra o dirección va en una línea sin importe al principio o AL FINAL del bloque, p. ej. «OBRA CARLES RAHOLA, 13 ATIC (ALEX RINCON)»), pon en CADA línea su "albaran" y el "obraTexto" de su bloque (la cabecera y la línea de la obra no son líneas). En facturas de gasolinera que listan repostajes, una línea por tiquet con la descripción "PRODUCTO - Tiquet NÚMERO (DD-MM-AAAA)" (el nº de tiquet tal cual), litros como cantidad con unidad "L" e importe de la línea. Reglas: "albaran" = entrega de material SIN importes totales o con la palabra albarán/entrega; "factura" = lleva la palabra factura y desglose de IVA; "ticket" = ticket de caja/TPV; "devolucion" = abono, devolución o importes negativos (pon los importes en NEGATIVO). Números con formato español (1.234,56) → 1234.56. Si no es un documento de compra, calidad="no_es_documento". No inventes: lo que no se lea, null.`;
+Si el documento tiene más de 60 líneas, incluye las 60 primeras y resume el resto en una línea "… y N líneas más". En facturas que agrupan varios albaranes (cada albarán empieza con su cabecera, p. ej. «SC/286689 17/09/2026 PEDIDO:», y la obra o dirección va en una línea sin importe al principio o AL FINAL del bloque, p. ej. «OBRA CARLES RAHOLA, 13 ATIC (ALEX RINCON)»), pon en CADA línea su "albaran" y el "obraTexto" de su bloque (la cabecera y la línea de la obra no son líneas). En facturas de gasolinera que listan repostajes, una línea por tiquet con la descripción "PRODUCTO - Tiquet NÚMERO (DD-MM-AAAA)" (el nº de tiquet tal cual), litros como cantidad con unidad "L" e importe de la línea. Reglas: "albaran" = entrega de material SIN importes totales o con la palabra albarán/entrega; "factura" = lleva la palabra factura y desglose de IVA; "ticket" = ticket de caja/TPV; "devolucion" = abono, devolución o importes negativos (pon los importes en NEGATIVO). Descuentos por línea: pon el % en "dto" y el precio de tarifa en "precio"; "importe" es lo que vale la línea con el descuento (cantidad × precio × (1 − dto/100)). Si la foto corta la columna de importes pero se leen cantidad, precio y dto, calcula el importe así y comprueba que la suma de líneas da la base; si cuadra, no avises de descuentos. Números con formato español (1.234,56) → 1234.56. Si no es un documento de compra, calidad="no_es_documento". No inventes: lo que no se lea, null.`;
 
 // Esquema de la salida estructurada (mismo contenido que pide PROMPT).
 const _n = { type: ['number', 'null'] }, _s = { type: ['string', 'null'] };
@@ -88,7 +89,7 @@ const HERRAMIENTA = {
       proveedor: _s, razonSocial: _s, nif: _s, numero: _s,
       fecha: { type: ['string', 'null'], description: 'YYYY-MM-DD' },
       base: _n, iva: _n, total: _n,
-      lineas: { type: 'array', items: { type: 'object', properties: { descripcion: { type: 'string' }, cantidad: _n, unidad: _s, precio: _n, importe: _n, talla: _s, albaran: _s, obraTexto: _s }, required: ['descripcion'] } },
+      lineas: { type: 'array', items: { type: 'object', properties: { descripcion: { type: 'string' }, cantidad: _n, unidad: _s, precio: _n, dto: _n, importe: _n, talla: _s, albaran: _s, obraTexto: _s }, required: ['descripcion'] } },
       albaranesRef: { type: 'array', items: { type: 'string' } },
       obraPista: _s,
       confianza: _n,
@@ -159,13 +160,15 @@ async function leerConIA(fotos) {
     return { ok: false, modelo, error: e.message };
   }
 }
+// Importe de una línea a partir de cantidad × precio − descuento (cuando la foto corta la columna de importes).
+function _calcImporte(l) { const q = numN(l.cantidad), p = numN(l.precio), d = numN(l.dto) || 0; return q != null && p != null ? Math.round(q * p * (1 - d / 100) * 100) / 100 : null; }
 // Pasa lo leído a los campos de la compra (sin pisar lo que oficina ya haya corregido si `soloVacios`).
 function aplicarLectura(doc, d) {
   const tipo = TIPOS.includes(d.tipo) ? d.tipo : 'otro';
   const neg = tipo === 'devolucion' ? (v => v == null ? null : -Math.abs(v)) : (v => v);
   const lineas = (Array.isArray(d.lineas) ? d.lineas : []).slice(0, 80).map(l => ({
     descripcion: String(l.descripcion || '').trim().slice(0, 200), cantidad: num(l.cantidad), unidad: String(l.unidad || '').trim().slice(0, 12) || null,
-    precio: num(l.precio), importe: neg(num(l.importe)), talla: String(l.talla || '').trim().slice(0, 12) || null,
+    precio: numN(l.precio), dto: numN(l.dto) || null, importe: neg(numN(l.importe != null ? l.importe : _calcImporte(l))), talla: String(l.talla || '').trim().slice(0, 12) || null,
     albaran: String(l.albaran || '').trim().slice(0, 30) || null, obraTexto: String(l.obraTexto || '').trim().slice(0, 120) || null,
   })).filter(l => l.descripcion);
   Object.assign(doc, {
@@ -390,7 +393,7 @@ async function editar(id, data, por) {
   if ('numero' in data) set.numero = String(data.numero || '').trim().slice(0, 60) || null;
   if ('fecha' in data) set.fecha = /^\d{4}-\d{2}-\d{2}$/.test(String(data.fecha || '')) ? data.fecha : null;
   for (const k of ['base', 'iva', 'total']) if (k in data) set[k] = n2(data[k]);
-  if ('lineas' in data && Array.isArray(data.lineas)) set.lineas = data.lineas.slice(0, 120).map(l => ({ descripcion: String(l.descripcion || '').trim().slice(0, 200), cantidad: nCant(l.cantidad), unidad: String(l.unidad || '').trim().slice(0, 12) || null, precio: n2(l.precio), importe: n2(l.importe), talla: String(l.talla || '').trim().slice(0, 12) || null, vehiculoId: /^[a-f0-9]{24}$/.test(String(l.vehiculoId || '')) ? String(l.vehiculoId) : null, albaran: String(l.albaran || '').trim().slice(0, 30) || null, obraTexto: String(l.obraTexto || '').trim().slice(0, 120) || null, para: limpiarPara(l.para), recogida: !!l.recogida })).filter(l => l.descripcion);
+  if ('lineas' in data && Array.isArray(data.lineas)) set.lineas = data.lineas.slice(0, 120).map(l => ({ descripcion: String(l.descripcion || '').trim().slice(0, 200), cantidad: nCant(l.cantidad), unidad: String(l.unidad || '').trim().slice(0, 12) || null, precio: n2(l.precio), dto: n2(l.dto), importe: n2(l.importe) != null ? n2(l.importe) : _calcImporte({ cantidad: nCant(l.cantidad), precio: n2(l.precio), dto: n2(l.dto) }), talla: String(l.talla || '').trim().slice(0, 12) || null, vehiculoId: /^[a-f0-9]{24}$/.test(String(l.vehiculoId || '')) ? String(l.vehiculoId) : null, albaran: String(l.albaran || '').trim().slice(0, 30) || null, obraTexto: String(l.obraTexto || '').trim().slice(0, 120) || null, para: limpiarPara(l.para), recogida: !!l.recogida })).filter(l => l.descripcion);
   if ('albaranesRef' in data) set.albaranesRef = (Array.isArray(data.albaranesRef) ? data.albaranesRef : String(data.albaranesRef || '').split(/[,\s;]+/)).map(x => String(x).trim()).filter(Boolean).slice(0, 60);
   if ('nota' in data) set.nota = String(data.nota || '').trim().slice(0, 300) || null;
   if ('categoria' in data) set.categoria = data.categoria ? String(data.categoria).trim().toLowerCase() : null;
@@ -933,8 +936,9 @@ async function buscarPrecios(material, proveedor, { limit = 30 } = {}) {
   for (const c of cs) for (const l of (c.lineas || [])) {
     const n = norm(l.descripcion); if (!n) continue;
     if (!(n.includes(mat) || (palabras.length && palabras.every(w => n.includes(w))))) continue;
-    let unit = l.precio, total = l.importe; const units = l.cantidad || null;
-    if (unit == null && total != null && units) unit = Math.round(total / units * 10000) / 10000;
+    // Precio por unidad YA con el descuento de la línea (lo que de verdad nos cuesta).
+    let total = l.importe; const units = l.cantidad || null;
+    let unit = total != null && units ? Math.round(total / units * 10000) / 10000 : l.precio != null ? Math.round(l.precio * (1 - (Number(l.dto) || 0) / 100) * 10000) / 10000 : null;
     if (total == null && unit != null && units) total = Math.round(unit * units * 100) / 100;
     if (unit == null && total == null) continue;
     hits.push({ fuente: 'compras', compraId: String(c._id), tipo: c.tipo, fpr: c.numero || '', supplier: c.proveedor || '', date: c.fecha || (c.createdAt && c.createdAt.toISOString().slice(0, 10)), itemName: l.descripcion, units, unit, total });
