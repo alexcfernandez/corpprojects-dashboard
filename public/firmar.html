@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><title>Firmar documentos — Corp Projects</title>
+<meta name="theme-color" content="#0c0e12">
+<style>*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0c0e12;color:#f0f2f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:16px;min-height:100vh}
+.wrap{max-width:560px;margin:0 auto;padding:18px 16px 40px}
+h1{font-size:20px;margin:6px 0 4px}.sub{color:#8b92a8;font-size:14px;margin-bottom:16px;line-height:1.45}
+.card{background:#13161c;border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:14px;margin-bottom:12px}
+.doc{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.08)}.doc:last-child{border-bottom:0}
+.doc input[type=checkbox]{width:22px;height:22px;margin-top:2px;flex-shrink:0}
+.doc .n{font-weight:600;font-size:15px;line-height:1.3}.doc .acc{margin-top:6px;display:flex;gap:8px;flex-wrap:wrap}
+.btn{background:#1a1e27;border:1px solid rgba(255,255,255,.18);color:#f0f2f7;border-radius:12px;padding:10px 14px;font:inherit;font-size:14px;cursor:pointer;text-decoration:none;display:inline-block}
+.btn.pri{background:linear-gradient(135deg,#4d9cf8,#22c487);border:0;color:#fff;font-weight:700;width:100%;padding:16px;font-size:17px}
+.ok{color:#22c487;font-size:13.5px;font-weight:600}
+textarea{width:100%;background:#1a1e27;border:1px solid rgba(255,255,255,.18);border-radius:10px;color:#f0f2f7;padding:8px 10px;font:inherit;font-size:14px;margin-top:6px;display:none}
+canvas{width:100%;height:190px;background:#fff;border-radius:12px;touch-action:none;display:block}
+.nota{font-size:12.5px;color:#8b92a8;margin-top:8px;line-height:1.45}
+#msg{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#1a1e27;border:1px solid rgba(255,255,255,.2);padding:10px 16px;border-radius:12px;display:none;max-width:92vw;z-index:9}
+</style></head><body>
+<div class="wrap" id="out"><div class="sub">Cargando…</div></div>
+<div id="msg"></div>
+<script>
+const token=location.pathname.split('/').pop();
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function msg(t){const e=document.getElementById('msg');e.textContent=t;e.style.display='block';clearTimeout(window._m);window._m=setTimeout(()=>e.style.display='none',3500);}
+let L=null,hay=false;
+async function cargar(){try{const r=await fetch('/api/firma-externa/'+token);L=await r.json();if(!r.ok)throw new Error(L.error||'Error');}catch(e){document.getElementById('out').innerHTML='<h1>Corp Projects</h1><div class="sub">'+esc(e.message)+'</div>';return;}pintar();}
+function pintar(){const pend=L.items.filter(i=>i.estado==='pendiente');
+  document.getElementById('out').innerHTML=`<h1>Documentos para firmar</h1><div class="sub">${esc(L.nombre)}${L.cargo?' · '+esc(L.cargo):''} · Corp Projects Holding, S.L.<br>Abre y lee cada documento, marca los que firmas, firma una vez con el dedo y pulsa el botón.</div>
+  <div class="card">${L.items.map(i=>`<div class="doc">${i.estado==='pendiente'?`<input type="checkbox" class="sel" data-n="${i.n}" checked>`:'<span style="width:22px">✔</span>'}<div style="flex:1"><div class="n">${esc(i.nombre)}</div>
+    <div class="acc"><a class="btn" href="/api/firma-externa/${token}/doc/${i.n}" target="_blank">📄 ${i.estado==='pendiente'?'Leer':'Ver firmado'}</a>${i.estado==='pendiente'?`<button class="btn" onclick="this.parentElement.nextElementSibling.style.display='block';this.remove()">✏️ Añadir datos</button>`:'<span class="ok">Firmado</span>'}</div>
+    ${i.estado==='pendiente'?`<textarea class="nt" data-n="${i.n}" rows="2" placeholder="Si el documento pide datos (p. ej. nombre del trabajador designado), escríbelos aquí"></textarea>`:''}</div></div>`).join('')}</div>
+  ${pend.length?`<div class="card"><div style="font-weight:600;margin-bottom:8px">Tu firma</div><canvas id="cv"></canvas>
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="btn" style="flex:1" onclick="pad()">Borrar</button></div>
+    <button class="btn pri" id="ok" style="margin-top:12px" onclick="firmar()">✍️ Firmar los documentos marcados</button>
+    <div class="nota">Al firmar declaras haber leído los documentos. En cada uno se añade una hoja con tu firma, el sello de la empresa, la fecha y la hora, y una huella del documento original.</div></div>`:'<div class="card"><div class="ok" style="font-size:16px">✔ Todo firmado. ¡Gracias!</div></div>'}`;
+  if(pend.length)pad();}
+function pad(){const c=document.getElementById('cv');if(!c)return;const r=c.getBoundingClientRect(),k=window.devicePixelRatio||1;c.width=r.width*k;c.height=r.height*k;const x=c.getContext('2d');x.scale(k,k);x.lineWidth=2.8;x.lineCap='round';x.lineJoin='round';x.strokeStyle='#111';hay=false;let on=false;
+  const p=e=>{const b=c.getBoundingClientRect();return[e.clientX-b.left,e.clientY-b.top];};
+  c.onpointerdown=e=>{on=true;const[a,b]=p(e);x.beginPath();x.moveTo(a,b);try{c.setPointerCapture(e.pointerId);}catch(_){}e.preventDefault();};
+  c.onpointermove=e=>{if(!on)return;const[a,b]=p(e);x.lineTo(a,b);x.stroke();hay=true;};
+  c.onpointerup=c.onpointercancel=()=>{on=false;};}
+async function firmar(){const n=[...document.querySelectorAll('.sel')].filter(x=>x.checked).map(x=>Number(x.dataset.n));
+  if(!n.length){msg('Marca algún documento');return;}if(!hay){msg('Firma con el dedo en el recuadro blanco');return;}
+  const notas={};document.querySelectorAll('.nt').forEach(t=>{if(t.value.trim())notas[t.dataset.n]=t.value.trim();});
+  const b=document.getElementById('ok');b.disabled=true;b.textContent='Firmando…';
+  try{const r=await fetch('/api/firma-externa/'+token,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({firma:document.getElementById('cv').toDataURL('image/png'),n,notas})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');msg(`Firmado${d.firmados>1?' ('+d.firmados+')':''} ✔`);await cargar();}
+  catch(e){msg(e.message);b.disabled=false;b.textContent='✍️ Firmar los documentos marcados';}}
+cargar();
+</script></body></html>

@@ -118,7 +118,7 @@ async function estado(obraId) {
   }
   const dias = entrada ? Math.round((new Date(entrada + 'T12:00:00Z') - new Date(hoyIso() + 'T12:00:00Z')) / 86400000) : null;
   return { obra: { id: String(o._id), ref: o.reference, cliente: o.clientName, direccion: o.address }, config: { ...cfg, plantillaNombre: pl.nombre, destino: cfg.destino || pl.destino },
-    plantillas: Object.entries(PLANTILLAS).map(([k, p]) => ({ id: k, nombre: p.nombre })), general, trabajadores, total: todas.length, faltan, dias, porQuien, quienes: QUIEN, enviado: cfg.enviado || null };
+    plantillas: Object.entries(PLANTILLAS).map(([k, p]) => ({ id: k, nombre: p.nombre })), papeles: docs.filter(d => d.ambito === 'obra').map(d => ({ id: String(d._id), nombre: d.nombre, tipo: d.tipo })), general, trabajadores, total: todas.length, faltan, dias, porQuien, quienes: QUIEN, enviado: cfg.enviado || null };
 }
 
 // Para Inicio: obras con lista configurada, aún sin enviar, con algo pendiente (las que entran antes primero).

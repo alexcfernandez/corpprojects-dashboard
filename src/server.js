@@ -2321,6 +2321,24 @@ app.post('/api/obras/:id/docs-entrada/enviar-firmar', requireAuthOficina, expres
     res.json({ ok: true, a: movil, texto: txt });
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
+// Firma con el dedo por enlace para quien no tiene la app (firmaExterna.js): administrador, contratistas…
+app.get('/firmar/:token', (req, res) => res.sendFile(path.join(__dirname, '../public/firmar.html')));
+app.get('/api/firma-externa/:token', async (req, res) => {
+  try { res.json(await require('./firmaExterna').ver(req.params.token)); } catch (err) { res.status(404).json({ error: err.message }); }
+});
+app.get('/api/firma-externa/:token/doc/:n', async (req, res) => {
+  try { const d = await require('./firmaExterna').documento(req.params.token, req.params.n);
+    res.set('Content-Type', d.mime || 'application/pdf'); res.set('Content-Disposition', `inline; filename="${encodeURIComponent(d.nombre || 'documento')}"`); res.set('Cache-Control', 'private, no-store'); res.send(d.buffer); }
+  catch (err) { res.status(404).json({ error: err.message }); }
+});
+app.post('/api/firma-externa/:token', express.json({ limit: '2mb' }), async (req, res) => {
+  try { const b = req.body || {};
+    res.json(await require('./firmaExterna').firmar(req.params.token, { firmaDataUrl: b.firma, n: b.n, notas: b.notas, ip: String(req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim(), ua: req.headers['user-agent'] || '' })); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/personal/firma-externa', requireAuthOficina, express.json(), async (req, res) => {
+  try { res.json(await require('./firmaExterna').crear(req.body || {}, req.user?.name || 'Oficina')); } catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/docs-obra', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'docs-obra.html')));
 app.get('/api/personal/resumen', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./personalDocs').resumen()); } catch (err) { res.status(500).json({ error: err.message }); }
