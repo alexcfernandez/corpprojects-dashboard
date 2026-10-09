@@ -2754,6 +2754,17 @@ app.get('/api/obras/:id/presupuestos', requireAuth, async (req, res) => {
 app.get('/api/obras/presupuestos-stel/:id/lineas', requireAuth, async (req, res) => {
   try { res.json(await require('./stelorder').lineasPresupuesto(req.params.id)); } catch (err) { res.status(400).json({ error: err.message }); }
 });
+// «¿Cómo se pagó?» de una factura de proveedor sin pago localizado, y casarla con el pago que cuadra.
+app.post('/api/proveedores/como-se-pago', requireAuth, async (req, res) => {
+  try { if (!users.canSeeMoney(req.user?.role || 'owner')) return res.status(403).json({ error: 'Solo Dueño y Oficina' });
+    res.json(await require('./comoSePago').investigar(req.body || {})); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/proveedores/casar-pago', requireAuth, async (req, res) => {
+  try { if (!users.canSeeMoney(req.user?.role || 'owner')) return res.status(403).json({ error: 'Solo Dueño y Oficina' });
+    const b = req.body || {}; res.json(await require('./comoSePago').casar(b.movId, b.compraId, req.user?.name || '')); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 // Movimientos del banco y tarjetas con su cuadre (qué factura o facturas es cada cobro y cada pago).
 app.get('/api/banco/movimientos', requireAuth, async (req, res) => {
   try { if (!users.canSeeMoney(req.user?.role || 'owner')) return res.status(403).json({ error: 'Solo Dueño y Oficina' });
