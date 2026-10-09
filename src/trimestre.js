@@ -725,7 +725,7 @@ async function mapaPagos() {
   const res = C.conciliar({ movimientos: movs, emitidas: em, recibidas: rec });
   const porDoc = new Map(), porMov = new Map();
   for (const f of res.filas) {
-    porMov.set(f.id, { estado: f.estado, nota: f.nota || null, persona: f.persona || null, docs: (f.docs || []).map(d => ({ ref: d.ref, refProveedor: d.refProveedor || null, tercero: d.tercero || null, total: d.total })) });
+    porMov.set(f.id, { estado: f.estado, tipo: f.tipo || null, confianza: f.confianza || null, nota: f.nota || null, persona: f.persona || null, docs: (f.docs || []).map(d => ({ ref: d.ref, refProveedor: d.refProveedor || null, tercero: d.tercero || null, total: d.total, fecha: d.fecha || null, compraId: d.compraId || null })) });
     if (f.estado !== 'punteado') continue;
     const pago = { movId: f.id, fecha: f.fecha, importe: f.importe, origen: f.origen || 'Cuenta Santander', persona: f.persona || null, concepto: f.concepto, nota: f.nota || null, conOtras: (f.docs || []).length > 1 ? f.docs.length - 1 : 0 };
     for (const d of f.docs || []) for (const k of [d.ref, d.compraId]) {

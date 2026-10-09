@@ -2747,6 +2747,12 @@ app.get('/api/obras/:id/presupuestos', requireAuth, async (req, res) => {
 app.get('/api/obras/presupuestos-stel/:id/lineas', requireAuth, async (req, res) => {
   try { res.json(await require('./stelorder').lineasPresupuesto(req.params.id)); } catch (err) { res.status(400).json({ error: err.message }); }
 });
+// Movimientos del banco y tarjetas con su cuadre (qué factura o facturas es cada cobro y cada pago).
+app.get('/api/banco/movimientos', requireAuth, async (req, res) => {
+  try { if (!users.canSeeMoney(req.user?.role || 'owner')) return res.status(403).json({ error: 'Solo Dueño y Oficina' });
+    res.json(await require('./movimientosCuadre').lista({ dias: req.query.dias, desde: req.query.desde, hasta: req.query.hasta })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
 // ── Cobros: recordatorios a clientes (siempre con el sí de oficina) y lo que ha dicho cada cliente ──
 const _dinero = req => users.canSeeMoney(req.user?.role || 'owner');
 const R_COB = () => require('./recordatoriosCobro');
@@ -4092,6 +4098,7 @@ app.get('/vehiculos', (req, res) => res.sendFile(path.join(__dirname, '../public
 app.get('/documentos', (req, res) => res.sendFile(path.join(__dirname, '../public/documentos.html')));
 app.get('/copias', (req, res) => res.sendFile(path.join(__dirname, '../public/copias.html')));
 app.get('/cobrar', (req, res) => res.sendFile(path.join(__dirname, '../public/cobrar.html')));
+app.get('/movimientos', (req, res) => res.sendFile(path.join(__dirname, '../public/movimientos.html')));
 app.get('/rrhh', (req, res) => res.sendFile(path.join(__dirname, '../public/rrhh.html')));
 app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));
 app.get('/fichar', (req, res) => res.sendFile(path.join(__dirname, '../public/fichar.html')));

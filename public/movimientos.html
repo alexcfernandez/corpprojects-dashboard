@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Movimientos y cuadre — Corp Projects</title><link rel="stylesheet" href="/tool-theme.css">
+<meta name="theme-color" content="#4d9cf8">
+<style>*{box-sizing:border-box;margin:0;padding:0}:root{--bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.15);--text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;--green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 18px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:10}
+.logo{width:32px;height:32px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;flex-shrink:0}
+.hbtn{margin-left:auto;background:none;border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:6px 12px;font-size:13px;text-decoration:none;white-space:nowrap}
+.wrap{max-width:1100px;margin:0 auto;padding:16px}
+.kp{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.kp div{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:12px 14px}.kp b{display:block;font-size:22px;font-weight:800;margin-top:2px}.kp span{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}.kp small{font-size:12px;color:var(--text3)}
+.barra{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.chip{border:1px solid var(--border2);border-radius:99px;padding:6px 12px;font-size:13px;color:var(--text2);background:var(--bg2);cursor:pointer;white-space:nowrap}.chip.on{color:var(--text);border-color:rgba(77,156,248,.6);background:rgba(77,156,248,.14)}
+input,select{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;color:var(--text);padding:8px 12px;font:inherit;font-size:14px}
+.mov{display:grid;grid-template-columns:62px minmax(0,1fr) auto;gap:4px 12px;padding:11px 14px;border:1px solid var(--border);border-radius:12px;background:var(--bg2);margin-bottom:6px;align-items:start}
+.mov .f{font-size:12.5px;color:var(--text3);padding-top:2px}.mov .q{font-weight:600;font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mov .o{font-size:11.5px;color:var(--text3)}
+.mov .imp{font-weight:800;font-size:16px;text-align:right;white-space:nowrap}.imp.e{color:var(--green)}
+.mov .cu{grid-column:2/4;display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--text2)}
+.est{font-size:11.5px;border-radius:99px;padding:2px 9px;border:1px solid var(--border2);white-space:nowrap}
+.est.cuadrado{color:var(--green);border-color:rgba(34,196,135,.5)}.est.parcial{color:var(--amber);border-color:rgba(245,158,11,.5)}.est.sin_cuadrar{color:var(--red);border-color:rgba(240,82,82,.5)}.est.no_requiere,.est.sin_datos{color:var(--text3)}
+.doc{font-size:12px;border-radius:8px;padding:2px 8px;background:var(--bg3);border:1px solid var(--border);color:var(--text)}.doc.ab{color:var(--amber)}
+.dia{font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin:14px 2px 6px}
+.vacio{color:var(--text3);font-size:14px;padding:16px 0}
+@media(max-width:700px){.kp{grid-template-columns:1fr 1fr}.mov{grid-template-columns:minmax(0,1fr) auto}.mov .f{display:none}.mov .cu{grid-column:1/3}}
+</style><link rel="stylesheet" href="/cp-ui.css">
+<script src="/nav.js" defer></script>
+</head><body>
+<div class="header"><div class="logo">CP</div><div><div style="font-weight:600">Movimientos y cuadre</div><div style="font-size:12px;color:var(--text3)">Cada cobro y cada pago con la factura o facturas que le corresponden</div></div><a class="hbtn" href="/">← Dashboard</a></div>
+<div class="wrap">
+  <div class="kp" id="kp"></div>
+  <div class="barra">
+    <span class="chip on" data-f="todo">Todo</span><span class="chip" data-f="entradas">Cobros</span><span class="chip" data-f="salidas">Pagos</span><span class="chip" data-f="pendientes">Sin cuadrar o a medias</span>
+    <select id="dias"><option value="7">Últimos 7 días</option><option value="31" selected>Últimos 31 días</option><option value="92">Últimos 3 meses</option><option value="183">Últimos 6 meses</option></select>
+    <label style="display:flex;gap:6px;align-items:center;font-size:13px;color:var(--text2)"><input type="checkbox" id="tarj"> Compras con tarjeta</label>
+    <input id="q" placeholder="Buscar cliente, proveedor, factura o importe…" style="flex:1;min-width:200px">
+  </div>
+  <div id="lista"><div class="vacio">Cargando… (cruza el banco con las facturas)</div></div>
+  <div style="font-size:12.5px;color:var(--text3);margin-top:12px;line-height:1.5">Lo que sale «sin cuadrar» o «a medias» se arregla en <a href="/trimestre" style="color:var(--blue)">Cierre del trimestre</a> (asignar factura, «no necesita factura», gasto de obra…). Los abonos aparecen en naranja y ya están descontados en la suma.</div>
+</div>
+<script>
+const tok=localStorage.getItem('cp_token');const H={'Authorization':'Bearer '+tok};
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const eur=v=>(Number(v)||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2,useGrouping:'always'})+' €';
+const fd=d=>d?String(d).slice(8,10)+'/'+String(d).slice(5,7):'';
+const EST={cuadrado:'✔ cuadrado',parcial:'a medias',sin_cuadrar:'sin cuadrar',no_requiere:'no necesita factura',sin_datos:'sin cruzar'};
+let D=null,filtro='todo';
+async function cargar(){if(!tok){document.querySelector('.wrap').innerHTML='<div class="vacio">Abre esta página desde el dashboard.</div>';return;}
+  document.getElementById('lista').innerHTML='<div class="vacio">Cargando… (cruza el banco con las facturas)</div>';
+  try{const r=await fetch('/api/banco/movimientos?dias='+document.getElementById('dias').value,{headers:H});D=await r.json();if(!r.ok)throw new Error(D.error||'Error');}
+  catch(e){document.getElementById('lista').innerHTML='<div class="vacio" style="color:var(--red)">'+esc(e.message)+'</div>';return;}
+  pintar();}
+function pintar(){const t=D.totales,tarj=document.getElementById('tarj').checked,q=(document.getElementById('q').value||'').toLowerCase().trim();
+  document.getElementById('kp').innerHTML=`<div><span>Cobros</span><b style="color:var(--green)">${eur(t.entradas.importe)}</b><small>${t.entradas.n} movimientos</small></div><div><span>Pagos</span><b style="color:var(--red)">${eur(t.salidas.importe)}</b><small>${t.salidas.n} movimientos</small></div><div><span>Cuadrados</span><b>${t.cuadrados} de ${D.movimientos.length}</b><small>con factura o sin necesitarla</small></div><div><span>Por cuadrar</span><b style="color:${t.pendientes.n?'var(--amber)':'var(--green)'}">${t.pendientes.n}</b><small>${eur(Math.abs(t.pendientes.importe))}</small></div>`;
+  let l=D.movimientos.filter(m=>tarj||!m.tarjeta);
+  if(filtro==='entradas')l=l.filter(m=>m.importe>0);else if(filtro==='salidas')l=l.filter(m=>m.importe<0);else if(filtro==='pendientes')l=l.filter(m=>m.estado==='sin_cuadrar'||m.estado==='parcial');
+  if(q)l=l.filter(m=>[m.quien,m.concepto,m.origen,m.texto,m.nota,eur(Math.abs(m.importe)),String(Math.abs(m.importe)),...(m.docs||[]).flatMap(d=>[d.ref,d.tercero,d.refProveedor])].join(' ').toLowerCase().includes(q));
+  let dia='';const h=[];
+  for(const m of l){if(m.fecha!==dia){dia=m.fecha;h.push(`<div class="dia">${new Date(m.fecha+'T12:00:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'})}</div>`);}
+    const docs=(m.docs||[]).filter(d=>d.ref);const muchos=docs.length>1;
+    h.push(`<div class="mov"><div class="f">${fd(m.fecha)}</div><div><div class="q">${m.importe>0?'Entró':'Pago'} · ${esc(m.quien||m.concepto)}</div><div class="o">${esc(m.origen)}</div></div><div class="imp ${m.importe>0?'e':''}">${m.importe>0?'+':''}${eur(m.importe)}</div>
+      <div class="cu"><span class="est ${m.estado}">${EST[m.estado]||m.estado}</span>${docs.length?'→ ':''}${docs.map(d=>`<span class="doc ${Number(d.total)<0?'ab':''}" title="${esc(d.refProveedor||'')}">${esc(d.ref)}${d.tercero&&(muchos?docs.indexOf(d)===0:true)?' · '+esc(d.tercero):''}${d.total!=null?' · '+eur(d.total):''}</span>`).join('')}${muchos&&m.suma!=null?`<span style="color:var(--text3)">= ${eur(m.suma)}</span>`:''}${m.nota&&m.estado!=='cuadrado'?`<span style="color:${m.estado==='parcial'?'var(--amber)':'var(--text3)'}">${esc(m.nota)}</span>`:''}${!docs.length&&m.texto&&m.texto!==m.nota&&m.texto!=='No necesita factura'?`<span style="color:var(--text3)">${esc(m.texto)}</span>`:''}</div></div>`);}
+  document.getElementById('lista').innerHTML=(D.sinCuadre?'<div class="vacio" style="color:var(--amber)">Ahora no se puede cruzar con las facturas (StelOrder no responde): se ven los movimientos sin cuadre.</div>':'')+(h.join('')||'<div class="vacio">Nada con ese filtro.</div>');}
+document.querySelectorAll('.chip[data-f]').forEach(c=>c.onclick=()=>{filtro=c.dataset.f;document.querySelectorAll('.chip[data-f]').forEach(x=>x.classList.toggle('on',x===c));pintar();});
+document.getElementById('dias').onchange=cargar;document.getElementById('tarj').onchange=pintar;
+let _t=null;document.getElementById('q').oninput=()=>{clearTimeout(_t);_t=setTimeout(pintar,200);};
+cargar();
+</script></body></html>
