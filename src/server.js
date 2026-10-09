@@ -2067,6 +2067,12 @@ app.get('/api/personal/nominas-pagos', requireAuthOficina, async (req, res) => {
   req.setTimeout && req.setTimeout(120000);
   try { res.json(await require('./nominasPagos').estado(req.query.mes || null)); } catch (err) { res.status(500).json({ error: err.message }); }
 });
+// Lo pagado en efectivo de una nómina (no sale en el banco).
+app.post('/api/personal/nominas/:id/efectivo', requireAuthOficina, express.json(), async (req, res) => {
+  try { if (!users.canSeeMoney(req.user?.role || 'owner')) return res.status(403).json({ error: 'Solo Dueño y Oficina' });
+    const b = req.body || {}; res.json(await require('./nominasPagos').apuntarEfectivo(req.params.id, { importe: b.importe, fecha: b.fecha, nota: b.nota }, req.user?.name || 'Oficina')); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 // Recuperar las nóminas que ya llegaron por correo de la gestoría (una vez; luego entran solas).
 let _importandoNominas = false;
 app.post('/api/personal/nominas/importar-correo', requireAuthOficina, express.json(), async (req, res) => {

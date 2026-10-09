@@ -32,3 +32,10 @@ test('Melvin cobra con concepto sin apellido: cuenta para su nómina', async () 
   const m = (await N.estado('2026-09')).trabajadores.find(t => t.nombre === 'Melvin Ramirez');
   assert.equal(m.nomina.pagado, 493); assert.equal(m.nomina.falta, 300.92);
 });
+
+test('lo pagado en efectivo cuenta para la nómina', async () => {
+  noms.find(n => n._id === 'm1').pagosEfectivo = [{ fecha: '2026-10-09', importe: 300.92 }];
+  const m = (await N.estado('2026-09')).trabajadores.find(t => t.nombre === 'Melvin Ramirez');
+  assert.equal(m.estado, 'pagada'); assert.equal(m.nomina.pagado, 793.92); assert.ok(m.nomina.pagos.some(p => p.efectivo));
+  delete noms.find(n => n._id === 'm1').pagosEfectivo;
+});

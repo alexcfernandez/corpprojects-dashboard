@@ -7,6 +7,9 @@
 //
 // Quién es quién en el banco: todas las palabras del nombre del trabajador (≥3 letras) en el concepto, o un alias
 // (`users.aliasBanco`; p. ej. el usuario «David Taladros» cobra como «David Valencia»).
+//
+// Lo pagado en EFECTIVO no sale en el banco: se apunta en la propia nómina (`pagosEfectivo`) y cuenta para ella antes
+// que las transferencias.
 'use strict';
 async function getDB() { return require('./db').getDB(); }
 const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
@@ -52,12 +55,13 @@ async function estado(mes, { hoy = new Date() } = {}) {
       const unicas = []; [...l].sort((a, b) => String(b.subido).localeCompare(String(a.subido))).forEach(n => { if (!(n.importes && n.importes.liquido != null) || !unicas.some(u => igual(u, n))) unicas.push(n); });
       const usar = rect.length ? [rect[0], ...extra.filter(n => unicas.includes(n))] : unicas;
       const liq = usar.reduce((a, n) => a + ((n.importes && n.importes.liquido) || 0), 0);
-      return { _id: usar[0]._id, mes: mesN, importes: { liquido: usar.every(n => n.importes && n.importes.liquido != null) ? r2(liq) : null } };
+      const efectivo = l.flatMap(n => (n.pagosEfectivo || []).map(p => ({ fecha: p.fecha, importe: r2(p.importe), efectivo: true })));
+      return { _id: usar[0]._id, mes: mesN, importes: { liquido: usar.every(n => n.importes && n.importes.liquido != null) ? r2(liq) : null }, efectivo };
     }).sort((a, b) => a.mes.localeCompare(b.mes));
     const pagos = movs.filter(m => (m.categoria === 'nomina' || /transferencia|a favor de|bizum/i.test(m.concepto || '')) && esDe(m.concepto, u))
       .sort((a, b) => a.fechaOperacion.localeCompare(b.fechaOperacion)).map(m => ({ fecha: m.fechaOperacion, importe: r2(-m.importe), concepto: m.concepto, restante: r2(-m.importe) }));
     // Reparto: cada pago, a la nómina más antigua sin pagar cuyo mes sea ≤ el del pago (o el anterior).
-    const estadoNom = suyas.map(n => ({ id: String(n._id), mes: n.mes, liquido: n.importes && n.importes.liquido != null ? n.importes.liquido : null, pagado: 0, pagos: [] }));
+    const estadoNom = suyas.map(n => ({ id: String(n._id), mes: n.mes, liquido: n.importes && n.importes.liquido != null ? n.importes.liquido : null, pagado: r2(n.efectivo.reduce((a, p) => a + p.importe, 0)), pagos: [...n.efectivo] }));
     for (const p of pagos) {
       for (const n of estadoNom) {
         if (p.restante <= 0.01) break;
@@ -83,6 +87,18 @@ async function estado(mes, { hoy = new Date() } = {}) {
     pagadas: out.filter(x => x.estado === 'pagada').length, nominas: out.filter(x => x.nomina).length, sinImporte: out.filter(x => x.estado === 'sin_importe').length } };
 }
 
+// Apuntar lo pagado en efectivo de una nómina (no sale en el banco).
+async function apuntarEfectivo(nominaId, { importe, fecha, nota = '' } = {}, por = '') {
+  const { ObjectId } = require('mongodb');
+  const imp = r2(String(importe).replace(',', '.'));
+  if (!(imp > 0) || imp > 20000) throw new Error('Importe no válido');
+  const f = /^\d{4}-\d{2}-\d{2}$/.test(String(fecha || '')) ? fecha : new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
+  const db = await getDB();
+  const r = await db.collection('docsPersonal').updateOne({ _id: new ObjectId(String(nominaId)), tipo: 'nomina' }, { $push: { pagosEfectivo: { fecha: f, importe: imp, nota: String(nota || '').slice(0, 200), por, at: new Date() } } });
+  if (!r.matchedCount) throw new Error('No encuentro esa nómina');
+  return { ok: true, fecha: f, importe: imp };
+}
+
 // Para el WhatsApp del banco: a quién es la transferencia y cómo queda su nómina.
 async function lineaPago(concepto, fecha) {
   const users = (await require('./users').getUsers(false)).filter(u => u.active !== false);
@@ -94,4 +110,4 @@ async function lineaPago(concepto, fecha) {
   return null;
 }
 
-module.exports = { estado, lineaPago, esDe, nombresDe };
+module.exports = { estado, lineaPago, esDe, nombresDe, apuntarEfectivo };
