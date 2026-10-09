@@ -34,8 +34,33 @@ function _factura(r, mapa) {
   let segun = pagos.length ? 'banco' : null;
   if (!pagos.length && r.pendienteStel != null && Math.abs(r.pendienteStel) < 0.01 && Math.abs(total) > 0) { pagado = Math.abs(total); segun = 'stelorder'; }
   if (Math.abs(Math.abs(total) - pagado) <= 0.02) pagado = Math.abs(total);
+  if (total < 0) { pagado = 0; segun = null; }   // un abono no es un pago: resta de lo facturado
   const pendiente = total < 0 ? 0 : r2(total - pagado);
   return { id: r.id, compraId: r.compraId || null, pdfPath: r.pdfPath || null, numero: r.numero, refProveedor: r.refProveedor || null, fecha: r.fecha, total, pagado, pendiente, estado: total < 0 ? 'abono' : pendiente <= 0.01 ? 'pagada' : pagado > 0 ? 'parcial' : 'pendiente', segun, pagos, deCompras: !!r.compraId && !r.pendienteStel && String(r.id).startsWith('c:') };
+}
+
+// RECTIFICATIVAS: un abono que anula entera una factura anterior (mismo importe en negativo) deja esa factura
+// «anulada»; lo que se le pagó pasa a las siguientes facturas pendientes del proveedor (la que la sustituye).
+// Caso Obras Plener: 18.582,84 € pagados 14.000 → abono −18.582,84 y factura nueva de 14.000,35 → todo pagado.
+function aplicarRectificativas(facturas) {
+  const porFecha = facturas.slice().sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
+  for (const ab of porFecha.filter(f => f.estado === 'abono')) {
+    const f = porFecha.find(x => x.total > 0 && x.estado !== 'anulada' && Math.abs(x.total + ab.total) < 0.05 && String(x.fecha) <= String(ab.fecha));
+    if (!f) continue;
+    f.estado = 'anulada'; f.anuladaPor = ab.refProveedor || ab.numero; ab.anulaA = f.refProveedor || f.numero;
+    let sobra = r2(f.pagado); const pagosF = f.pagos || []; f.pagado = 0; f.pendiente = 0;
+    for (const g of porFecha.filter(x => x.total > 0 && x !== f && x.estado !== 'anulada' && String(x.fecha) >= String(f.fecha))) {
+      if (sobra <= 0.01) break;
+      const falta = r2(g.total - (g.segun === 'stelorder' ? 0 : g.pagado));
+      if (falta <= 0.01) continue;
+      const usa = r2(Math.min(sobra, falta)); sobra = r2(sobra - usa);
+      if (g.segun === 'stelorder') { g.pagado = 0; g.segun = 'banco'; }
+      g.pagos = [...(g.pagos || []), ...pagosF.map(p => ({ ...p, importe: usa, nota: `pagado en su día a la ${f.refProveedor || f.numero}, que se anuló` }))];
+      g.pagado = r2(g.pagado + usa);
+      g.pendiente = r2(g.total - g.pagado);
+      if (g.pendiente <= 1) { g.pendiente = 0; g.estado = 'pagada'; } else g.estado = 'parcial';   // céntimos de redondeo
+    }
+  }
 }
 
 // Proveedores de TIENDA (Obramat, Leroy, Bauhaus…): se pagan en el mostrador con tarjeta. Si la mayoría de sus pagos
@@ -62,6 +87,7 @@ async function cuentas({ desde = '2025-01-01' } = {}) {
     g.set(k, c);
   }
   return [...g.values()].map(c => {
+    aplicarRectificativas(c.facturas);
     const tienda = aplicarTienda(c.facturas);
     const abonos = c.facturas.filter(f => f.estado === 'abono').reduce((a, f) => a + f.total, 0);
     const pend = c.facturas.reduce((a, f) => a + f.pendiente, 0);
@@ -108,13 +134,19 @@ async function cuenta(nombre, { desde = '2025-01-01' } = {}) {
   const sinFactura = [];
   try {
     const T = require('./trimestre');
-    const movs = await T.buscar(nombreProv.split(/[\s,]+/).filter(w => w.length >= 4)[0] || nombreProv);
+    // Solo palabras PROPIAS del nombre: «obras», «construcciones»… salen en cualquier concepto (los pagos de
+    // Wallapop salían como «pagos sin factura» de Obras Plener).
+    const GEN = /^(obras?|construcci\w*|reformas?|servicios?|material(es)?|instalacion\w*|proyectos?|grupo|comercial|industrial\w*|empresa|hermanos|germans|distribuc\w*|suministros?|girona|catalunya|holding|soluciones|tecnic\w*)$/;
+    const propias = ks.filter(x => !GEN.test(norm(x)));
+    if (!propias.length) throw new Error('sin palabras propias');
+    const movs = await T.buscar(propias[0]);
     for (const m of (movs.movimientos || [])) {
       if (m.importe >= 0 || m.estado === 'punteado' || m.estado === 'no_requiere' || m.fecha < desde) continue;
-      if (!ks.some(x => norm(m.concepto).includes(norm(x)))) continue;
+      if (!propias.some(x => norm(m.concepto).includes(norm(x)))) continue;
       sinFactura.push({ fecha: m.fecha, importe: Math.abs(m.importe), concepto: m.concepto, origen: m.origen });
     }
   } catch (e) { /* el buscador es un extra */ }
+  aplicarRectificativas(facturas);
   const tienda = aplicarTienda(facturas);
   const abonos = facturas.filter(f => f.estado === 'abono').reduce((a, f) => a + f.total, 0);
   const pend = facturas.reduce((a, f) => a + f.pendiente, 0);
@@ -145,4 +177,4 @@ async function grupos({ desde = '2025-01-01' } = {}) {
   return [...g.values()];
 }
 
-module.exports = { _aplicarTienda: aplicarTienda, cuentas, cuenta, deuda, grupos, olvidar, clave, _factura };
+module.exports = { _aplicarTienda: aplicarTienda, _aplicarRectificativas: aplicarRectificativas, cuentas, cuenta, deuda, grupos, olvidar, clave, _factura };

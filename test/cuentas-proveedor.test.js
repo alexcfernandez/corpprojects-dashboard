@@ -51,3 +51,19 @@ test('proveedor de tienda (se paga con tarjeta): lo que no casa no es deuda, es 
   assert.equal(_aplicarTienda(transf), false);
   assert.equal(transf[3].estado, 'pendiente');   // a Saltoki, Oliveras… sí se les debe
 });
+
+test('Obras Plener: la rectificativa anula la factura de 18.582,84 y su pago de 14.000 pasa a la nueva de 14.000,35', () => {
+  const { _aplicarRectificativas } = require('../src/cuentasProveedor');
+  const p = (fecha, importe) => ({ fecha, importe, origen: 'Cuenta Santander' });
+  const fs = [
+    { numero: 'FPR00217', refProveedor: '18062025001', fecha: '2025-06-18', total: 12705, pagado: 12705, pendiente: 0, estado: 'pagada', segun: 'banco', pagos: [p('2025-07-04', 12705)] },
+    { numero: 'FPR00209', refProveedor: '18062025002', fecha: '2025-07-18', total: 18582.84, pagado: 14000, pendiente: 4582.84, estado: 'parcial', segun: 'banco', pagos: [p('2025-07-29', 14000)] },
+    { numero: 'FPR00527', refProveedor: 'R018122025002', fecha: '2026-01-30', total: -18582.84, pagado: 0, pendiente: 0, estado: 'abono', pagos: [] },
+    { numero: 'FPR00528', refProveedor: 'F018122025004', fecha: '2026-01-30', total: 14000.35, pagado: 14000.35, pendiente: 0, estado: 'pagada', segun: 'stelorder', pagos: [] },
+  ];
+  _aplicarRectificativas(fs);
+  assert.equal(fs[1].estado, 'anulada'); assert.equal(fs[1].pendiente, 0); assert.equal(fs[1].pagado, 0);
+  assert.equal(fs[3].estado, 'pagada'); assert.equal(fs[3].pagado, 14000); assert.equal(fs[3].pagos.length, 1);
+  assert.equal(fs.reduce((a, f) => a + f.pagado, 0), 26705);          // lo que de verdad se les pagó
+  assert.equal(fs.reduce((a, f) => a + f.pendiente, 0), 0);
+});
