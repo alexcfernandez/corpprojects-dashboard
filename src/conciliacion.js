@@ -299,9 +299,11 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
     if (facts.length > 2 || delMes > 2) continue;   // contando también las ya casadas
     const pagado = r2(-g.pagos.reduce((a, f) => a + f.importe, 0)), facturado = r2(facts.reduce((a, x) => a + x.total, 0));
     const dif = r2(pagado - facturado);
+    // Si con tarjeta se pagó al menos lo facturado, la factura está pagada (gasolinera: se paga en el surtidor); lo
+    // que sobra son compras sin pedir factura. Si se pagó menos, hay que mirarlo.
     for (const f of g.pagos) {
-      f.estado = Math.abs(dif) < 1 ? 'punteado' : 'revisar'; f.confianza = 'baja';
-      f.nota = `${g.proveedor} factura por mes: pagado ${pagado.toFixed(2)} € con tarjeta, facturado ${facturado.toFixed(2)} €${Math.abs(dif) >= 1 ? ` (diferencia ${dif.toFixed(2)} €: ¿compras personales o falta factura?)` : ''}`;
+      f.estado = dif > -1 ? 'punteado' : 'revisar'; f.confianza = 'baja';
+      f.nota = `${g.proveedor} factura por mes: pagado ${pagado.toFixed(2)} € con tarjeta, facturado ${facturado.toFixed(2)} €${dif >= 1 ? ` (${dif.toFixed(2)} € más con tarjeta: compras sin pedir factura o personales)` : dif <= -1 ? ` (faltan ${(-dif).toFixed(2)} €: ¿pagado con otra tarjeta o en efectivo?)` : ''}`;
       f.docs = facts.map(x => ({ ref: x.numero, tercero: x.proveedor, total: x.total, fecha: x.fecha, refProveedor: x.refProveedor }));
     }
     facts.forEach(x => usadasRec.add(x.id));
@@ -381,6 +383,22 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
     if (!c) continue;
     for (const f of [c, dv]) { f.estado = 'no_requiere'; f.tipo = 'compra_devuelta'; }
     c.nota = `Devuelta el ${dv.fecha.split('-').reverse().join('/')}: se anula con su devolución`; dv.nota = `Devolución de la compra del ${c.fecha.split('-').reverse().join('/')}`;
+  }
+
+  // 4d) FIANZA DEVUELTA (Loxam): se paga alquiler + fianza y días después devuelven la fianza; pago − devolución =
+  //     la factura. El pago queda casado con la factura y la devolución, como fianza devuelta (no es un pago).
+  for (const dv of filas.filter(x => x.tipo === 'devolucion' && !x.estado)) {
+    let hecho = false;
+    for (const c of filas.filter(x => !x.estado && x.importe < 0 && dias(dv.fecha, x.fecha) >= 0 && dias(dv.fecha, x.fecha) <= 45)) {
+      const neto = r2(-c.importe - dv.importe); if (neto <= 0.005) continue;
+      const r = recibidas.find(x => !usadasRec.has(x.id) && x.total > 0 && igual(x.total, neto) && nombraR(c.concepto, x) && nombraR(dv.concepto, x) && dias(x.fecha, c.fecha) >= -10 && dias(x.fecha, dv.fecha) <= 10);
+      if (!r) continue;
+      c.estado = 'punteado'; c.confianza = 'media'; c.docs = [{ ref: r.numero, tercero: r.proveedor, total: r.total, fecha: r.fecha, refProveedor: r.refProveedor }];
+      c.nota = `Pagado ${(-c.importe).toFixed(2)} € − fianza devuelta ${dv.importe.toFixed(2)} € el ${dv.fecha.split('-').reverse().join('/')} = factura ${r.refProveedor || r.numero}`;
+      dv.estado = 'no_requiere'; dv.tipo = 'fianza_devuelta'; dv.nota = `Fianza devuelta del pago del ${c.fecha.split('-').reverse().join('/')} (factura ${r.refProveedor || r.numero})`;
+      usadasRec.add(r.id); hecho = true; break;
+    }
+    void hecho;
   }
 
   // 5) DEVOLUCIONES de proveedor: casan con una rectificativa (total negativo) del mismo importe

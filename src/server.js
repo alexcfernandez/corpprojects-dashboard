@@ -2067,6 +2067,26 @@ app.get('/api/personal/nominas-pagos', requireAuthOficina, async (req, res) => {
   req.setTimeout && req.setTimeout(120000);
   try { res.json(await require('./nominasPagos').estado(req.query.mes || null)); } catch (err) { res.status(500).json({ error: err.message }); }
 });
+// Traer a Compras facturas concretas que llegaron al correo y no están (Dueño): quedan en «archivo», sin avisos,
+// para que el cuadre las case con sus recibos del banco.
+app.post('/api/compras/desde-correo', requireAuth, express.json(), async (req, res) => {
+  if ((req.user?.role || 'owner') !== 'owner') return res.status(403).json({ error: 'Solo Dueño' });
+  try {
+    const EI = require('./email-intelligence'); const { getDB: gdb } = require('./db'); const db = await gdb();
+    const gmail = EI.getGmailClient(); const out = [];
+    for (const id of (Array.isArray((req.body || {}).gmailIds) ? req.body.gmailIds : []).filter(x => /^[a-f0-9]{10,20}$/.test(String(x))).slice(0, 20)) {
+      try {
+        if (await db.collection('compras').findOne({ gmailId: id, estado: { $ne: 'descartada' } }, { projection: { _id: 1 } })) { out.push({ id, ya: true }); continue; }
+        const msg = await gmail.users.messages.get({ userId: 'me', id, format: 'full' });
+        const h = Object.fromEntries((msg.data.payload.headers || []).map(x => [x.name.toLowerCase(), x.value]));
+        const ids = await EI.comprasDesdeCorreo(id, EI.extractAttachments(msg.data.payload), { de: h.from || '', asunto: h.subject || '', fecha: h.date ? new Date(h.date) : new Date() }, { estadoInicial: 'archivo', silencioso: true });
+        out.push({ id, asunto: h.subject, compras: ids });
+      } catch (e) { out.push({ id, error: e.message }); }
+    }
+    try { require('./trimestre').olvidarMapaPagos(); require('./cuentasProveedor').olvidar(); } catch (e) {}
+    res.json(out);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
 // Embargos de sueldo: lo retenido en nóminas y lo ingresado al juzgado / Hacienda (embargos.js).
 app.get('/api/embargos', requireAuthOficina, async (req, res) => {
   try { if (!users.canSeeMoney(req.user?.role || 'owner')) return res.status(403).json({ error: 'Solo Dueño y Oficina' }); res.json(await require('./embargos').estado()); }

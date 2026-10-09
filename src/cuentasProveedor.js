@@ -25,6 +25,12 @@ async function _datos() {
   return _cache;
 }
 function olvidar() { _cache = null; }
+// Cobra por RECIBO domiciliado (Quartix, la oficina virtual, Marcel Navarro…): lo pendiente se cargará solo, no hay
+// que pagarlo a mano. Se ve en cómo se pagaron sus facturas (o en sus recibos sin factura).
+const ES_RECIBO = /^\s*(recibo|adeudo|domiciliaci)/i;
+function domiciliado(facturas, sueltos = []) {
+  return facturas.some(f => (f.pagos || []).some(p => ES_RECIBO.test(p.concepto || ''))) || sueltos.some(m => ES_RECIBO.test(m.concepto || ''));
+}
 
 function _factura(r, mapa) {
   const total = r2(r.total);
@@ -91,9 +97,11 @@ async function cuentas({ desde = '2025-01-01' } = {}) {
     const tienda = aplicarTienda(c.facturas);
     const abonos = c.facturas.filter(f => f.estado === 'abono').reduce((a, f) => a + f.total, 0);
     const pend = c.facturas.reduce((a, f) => a + f.pendiente, 0);
+    const dom = domiciliado(c.facturas);
+    const sinPagar = c.facturas.filter(f => f.estado === 'pendiente' || f.estado === 'parcial');
     return { clave: c.clave, proveedor: c.proveedor, nFacturas: c.facturas.length, total: r2(c.facturas.reduce((a, f) => a + f.total, 0)),
-      pagado: r2(c.facturas.reduce((a, f) => a + f.pagado, 0)), pendiente: r2(Math.max(0, pend + abonos)), abonos: r2(abonos),
-      nPendientes: c.facturas.filter(f => f.estado === 'pendiente' || f.estado === 'parcial').length, ultima: c.facturas.map(f => f.fecha).sort().pop(),
+      pagado: r2(c.facturas.reduce((a, f) => a + f.pagado, 0)), pendiente: r2(Math.max(0, pend + abonos)), abonos: r2(abonos), domiciliado: dom,
+      nPendientes: dom ? 0 : sinPagar.length, nDomiciliadas: dom ? sinPagar.length : 0, ultima: c.facturas.map(f => f.fecha).sort().pop(),
       tienda, sinLocalizar: r2(c.facturas.reduce((a, f) => a + (f.sinLocalizar || 0), 0)) };
   }).sort((a, b) => b.pendiente - a.pendiente || String(b.ultima).localeCompare(String(a.ultima)));
 }
@@ -148,10 +156,12 @@ async function cuenta(nombre, { desde = '2025-01-01' } = {}) {
   } catch (e) { /* el buscador es un extra */ }
   aplicarRectificativas(facturas);
   const tienda = aplicarTienda(facturas);
+  const dom = domiciliado(facturas, sinFactura);
+  if (dom) facturas.forEach(f => { if (f.estado === 'pendiente' || f.estado === 'parcial') f.domiciliada = true; });
   const abonos = facturas.filter(f => f.estado === 'abono').reduce((a, f) => a + f.total, 0);
   const pend = facturas.reduce((a, f) => a + f.pendiente, 0);
   return {
-    proveedor: nombreProv, facturas, sinFactura, tienda,
+    proveedor: nombreProv, facturas, sinFactura, tienda, domiciliado: dom,
     totales: { facturado: r2(facturas.filter(f => f.total > 0).reduce((a, f) => a + f.total, 0)), abonos: r2(abonos), pagado: r2(facturas.reduce((a, f) => a + f.pagado, 0)),
       pendiente: r2(Math.max(0, pend + abonos)), pagosSinFactura: r2(sinFactura.reduce((a, m) => a + m.importe, 0)), sinLocalizar: r2(facturas.reduce((a, f) => a + (f.sinLocalizar || 0), 0)) },
   };
@@ -177,4 +187,4 @@ async function grupos({ desde = '2025-01-01' } = {}) {
   return [...g.values()];
 }
 
-module.exports = { _aplicarTienda: aplicarTienda, _aplicarRectificativas: aplicarRectificativas, cuentas, cuenta, deuda, grupos, olvidar, clave, _factura };
+module.exports = { _domiciliado: domiciliado, _aplicarTienda: aplicarTienda, _aplicarRectificativas: aplicarRectificativas, cuentas, cuenta, deuda, grupos, olvidar, clave, _factura };
