@@ -120,6 +120,7 @@ const HERRAMIENTA = {
     bruto: { type: 'number', description: 'Solo nóminas: total devengado (bruto), en euros' },
     irpf: { type: 'number', description: 'Solo nóminas: retención de IRPF del trabajador, en euros' },
     ssTrabajador: { type: 'number', description: 'Solo nóminas: aportación del trabajador a la Seguridad Social, en euros' },
+    embargo: { type: 'number', description: 'Solo nóminas: descuento por EMBARGO (líneas «EMBARG…», retención de sueldo de un juzgado, Hacienda o la Seguridad Social), en euros; 0 si no hay' },
     resumen: { type: 'string', description: 'Una frase: qué es (p. ej. «Apto sin restricciones, Quirón Prevención»). Sin datos médicos.' },
   }, required: ['ambito', 'tipo'] } } }, required: ['documentos'] },
 };
@@ -186,11 +187,13 @@ async function analizar(archivos, por) {
   return out;
 }
 const _n2 = v => Number(v) > 0 ? Math.round(Number(v) * 100) / 100 : null;
-const _importes = x => ({ liquido: _n2(x.liquido), bruto: _n2(x.bruto), irpf: Number(x.irpf) >= 0 && x.irpf != null ? Math.round(Number(x.irpf) * 100) / 100 : null, ssTrabajador: _n2(x.ssTrabajador) });
+const _n0 = v => v != null && Number(v) >= 0 ? Math.round(Number(v) * 100) / 100 : null;
+const _importes = x => ({ liquido: _n2(x.liquido), bruto: _n2(x.bruto), irpf: _n0(x.irpf), ssTrabajador: _n2(x.ssTrabajador), embargo: _n0(x.embargo) });
 // Nóminas ya subidas sin importe: la IA lee el líquido a percibir (para cruzarlo con lo pagado en el banco).
 const HERR_NOMINA = { name: 'importes_nomina', description: 'Importes de la nómina', input_schema: { type: 'object', properties: {
   liquido: { type: 'number', description: 'LÍQUIDO A PERCIBIR (neto), en euros' }, bruto: { type: 'number', description: 'Total devengado (bruto), en euros' },
   irpf: { type: 'number', description: 'Retención de IRPF, en euros' }, ssTrabajador: { type: 'number', description: 'Aportación del trabajador a la Seguridad Social, en euros' },
+  embargo: { type: 'number', description: 'Descuento por EMBARGO (líneas «EMBARG…»: juzgado, Hacienda o Seguridad Social), en euros; 0 si no hay' },
   mes: { type: 'string', description: 'Mes de la nómina (AAAA-MM)' } }, required: ['liquido'] } };
 async function leerImportesNomina(id) {
   const key = process.env.ANTHROPIC_API_KEY; if (!key) throw new Error('ANTHROPIC_API_KEY no configurada');
@@ -200,7 +203,7 @@ async function leerImportesNomina(id) {
   const buf = await datos(d), b64 = buf.toString('base64');
   const contenido = /pdf/i.test(d.mime) ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } } : { type: 'image', source: { type: 'base64', media_type: d.mime, data: b64 } };
   const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: require('./config').ia.vision, max_tokens: 500, tools: [HERR_NOMINA], tool_choice: { type: 'tool', name: HERR_NOMINA.name }, messages: [{ role: 'user', content: [contenido, { type: 'text', text: 'Saca el líquido a percibir, el total devengado, la retención de IRPF, la aportación del trabajador a la Seguridad Social y el mes de esta nómina.' }] }] }) });
+    body: JSON.stringify({ model: require('./config').ia.vision, max_tokens: 500, tools: [HERR_NOMINA], tool_choice: { type: 'tool', name: HERR_NOMINA.name }, messages: [{ role: 'user', content: [contenido, { type: 'text', text: 'Saca el líquido a percibir, el total devengado, la retención de IRPF, la aportación del trabajador a la Seguridad Social, el descuento por embargo (0 si no hay) y el mes de esta nómina.' }] }] }) });
   const j = await r.json(); if (!r.ok) throw new Error(`API ${r.status}`);
   const tu = (j.content || []).find(b => b.type === 'tool_use'); const x = (tu && tu.input) || {};
   if (!(Number(x.liquido) > 0)) throw new Error('No se ve el líquido a percibir');
@@ -209,10 +212,12 @@ async function leerImportesNomina(id) {
   await db.collection('docsPersonal').updateOne({ _id: d._id }, { $set: set });
   return { id: String(d._id), ...importes, mes: set.mes || d.mes };
 }
-// Todas las nóminas sin importe (de una en una; la IA tarda unos segundos por nómina).
-async function leerImportesPendientes({ max = 40 } = {}) {
+// Todas las nóminas sin importe (de una en una; la IA tarda unos segundos por nómina). `embargosDesde` ('AAAA-MM'):
+// vuelve a leer también las de ese mes en adelante que se leyeron antes de que se mirara el embargo.
+async function leerImportesPendientes({ max = 40, embargosDesde = null } = {}) {
   const db = await getDB();
-  const l = await db.collection('docsPersonal').find({ tipo: 'nomina', 'importes.liquido': { $exists: false } }).project({ _id: 1 }).limit(max).toArray();
+  const q = { tipo: 'nomina', $or: [{ 'importes.liquido': { $exists: false } }, ...(/^\d{4}-\d{2}$/.test(String(embargosDesde || '')) ? [{ mes: { $gte: embargosDesde }, 'importes.embargo': { $exists: false } }] : [])] };
+  const l = await db.collection('docsPersonal').find(q).project({ _id: 1 }).limit(max).toArray();
   const out = [];
   for (const x of l) { try { out.push(await leerImportesNomina(String(x._id))); } catch (e) { out.push({ id: String(x._id), error: e.message }); } }
   return out;

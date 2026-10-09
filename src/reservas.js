@@ -6,6 +6,7 @@
 //   IRPF (111)  · retenciones de las nóminas (las lee la IA de cada nómina) + las de facturas de profesionales.
 //   Seg. Social · el cargo de la TGSS de cada mes, estimado con la media de los 3 últimos; se cobra a fin de mes.
 //   Nóminas     · lo que falta pagar de las nóminas del mes (nominasPagos); se pagan hacia el día 5.
+//   Embargos    · lo descontado en nóminas por embargos que falta ingresar al organismo (embargos.js).
 //
 // Lo guardado = el saldo de la cuenta de reserva (por defecto la de Santander …6452; RESERVA_IBAN para cambiarla),
 // que lee el banco automático una vez al día. Lo guardado cubre primero lo que vence antes; de cada cosa sale lo
@@ -27,10 +28,9 @@ async function _ivaIrpf(t, db) {
   const e = await T.estado(t.q);
   const rep = Number(e.resumen && e.resumen.emitidas && e.resumen.emitidas.iva) || 0, sop = Number(e.resumen && e.resumen.recibidas && e.resumen.recibidas.iva) || 0;
   const meses = [0, 1, 2].map(i => `${t.y}-${String((t.n - 1) * 3 + 1 + i).padStart(2, '0')}`);
-  const todas = await db.collection('docsPersonal').find({ tipo: 'nomina', mes: { $in: meses } }).project({ importes: 1, mes: 1, userId: 1, 'ia.trabajadorLeido': 1 }).toArray();
-  // La misma nómina recibida dos veces (en el PDF del mes y suelta) cuenta una vez.
-  const vistas = new Set();
-  const noms = todas.filter(n => { const k = [n.mes, n.userId || (n.ia && n.ia.trabajadorLeido) || '', n.importes && n.importes.liquido].join('|'); if (vistas.has(k)) return false; vistas.add(k); return true; });
+  const todas = await db.collection('docsPersonal').find({ tipo: 'nomina', mes: { $in: meses } }).project({ importes: 1, mes: 1, userId: 1, subido: 1, 'ia.trabajadorLeido': 1 }).toArray();
+  // La misma nómina recibida dos veces (en el PDF del mes y suelta, o corregida) cuenta una vez.
+  const noms = require('./nominasPagos').sinRepetidas(todas);
   const irpfNom = noms.reduce((a, n) => a + (Number(n.importes && n.importes.irpf) || 0), 0);
   const sinIrpf = noms.filter(n => !(n.importes && n.importes.irpf != null)).length;
   let irpfProf = 0;
@@ -82,6 +82,9 @@ async function panel({ hoy = new Date(), fresco = false } = {}) {
     const e = await NP.estado(mesAnt, { hoy });
     if (e.totales.nominas) items.push({ clave: 'nom:' + mesAnt, concepto: `Nóminas de ${mesAnt}`, importe: e.totales.falta, vence: `${hoyIso.slice(0, 7)}-05`, detalle: `${e.totales.pagadas} de ${e.totales.nominas} pagadas${e.totales.sinImporte ? `, ${e.totales.sinImporte} sin importe leído` : ''}` });
   } catch (e) {}
+
+  // Embargos de sueldo: lo retenido en las nóminas que falta ingresar al juzgado / Hacienda (embargos.js).
+  try { (await require('./embargos').paraReservas({ hoy })).forEach(i => items.push(i)); } catch (e) { console.warn('[Reservas] embargos:', e.message); }
 
   // Proveedores: lo que se cargará o habrá que pagar en los próximos 30 días (y lo ya vencido).
   let prov = null;

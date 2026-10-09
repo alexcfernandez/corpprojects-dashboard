@@ -2067,6 +2067,16 @@ app.get('/api/personal/nominas-pagos', requireAuthOficina, async (req, res) => {
   req.setTimeout && req.setTimeout(120000);
   try { res.json(await require('./nominasPagos').estado(req.query.mes || null)); } catch (err) { res.status(500).json({ error: err.message }); }
 });
+// Embargos de sueldo: lo retenido en nóminas y lo ingresado al juzgado / Hacienda (embargos.js).
+app.get('/api/embargos', requireAuthOficina, async (req, res) => {
+  try { if (!users.canSeeMoney(req.user?.role || 'owner')) return res.status(403).json({ error: 'Solo Dueño y Oficina' }); res.json(await require('./embargos').estado()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/embargos/:id/pago', requireAuthOficina, express.json(), async (req, res) => {
+  try { if (!users.canSeeMoney(req.user?.role || 'owner')) return res.status(403).json({ error: 'Solo Dueño y Oficina' });
+    const b = req.body || {}; res.json(await require('./embargos').apuntarPago(req.params.id, { importe: b.importe, fecha: b.fecha, nota: b.nota }, req.user?.name || 'Oficina')); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 // Lo pagado en efectivo de una nómina (no sale en el banco).
 app.post('/api/personal/nominas/:id/efectivo', requireAuthOficina, express.json(), async (req, res) => {
   try { if (!users.canSeeMoney(req.user?.role || 'owner')) return res.status(403).json({ error: 'Solo Dueño y Oficina' });
@@ -2085,7 +2095,7 @@ let _leyendoNominas = false;
 app.post('/api/personal/nominas/leer-importes', requireAuthOficina, async (req, res) => {
   if (_leyendoNominas) return res.json({ enCurso: true });
   _leyendoNominas = true;
-  require('./personalDocs').leerImportesPendientes({ max: 60 }).then(r => console.log(`[Nóminas] importes leídos: ${r.filter(x => !x.error).length}, sin leer: ${r.filter(x => x.error).length}`)).catch(e => console.warn('[Nóminas]', e.message)).finally(() => { _leyendoNominas = false; });
+  require('./personalDocs').leerImportesPendientes({ max: 60, embargosDesde: (req.query && req.query.embargosDesde) || null }).then(r => console.log(`[Nóminas] importes leídos: ${r.filter(x => !x.error).length}, sin leer: ${r.filter(x => x.error).length}`)).catch(e => console.warn('[Nóminas]', e.message)).finally(() => { _leyendoNominas = false; });
   res.json({ ok: true, enCurso: true });
 });
 // ── DOCUMENTOS para el cliente (declaraciones de IVA, conformidad de obra…) ──

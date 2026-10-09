@@ -27,6 +27,20 @@ function esDe(concepto, u) {
   return nombresDe(u).some(ws => (ws.length >= 2 ? ws.slice(0, 2) : ws).every(w => c.includes(w)));
 }
 
+// La misma nómina recibida dos veces (en el PDF del mes y suelta): mismo líquido, o mismo bruto aunque el líquido
+// cambie (una versión corregida, p. ej. con un embargo que la primera no tenía) → cuenta una vez, la más reciente.
+// `l` = nóminas de UN trabajador y UN mes.
+function unicasDelMes(l) {
+  const igual = (a, b) => { const A = a.importes || {}, B = b.importes || {}; return (A.liquido != null && A.liquido === B.liquido) || (A.bruto != null && A.bruto === B.bruto); };
+  const unicas = []; [...l].sort((a, b) => String(b.subido).localeCompare(String(a.subido))).forEach(n => { if (!(n.importes && n.importes.liquido != null) || !unicas.some(u => igual(u, n))) unicas.push(n); });
+  return unicas;
+}
+// Todas las nóminas de una lista, sin repetidas (agrupa por trabajador y mes).
+function sinRepetidas(noms) {
+  const g = {}; noms.forEach(n => { const k = `${n.mes}|${n.userId || (n.ia && n.ia.trabajadorLeido) || n._id}`; (g[k] = g[k] || []).push(n); });
+  return Object.values(g).flatMap(unicasDelMes);
+}
+
 // meses: 'AAAA-MM' del que se quiere ver (se cuentan también los 2 anteriores para repartir bien los pagos).
 async function estado(mes, { hoy = new Date() } = {}) {
   if (!/^\d{4}-\d{2}$/.test(String(mes || ''))) mes = hoy.toISOString().slice(0, 7);
@@ -49,10 +63,7 @@ async function estado(mes, { hoy = new Date() } = {}) {
     const suyas = Object.entries(porMes).map(([mesN, l]) => {
       const rect = l.filter(n => /rectific/i.test(`${n.nombre} ${n.notas} ${(n.origen && n.origen.asunto) || ''}`)).sort((a, b) => String(b.subido).localeCompare(String(a.subido)));
       const extra = l.filter(n => /paga|extra/i.test(`${n.nombre} ${n.notas}`) && !rect.includes(n));
-      // La misma nómina recibida dos veces (en el PDF del mes y suelta): mismo líquido, o mismo bruto aunque el líquido
-      // cambie (una versión corregida, p. ej. con un embargo que la primera no tenía) → cuenta una vez, la más reciente.
-      const igual = (a, b) => { const A = a.importes || {}, B = b.importes || {}; return (A.liquido != null && A.liquido === B.liquido) || (A.bruto != null && A.bruto === B.bruto); };
-      const unicas = []; [...l].sort((a, b) => String(b.subido).localeCompare(String(a.subido))).forEach(n => { if (!(n.importes && n.importes.liquido != null) || !unicas.some(u => igual(u, n))) unicas.push(n); });
+      const unicas = unicasDelMes(l);
       const usar = rect.length ? [rect[0], ...extra.filter(n => unicas.includes(n))] : unicas;
       const liq = usar.reduce((a, n) => a + ((n.importes && n.importes.liquido) || 0), 0);
       const efectivo = l.flatMap(n => (n.pagosEfectivo || []).map(p => ({ fecha: p.fecha, importe: r2(p.importe), efectivo: true })));
@@ -110,4 +121,4 @@ async function lineaPago(concepto, fecha) {
   return null;
 }
 
-module.exports = { estado, lineaPago, esDe, nombresDe, apuntarEfectivo };
+module.exports = { estado, lineaPago, esDe, nombresDe, apuntarEfectivo, unicasDelMes, sinRepetidas };

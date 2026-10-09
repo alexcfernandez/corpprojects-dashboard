@@ -32,7 +32,7 @@ async function cuentaResultados({ fresco = false } = {}) {
     tryOr('Facturas de proveedor', () => T.todasRecibidas(), null),
     tryOr('Gastos de StelOrder', () => require('./stelorder').getExpenses(), []),
     db.collection('bancoMovimientos').find({ importe: { $lt: 0 }, categoria: { $in: ['nomina', 'seguridad_social', 'comision'] } }).project({ fechaOperacion: 1, importe: 1, categoria: 1, concepto: 1, codigo: 1 }).toArray(),
-    db.collection('docsPersonal').find({ tipo: 'nomina' }).project({ mes: 1, importes: 1, userId: 1, 'ia.trabajadorLeido': 1 }).toArray(),
+    db.collection('docsPersonal').find({ tipo: 'nomina' }).project({ mes: 1, importes: 1, userId: 1, subido: 1, 'ia.trabajadorLeido': 1 }).toArray(),
   ]);
   const deCompras = recStel ? await tryOr('Compras', async () => (await T.recibidasPunteo(recStel)).filter(r => String(r.id).startsWith('c:')), []) : [];
   // Pagos que salieron del banco o de una tarjeta y NO tienen ninguna factura asociada en la conciliación (compras con
@@ -69,8 +69,8 @@ async function cuentaResultados({ fresco = false } = {}) {
     const k = { nomina: 'nominas', seguridad_social: 'ss', comision: 'comisiones' }[m.categoria]; if (k) A(y)[k] += -m.importe;
   }
   for (const [y, v] of Object.entries(sinFactura)) A(y).sinFactura += v;
-  const vistas = new Set();
-  for (const n of noms) { const y = String(n.mes || '').slice(0, 4); const irpf = n.importes && n.importes.irpf; if (!y || irpf == null) continue; const k = [n.mes, n.userId || (n.ia && n.ia.trabajadorLeido) || '', n.importes.liquido].join('|'); if (vistas.has(k)) continue; vistas.add(k); A(y).irpf += Number(irpf) || 0; }
+  // La misma nómina recibida dos veces (en el PDF del mes y suelta, o corregida) cuenta una vez.
+  for (const n of require('./nominasPagos').sinRepetidas(noms)) { const y = String(n.mes || '').slice(0, 4); const irpf = n.importes && n.importes.irpf; if (!y || irpf == null) continue; A(y).irpf += Number(irpf) || 0; }
   const lista = Object.values(anos).map(a => {
     const compras = a.comprasStel + a.gastosStel + a.comprasApp + a.sinFactura, personal = a.nominas + a.ss + a.irpf;
     const gastos = compras + personal + a.comisiones;
