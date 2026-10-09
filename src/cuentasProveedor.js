@@ -38,6 +38,18 @@ function _factura(r, mapa) {
   return { id: r.id, compraId: r.compraId || null, pdfPath: r.pdfPath || null, numero: r.numero, refProveedor: r.refProveedor || null, fecha: r.fecha, total, pagado, pendiente, estado: total < 0 ? 'abono' : pendiente <= 0.01 ? 'pagada' : pagado > 0 ? 'parcial' : 'pendiente', segun, pagos, deCompras: !!r.compraId && !r.pendienteStel && String(r.id).startsWith('c:') };
 }
 
+// Proveedores de TIENDA (Obramat, Leroy, Bauhaus…): se pagan en el mostrador con tarjeta. Si la mayoría de sus pagos
+// encontrados son con tarjeta, una factura sin pago localizado NO es deuda: está pagada en la tienda y falta casar
+// el movimiento (tarjeta sin extracto, ticket sin casar, efectivo). Mismo criterio que la previsión de pagos.
+function aplicarTienda(facturas) {
+  const pagos = facturas.flatMap(f => f.pagos || []);
+  const conTarjeta = pagos.filter(p => /revolut|cr[eé]dito|tarj/i.test(`${p.origen || ''} ${p.concepto || ''}`)).length;
+  const deTienda = pagos.length >= 3 && conTarjeta / pagos.length >= 0.6;
+  if (!deTienda) return false;
+  for (const f of facturas) if (f.estado === 'pendiente' || f.estado === 'parcial') { f.sinLocalizar = f.pendiente; f.pendiente = 0; f.estado = 'sin_localizar'; }
+  return true;
+}
+
 // Todas las cuentas (una por proveedor) con lo pendiente.
 async function cuentas({ desde = '2025-01-01' } = {}) {
   const { rec, mapa } = await _datos();
@@ -50,11 +62,13 @@ async function cuentas({ desde = '2025-01-01' } = {}) {
     g.set(k, c);
   }
   return [...g.values()].map(c => {
+    const tienda = aplicarTienda(c.facturas);
     const abonos = c.facturas.filter(f => f.estado === 'abono').reduce((a, f) => a + f.total, 0);
     const pend = c.facturas.reduce((a, f) => a + f.pendiente, 0);
     return { clave: c.clave, proveedor: c.proveedor, nFacturas: c.facturas.length, total: r2(c.facturas.reduce((a, f) => a + f.total, 0)),
       pagado: r2(c.facturas.reduce((a, f) => a + f.pagado, 0)), pendiente: r2(Math.max(0, pend + abonos)), abonos: r2(abonos),
-      nPendientes: c.facturas.filter(f => f.estado === 'pendiente' || f.estado === 'parcial').length, ultima: c.facturas.map(f => f.fecha).sort().pop() };
+      nPendientes: c.facturas.filter(f => f.estado === 'pendiente' || f.estado === 'parcial').length, ultima: c.facturas.map(f => f.fecha).sort().pop(),
+      tienda, sinLocalizar: r2(c.facturas.reduce((a, f) => a + (f.sinLocalizar || 0), 0)) };
   }).sort((a, b) => b.pendiente - a.pendiente || String(b.ultima).localeCompare(String(a.ultima)));
 }
 
@@ -101,12 +115,13 @@ async function cuenta(nombre, { desde = '2025-01-01' } = {}) {
       sinFactura.push({ fecha: m.fecha, importe: Math.abs(m.importe), concepto: m.concepto, origen: m.origen });
     }
   } catch (e) { /* el buscador es un extra */ }
+  const tienda = aplicarTienda(facturas);
   const abonos = facturas.filter(f => f.estado === 'abono').reduce((a, f) => a + f.total, 0);
   const pend = facturas.reduce((a, f) => a + f.pendiente, 0);
   return {
-    proveedor: nombreProv, facturas, sinFactura,
+    proveedor: nombreProv, facturas, sinFactura, tienda,
     totales: { facturado: r2(facturas.filter(f => f.total > 0).reduce((a, f) => a + f.total, 0)), abonos: r2(abonos), pagado: r2(facturas.reduce((a, f) => a + f.pagado, 0)),
-      pendiente: r2(Math.max(0, pend + abonos)), pagosSinFactura: r2(sinFactura.reduce((a, m) => a + m.importe, 0)) },
+      pendiente: r2(Math.max(0, pend + abonos)), pagosSinFactura: r2(sinFactura.reduce((a, m) => a + m.importe, 0)), sinLocalizar: r2(facturas.reduce((a, f) => a + (f.sinLocalizar || 0), 0)) },
   };
 }
 
@@ -130,4 +145,4 @@ async function grupos({ desde = '2025-01-01' } = {}) {
   return [...g.values()];
 }
 
-module.exports = { cuentas, cuenta, deuda, grupos, olvidar, clave, _factura };
+module.exports = { _aplicarTienda: aplicarTienda, cuentas, cuenta, deuda, grupos, olvidar, clave, _factura };

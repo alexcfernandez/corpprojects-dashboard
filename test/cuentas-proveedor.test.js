@@ -37,3 +37,17 @@ test('Preformados: el abono del 3 % deja la cuenta a cero', async () => {
   assert.equal(l.find(x => /preformados/i.test(x.proveedor)).pendiente, 0);
   assert.equal(l.find(x => /rub/i.test(x.proveedor)).pendiente, 700);
 });
+
+test('proveedor de tienda (se paga con tarjeta): lo que no casa no es deuda, es «pagada en tienda»', () => {
+  const { _aplicarTienda } = require('../src/cuentasProveedor');
+  const pago = o => ({ fecha: '2026-10-06', importe: 10, origen: o });
+  const fs = [
+    { estado: 'pagada', pendiente: 0, pagos: [pago('Revolut …6439')] }, { estado: 'pagada', pendiente: 0, pagos: [pago('Revolut …6439')] },
+    { estado: 'pagada', pendiente: 0, pagos: [pago('Crédito …9259')] }, { estado: 'pendiente', pendiente: 633.7, pagos: [] },
+  ];
+  assert.equal(_aplicarTienda(fs), true);
+  assert.equal(fs[3].estado, 'sin_localizar'); assert.equal(fs[3].pendiente, 0); assert.equal(fs[3].sinLocalizar, 633.7);
+  const transf = [{ estado: 'pagada', pendiente: 0, pagos: [pago('Cuenta Santander')] }, { estado: 'pagada', pendiente: 0, pagos: [pago('Cuenta Santander')] }, { estado: 'pagada', pendiente: 0, pagos: [pago('Cuenta Santander')] }, { estado: 'pendiente', pendiente: 500, pagos: [] }];
+  assert.equal(_aplicarTienda(transf), false);
+  assert.equal(transf[3].estado, 'pendiente');   // a Saltoki, Oliveras… sí se les debe
+});
