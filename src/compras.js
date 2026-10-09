@@ -183,7 +183,8 @@ function aplicarLectura(doc, d) {
 async function buscarDuplicado(db, doc) {
   if (!doc.proveedorNorm || !doc.numero) return null;
   const q = { empresaId: EMPRESA, estado: { $ne: 'descartada' }, proveedorNorm: doc.proveedorNorm, numero: doc.numero };
-  if (doc.gmailId) { const e = await db.collection(COL).findOne({ empresaId: EMPRESA, gmailId: doc.gmailId, _id: { $ne: doc._id } }, { projection: { _id: 1 } }); if (e) return String(e._id); }
+  // Mismo correo ya procesado (y no descartado) con el mismo nº: repetida. Un correo con dos facturas distintas no.
+  if (doc.gmailId) { const e = await db.collection(COL).findOne({ empresaId: EMPRESA, gmailId: doc.gmailId, estado: { $ne: 'descartada' }, numero: doc.numero, _id: { $ne: doc._id } }, { projection: { _id: 1 } }); if (e) return String(e._id); }
   if (doc._id) q._id = { $ne: doc._id };
   const d = await db.collection(COL).findOne(q, { projection: { _id: 1 } });
   return d ? String(d._id) : null;

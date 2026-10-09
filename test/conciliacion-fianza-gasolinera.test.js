@@ -34,3 +34,11 @@ test('domiciliado: si sus facturas se pagan por recibo, lo pendiente se cargará
   assert.equal(CP._domiciliado([{ pagos: [] }], [{ concepto: 'Recibo Quartix Nº Recibo 0049 2439' }]), true);
   assert.equal(CP._domiciliado([{ pagos: [{ concepto: 'Transferencia a favor de X' }] }]), false);
 });
+
+test('recibo: paga la factura anterior del mismo importe, no una posterior más cercana', () => {
+  const P = 'RECUPERACIONS MARCEL NAVARRO I FILLS, SL';
+  const rec = [{ id: 'a', numero: 'A-00113337', refProveedor: 'A-00113337', proveedor: P, fecha: '2026-06-30', total: 22.87 },
+    { id: 'b', numero: 'A-00115339', refProveedor: 'A-00115339', proveedor: P, fecha: '2026-08-31', total: 22.87 }];
+  const f = C.conciliar({ movimientos: [{ id: 'm', fecha: '2026-08-25', importe: -22.87, concepto: 'Recibo Recuperacions Marcel Navarro I Fills,sl Nº Recibo 0049 2439 755', codigo: '061' }], emitidas: [], recibidas: rec }).filas[0];
+  assert.equal(f.estado, 'punteado'); assert.equal(f.docs[0].ref, 'A-00113337');
+});

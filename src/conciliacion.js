@@ -209,9 +209,12 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
       const fCit = fechaCitada(f.concepto);
       if (fCit && !(dias(fCit, r.fecha) >= 0 && dias(fCit, r.fecha) <= 10)) continue;
       const nombre = nombraR(f.concepto, r);
-      parejas.push({ f, r, score: (nombre ? 100 : 0) + 50 - Math.min(Math.abs(d), 50), nombre });
+      parejas.push({ f, r, d, score: (nombre ? 100 : 0) + 50 - Math.min(Math.abs(d), 50), nombre });
     }
   }
+  // Un recibo paga una factura ya emitida: si hay una ANTERIOR del mismo importe y proveedor, no vale una posterior
+  // (Marcel Navarro carga el 25/08 la de junio, no la del 31/08 aunque esté más cerca).
+  for (let i = parejas.length - 1; i >= 0; i--) { const p = parejas[i]; if (p.d < 0 && parejas.some(q => q.f === p.f && q.d >= 0 && q.nombre >= p.nombre)) parejas.splice(i, 1); }
   const proveedores = [...new Set(recibidas.map(r => r.proveedor).filter(Boolean))];
   const _otro = new Map();
   const nombraOtro = (concepto, prov) => { const k = concepto + '|' + prov; if (!_otro.has(k)) _otro.set(k, proveedores.some(x => norm(x) !== norm(prov) && nombraA(concepto, x))); return _otro.get(k); };
