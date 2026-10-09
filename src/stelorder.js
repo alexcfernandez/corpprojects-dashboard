@@ -944,6 +944,7 @@ async function getPurchaseInvoices() {
         date: x.date || x['creation-date'] || '',
         base: importesDoc(x).base, iva: importesDoc(x).iva, retencion: importesDoc(x).retencion, _importes: importesDoc(x)._importes,
         settled: x.settled === true || String(x.settled) === 'true',
+        pdfPath: x['pdf-path'] && x['pdf-path'] !== 'null' ? x['pdf-path'] : null,   // PDF de StelOrder, para verla de un clic
         lines: Array.isArray(x.lines) ? x.lines : []
       };
     });

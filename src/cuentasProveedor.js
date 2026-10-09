@@ -35,7 +35,7 @@ function _factura(r, mapa) {
   if (!pagos.length && r.pendienteStel != null && Math.abs(r.pendienteStel) < 0.01 && Math.abs(total) > 0) { pagado = Math.abs(total); segun = 'stelorder'; }
   if (Math.abs(Math.abs(total) - pagado) <= 0.02) pagado = Math.abs(total);
   const pendiente = total < 0 ? 0 : r2(total - pagado);
-  return { numero: r.numero, refProveedor: r.refProveedor || null, fecha: r.fecha, total, pagado, pendiente, estado: total < 0 ? 'abono' : pendiente <= 0.01 ? 'pagada' : pagado > 0 ? 'parcial' : 'pendiente', segun, pagos, deCompras: !!r.compraId && !r.pendienteStel && String(r.id).startsWith('c:') };
+  return { id: r.id, compraId: r.compraId || null, pdfPath: r.pdfPath || null, numero: r.numero, refProveedor: r.refProveedor || null, fecha: r.fecha, total, pagado, pendiente, estado: total < 0 ? 'abono' : pendiente <= 0.01 ? 'pagada' : pagado > 0 ? 'parcial' : 'pendiente', segun, pagos, deCompras: !!r.compraId && !r.pendienteStel && String(r.id).startsWith('c:') };
 }
 
 // Todas las cuentas (una por proveedor) con lo pendiente.
@@ -73,6 +73,21 @@ async function cuenta(nombre, { desde = '2025-01-01' } = {}) {
   const facturas = rec.filter(r => r.fecha && r.fecha >= desde && r.proveedor && clave(r.proveedor) === k).map(r => _factura(r, mapa)).sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
   if (!facturas.length) throw new Error('No encuentro facturas de ese proveedor');
   const nombreProv = (rec.find(r => r.proveedor && clave(r.proveedor) === k) || {}).proveedor || nombre;
+  // Para ver la factura de un clic: la de StelOrder que vino de Compras tiene allí su documento ORIGINAL (PDF o foto
+  // del proveedor). Se busca su gemela por el nº del proveedor (solo dígitos).
+  try {
+    const sinCompra = facturas.filter(f => !f.compraId && f.refProveedor);
+    if (sinCompra.length) {
+      const db = await require('./db').getDB();
+      const dig = x => String(x || '').replace(/\D/g, '');
+      const cs = await db.collection('compras').find({ estado: { $ne: 'descartada' }, numero: { $ne: null }, proveedorNorm: new RegExp((norm(nombreProv).match(/[a-z0-9]{4,}/) || [norm(nombreProv).slice(0, 4)])[0]) }).project({ numero: 1, total: 1 }).toArray();
+      for (const f of sinCompra) {
+        const d = dig(f.refProveedor); if (d.length < 4) continue;
+        const c = cs.find(x => { const dc = dig(x.numero); return dc && (dc === d || (Math.min(dc.length, d.length) >= 5 && (dc.endsWith(d) || d.endsWith(dc)))); });
+        if (c) f.compraId = String(c._id);
+      }
+    }
+  } catch (e) {}
   // Pagos del banco que nombran al proveedor y no tienen factura (anticipos, facturas que faltan).
   const { clavesTercero } = require('./conciliacion');
   const ks = clavesTercero(nombreProv);

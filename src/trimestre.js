@@ -274,7 +274,7 @@ async function todasEmitidas() {
 }
 async function todasRecibidas() {
   const fp = await require('./stelorder').getPurchaseInvoices();
-  return (fp || []).filter(x => x.date).map(x => ({ id: x.id, numero: x.number, refProveedor: x.extraReference || '', proveedor: x.supplier, fecha: String(x.date).slice(0, 10), total: r2(x.total), base: x.base, iva: x.iva, pendienteStel: x.pending != null ? r2(x.pending) : null }));
+  return (fp || []).filter(x => x.date).map(x => ({ id: x.id, numero: x.number, refProveedor: x.extraReference || '', proveedor: x.supplier, fecha: String(x.date).slice(0, 10), total: r2(x.total), base: x.base, iva: x.iva, pendienteStel: x.pending != null ? r2(x.pending) : null, pdfPath: x.pdfPath || null }));
 }
 // Facturas para el punteo: las de StelOrder + las de Compras (correo, fotos, archivo) que NO estén ya en
 // StelOrder. Así lo que llega al correo se cruza con el banco aunque nadie lo haya pasado a StelOrder.
