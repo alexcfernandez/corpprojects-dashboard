@@ -106,7 +106,8 @@ async function _estampar(original, mime, { nombreDoc, firmante, dni, cargo, cuan
   const huella = crypto.createHash('sha256').update(original).digest('hex');
   if (firmaEn.length) { const img = await pdf.embedPng(png); const pages = pdf.getPages(); for (const f of firmaEn) _enSitio(pdf, img, pages, f, { font, bold, rgb, firmante, cargo, conSello }); }
   const marca = ansi(`Firmado por ${firmante} (${cargo}) el ${cuando} · Corp Projects Holding, S.L. · ref. ${ref}`);
-  for (const pg of pdf.getPages()) { const { width } = pg.getSize(); pg.drawText(marca, { x: 30, y: 12, size: 7, font, color: rgb(0.35, 0.35, 0.4), maxWidth: width - 60 }); }
+  // La marca del segundo firmante (sin sello: firma a título propio) va una línea más arriba para no pisar la primera.
+  for (const pg of pdf.getPages()) { const { width } = pg.getSize(); pg.drawText(marca, { x: 30, y: conSello ? 12 : 21, size: 7, font, color: rgb(0.35, 0.35, 0.4), maxWidth: width - 60 }); }
   const hoja = pdf.addPage([595, 842]); let y = 780;
   const t = (s, size = 10, f2 = font) => { hoja.drawText(ansi(s), { x: 50, y, size, font: f2, color: rgb(0.1, 0.1, 0.12), maxWidth: 495 }); y -= size + 8; };
   t('HOJA DE FIRMA', 14, bold); y -= 4;
