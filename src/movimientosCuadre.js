@@ -10,7 +10,7 @@ const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
 const iso = d => new Date(d).toISOString().slice(0, 10);
 
 // Estado del cuadre de un movimiento con sus documentos.
-function cuadre(m, pm) {
+function cuadre(m, pm, porDoc) {
   if (!pm) return { estado: 'sin_datos', texto: 'Sin cruzar todavía' };
   const docs = pm.docs || [];
   if (pm.estado === 'no_requiere') return { estado: 'no_requiere', texto: pm.nota || 'No necesita factura', docs };
@@ -19,13 +19,19 @@ function cuadre(m, pm) {
     const suma = r2(conTotal.reduce((a, d) => a + Number(d.total), 0));
     const imp = Math.abs(m.importe);
     // Facturas de proveedor llegan en positivo y los abonos en negativo: la suma ya los descuenta.
-    const dif = conTotal.length === docs.length ? r2(imp - Math.abs(suma)) : null;
+    // Lo que ya se había cobrado/pagado de esas mismas facturas con OTROS movimientos (anticipos, pagos a trozos):
+    // el cobro de 39.688,90 € de Aura completa dos facturas de 74.688,90 € de las que ya se cobraron 35.000 antes.
+    const otros = []; const vistos = new Set();
+    if (porDoc) for (const d of docs) for (const p of (porDoc.get(String(d.ref)) || [])) if (p.movId !== m.id && !vistos.has(p.movId)) { vistos.add(p.movId); otros.push(p); }
+    const yaAntes = r2(otros.reduce((a, p) => a + Math.abs(p.importe), 0));
+    const dif = conTotal.length === docs.length ? r2(imp + yaAntes - Math.abs(suma)) : null;
     const abonos = docs.filter(d => Number(d.total) < 0).length;
     const facturas = docs.length - abonos;
     const resumenDocs = docs.length === 1 ? docs[0].ref : `${facturas} factura${facturas === 1 ? '' : 's'}${abonos ? ` + ${abonos} abono${abonos === 1 ? '' : 's'}` : ''}`;
-    if (dif == null || Math.abs(dif) < 1) return { estado: 'cuadrado', texto: resumenDocs, docs, suma, nota: pm.nota || null, confianza: pm.confianza };
+    const conAntes = yaAntes > 0.01 ? `con ${otros.length} pago${otros.length === 1 ? '' : 's'} anterior${otros.length === 1 ? '' : 'es'} de ${yaAntes.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: 'always' })} €` : null;
+    if (dif == null || Math.abs(dif) < 1) return { estado: 'cuadrado', texto: resumenDocs, docs, suma, yaAntes, nota: conAntes || pm.nota || null, confianza: pm.confianza };
     // Cobro de menos que las facturas: falta; de más: sobra (anticipo, otra factura…).
-    return { estado: 'parcial', texto: resumenDocs, docs, suma, dif, nota: dif < 0 ? `Faltan ${(-dif).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: 'always' })} € de ${docs.length === 1 ? 'la factura' : 'esas facturas'}` : `Sobran ${dif.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: 'always' })} €`, confianza: pm.confianza };
+    return { estado: 'parcial', texto: resumenDocs, docs, suma, dif, yaAntes, nota: (conAntes ? conAntes + '. ' : '') + (dif < 0 ? `Faltan ${(-dif).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: 'always' })} € de ${docs.length === 1 ? 'la factura' : 'esas facturas'}` : `Sobran ${dif.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: 'always' })} €`), confianza: pm.confianza };
   }
   return { estado: 'sin_cuadrar', texto: pm.nota || (m.importe > 0 ? 'No sé de qué factura es' : 'Sin factura'), docs };
 }
@@ -51,7 +57,7 @@ async function lista({ dias = 31, desde, hasta } = {}) {
     ...tm.filter(m => !/declined|reverted|failed/i.test(m.estado || '')).map(m => ({ id: String(m._id), fecha: m.fecha, importe: r2(m.importe), concepto: m.concepto || '', quien: quien(m.concepto),
       origen: `${m.fuente === 'revolut' ? 'Revolut' : 'Crédito'} …${m.tarjeta || ''}${persona[m.tarjeta] ? ' · ' + persona[m.tarjeta] : ''}`, tarjeta: true })),
   ].sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)) || Math.abs(b.importe) - Math.abs(a.importe));
-  const out = movs.map(m => ({ ...m, ...cuadre(m, mapa ? mapa.porMov.get(m.id) : null) }));
+  const out = movs.map(m => ({ ...m, ...cuadre(m, mapa ? mapa.porMov.get(m.id) : null, mapa ? mapa.porDoc : null) }));
   const suma = arr => r2(arr.reduce((a, m) => a + m.importe, 0));
   const ent = out.filter(m => m.importe > 0), sal = out.filter(m => m.importe < 0);
   const pend = out.filter(m => m.estado === 'sin_cuadrar' || m.estado === 'parcial');
