@@ -93,6 +93,8 @@ async function subir({ ambito = 'trabajador', userId, obraId, tipo, archivo, fec
   if (!tipoDe(ambito, tipo)) throw new Error('Tipo de documento no válido');
   if (ambito === 'trabajador' && !userId) throw new Error('¿De qué trabajador es?');
   const db = await getDB();
+  // multer da el nombre del archivo en latin1: «AdhesiÃ³n» → «Adhesión».
+  if (archivo.originalname && /[ÃÂ]/.test(archivo.originalname)) { try { const u = Buffer.from(archivo.originalname, 'latin1').toString('utf8'); if (!u.includes('\ufffd')) archivo.originalname = u; } catch (e) {} }
   const doc = { ambito, userId: ambito === 'trabajador' ? String(userId) : null, obraId: ambito === 'obra' ? String(obraId) : null, tipo, nombre: txt(archivo.originalname || (tipoDe(ambito, tipo) || {}).nombre, 120), fecha: fechaOk(fecha), mes: mesOk(mes), notas: txt(notas, 300),
     mime: archivo.mimetype, size: archivo.size || archivo.buffer.length, data: archivo.buffer, estado: 'ok', visibleTrabajador: visibleTrabajador !== false && visibleTrabajador !== 'false', subido: new Date(), por: por || '' };
   doc.caduca = _caduca(ambito, tipo, doc.fecha, caduca);
@@ -218,7 +220,7 @@ async function editar(id, cambios = {}, por) {
   const db = await getDB();
   const d = await db.collection('docsPersonal').findOne({ _id: _oid(id) }, { projection: { data: 0 } });
   if (!d) throw new Error('Documento no encontrado');
-  const ambito = cambios.ambito ? (cambios.ambito === 'empresa' ? 'empresa' : 'trabajador') : d.ambito;
+  const ambito = cambios.ambito ? (['empresa', 'obra'].includes(cambios.ambito) ? cambios.ambito : 'trabajador') : d.ambito;
   const tipo = cambios.tipo || d.tipo;
   if (!tipoDe(ambito, tipo)) throw new Error('Tipo no válido');
   const set = { ambito, tipo, actualizado: new Date(), actualizadoPor: por || '' };
@@ -226,6 +228,7 @@ async function editar(id, cambios = {}, por) {
   if ('fecha' in cambios) set.fecha = fechaOk(cambios.fecha);
   if ('mes' in cambios) set.mes = mesOk(cambios.mes);
   if ('notas' in cambios) set.notas = txt(cambios.notas, 300);
+  if (cambios.nombre && String(cambios.nombre).trim()) set.nombre = txt(cambios.nombre, 120);
   if ('visibleTrabajador' in cambios) set.visibleTrabajador = !!cambios.visibleTrabajador;
   set.caduca = _caduca(ambito, tipo, 'fecha' in set ? set.fecha : d.fecha, 'caduca' in cambios ? cambios.caduca : (tipo === d.tipo ? d.caduca : null));
   if (cambios.confirmar) {
