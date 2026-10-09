@@ -871,6 +871,8 @@ app.get('/api/inicio', requireAuth, async (req, res) => {
     ]);
     out.partes = { porRevisar, porFacturar }; out.emails = { urgentes, sinLeer }; out.presencia = { hoy: presentes };
   } catch (e) { out.partes = out.partes || { porRevisar: 0, porFacturar: 0, error: e.message }; out.emails = out.emails || { urgentes: 0, sinLeer: 0 }; out.presencia = out.presencia || { hoy: null }; } })());
+  // Obras de contratista con documentación por preparar (para entrar el día X)
+  t.push((async () => { try { out.docsObra = await Promise.race([require('./docsObra').pendientes(), new Promise(r => setTimeout(() => r([]), 5000))]); } catch (e) { out.docsObra = []; } })());
   // 7) Planificación: lo de hoy y el conteo de esta semana
   t.push((async () => { try {
     const { getPlanning } = require('./planning'); const now = new Date(); const hoy = now.toISOString().slice(0, 10);
@@ -2198,6 +2200,49 @@ app.get('/api/personal/peticiones-alta', requireAuthOficina, async (req, res) =>
 app.post('/api/personal/peticiones-alta/:id/cerrar', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./docsAlta').cerrar(req.params.id)); } catch (err) { res.status(400).json({ error: err.message }); }
 });
+// «Documentación para entrar» en una obra de contratista (docsObra.js): qué piden, qué hay y quién da lo que falta.
+const D_OBRA = () => require('./docsObra');
+app.get('/api/obras/:id/docs-entrada', requireAuthOficina, async (req, res) => {
+  try { res.json(await D_OBRA().estado(req.params.id)); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/obras/:id/docs-entrada', requireAuthOficina, express.json(), async (req, res) => {
+  try { res.json(await D_OBRA().configurar(req.params.id, req.body || {}, req.user?.name)); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+// Correo preparado (borrador en Gmail, no se envía) para pedir lo que falta a la gestoría o al servicio de prevención.
+app.post('/api/obras/:id/docs-entrada/borrador', requireAuthOficina, express.json(), async (req, res) => {
+  try { const e = await D_OBRA().estado(req.params.id); const t = D_OBRA().textoPeticion(e, (req.body || {}).quien);
+    if (!t) return res.status(400).json({ error: 'No falta nada de eso' });
+    res.json(await require('./gmailBorrador').crear({ para: t.para, asunto: t.asunto, texto: t.texto })); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+// Paquete: ZIP con todo + borrador en Gmail para el contratista con el ZIP adjunto (lo revisas y lo envías tú).
+app.post('/api/obras/:id/docs-entrada/paquete', requireAuthOficina, express.json(), async (req, res) => {
+  req.setTimeout && req.setTimeout(120000);
+  try { const p = await D_OBRA().paquete(req.params.id);
+    if ((req.body || {}).descargar) { res.setHeader('Content-Type', 'application/zip'); res.setHeader('Content-Disposition', `attachment; filename="${p.nombre}"`); return res.end(p.zip); }
+    const e = p.estado, dest = e.config.destino || [];
+    const b = await require('./gmailBorrador').crear({ para: dest, asunto: `Documentación ${e.obra.ref} — Corp Projects Holding, S.L.`, adjuntos: [{ filename: p.nombre, content: p.zip, contentType: 'application/zip' }],
+      texto: `Buenos días:
+
+Os enviamos la documentación de empresa, de la obra y de los trabajadores que entrarán en la obra ${e.obra.ref}.${p.faltan ? `
+
+(OJO, REVISAR ANTES DE ENVIAR: aún faltan ${p.faltan} documentos, ver INDICE.txt)` : ''}
+
+${p.indice}
+
+Cualquier cosa que falte, nos decís.
+
+Un saludo,
+
+Corp Projects
+674 013 723` });
+    res.json({ ...b, faltan: p.faltan }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/obras/:id/docs-entrada/enviado', requireAuthOficina, async (req, res) => {
+  try { res.json(await D_OBRA().marcarEnviado(req.params.id, req.user?.name)); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/docs-obra', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'docs-obra.html')));
 app.get('/api/personal/resumen', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./personalDocs').resumen()); } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -2237,7 +2282,7 @@ app.delete('/api/rrhh/candidatos/:id/docs/:docId', requireAuthOficina, _rr(req =
 app.post('/api/rrhh/candidatos/:id/entrevista', requireAuthOficina, _rr(req => RRHH().guardarEntrevista(req.params.id, req.body || {}, req.user?.name)));
 app.post('/api/rrhh/candidatos/:id/contratar', requireAuthOficina, _rr(req => RRHH().contratar(req.params.id, req.body || {}, req.user?.name)));
 app.post('/api/personal/docs', requireAuthOficina, uploadPersonal.single('archivo'), async (req, res) => {
-  try { const b = req.body || {}; res.json(await require('./personalDocs').subir({ ambito: b.ambito, userId: b.userId, tipo: b.tipo, archivo: req.file, fecha: b.fecha, caduca: b.caduca, mes: b.mes, notas: b.notas, visibleTrabajador: b.visibleTrabajador }, await _porPers(req))); }
+  try { const b = req.body || {}; res.json(await require('./personalDocs').subir({ ambito: b.ambito, userId: b.userId, obraId: b.obraId, tipo: b.tipo, archivo: req.file, fecha: b.fecha, caduca: b.caduca, mes: b.mes, notas: b.notas, visibleTrabajador: b.visibleTrabajador }, await _porPers(req))); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.post('/api/personal/analizar', requireAuthOficina, uploadPersonal.array('archivos', 20), async (req, res) => {

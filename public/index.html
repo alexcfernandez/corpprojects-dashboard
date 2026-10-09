@@ -159,6 +159,7 @@ function cpUpdateBanner(){
     <button class="tq" onclick="location.href='/presupuestos'"><span class="em">📝</span><span class="lb">Presupuestos</span></button>
     <button class="tq" onclick="location.href='/rrhh'"><span class="em">🧑‍🔧</span><span class="lb">Candidatos</span></button>
     <button class="tq" onclick="location.href='/personal'"><span class="em">📂</span><span class="lb">Documentación personal</span></button>
+    <button class="tq" onclick="location.href='/docs-obra'"><span class="em">📑</span><span class="lb">Documentación para obra</span></button>
     <button class="tq" onclick="location.href='/fichajes'"><span class="em">🕐</span><span class="lb">Fichajes (hoy)</span></button>
     <button class="tq" onclick="location.href='/documentos'"><span class="em">📄</span><span class="lb">Documentos clientes</span></button>
     <button class="tq" onclick="location.href='/vehiculos'"><span class="em">🚐</span><span class="lb">Vehículos</span></button>
@@ -1520,6 +1521,9 @@ async function renderInicio(){
   add(cb.incumplidas||0,'promesas de pago sin cumplir','','','var(--red)','/cobrar');
   add(cb.recordatorios||0,'recordatorios de cobro por enviar','','','var(--amber)','/cobrar');
   add(rh.nuevos||0,'candidatos nuevos','','','var(--blue)','/rrhh');
+  // Obras de contratista con documentación por preparar: lo más urgente primero (entran antes)
+  (d.docsObra||[]).forEach(o=>{const cuando=o.dias==null?'':o.dias<=0?' · entráis hoy':o.dias===1?' · entráis mañana':' · entráis en '+o.dias+' días';const col=o.dias!=null&&o.dias<=3?'var(--red)':'var(--amber)';
+    urg.unshift(`<button class="cp-chip" style="cursor:pointer;background:var(--bg2);font-size:13px;padding:7px 12px;border-color:${col}55;color:var(--text)" onclick="location.href='/docs-obra?obra=${o.obraId}'">📑 <b style="color:${col}">${o.faltan}</b> documentos para ${String(o.ref||'').replace(/[<>&"]/g,'')}${cuando}</button>`);});
   const kpi2=(label,val,sub,color,onclick)=>`<div class="card ini-kpi" style="margin:0;${onclick?'cursor:pointer':''}" ${onclick?`onclick="${onclick}"`:''}>
       <div class="k-l">${label}</div><div class="k-v" style="color:${color||'var(--text)'}">${val}</div><div class="k-s">${sub||''}</div></div>`;
   // Gráfica con barras en degradado

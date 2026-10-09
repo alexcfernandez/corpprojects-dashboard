@@ -18,7 +18,7 @@
     { t: 'Compras', i: '🧾', items: [
       ['Compras por revisar', '/compras', 'facturas'], ['Cuentas de proveedores', '/compras#cuentas', 'facturas'], ['Subir una compra', '/compra'], ['Almacén', '/almacen']] },
     { t: 'Personal', i: '👷', items: [
-      ['Candidatos (RRHH)', '/rrhh', 'clientes'], ['Presencia', '/?tab=presencia'], ['Fichajes', '/fichajes', 'facturas'], ['Horas fichadas', '/horas', 'facturas'], ['Documentación y nóminas', '/personal', 'clientes'],
+      ['Candidatos (RRHH)', '/rrhh', 'clientes'], ['Presencia', '/?tab=presencia'], ['Fichajes', '/fichajes', 'facturas'], ['Horas fichadas', '/horas', 'facturas'], ['Documentación y nóminas', '/personal', 'clientes'], ['Documentación para entrar en obra', '/docs-obra', 'clientes'],
       ['¿Dónde hemos estado?', '/sitios'], ['Fichar jornada', '/fichar'], ['Parte de trabajo', '/parte']] },
     { t: 'Flota', i: '🚐', items: [['Vehículos', '/vehiculos', 'facturas'], ['Llaves y herramientas', '/activos']] },
     { t: 'Documentos', i: '📄', items: [['Documentos para clientes', '/documentos', 'facturas'], ['Conversaciones WhatsApp', '/conversaciones', 'clientes']] },
