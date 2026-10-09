@@ -283,8 +283,15 @@ async function recibidasPunteo(stel) {
   const db = await getDB();
   const dig = x => String(x || '').replace(/\D/g, '');
   const n = x => String(x || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-  const palabra = x => (n(x).match(/[a-z0-9]{4,}/g) || []).filter(w => !/^(s\.?l|sociedad|girona|distribucions?|materials?|derivats?)$/.test(w));
-  const pareceProv = (a, b) => { const pa = palabra(a), pb = palabra(b); return pa.some(w => pb.includes(w)); };
+  // Palabras que comparten proveedores distintos («Classicauto Girona Taller» y «Auto-Taller Kin» = «taller»): no sirven para casar.
+  const palabra = x => (n(x).match(/[a-z0-9]{4,}/g) || []).filter(w => !/^(s\.?l|sociedad|girona|distribucions?|materials?|derivats?|taller|tallers|talleres|auto|autos|obras|obres|construccions|construcciones|servicios|serveis|grupo|grup|comercial|industrial|reformas|reformes)$/.test(w));
+  const comunes = (a, b) => { const pa = palabra(a), pb = palabra(b); return pa.filter(w => pb.includes(w)).length; };
+  // El proveedor de StelOrder que MÁS se parece (no el primero que comparta una palabra).
+  const compacto = x => n(x).replace(/\b(s\.?\s?l\.?\s?u?|s\.?\s?a\.?\s?u?)\b\.?/g, '').replace(/[^a-z0-9]/g, '');
+  const pareceProv = (a, b) => comunes(a, b) > 0 || (!!compacto(a) && compacto(a) === compacto(b));
+  const mejorStel = nombre => { const cn = compacto(nombre); let best = null, bn = 0;
+    for (const r of stel) { if (!r.proveedor) continue; const k = cn && compacto(r.proveedor) === cn ? 99 : comunes(nombre, r.proveedor); if (k > bn) { bn = k; best = r; } }
+    return best; };
   const cs = await db.collection('compras').find({ estado: { $ne: 'descartada' }, tipo: { $in: ['factura', 'devolucion', 'ticket'] }, total: { $ne: null }, fecha: { $ne: null }, duplicadoDe: null })
     .project({ proveedor: 1, razonSocial: 1, numero: 1, fecha: 1, total: 1, base: 1, iva: 1, estado: 1 }).toArray();
   const out = [];
@@ -300,7 +307,7 @@ async function recibidasPunteo(stel) {
     // Mismo nombre que en StelOrder («Oliveras» → «OLIVERAS DERIVATS I MATERIALS, SLU») para que el motor
     // junte sus facturas con las de StelOrder al cuadrar un recibo.
     const alias = c.razonSocial && !/corp\.?\s*projects/i.test(c.razonSocial) && !pareceProv(c.razonSocial, c.proveedor) ? c.razonSocial : null;   // «9electric» = Rachid Ayada
-    const nombreStel = (stel.find(r => pareceProv(c.proveedor, r.proveedor)) || (alias && stel.find(r => pareceProv(alias, r.proveedor))) || {}).proveedor;
+    const nombreStel = (mejorStel(c.proveedor) || (alias && mejorStel(alias)) || {}).proveedor;
     out.push({ id: 'c:' + String(c._id), compraId: String(c._id), numero: c.numero || 'Compra', refProveedor: c.numero || '', proveedor: nombreStel || c.proveedor || '', alias, fecha: c.fecha, total: r2(c.total), base: c.base, iva: c.iva, pendienteStel: null, deCompras: true });
   }
   return [...stel, ...out];
