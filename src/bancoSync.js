@@ -186,6 +186,12 @@ async function guardarMovimientos(db, cuenta, txs, propias) {
   let nuevos = 0, repetidos = 0;
   const ids = [];
   const col = cuenta.destino === 'banco' ? 'bancoMovimientos' : 'tarjetaMovimientos';
+  const campoFecha = cuenta.destino === 'banco' ? 'fechaOperacion' : 'fecha';
+  // Santander cambia la referencia de un movimiento de un día para otro (lo visto por la tarde vuelve a la mañana
+  // siguiente con otra): si hay uno igual (cuenta, día, importe) cuya referencia ya no viene en esta tanda, es el mismo.
+  const prefijo = new RegExp('^eb\\|' + String(_idCuenta(cuenta)).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\|');
+  const refsTanda = txs.filter(t => t && t.transaction_amount).map(t => _ref(cuenta, t));
+  const reasignados = [];
   for (const t of txs) {
     if (!t || !t.transaction_amount) continue;
     if (t.status && !/BOOK/i.test(t.status)) continue;           // solo lo ya apuntado (lo pendiente cambia)
@@ -202,6 +208,8 @@ async function guardarMovimientos(db, cuenta, txs, propias) {
     }
     const gem = cuenta.destino === 'banco' ? await _gemelaExcelDe(db, m) : await _gemelaCsvDe(db, m);
     if (gem) { await db.collection(col).updateOne({ _id: gem._id }, { $set: { ebRef: m.ebRef, vistoEl: new Date() } }); repetidos++; continue; }
+    const rer = await db.collection(col).findOne({ ebRef: { $regex: prefijo, $nin: refsTanda }, _id: { $nin: reasignados }, [campoFecha]: { $in: m._fechas || [m[campoFecha]] }, importe: { $gte: m.importe - 0.005, $lte: m.importe + 0.005 } }, { projection: { _id: 1, ebRef: 1 } });
+    if (rer) { reasignados.push(rer._id); await db.collection(col).updateOne({ _id: rer._id }, { $set: { ebRef: m.ebRef, vistoEl: new Date() }, $push: { refsAnteriores: rer.ebRef } }); repetidos++; continue; }
     const { _fechas: _f, ...doc } = m;
     const ins = await db.collection(col).insertOne({ ...doc, importadoEl: new Date(), origen: 'enablebanking', archivo: null, mapeo: MAPEO });
     nuevos++; if (ins && ins.insertedId) ids.push({ col, id: String(ins.insertedId) });
@@ -319,4 +327,44 @@ async function desconectar(id) {
   return { ok: true };
 }
 
-module.exports = { configurado, bancos, conectar, callback, sincronizar, revisarCaducidad, estado, desconectar, gemelaDeExcel, gemelaDeTarjeta, aBanco, aTarjeta, guardarMovimientos, _cuenta, REDIRECT };
+// Repetidos que ya entraron (antes del arreglo de las referencias que cambian): mismo movimiento del banco guardado
+// en dos sincronizaciones distintas. Dos iguales de verdad (dos pagos de 76 € el mismo día) llegan en la MISMA
+// tanda, así que en cada grupo se conservan tantos como trajo la tanda más grande y el resto sobra.
+// Lo que sobra se copia a «bancoMovimientosDuplicados» antes de quitarlo, y si tenía algo apuntado a mano en el
+// cierre (punteoManual) y el bueno no, se le pasa al bueno.
+async function limpiarDuplicados({ aplicar = false, por = null } = {}) {
+  const db = await getDB();
+  const B = require('./banco');
+  const out = [], idReal = new Map();
+  for (const [col, campoFecha, cuentaDe] of [['bancoMovimientos', 'fechaOperacion', m => m.iban], ['tarjetaMovimientos', 'fecha', m => m.cuenta || m.fuente]]) {
+    const ms = await db.collection(col).find({ origen: 'enablebanking' }).project({ [campoFecha]: 1, importe: 1, concepto: 1, iban: 1, cuenta: 1, fuente: 1, ebRef: 1, importadoEl: 1 }).toArray();
+    const grupos = {};
+    for (const m of ms) (grupos[[cuentaDe(m), m[campoFecha], Number(m.importe).toFixed(2), B.norm(m.concepto || '').slice(0, 60)].join('|')] ||= []).push(m);
+    for (const g of Object.values(grupos)) {
+      if (g.length < 2) continue;
+      g.sort((a, b) => new Date(a.importadoEl) - new Date(b.importadoEl));
+      const tandas = []; for (const m of g) { const t = tandas[tandas.length - 1]; if (t && new Date(m.importadoEl) - new Date(t[t.length - 1].importadoEl) < 3 * 60 * 1000) t.push(m); else tandas.push([m]); }
+      const quedan = Math.max(...tandas.map(t => t.length));
+      if (g.length <= quedan) continue;
+      for (const d of g.slice(quedan)) idReal.set(String(d._id), d._id), out.push({ col, id: String(d._id), deId: String(g[0]._id), fecha: d[campoFecha], importe: d.importe, concepto: String(d.concepto || '').slice(0, 90) });
+    }
+  }
+  if (aplicar) {
+    for (const x of out) {
+      const doc = await db.collection(x.col).findOne({ _id: idReal.get(x.id) });
+      if (!doc) continue;
+      const pm = await db.collection('punteoManual').findOne({ _id: x.id });
+      if (pm) {
+        const yaBueno = await db.collection('punteoManual').findOne({ _id: x.deId }, { projection: { _id: 1 } });
+        if (!yaBueno) { const { _id, ...resto } = pm; await db.collection('punteoManual').insertOne({ _id: x.deId, ...resto, deDuplicado: x.id }); }
+        await db.collection('punteoManual').deleteOne({ _id: x.id });
+      }
+      await db.collection('bancoMovimientosDuplicados').insertOne({ ...doc, _col: x.col, duplicadoDe: x.deId, punteoManual: pm || null, quitadoEl: new Date(), por: por || null });
+      await db.collection(x.col).deleteOne({ _id: doc._id });
+    }
+    try { require('./trimestre').olvidarMapaPagos(); } catch (e) {}
+  }
+  return { aplicado: !!aplicar, n: out.length, duplicados: out };
+}
+
+module.exports = { limpiarDuplicados, configurado, bancos, conectar, callback, sincronizar, revisarCaducidad, estado, desconectar, gemelaDeExcel, gemelaDeTarjeta, aBanco, aTarjeta, guardarMovimientos, _cuenta, REDIRECT };

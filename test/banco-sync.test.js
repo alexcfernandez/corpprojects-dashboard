@@ -13,10 +13,8 @@ const cumple = (d, q) => Object.entries(q).every(([k, c]) => {
   if (k === '$or') return c.some(x => cumple(d, x));
   const v = val(d, k);
   if (c && typeof c === 'object' && !Array.isArray(c) && !(c instanceof Date)) {
-    if ('$in' in c) return c.$in.includes(v);
-    if ('$ne' in c) return v !== c.$ne;
-    if ('$regex' in c) return new RegExp(c.$regex).test(v || '');
-    return ('$gte' in c ? v >= c.$gte : true) && ('$lte' in c ? v <= c.$lte : true);
+    return (!('$in' in c) || c.$in.includes(v)) && (!('$nin' in c) || !c.$nin.includes(v)) && (!('$ne' in c) || v !== c.$ne)
+      && (!('$regex' in c) || new RegExp(c.$regex).test(v || '')) && ('$gte' in c ? v >= c.$gte : true) && ('$lte' in c ? v <= c.$lte : true);
   }
   return v === c;
 });
@@ -26,6 +24,7 @@ const db = { collection: n => ({
   findOne: async q => col(n).find(d => cumple(d, q)) || null,
   insertOne: async d => { const _id = 'id' + (++seq); col(n).push({ _id, ...d }); return { insertedId: _id }; },
   updateOne: async (q, u, o = {}) => { let d = col(n).find(x => cumple(x, q)); if (!d && o.upsert) { d = { _id: 'id' + (++seq), ...q, ...(u.$setOnInsert || {}) }; col(n).push(d); Object.assign(d, u.$set || {}); return { upsertedCount: 1 }; } if (d) Object.assign(d, u.$set || {}); return { upsertedCount: 0 }; },
+  deleteOne: async q => { const i = col(n).findIndex(x => cumple(x, q)); if (i >= 0) col(n).splice(i, 1); },
   createIndex: async () => {},
 }) };
 const dbPath = require.resolve(path.join(root, 'src/db.js'));
@@ -70,4 +69,33 @@ test('la misma cuenta enlazada dos veces (Revolut repetida) no duplica movimient
   const t = [tx({ imp: -63.2, fecha: '2026-10-02', ref: 'TX9', rem: 'Obramat Girona' })];
   assert.equal((await S.guardarMovimientos(db, a, t, new Set())).nuevos, 1);
   assert.equal((await S.guardarMovimientos(db, b, t, new Set())).repetidos, 1);
+});
+
+test('Santander cambia la referencia de un día para otro: no se guarda dos veces; dos pagos iguales de verdad sí', async () => {
+  const C = { uid: 'u-s2', iban: 'ES1200490000000000000002', nombre: 'Cuenta', destino: 'banco' };
+  const tarde = [tx({ imp: 3366.22, fecha: '2026-10-08', ref: 'TARDE1', de: 'RESIDENCIA GERIATRICA SANT JORDI', rem: 'FACT 958' }), tx({ imp: -76, fecha: '2026-10-08', ref: 'TARDE2', a: 'BONPREU' })];
+  assert.equal((await S.guardarMovimientos(db, C, tarde, new Set())).nuevos, 2);
+  // a la mañana siguiente el banco devuelve los mismos con otra referencia, y uno nuevo de 76 € el mismo día
+  const manana = [tx({ imp: 3366.22, fecha: '2026-10-08', ref: 'MAN1', de: 'RESIDENCIA GERIATRICA SANT JORDI', rem: 'FACT 958' }), tx({ imp: -76, fecha: '2026-10-08', ref: 'MAN2', a: 'BONPREU' }), tx({ imp: -76, fecha: '2026-10-08', ref: 'MAN3', a: 'BONPREU' })];
+  const r = await S.guardarMovimientos(db, C, manana, new Set());
+  assert.equal(r.nuevos, 1); assert.equal(r.repetidos, 2);
+  const de = col('bancoMovimientos').filter(d => d.iban === C.iban);
+  assert.equal(de.length, 3);
+  assert.equal(de.filter(d => d.importe === 3366.22).length, 1);
+  assert.equal(de.find(d => d.importe === 3366.22).ebRef, `eb|${C.iban}|MAN1`);
+});
+
+test('limpiar repetidos ya guardados: quita la copia de otra sincronización y pasa lo apuntado a la buena', async () => {
+  const I = 'ES1200490000000000000003', b = 'bancoMovimientos';
+  col(b).push({ _id: 'o1', origen: 'enablebanking', iban: I, fechaOperacion: '2026-10-08', importe: -493, concepto: 'Transferencia a favor de Melvin', ebRef: 'eb|' + I + '|A', importadoEl: new Date('2026-10-08T17:15:03Z') });
+  col(b).push({ _id: 'd1', origen: 'enablebanking', iban: I, fechaOperacion: '2026-10-08', importe: -493, concepto: 'Transferencia a favor de Melvin', ebRef: 'eb|' + I + '|B', importadoEl: new Date('2026-10-09T05:15:04Z') });
+  col(b).push({ _id: 'p1', origen: 'enablebanking', iban: I, fechaOperacion: '2026-10-08', importe: -76, concepto: 'Bonpreu', ebRef: 'eb|' + I + '|C', importadoEl: new Date('2026-10-08T09:15:03Z') });
+  col(b).push({ _id: 'p2', origen: 'enablebanking', iban: I, fechaOperacion: '2026-10-08', importe: -76, concepto: 'Bonpreu', ebRef: 'eb|' + I + '|D', importadoEl: new Date('2026-10-08T09:15:04Z') });
+  col('punteoManual').push({ _id: 'd1', decision: 'sin_factura', nota: 'nómina' });
+  const prueba = await S.limpiarDuplicados();
+  assert.deepEqual(prueba.duplicados.filter(x => x.id.length === 2).map(x => x.id), ['d1']);   // los dos de 76 € llegaron juntos: son dos
+  await S.limpiarDuplicados({ aplicar: true });
+  assert.ok(!col(b).some(d => d._id === 'd1')); assert.ok(col(b).some(d => d._id === 'p2'));
+  assert.equal(col('punteoManual').find(d => d._id === 'o1').decision, 'sin_factura');
+  assert.ok(col('bancoMovimientosDuplicados').some(d => d._id === 'd1'));
 });

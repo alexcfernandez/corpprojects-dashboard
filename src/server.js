@@ -2766,6 +2766,12 @@ app.post('/api/proveedores/casar-pago', requireAuth, async (req, res) => {
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 // Movimientos del banco y tarjetas con su cuadre (qué factura o facturas es cada cobro y cada pago).
+// Movimientos del banco guardados dos veces por la conexión automática: ?aplicar=1 los quita (con copia). Solo Dueño.
+app.post('/api/banco/limpiar-duplicados', requireAuth, async (req, res) => {
+  try { if ((req.user?.role || 'owner') !== 'owner') return res.status(403).json({ error: 'Solo el Dueño' });
+    res.json(await require('./bancoSync').limpiarDuplicados({ aplicar: req.query.aplicar === '1', por: req.user?.name })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
 app.get('/api/banco/movimientos', requireAuth, async (req, res) => {
   try { if (!users.canSeeMoney(req.user?.role || 'owner')) return res.status(403).json({ error: 'Solo Dueño y Oficina' });
     res.json(await require('./movimientosCuadre').lista({ dias: req.query.dias, desde: req.query.desde, hasta: req.query.hasta })); }

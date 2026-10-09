@@ -21,8 +21,8 @@ test('nómina: no necesita factura; transferencia desconocida: sin cuadrar', () 
   assert.equal(cuadre({ importe: 800 }, null).estado, 'sin_datos');
 });
 
-test('cobro que completa facturas ya cobradas en parte antes: cuadrado, «con 1 pago anterior»', () => {
+test('cobro que completa facturas ya cobradas en parte antes: cuadrado, «con otro pago»', () => {
   const porDoc = new Map([['FAC00873', [{ movId: 'antes', importe: 35000 }]], ['FAC00986', []]]);
   const r = cuadre({ id: 'hoy', importe: 39688.9 }, { estado: 'punteado', docs: [{ ref: 'FAC00986', total: 26656.99 }, { ref: 'FAC00873', total: 48031.91 }] }, porDoc);
-  assert.equal(r.estado, 'cuadrado'); assert.match(r.nota, /con 1 pago anterior de 35\.000,00 €/);
+  assert.equal(r.estado, 'cuadrado'); assert.match(r.nota, /con otro pago de 35\.000,00 €/);
 });

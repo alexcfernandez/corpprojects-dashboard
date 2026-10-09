@@ -28,7 +28,7 @@ function cuadre(m, pm, porDoc) {
     const abonos = docs.filter(d => Number(d.total) < 0).length;
     const facturas = docs.length - abonos;
     const resumenDocs = docs.length === 1 ? docs[0].ref : `${facturas} factura${facturas === 1 ? '' : 's'}${abonos ? ` + ${abonos} abono${abonos === 1 ? '' : 's'}` : ''}`;
-    const conAntes = yaAntes > 0.01 ? `con ${otros.length} pago${otros.length === 1 ? '' : 's'} anterior${otros.length === 1 ? '' : 'es'} de ${yaAntes.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: 'always' })} €` : null;
+    const conAntes = yaAntes > 0.01 ? `con ${otros.length === 1 ? 'otro pago' : otros.length + ' pagos más'} de ${yaAntes.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: 'always' })} €` : null;
     if (dif == null || Math.abs(dif) < 1) return { estado: 'cuadrado', texto: resumenDocs, docs, suma, yaAntes, nota: conAntes || pm.nota || null, confianza: pm.confianza };
     // Cobro de menos que las facturas: falta; de más: sobra (anticipo, otra factura…).
     return { estado: 'parcial', texto: resumenDocs, docs, suma, dif, yaAntes, nota: (conAntes ? conAntes + '. ' : '') + (dif < 0 ? `Faltan ${(-dif).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: 'always' })} € de ${docs.length === 1 ? 'la factura' : 'esas facturas'}` : `Sobran ${dif.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: 'always' })} €`), confianza: pm.confianza };
