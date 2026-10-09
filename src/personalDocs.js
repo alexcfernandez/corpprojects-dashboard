@@ -369,4 +369,4 @@ async function miArchivo(userId, id) {
   return d;
 }
 
-module.exports = { datos, leerImportesNomina, leerImportesPendientes, TIPOS, TIPOS_EMPRESA, TIPOS_OBRA, diasHasta, getConfig, setConfig, subir, analizar, editar, borrar, archivo, resumen, carpeta, paqueteObra, revisarCaducidades, misDocs, miArchivo, _matchTrabajador };
+module.exports = { datos, _clasificarIA, leerImportesNomina, leerImportesPendientes, TIPOS, TIPOS_EMPRESA, TIPOS_OBRA, diasHasta, getConfig, setConfig, subir, analizar, editar, borrar, archivo, resumen, carpeta, paqueteObra, revisarCaducidades, misDocs, miArchivo, _matchTrabajador };

@@ -458,6 +458,12 @@ async function procesarEmail(gmail, messageId) {
       }
     } catch (e) { console.warn('[Email] nóminas:', e.message); }
 
+    // Documentación mensual de la gestoría (ITA, RNT/RLC, certificados): entra sola en Personal → Empresa.
+    try {
+      const DG = require('./docsGestoriaCorreo');
+      if (process.env.DOCS_GESTORIA_CORREO !== 'off' && DG.esCorreoDocs({ de, asunto, adjuntos })) console.log(`[Email] docs gestoría: ${JSON.stringify(await DG.desdeCorreo(messageId, adjuntos, { de, asunto, fecha }))}`);
+    } catch (e) { console.warn('[Email] docs gestoría:', e.message); }
+
     // Fase 6a: aviso inmediato al owner por WhatsApp SOLO para gestoría. Una vez por
     // correo (procesarEmail deduplica por gmailId, así que esto corre una sola vez).
     if (clasificacion.categoria === 'GESTORIA') {
