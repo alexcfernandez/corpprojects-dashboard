@@ -53,7 +53,7 @@ test('firma en su sitio (todas las hojas y una concreta), enlace nuevo sustituye
   const r = await F.crear({ nombre: 'Alfonso Gálvez', telefono: '+34692270438', dni: '40347979E', obraId: OB,
     docs: [{ docId: String(D1), tipoDestino: 'contrato_obra', firmaEn: [{ pag: 'todas', x: 415, y: 760, w: 100, h: 24, sello: 'mini' }, { pag: 2, x: 138, y: 118, w: 170, h: 48, sello: 'abajo' }] }, { docId: String(D2), tipoDestino: 'trab_designado', firmaEn: [{ pag: 1, x: 60, y: 248, w: 150, h: 44, sello: 'derecha' }] }],
     luego: { nombre: 'José Antonio Beliard', telefono: '+34600000001', dni: 'X4871583E', cargo: 'Trabajador designado', docs: [{ n: 1, firmaEn: [{ pag: 1, x: 345, y: 244, w: 170, h: 52 }] }] } }, 'Álex', { _enviar });
-  await assert.rejects(F.ver(viejo.url.split('/firmar/')[1]), /sustituido/);
+  assert.equal((await F.ver(viejo.url.split('/firmar/')[1])).items.length, 2); // el enlace viejo lleva al lote nuevo
   const sig = require('fs').readFileSync(path.join(root, 'public/icons/icon-192.png')).toString('base64');
   const f = await F.firmar(r.url.split('/firmar/')[1], { firmaDataUrl: 'data:image/png;base64,' + sig });
   assert.equal(f.firmados, 2); assert.equal(f.siguiente, '+34600000001');

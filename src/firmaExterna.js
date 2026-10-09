@@ -12,7 +12,7 @@
 // firmado y sellado donde lo pide el contratista y no solo en la hoja final. `luego` encadena otro firmante: cuando
 // este lote queda firmado entero, se le manda a él su enlace con las copias ya firmadas (p. ej. Beliard firma la
 // aceptación de trabajador designado después de Alfonso). Un lote nuevo para el mismo móvil y obra sustituye al
-// anterior pendiente (el enlace viejo deja de valer).
+// anterior pendiente (el enlace viejo lleva al nuevo).
 'use strict';
 const crypto = require('crypto');
 const { ObjectId } = require('mongodb');
@@ -65,8 +65,11 @@ async function _lote(token) {
   const db = await getDB();
   const l = await db.collection(COL).findOne({ _id: new ObjectId(id) });
   if (!l) throw new Error('No encontrado');
-  if (l.estado === 'sustituido') throw new Error('Este enlace se ha sustituido por uno nuevo: usa el último que te ha llegado de Corp Projects.');
-  return l;
+  // Un enlace viejo lleva al lote que lo sustituyó (mismo firmante y obra): abra el que abra, firma lo último.
+  let l2 = l;
+  for (let i = 0; i < 10 && l2 && l2.estado === 'sustituido' && l2.sustituidoPor; i++) l2 = await db.collection(COL).findOne({ _id: new ObjectId(l2.sustituidoPor) });
+  if (!l2 || l2.estado === 'sustituido') throw new Error('Este enlace ya no vale: usa el último que te ha llegado de Corp Projects.');
+  return l2;
 }
 async function ver(token) {
   const l = await _lote(token);
