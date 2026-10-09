@@ -79,8 +79,9 @@ function tipoMovimiento(m) {
   if (!cargo && /remesa sepa|emision remesa/.test(n)) return { tipo: 'cobro', estado: 'revisar', nota: 'Remesa SEPA: cobro de varios recibos a la vez; ver el detalle de la remesa' };
   if (!cargo) return { tipo: 'cobro', estado: null };
   // Compras de segunda mano a particulares (puntales, máquinas, herramientas): no hay factura con IVA; el justificante
-  // es el recibo de la compra en la app de Wallapop (qué, a quién, fecha e importe) junto con este pago.
-  if (/wallapop/.test(n)) return { tipo: 'segunda_mano', estado: 'revisar', nota: 'Compra en Wallapop (particular, sin factura): sube la captura del recibo de la compra (Wallapop → Perfil → Compras) y di para qué obra es o si es herramienta' };
+  // es este pago junto con una captura del anuncio o del chat (o un «recibí»): pagando por transferencia directa al
+// vendedor, Wallapop no da recibo (solo lo da si se paga dentro de la app, con Wallapop Envíos).
+  if (/wallapop/.test(n)) return { tipo: 'segunda_mano', estado: 'revisar', nota: 'Compra en Wallapop (particular, sin factura): sube una captura del anuncio o del chat (qué se compró y a qué precio) o un «recibí» del vendedor, y di para qué obra es o si es herramienta' };
   if (cod === '136' || /tarj|tarjeta|pago movil|compra internet|contactless/.test(n)) return { tipo: 'pago_tarjeta', estado: null };
   if (cod === '174' || /^recibo/.test(n)) return { tipo: 'recibo', estado: null };
   return { tipo: 'pago_transferencia', estado: null };
