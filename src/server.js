@@ -623,9 +623,16 @@ async function procesarTrabajador(from, body, media, trab, responder) {
   const docs = [...(media.fotos || []), ...(media.pdf ? [media.pdf] : [])];
   if (docs.length) {
     const guardadas = []; let noDoc = 0, fallos = 0;
+    // ¿Le hemos pedido sus documentos para el alta? Entonces esto va a su carpeta de Personal (docsAlta.js).
+    let petAlta = null; try { petAlta = await require('./docsAlta').abiertaDe(trab.userId); } catch (e) {}
+    const respAlta = [];
     for (const m of docs) {
       try {
         const buf = await _bajarMedia(m.url, 30000);
+        if (petAlta) {
+          const ra = await require('./docsAlta').recibir(petAlta, { buf, mime: String(m.type || 'image/jpeg').split(';')[0] });
+          if (!ra.aCompras) { respAlta.push(ra.respuesta); continue; }
+        }
         const r = await require('./compras').crear({
           fotos: [{ data: buf, mimetype: String(m.type || 'image/jpeg').split(';')[0] }], destino: 'obra', origen: 'whatsapp-trabajador',
           nota: texto ? texto.slice(0, 300) : 'Enviada por WhatsApp', soloSiDocumento: true,
@@ -634,7 +641,7 @@ async function procesarTrabajador(from, body, media, trab, responder) {
         if (r && r.noEsDocumento) noDoc++; else if (r && r.id) guardadas.push(r);
       } catch (e) { fallos++; console.error('[WhatsApp] compra de trabajador:', e.message); }
     }
-    const partes = [];
+    const partes = [...respAlta.slice(-2)];
     if (guardadas.length) partes.push(`🧾 Recibido${guardadas.length > 1 ? ' (' + guardadas.length + ')' : ''}: ${guardadas.map(g => [g.tipoTxt || 'documento', g.proveedor].filter(Boolean).join(' de ')).join(', ')}. Lo revisa la oficina.${texto ? '' : ' Si es de una obra concreta, dime cuál (p. ej. «es de Rutlla»).'}`);
     if (noDoc) partes.push(`📸 Gracias${nombreCap ? ', ' + nombreCap : ''}. Para fichar no hace falta mandar fotos del sitio: basta con tu enlace.` + lineaFichar);
     if (fallos && !partes.length) partes.push('📎 He recibido tu archivo pero no lo he podido abrir. ¿Me lo mandas otra vez?');
@@ -2180,6 +2187,17 @@ app.post('/api/vehiculos/:id/docs', requireAuthOficina, uploadDocVeh.single('arc
 // ── Documentación del personal y de la empresa (obras / PRL / nóminas) ──
 const uploadPersonal = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024, files: 20 } });
 const _porPers = async (req) => { const q = (await _quienPush(req)) || {}; return q.name || 'Oficina'; };
+// Corpy le pide a un trabajador sus documentos para el alta (DNI/NIE y nº de la Seguridad Social) por WhatsApp.
+app.post('/api/personal/pedir-docs-alta', requireAuthOficina, express.json(), async (req, res) => {
+  try { const b = req.body || {}; res.json(await require('./docsAlta').pedir(b.userId, { extranjero: !!b.extranjero, por: req.user?.name })); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/personal/peticiones-alta', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./docsAlta').listar()); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/personal/peticiones-alta/:id/cerrar', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./docsAlta').cerrar(req.params.id)); } catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/personal/resumen', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./personalDocs').resumen()); } catch (err) { res.status(500).json({ error: err.message }); }
 });

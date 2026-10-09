@@ -45,9 +45,10 @@ td{padding:7px 6px;border-bottom:1px solid var(--border);vertical-align:middle}t
 const tok=localStorage.getItem('cp_token');const H={'Authorization':'Bearer '+tok};
 const esc=x=>String(x==null?'':x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fd=f=>f?String(f).slice(0,10).split('-').reverse().join('/'):'';
-let R=null,tab='plantilla',carpetaDe=null,_obras=null;
+let R=null,tab='plantilla',carpetaDe=null,_obras=null,PET=[];
 async function api(m,u,b){const o={method:m,headers:{...H}};if(b instanceof FormData)o.body=b;else if(b){o.headers['Content-Type']='application/json';o.body=JSON.stringify(b);}const r=await fetch(u,o);if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.error||'HTTP '+r.status);}return r.headers.get('content-type')&&r.headers.get('content-type').includes('json')?r.json():r;}
 async function cargar(){if(!tok){document.getElementById('out').innerHTML='<div class="vacio">Abre esta página desde el dashboard.</div>';return;}
+  api('GET','/api/personal/peticiones-alta').then(p=>{PET=Array.isArray(p)?p:[];if(carpetaDe||tab==='plantilla')pintar();}).catch(()=>{});
   try{R=await api('GET','/api/personal/resumen');}catch(e){document.getElementById('out').innerHTML='<div class="vacio" style="color:var(--red)">'+esc(e.message)+'</div>';return;}
   document.getElementById('n-prop').textContent=R.propuestas.length?'('+R.propuestas.length+')':'';pintarKpis();pintar();}
 // Cifras de arriba: cómo está la documentación de la plantilla y lo que queda por confirmar.
@@ -64,7 +65,7 @@ function pintar(){const el=document.getElementById('out');if(!R)return;
   if(carpetaDe)return pintarCarpeta();
   if(tab==='nominas')return pintarNominas();
   if(tab==='plantilla'){const req=Object.entries(R.tipos).filter(([,t])=>t.obra);
-    el.innerHTML=`<div class="card"><h3>Lo que piden las obras · por trabajador</h3><table><tr><th>Trabajador</th>${req.map(([,t])=>`<th>${esc(t.nombre.split(' (')[0])}</th>`).join('')}<th>Nóminas</th></tr>
+    el.innerHTML=(PET.length?`<div class="card"><h3>📲 Documentos del alta pedidos por Corpy</h3>${PET.map(p=>`<div class="doc"><span class="n"><a href="#" onclick="event.preventDefault();abrirCarpeta('${p.userId}')" style="color:var(--text)"><b>${esc(p.nombre)}</b></a> <span style="color:var(--text3);font-size:12.5px">pedido el ${fd(p.at)}</span> ${p.estado==='completa'?'<span class="sem ok">✓ lo ha mandado todo</span>':`<span class="sem pronto">falta ${esc(p.faltan.join(', '))}</span>`}</span>${p.estado==='completa'?`<button class="btn peq" onclick="cerrarPet('${p.id}')">Hecho</button>`:''}</div>`).join('')}</div>`:'')+`<div class="card"><h3>Lo que piden las obras · por trabajador</h3><table><tr><th>Trabajador</th>${req.map(([,t])=>`<th>${esc(t.nombre.split(' (')[0])}</th>`).join('')}<th>Nóminas</th></tr>
       ${R.trabajadores.map(w=>`<tr class="clic" onclick="abrirCarpeta('${w.id}')"><td><b>${esc(w.name)}</b></td>${req.map(([k])=>`<td>${sem(w.requisitos[k])}</td>`).join('')}<td style="color:var(--text3)">${w.nominas||''}</td></tr>`).join('')}</table>
       <div class="nota">✓ vigente · ⚠ caduca en menos de 30 días · ✗ caducado · — falta. Pulsa un trabajador para ver su carpeta. Los avisos de caducidad llegan por WhatsApp a la oficina.</div></div>`;}
   else if(tab==='empresa'){const req=Object.entries(R.tiposEmpresa).filter(([,t])=>t.obra);
@@ -111,10 +112,18 @@ async function abrirCarpeta(quien,recargar){carpetaDe=quien;const q=quien==='emp
 function pintarCarpeta(){const emp=carpetaDe==='empresa';const w=emp?null:R.trabajadores.find(x=>x.id===carpetaDe);const tipos=emp?R.tiposEmpresa:R.tipos;
   const porTipo={};_carpeta.forEach(d=>(porTipo[d.tipo]=porTipo[d.tipo]||[]).push(d));
   document.getElementById('out').innerHTML=`<div style="margin-bottom:10px"><button class="btn peq" onclick="carpetaDe=null;pintar()">← Volver</button> <b style="font-size:18px;margin-left:6px">📂 ${esc(emp?'Empresa':w?w.name:'')}</b></div>
+   ${emp?'':cardAlta(w)}
    <div class="card"><h3>Añadir documento</h3><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><select id="c-tipo">${optTipo(emp?'empresa':'trabajador','')}</select><input type="date" id="c-fecha" title="Fecha"><input type="date" id="c-cad" title="Caduca (si no, se calcula)"><input type="month" id="c-mes" title="Mes" style="width:150px"><input type="file" id="c-file" accept="application/pdf,image/*"><button class="btn pri" onclick="subirCarpeta()">Subir</button></div>
    <div class="nota">El reconocimiento médico caduca a los 12 meses si no pones fecha; las nóminas y el TC van por mes.</div></div>
    ${Object.entries(tipos).filter(([k])=>porTipo[k]).map(([k,t])=>`<div class="card"><h3>${esc(t.nombre)} (${porTipo[k].length})</h3>${porTipo[k].map(d=>`<div class="doc"><span class="n"><a href="#" onclick="event.preventDefault();ver('${d.id}')" style="color:var(--text)">📄 ${esc(d.nombre)}</a> <span style="color:var(--text3);font-size:12.5px">${d.mes?esc(d.mes):fd(d.fecha)}${d.caduca?' · válido hasta '+fd(d.caduca):''}</span>${d.dias!=null&&d.dias<=30?` <span class="sem ${d.dias<0?'caducado':'pronto'}">${d.dias<0?'caducado':'caduca en '+d.dias+' d'}</span>`:''}${!emp&&!d.visibleTrabajador?' <span class="sem falta">oculto para él</span>':''}</span>
      ${emp?'':`<button class="btn peq" onclick="toggleVisible('${d.id}',${!d.visibleTrabajador})">${d.visibleTrabajador?'🙈 Ocultar para él':'👁 Que lo vea'}</button>`}<button class="btn peq roja" onclick="borrarDoc('${d.id}')">✕</button></div>`).join('')}</div>`).join('')||'<div class="vacio">Carpeta vacía.</div>'}`;}
+function cardAlta(w){if(!w)return '';const p=PET.find(x=>x.userId===w.id);
+  return `<div class="card"><h3>📲 Documentos para el alta</h3>${p?`<div style="margin-bottom:8px">${p.estado==='completa'?'<span class="sem ok">✓ Ya lo ha mandado todo</span> (abajo en su carpeta)':`Corpy se los pidió el ${fd(p.at)}. ${p.recibidas.length?'Ya tiene: '+esc(p.recibidas.join(', '))+'. ':''}<b>Falta ${esc(p.faltan.join(', '))}</b>. Si no lo manda, se lo recuerda a las 10:30 (como mucho 2 veces).`}</div>`:''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" onclick="pedirAlta('${w.id}',false)">${p?'Volver a pedírselo':'Pedírselos por WhatsApp'}</button><button class="btn" onclick="pedirAlta('${w.id}',true)">Es extranjero sin NIE (pasaporte + extranjería)</button></div>
+    <div class="nota">Corpy le escribe y le pide el DNI o NIE por las dos caras y el número de la Seguridad Social. Mira cada foto y, si no se lee bien, le pide que la repita. Lo que mande va a su carpeta y te avisa cuando lo tenga todo. Solo sus documentos: un ticket o un albarán sigue yendo a Compras.</div></div>`;}
+async function pedirAlta(userId,extranjero){const w=R.trabajadores.find(x=>x.id===userId);if(!confirm(`¿Que Corpy le escriba a ${w?w.name:'este trabajador'} por WhatsApp pidiéndole ${extranjero?'el pasaporte, los papeles de extranjería':'el DNI/NIE por las dos caras'} y el número de la Seguridad Social?`))return;
+  try{const r=await api('POST','/api/personal/pedir-docs-alta',{userId,extranjero});alerta('Enviado a '+r.a);PET=await api('GET','/api/personal/peticiones-alta');pintar();}catch(e){alerta(e.message);}}
+async function cerrarPet(id){try{await api('POST','/api/personal/peticiones-alta/'+id+'/cerrar');PET=PET.filter(p=>p.id!==id);pintar();}catch(e){alerta(e.message);}}
 async function subirCarpeta(){const f=document.getElementById('c-file').files[0];if(!f){alerta('Elige el archivo');return;}const emp=carpetaDe==='empresa';
   const fdat=new FormData();fdat.append('archivo',f);fdat.append('ambito',emp?'empresa':'trabajador');if(!emp)fdat.append('userId',carpetaDe);
   ['tipo','fecha','cad','mes'].forEach(k=>{const v=document.getElementById('c-'+k).value;if(v)fdat.append(k==='cad'?'caduca':k,v);});
