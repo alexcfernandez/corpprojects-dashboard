@@ -100,6 +100,16 @@ textarea.obra-sel{resize:vertical;line-height:1.4}
   <button class="header-logout" id="logout-btn" onclick="logout()" style="display:none">Salir</button>
 </div>
 <div id="toast"></div>
+<div id="firma-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:60;overflow:auto"><div class="container" style="padding-top:20px"><div class="card" style="text-align:left">
+  <h3 id="fm-titulo" style="margin-bottom:6px">Firmar</h3>
+  <div id="fm-items" style="font-size:14px;margin-bottom:8px"></div>
+  <button class="sec-btn" id="fm-ver" style="margin:6px 0 10px">📄 Leer el documento</button>
+  <div style="font-size:13px;opacity:.8;margin-bottom:6px">Firma con el dedo en el recuadro:</div>
+  <canvas id="fm-canvas" style="width:100%;height:180px;background:#fff;border-radius:12px;touch-action:none;display:block"></canvas>
+  <div style="display:flex;gap:8px;margin-top:10px"><button class="sec-btn" style="flex:1" onclick="limpiarFirmaDoc()">Borrar</button><button class="sec-btn" style="flex:1" onclick="cerrarFirmaDoc()">Cancelar</button></div>
+  <button class="fichar-btn entrada" id="fm-ok" style="margin-top:10px" onclick="enviarFirmaDoc()">✍️ Firmar</button>
+  <div style="font-size:11.5px;opacity:.65;margin-top:8px">Al firmar declaras haber leído el documento. Se guarda una copia firmada con la fecha y la hora.</div>
+</div></div></div>
 
 <!-- LOGIN -->
 <div class="page active" id="page-cargando"><div class="container" style="text-align:center;padding-top:30vh;color:var(--text3)"><span class="spinner"></span><div style="margin-top:12px;font-size:15px">Entrando…</div></div></div>
@@ -136,6 +146,7 @@ textarea.obra-sel{resize:vertical;line-height:1.4}
 <!-- FICHAJE -->
 <div class="page" id="page-fichar"><div class="container">
   <div id="firma-aviso"></div>
+  <div id="firmas-pend"></div>
   <div id="push-aviso"></div>
   <div id="offline-aviso"></div>
   <div class="card">
@@ -309,11 +320,34 @@ async function aceptarConsent(){
 function logout(){workerToken=null;localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');document.getElementById('logout-btn').style.display='none';showPage('login');}
 
 // ── FICHAJE ──
+// ── Firmas pendientes (contratos, nóminas, entrega de EPIs) ──
+let _firmas=[],_firmaAct=null,_trazo=false,_hayTrazo=false;
+async function cargarFirmas(){const el=document.getElementById('firmas-pend');if(!el)return;
+  try{const r=await fetchT('/api/fichaje/firmas',{headers:authH()},12000);_firmas=r.ok?await r.json():[];}catch(e){_firmas=[];}
+  el.innerHTML=_firmas.map(f=>`<div class="card" style="text-align:left;border-color:rgba(77,156,248,.6)"><b>✍️ Para firmar:</b> ${escH(f.titulo)}<button class="fichar-btn entrada" style="margin-top:10px;padding:13px;font-size:15px" onclick="abrirFirmaDoc('${f.id}')">Leer y firmar</button></div>`).join('');}
+function abrirFirmaDoc(id){_firmaAct=_firmas.find(f=>f.id===id);if(!_firmaAct)return;
+  document.getElementById('fm-titulo').textContent=_firmaAct.titulo;
+  document.getElementById('fm-items').innerHTML=(_firmaAct.items||[]).length?'<ul style="margin:4px 0 0 18px">'+_firmaAct.items.map(i=>`<li>${escH(i.cantidad>1?i.cantidad+' × ':'')}${escH(i.nombre)}${i.talla?' (talla '+escH(i.talla)+')':''}</li>`).join('')+'</ul>':'';
+  document.getElementById('fm-ver').onclick=()=>verDocFirma(id);
+  document.getElementById('firma-modal').style.display='block';prepararCanvasDoc();}
+function cerrarFirmaDoc(){document.getElementById('firma-modal').style.display='none';_firmaAct=null;}
+async function verDocFirma(id){const w=window.open('','_blank');try{const r=await fetchT('/api/fichaje/firmas/'+id+'/doc',{headers:authH()},25000);if(!r.ok)throw new Error('No se pudo abrir');const u=URL.createObjectURL(await r.blob());if(w)w.location=u;else location.href=u;}catch(e){if(w)w.close();toast(e.message,'error');}}
+function prepararCanvasDoc(){const c=document.getElementById('fm-canvas');const r=c.getBoundingClientRect();const k=window.devicePixelRatio||1;c.width=r.width*k;c.height=r.height*k;const x=c.getContext('2d');x.scale(k,k);x.lineWidth=2.6;x.lineCap='round';x.lineJoin='round';x.strokeStyle='#111';_hayTrazo=false;
+  const pos=e=>{const b=c.getBoundingClientRect();const t=e.touches?e.touches[0]:e;return[t.clientX-b.left,t.clientY-b.top];};
+  c.onpointerdown=e=>{_trazo=true;const[p,q]=pos(e);x.beginPath();x.moveTo(p,q);c.setPointerCapture(e.pointerId);};
+  c.onpointermove=e=>{if(!_trazo)return;const[p,q]=pos(e);x.lineTo(p,q);x.stroke();_hayTrazo=true;};
+  c.onpointerup=c.onpointercancel=()=>{_trazo=false;};}
+function limpiarFirmaDoc(){prepararCanvasDoc();}
+async function enviarFirmaDoc(){if(!_firmaAct)return;if(!_hayTrazo){toast('Firma con el dedo en el recuadro','error');return;}
+  const b=document.getElementById('fm-ok');b.disabled=true;b.textContent='Guardando…';
+  try{const firma=document.getElementById('fm-canvas').toDataURL('image/png');const r=await fetchT('/api/fichaje/firmas/'+_firmaAct.id,{method:'POST',headers:authH({'Content-Type':'application/json'}),body:JSON.stringify({firma})},30000);const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');toast('Firmado ✔');cerrarFirmaDoc();cargarFirmas();}
+  catch(e){toast(e.message,'error');}b.disabled=false;b.textContent='✍️ Firmar';}
+
 async function cargar(){
   let r;try{r=await fetchT('/api/fichaje/estado',{headers:authH()},12000);}
   catch(e){_sinRed=true;render(estadoLocal());renderOffline();return;} // sin cobertura
   _sinRed=false;
-  try{const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');await cargarDia();pintar(d);cargarCorrecciones();avisoFirmaPendiente();avisoPush();menuTrabajador();vehiculosTrabajador();if(colaTodos().length)sincronizar();}catch(e){toast(e.message,'error');}}
+  try{const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');await cargarDia();pintar(d);cargarCorrecciones();avisoFirmaPendiente();cargarFirmas();avisoPush();menuTrabajador();vehiculosTrabajador();if(colaTodos().length)sincronizar();}catch(e){toast(e.message,'error');}}
 let _estado=null,_obras=null;
 const escH=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function estadoDe(d){return d?(d.estado||(d.dentro?'dentro':'fuera')):'fuera';}

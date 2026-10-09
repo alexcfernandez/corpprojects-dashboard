@@ -1452,6 +1452,29 @@ app.get('/api/fichaje/mis-docs/:id', async (req, res) => {
     res.send(Buffer.from(d.data.buffer || d.data)); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+// Firmas en la app del trabajador (firmas.js): contratos, nóminas, entrega de EPIs.
+app.get('/api/fichaje/firmas', async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return; res.json(await require('./firmas').pendientesDe(w.workerId)); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/fichaje/firmas/:id/doc', async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return; const d = await require('./firmas').documentoParaFirmar(req.params.id, w.workerId);
+    res.set('Content-Type', d.mime || 'application/pdf'); res.set('Content-Disposition', `inline; filename="${encodeURIComponent(d.nombre || 'documento')}"`); res.send(d.buffer); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/fichaje/firmas/:id', express.json({ limit: '2mb' }), async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return;
+    res.json(await require('./firmas').firmar(req.params.id, w.workerId, { firmaDataUrl: (req.body || {}).firma, ip: String(req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim(), ua: req.headers['user-agent'] || '' })); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/personal/firmas', requireAuthOficina, async (req, res) => {
+  try { res.json({ kit: require('./firmas').KIT_EPIS, firmas: await require('./firmas').lista({ userId: req.query.userId }) }); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/personal/firmas', requireAuthOficina, express.json(), async (req, res) => {
+  try { res.json(await require('./firmas').pedir(req.body || {}, req.user?.name || 'Oficina')); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/personal/firmas/:id/anular', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./firmas').anular(req.params.id)); } catch (err) { res.status(400).json({ error: err.message }); }
+});
 // Consentimiento GPS del trabajador (leer estado / firmar).
 app.get('/api/fichaje/consent', async (req, res) => {
   try { const w = await _worker(req, res); if (!w) return;
