@@ -519,6 +519,10 @@ async function procesarWhatsApp(from, body, media = {}) {
     if (trab || await acceso.esTrabajadorActivo(from)) {
       return procesarTrabajador(from, body, media, trab || { userId: null, name: acceso.matchTrabajador(from) || '' }, responder);
     }
+    // ¿Le hemos mandado papeles para firmar (enviar-firmar)? Lo que mande va a los documentos de esa obra.
+    try { const r = await respuestaFirmante(from, body, media); if (r) return responder(r); } catch (e) { console.error('[Firmar] respuesta:', e.message); }
+    // ¿Es un cliente contestando a un recordatorio de cobro? Se apunta en su factura y se pasa a Álex.
+    try { const rc = await require('./recordatoriosCobro').respuestaCliente(from, body || (media.fotos && media.fotos.length ? '(foto)' : '')); if (rc) return responder(rc); } catch (e) {}
     return responder('🔒 Este asistente es privado.');
   }
 
@@ -586,6 +590,27 @@ async function procesarWhatsApp(from, body, media = {}) {
 
   const reply = await asistente.responderConsulta(texto, from, imagenes);
   return responder(prefijo + reply);
+}
+
+// Alguien (no de la plantilla) a quien se le mandaron papeles para firmar contesta: sus fotos/PDF se guardan en
+// los documentos de esa obra como «firmado» y se avisa a Álex. Vale 10 días desde el envío.
+async function respuestaFirmante(from, body, media = {}) {
+  const movil = require('./recordatoriosCobro')._movil(from);
+  if (!movil) return null;
+  const db = await require('./db').getDB();
+  const f = await db.collection('firmasPendientes').findOne({ movil, hasta: { $gt: new Date() } }, { sort: { at: -1 } });
+  if (!f) return null;
+  const docs = [...(media.fotos || []), ...(media.pdf ? [media.pdf] : [])];
+  let guardados = 0;
+  for (const m of docs) {
+    try {
+      const buf = await _bajarMedia(m.url, 30000);
+      await require('./personalDocs').subir({ ambito: 'obra', obraId: f.obraId, tipo: 'otro_obra', archivo: { buffer: buf, mimetype: String(m.type || 'image/jpeg').split(';')[0], originalname: `Firmado por ${f.nombre || movil} (WhatsApp)${/pdf/.test(m.type || '') ? '.pdf' : '.jpg'}` }, notas: `Enviado por ${f.nombre || movil} por WhatsApp${body ? ': ' + String(body).slice(0, 200) : ''}. Revisar y ponerle el tipo (contrato, F, G, K, W).` }, `${f.nombre || 'Firmante'} (WhatsApp)`);
+      guardados++;
+    } catch (e) { console.error('[Firmar] guardar:', e.message); }
+  }
+  try { await require('./notifications').sendWhatsApp(`✍️ *${f.nombre || movil}* ha contestado sobre los papeles de *${f.obraRef || 'la obra'}*${guardados ? `: ${guardados} archivo${guardados > 1 ? 's' : ''} guardado${guardados > 1 ? 's' : ''} en la obra` : ''}${body ? `\n«${String(body).slice(0, 300)}»` : ''}\n\nhttps://dashboard.corpprojects.es/docs-obra?obra=${f.obraId}`); } catch (e) {}
+  return guardados ? `✅ Recibido${guardados > 1 ? ' (' + guardados + ')' : ''}, gracias. Se lo paso a Álex.` : 'Gracias, se lo paso a Álex.';
 }
 
 function registrarEntradaWa(from, body, media = {}) {
@@ -2268,6 +2293,8 @@ app.post('/api/obras/:id/docs-entrada/enviar-firmar', requireAuthOficina, expres
     const txt = `${String(b.texto || '').trim()}\n\n${docs.map(d => `📄 ${d.nombre}\n${E.url(String(d._id), { dias: 7 })}`).join('\n\n')}\n\n(Los enlaces valen 7 días.)`.trim();
     const ok = await require('./notifications').sendWhatsAppTo(movil, txt);
     if (ok === false) throw new Error('No se pudo enviar el WhatsApp');
+    const o = await db.collection('obras').findOne({ _id: new ObjectId(String(req.params.id)) }, { projection: { reference: 1 } });
+    await db.collection('firmasPendientes').insertOne({ movil, nombre: String(b.nombre || '').slice(0, 60) || null, obraId: String(req.params.id), obraRef: o ? o.reference : null, docIds: docs.map(d => String(d._id)), at: new Date(), hasta: new Date(Date.now() + 10 * 86400000), por: req.user?.name || '' });
     res.json({ ok: true, a: movil, texto: txt });
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
