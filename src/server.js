@@ -1706,6 +1706,12 @@ app.get('/api/proveedores/cuentas', requireAuthOficina, async (req, res) => {
   req.setTimeout && req.setTimeout(120000);
   try { res.json(await require('./cuentasProveedor').cuentas({ desde: req.query.desde || '2025-01-01' })); } catch (err) { res.status(500).json({ error: err.message }); }
 });
+// La factura ORIGINAL del proveedor (la de StelOrder es el documento que genera StelOrder): se busca en el correo.
+app.post('/api/proveedores/original', requireAuthOficina, express.json(), async (req, res) => {
+  req.setTimeout && req.setTimeout(120000);
+  try { const b = req.body || {}; res.json(await require('./facturaOriginal').buscar({ ref: b.ref, proveedor: b.proveedor, total: b.total != null ? Number(b.total) : null })); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/proveedores/cuenta', requireAuthOficina, async (req, res) => {
   req.setTimeout && req.setTimeout(120000);
   try { res.json(await require('./cuentasProveedor').cuenta(req.query.nombre || '', { desde: req.query.desde || '2025-01-01' })); } catch (err) { res.status(400).json({ error: err.message }); }
