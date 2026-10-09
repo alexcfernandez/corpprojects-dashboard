@@ -58,3 +58,32 @@ test('promesa de pago: no se recuerda antes; ese día sale en «hoy pagan»; si 
   const env = []; const a = await R.avisoManana({ hoy: new Date('2026-10-16T08:00:00Z'), _enviar: async t => { env.push(t); return true; } });
   assert.equal(a.enviado, true); assert.match(env[0], /Dijeron que pagaban y no ha llegado/);
 });
+
+test('contacto apuntado en el dashboard manda sobre StelOrder; el texto lleva el enlace a la factura y el nombre', async () => {
+  const CC = require(path.join(root, 'src/clientesContacto.js'));
+  pendientes = [inv('5', 8, 300, { accountId: 'a5', clientEmail: '', pdfPath: 'https://stel/pdf/5' })];
+  let r = await R.propuestas({ hoy: HOY });
+  assert.equal(r.propuestas[0].whatsapp, null); assert.equal(r.propuestas[0].email, null);
+  assert.equal((await CC.conPendientes()).clientes[0].falta, 'todo');
+  await assert.rejects(CC.guardar({ accountId: 'a5', cliente: 'Cliente 5', email: 'no-es-email' }), /no parece válido/);
+  await CC.guardar({ accountId: 'a5', cliente: 'Cliente 5', telefono: '611 22 33 44', email: 'Admin@Finques.cat', persona: 'Marta Puig' }, 'Oficina');
+  r = await R.propuestas({ hoy: HOY });
+  const p = r.propuestas[0];
+  assert.equal(p.whatsapp, '+34611223344'); assert.equal(p.email, 'admin@finques.cat');
+  assert.match(p.texto, /^Buenos días, Marta:/); assert.match(p.texto, /Puede ver la factura aquí: https:\/\/stel\/pdf\/5/);
+  assert.equal((await CC.conPendientes()).clientes[0].falta, null);
+});
+
+test('WhatsApp desde Corpy y la respuesta del cliente se apunta y se reenvía', async () => {
+  const env = [];
+  const r = await R.enviarWhatsApp('5', { por: 'Álex', _enviar: async (a, t) => { env.push([a, t]); return true; } });
+  assert.equal(r.a, '+34611223344'); assert.equal(env[0][0], '+34611223344');
+  assert.equal((await R.propuestas({ hoy: HOY })).propuestas.length, 0);   // ya avisado en este escalón
+  const aMi = [];
+  const resp = await R.respuestaCliente('whatsapp:+34611223344', 'pago el viernes', { _enviar: async t => { aMi.push(t); return true; } });
+  assert.match(resp, /Se lo pasamos a la oficina/);
+  assert.match(aMi[0], /Cliente 5.*FAC5/s); assert.match(aMi[0], /pago el viernes/);
+  const d = cols.recordatoriosCobro.find(x => x._id === '5');
+  assert.match(d.notas.pop().texto, /Contestó por WhatsApp: «pago el viernes»/);
+  assert.equal(await R.respuestaCliente('+34699999999', 'hola'), null);   // otro número: no es un cliente avisado
+});

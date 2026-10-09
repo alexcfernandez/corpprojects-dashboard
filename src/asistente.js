@@ -2451,6 +2451,8 @@ async function responderConsulta(texto, from = 'anon', imagenes = []) {
 
   // 2) DESCONOCIDO → no da datos; te avisa a ti
   if (id.rol === 'desconocido') {
+    // ¿Es un cliente contestando a un recordatorio de cobro que le mandó Corpy? Se apunta en su factura y se te pasa.
+    try { const rc = await require('./recordatoriosCobro').respuestaCliente(id.numero || from, texto); if (rc) return rc; } catch (e) {}
     try {
       const { sendWhatsApp } = require('./notifications');
       await sendWhatsApp(`❓ Mensaje de número no identificado ${id.numero}: "${String(texto).slice(0, 140)}"`);
@@ -2471,6 +2473,8 @@ async function responderConsulta(texto, from = 'anon', imagenes = []) {
 
   // 3) CLIENTE/FAMILIA → solo lectura y solo lo suyo
   if (id.rol === 'client') {
+    // Contesta pocos días después de un recordatorio de cobro: eso lo lleva la oficina, no el asistente.
+    try { const rc = await require('./recordatoriosCobro').respuestaCliente(id.numero || from, texto, { dias: 10 }); if (rc) return rc; } catch (e) {}
     if (accion !== 'lectura')
       return 'Puedo darte información de tus asuntos, pero cualquier cambio lo gestiona la oficina de Corp. 🙏';
     return responderConsultaInterna(texto, from, imagenes, {

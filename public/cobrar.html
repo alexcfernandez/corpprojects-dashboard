@@ -27,6 +27,9 @@ td.r,th.r{text-align:right;white-space:nowrap}
 @media(max-width:600px){.kp{grid-template-columns:1fr 1fr}.tw{overflow-x:auto}}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--border2);padding:10px 16px;border-radius:10px;display:none;z-index:50}
 .vacio{color:var(--text3);font-size:13.5px;padding:6px 0}
+.ct{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1.3fr) minmax(0,1fr) auto;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}.ct:last-child{border-bottom:0}.ct input{width:100%;font-size:13.5px;padding:7px 10px}.ct .nm b{font-size:14.5px}.ct.ok input{border-color:rgba(34,196,135,.5)}
+.cform{display:none;gap:8px;flex-wrap:wrap;margin-top:8px}.cform.on{display:flex}.cform input{flex:1;min-width:150px;font-size:13.5px}
+@media(max-width:760px){.ct{grid-template-columns:1fr 1fr}.ct .nm{grid-column:1/3}.ct button{grid-column:1/3}}
 </style><link rel="stylesheet" href="/cp-ui.css">
 <script src="/nav.js" defer></script>
 </head><body><script>try{if(localStorage.getItem("cp_theme")==="light")document.body.classList.add("light");}catch(e){}</script>
@@ -36,8 +39,12 @@ td.r,th.r{text-align:right;white-space:nowrap}
   <div class="kp" id="kp"></div>
   <div class="card" id="c-prom" style="display:none"><h3>📅 Dijeron que pagarán</h3><div id="prom"></div></div>
   <div class="card"><h3>💶 Recordatorios para enviar</h3>
-    <div class="sub" style="margin:-4px 0 6px">A los 7, 15, 30, 45, 60 y 90 días de vencida, una vez cada vez. Revisa el texto, cámbialo si quieres y envíalo por email o abre WhatsApp y mándalo tú desde el móvil. Nada sale solo.</div>
+    <div class="sub" style="margin:-4px 0 6px">A los 7, 15, 30, 45, 60 y 90 días de vencida, una vez cada vez. Revisa el texto, cámbialo si quieres y envíalo por email o por WhatsApp desde Corpy con un toque (o ábrelo en tu móvil). Va con el enlace a la factura. Nada sale solo. Si el cliente contesta a Corpy, te llega a ti y queda apuntado en la factura.</div>
     <div id="recs"><div class="vacio">Cargando… (lee las facturas pendientes de StelOrder)</div></div></div>
+  <div class="card" id="c-cont"><h3>📇 Clientes sin contacto</h3>
+    <div class="sub" style="margin:-4px 0 6px">Clientes con facturas pendientes a los que no se les puede escribir (o solo por un lado). Apunta su móvil y su email y ya podrán recibir los recordatorios. Lo que pongas aquí manda sobre StelOrder (StelOrder no se toca).</div>
+    <label style="font-size:12.5px;color:var(--text2);display:inline-flex;gap:6px;align-items:center;margin-bottom:4px"><input type="checkbox" id="ctodos" onchange="pintarCont()"> Ver también los que ya tienen todo</label>
+    <div id="cont"><div class="vacio">Cargando…</div></div></div>
   <div class="card"><h3>📝 Todas las facturas pendientes · apunta lo que te dicen</h3>
     <input id="q" placeholder="Buscar cliente o nº…" oninput="pintarTodas()" style="width:100%;max-width:360px;margin-bottom:8px">
     <div class="tw" id="todas"></div></div>
@@ -52,7 +59,21 @@ async function api(m,u,b){const o={method:m,headers:{...H}};if(b){o.headers['Con
 let D=null;
 async function cargar(){if(!tok){document.querySelector('.wrap').innerHTML='<div class="card">Abre esta página desde el dashboard.</div>';return;}
   try{D=await api('GET','/api/cobros/recordatorios');}catch(e){document.getElementById('recs').innerHTML='<div class="vacio" style="color:var(--red)">'+esc(e.message)+'</div>';return;}
-  pintar();}
+  pintar();cargarCont();}
+let C=null;
+async function cargarCont(){try{C=await api('GET','/api/cobros/contactos');}catch(e){document.getElementById('cont').innerHTML='<div class="vacio" style="color:var(--red)">'+esc(e.message)+'</div>';return;}pintarCont();}
+const FALTA={todo:'sin móvil ni email',movil:'sin móvil (solo email)',email:'sin email (solo móvil)'};
+function pintarCont(){const todos=document.getElementById('ctodos').checked;const l=(C.clientes||[]).filter(c=>todos||c.falta);
+  document.querySelector('#c-cont h3').textContent=`📇 Clientes sin contacto${C.sinNada?` · ${C.sinNada} sin nada`:''}`;
+  document.getElementById('cont').innerHTML=l.length?l.map((c,i)=>`<div class="ct ${c.falta?'':'ok'}" id="ct-${i}"><div class="nm"><b>${esc(c.cliente)}</b><div class="sub">${c.facturas} factura${c.facturas===1?'':'s'} · ${eur(c.pendiente)}${c.masAntigua?` · la más antigua ${c.masAntigua} d vencida`:''}${c.falta?` · <span style="color:${c.falta==='todo'?'var(--red)':'var(--amber)'}">${FALTA[c.falta]}</span>`:''}${c.telefono&&!c.whatsapp?` · tel. ${esc(c.telefono)} (fijo, sin WhatsApp)`:''}</div></div>
+    <input class="ctel" placeholder="Móvil" inputmode="tel" value="${esc(c.whatsapp?c.telefono:'')}"><input class="cmail" placeholder="Email" type="email" value="${esc(c.email||'')}"><input class="cper" placeholder="Persona (ej. Marta, administradora)" value="${esc(c.persona||'')}">
+    <button class="btn pri peq" onclick="guardarCont(${i})">Guardar</button></div>`).join(''):'<div class="vacio">Todos los clientes con facturas pendientes tienen móvil y email. 👍</div>';
+  window._CL=l;}
+async function guardarCont(i,desde){const c=desde||window._CL[i];const el=desde?document.getElementById('cf-'+desde.id):document.getElementById('ct-'+i);
+  const b={accountId:c.accountId,cliente:c.cliente,telefono:el.querySelector('.ctel').value.trim(),email:el.querySelector('.cmail').value.trim(),persona:(el.querySelector('.cper')||{}).value||''};
+  try{await api('POST','/api/cobros/contactos',b);toast('Guardado el contacto de '+c.cliente);cargar();}catch(e){toast(e.message);}}
+function formCont(p){return `<div class="cform" id="cf-${p.id}"><input class="ctel" placeholder="Móvil" inputmode="tel" value="${esc(p.whatsapp?p.telefono:'')}"><input class="cmail" placeholder="Email" type="email" value="${esc(p.email||'')}"><input class="cper" placeholder="Persona de contacto" value="${esc(p.persona||'')}"><button class="btn pri peq" onclick='guardarCont(null,${JSON.stringify({id:p.id,accountId:p.accountId,cliente:p.cliente}).replace(/'/g,"&#39;")})'>Guardar contacto</button></div>`;}
+function abrirCf(id){const f=document.getElementById('cf-'+id);if(f){f.classList.toggle('on');const i=f.querySelector('input');if(i)i.focus();}}
 function notasHtml(ns){return (ns||[]).slice(-2).map(n=>`<div class="nota">${n.fechaPago?`<b>Pagará el ${fd(n.fechaPago)}</b> · `:''}${esc(n.texto||'')} <span style="color:var(--text3)">— ${esc(n.por||'')} ${fd(n.at)}</span></div>`).join('');}
 function apuntarHtml(f){return `<div class="ap" id="ap-${f.id}"><textarea placeholder="¿Qué te ha dicho? (ej. «paga el día 20 cuando cobren la derrama»)"></textarea><label style="font-size:12.5px;color:var(--text2)">Pagará el <input type="date"></label><button class="btn pri peq" onclick="guardarNota('${f.id}','${esc(f.numero)}','${esc(String(f.cliente).replace(/'/g,''))}')">Guardar</button></div>`;}
 function pintar(){
@@ -65,14 +86,15 @@ function pintar(){
       ${p.yaPorEmail?'<div class="sub" style="color:var(--amber)">Su familia ya recibe recordatorios automáticos por email (Ajustes → Alertas): mira si hace falta este.</div>':''}
       ${notasHtml(p.notas)}
       <input class="asu" value="${esc(p.asunto)}" style="width:100%;margin-top:10px;font-size:13px"><textarea class="txt">${esc(p.texto)}</textarea>
-      <div class="acc">${p.email?`<button class="btn pri" onclick="enviarEmail('${p.id}')">📧 Enviar a ${esc(p.email)}</button>`:'<span class="chip">sin email en StelOrder</span>'}
-        ${p.whatsapp?`<button class="btn wa" onclick="abrirWa('${p.id}','${p.whatsapp}',${p.paso},'${p.promesaIncumplida?p.promesaIncumplida.fecha:''}')">💬 Abrir WhatsApp</button>`:`<span class="chip">${p.telefono?'su teléfono no es un móvil':'sin teléfono'}</span>`}
+      <div class="acc">${p.whatsapp?`<button class="btn wa" onclick="enviarWa('${p.id}')">💬 Enviar por WhatsApp (Corpy)</button>`:''}${p.email?`<button class="btn pri" onclick="enviarEmail('${p.id}')">📧 Enviar a ${esc(p.email)}</button>`:''}
+        ${!p.whatsapp||!p.email?`<button class="btn peq" onclick="abrirCf('${p.id}')">➕ Poner ${!p.whatsapp&&!p.email?'móvil o email':!p.whatsapp?'móvil':'email'}</button>`:''}
+        ${p.whatsapp?`<button class="btn peq" onclick="abrirWa('${p.id}','${p.whatsapp}',${p.paso},'${p.promesaIncumplida?p.promesaIncumplida.fecha:''}')">Abrir en mi WhatsApp</button>`:''}
         <button class="btn peq" onclick="copiar('${p.id}')">Copiar texto</button>
         <button class="btn peq" onclick="marcar('${p.id}',${p.paso},'otro','${p.promesaIncumplida?p.promesaIncumplida.fecha:''}')">Ya se lo he dicho</button>
         <button class="btn peq" onclick="abrirAp('${p.id}')">📝 Apuntar lo que ha dicho</button>
         <button class="btn peq" onclick="saltar('${p.id}')">No recordar esta</button>
         <button class="btn peq" onclick="pausar('${esc(String(p.cliente).replace(/'/g,''))}')">Nunca a este cliente</button></div>
-      ${apuntarHtml(p)}</div>`).join(''):'<div class="vacio">Hoy no hay recordatorios que enviar. 👍</div>';
+      ${formCont(p)}${apuntarHtml(p)}</div>`).join(''):'<div class="vacio">Hoy no hay recordatorios que enviar. 👍</div>';
   pintarTodas();}
 function pintarTodas(){const q=(document.getElementById('q').value||'').toLowerCase();const l=(D&&D.todas||[]).filter(f=>!q||(f.cliente+' '+f.numero).toLowerCase().includes(q));
   document.getElementById('todas').innerHTML=l.length?`<table><tr><th>Cliente</th><th>Factura</th><th class="r">Días</th><th class="r">Pendiente</th><th>Lo último</th><th></th></tr>${l.map(f=>`<tr><td><b>${esc(f.cliente)}</b></td><td>${esc(f.numero)}<div class="sub">vence ${fd(f.vence)}</div></td><td class="r" style="color:${f.dias>=45?'var(--red)':f.dias>=15?'var(--amber)':'var(--text2)'}">${f.dias||'—'}</td><td class="r"><b>${eur(f.pendiente)}</b></td>
@@ -84,6 +106,8 @@ async function guardarNota(id,numero,cliente){const ap=[document.getElementById(
   const texto=ap.querySelector('textarea').value.trim(),fechaPago=ap.querySelector('input[type=date]').value;
   try{await api('POST',`/api/cobros/recordatorios/${encodeURIComponent(id)}/nota`,{texto,fechaPago,numero,cliente});toast(fechaPago?`Apuntado: pagará el ${fd(fechaPago)}. Ese día te lo recuerdo.`:'Apuntado');cargar();}catch(e){toast(e.message);}}
 function textoDe(id){const r=document.getElementById('r-'+id);return{texto:r.querySelector('.txt').value,asunto:r.querySelector('.asu').value};}
+async function enviarWa(id){const p=(D.propuestas||[]).find(x=>x.id===id);if(!confirm(`¿Enviar el recordatorio de ${p.numero} por WhatsApp desde Corpy a ${p.whatsapp}?`))return;
+  try{const r=await api('POST',`/api/cobros/recordatorios/${encodeURIComponent(id)}/whatsapp`,textoDe(id));toast('Enviado por WhatsApp a '+r.a);cargar();}catch(e){toast(e.message);}}
 async function enviarEmail(id){const p=(D.propuestas||[]).find(x=>x.id===id);if(!confirm(`¿Enviar el recordatorio de ${p.numero} a ${p.email}?`))return;
   try{const r=await api('POST',`/api/cobros/recordatorios/${encodeURIComponent(id)}/email`,textoDe(id));toast('Enviado a '+r.a);cargar();}catch(e){toast(e.message);}}
 function abrirWa(id,tel,paso,promesa){window.open(`https://wa.me/${tel.replace('+','')}?text=${encodeURIComponent(textoDe(id).texto)}`,'_blank');

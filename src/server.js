@@ -2783,6 +2783,7 @@ app.post('/api/cobros/recordatorios/:id/:accion', requireAuth, async (req, res) 
     if (!_dinero(req)) return res.status(403).json({ error: 'Solo Dueño y Oficina' });
     const b = req.body || {}, por = req.user?.name || '', id = req.params.id;
     const A = { email: () => R_COB().enviarEmail(id, { texto: b.texto, asunto: b.asunto, por }),
+      whatsapp: () => R_COB().enviarWhatsApp(id, { texto: b.texto, por }),
       marcar: () => R_COB().marcar(id, { paso: b.paso, canal: b.canal || 'whatsapp', por, promesa: b.promesa || null }),
       saltar: () => R_COB().saltar(id, por),
       nota: () => R_COB().apuntar(id, { texto: b.texto, fechaPago: b.fechaPago, por, numero: b.numero, cliente: b.cliente }),
@@ -2790,6 +2791,15 @@ app.post('/api/cobros/recordatorios/:id/:accion', requireAuth, async (req, res) 
     if (!A) return res.status(404).json({ error: 'Acción no válida' });
     res.json(await A());
   } catch (err) { res.status(400).json({ error: err.message }); }
+});
+// Móvil/email de los clientes con facturas pendientes, apuntados aquí (mandan sobre StelOrder) para poder enviarles los recordatorios.
+app.get('/api/cobros/contactos', requireAuth, async (req, res) => {
+  try { if (!_dinero(req)) return res.status(403).json({ error: 'Solo Dueño y Oficina' }); res.json(await require('./clientesContacto').conPendientes()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/cobros/contactos', requireAuth, async (req, res) => {
+  try { if (!_dinero(req)) return res.status(403).json({ error: 'Solo Dueño y Oficina' }); res.json(await require('./clientesContacto').guardar(req.body || {}, req.user?.name)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.post('/api/cobros/clientes/pausa', requireAuth, async (req, res) => {
   try { if (!_dinero(req)) return res.status(403).json({ error: 'Solo Dueño y Oficina' }); res.json(await R_COB().pausarCliente((req.body || {}).cliente, (req.body || {}).pausa !== false, req.user?.name)); }
