@@ -154,8 +154,9 @@ async function paquete(obraId) {
     for (const f of filas) {
       if (!f.docId) { if (!f.opcional) indice.push(`  ✗ FALTA: ${f.nombre}`); continue; }
       const d = await db.collection('docsPersonal').findOne({ _id: new ObjectId(f.docId) });
-      if (!d || !d.data) continue;
-      archivos.push({ nombre: `${limpio(carpeta)}/${limpio(f.nombre)}.${ext(d.mime)}`, datos: Buffer.from(d.data.buffer || d.data) });
+      const buf = d ? await require('./personalDocs').datos(d) : null;
+      if (!buf) continue;
+      archivos.push({ nombre: `${limpio(carpeta)}/${limpio(f.nombre)}.${ext(d.mime)}`, datos: buf });
       indice.push(`  ${f.estado === 'caducado' ? '⚠ CADUCADO' : '✓'} ${f.nombre}${f.caduca ? ' · válido hasta ' + f.caduca.split('-').reverse().join('/') : ''}`);
     }
     indice.push('');

@@ -2212,7 +2212,7 @@ app.post('/api/vehiculos/:id/docs', requireAuthOficina, uploadDocVeh.single('arc
   try { res.json(await require('./vehiculos').subirDocumento(req.params.id, { tipo: (req.body || {}).tipo, nombre: (req.body || {}).nombre, archivo: req.file }, await _porVeh(req))); } catch (err) { res.status(400).json({ error: err.message }); }
 });
 // ── Documentación del personal y de la empresa (obras / PRL / nóminas) ──
-const uploadPersonal = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024, files: 20 } });
+const uploadPersonal = multer({ storage: multer.memoryStorage(), limits: { fileSize: 40 * 1024 * 1024, files: 20 } });   // >8 MB va a GridFS (personalDocs)
 const _porPers = async (req) => { const q = (await _quienPush(req)) || {}; return q.name || 'Oficina'; };
 // Corpy le pide a un trabajador sus documentos para el alta (DNI/NIE y nº de la Seguridad Social) por WhatsApp.
 app.post('/api/personal/pedir-docs-alta', requireAuthOficina, express.json(), async (req, res) => {

@@ -96,8 +96,9 @@ async function subir({ ambito = 'trabajador', userId, obraId, tipo, archivo, fec
   // multer da el nombre del archivo en latin1: «AdhesiÃ³n» → «Adhesión».
   if (archivo.originalname && /[ÃÂ]/.test(archivo.originalname)) { try { const u = Buffer.from(archivo.originalname, 'latin1').toString('utf8'); if (!u.includes('\ufffd')) archivo.originalname = u; } catch (e) {} }
   const doc = { ambito, userId: ambito === 'trabajador' ? String(userId) : null, obraId: ambito === 'obra' ? String(obraId) : null, tipo, nombre: txt(archivo.originalname || (tipoDe(ambito, tipo) || {}).nombre, 120), fecha: fechaOk(fecha), mes: mesOk(mes), notas: txt(notas, 300),
-    mime: archivo.mimetype, size: archivo.size || archivo.buffer.length, data: archivo.buffer, estado: 'ok', visibleTrabajador: visibleTrabajador !== false && visibleTrabajador !== 'false', subido: new Date(), por: por || '' };
+    mime: archivo.mimetype, size: archivo.size || archivo.buffer.length, data: archivo.buffer.length > GRANDE ? null : archivo.buffer, estado: 'ok', visibleTrabajador: visibleTrabajador !== false && visibleTrabajador !== 'false', subido: new Date(), por: por || '' };
   doc.caduca = _caduca(ambito, tipo, doc.fecha, caduca);
+  if (!doc.data) doc.gridId = await _guardarGrande(archivo.buffer, doc.nombre, doc.mime);
   const r = await db.collection('docsPersonal').insertOne(doc);
   return _publico({ ...doc, _id: r.insertedId });
 }
@@ -196,7 +197,7 @@ async function leerImportesNomina(id) {
   const db = await getDB();
   const d = await db.collection('docsPersonal').findOne({ _id: _oid(id) });
   if (!d || d.tipo !== 'nomina') throw new Error('No es una nómina');
-  const buf = Buffer.from(d.data.buffer || d.data), b64 = buf.toString('base64');
+  const buf = await datos(d), b64 = buf.toString('base64');
   const contenido = /pdf/i.test(d.mime) ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } } : { type: 'image', source: { type: 'base64', media_type: d.mime, data: b64 } };
   const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
     body: JSON.stringify({ model: require('./config').ia.vision, max_tokens: 500, tools: [HERR_NOMINA], tool_choice: { type: 'tool', name: HERR_NOMINA.name }, messages: [{ role: 'user', content: [contenido, { type: 'text', text: 'Saca el líquido a percibir, el total devengado, la retención de IRPF, la aportación del trabajador a la Seguridad Social y el mes de esta nómina.' }] }] }) });
@@ -238,8 +239,33 @@ async function editar(id, cambios = {}, por) {
   await db.collection('docsPersonal').updateOne({ _id: d._id }, { $set: set });
   return _publico({ ...d, ...set });
 }
-async function borrar(id) { const db = await getDB(); await db.collection('docsPersonal').deleteOne({ _id: _oid(id) }); return { ok: true }; }
-async function archivo(id) { const db = await getDB(); return db.collection('docsPersonal').findOne({ _id: _oid(id) }); }
+async function borrar(id) {
+  const db = await getDB(); const d = await db.collection('docsPersonal').findOne({ _id: _oid(id) }, { projection: { gridId: 1 } });
+  if (d && d.gridId) { try { await (await _bucket()).delete(d.gridId); } catch (e) {} }
+  await db.collection('docsPersonal').deleteOne({ _id: _oid(id) }); return { ok: true };
+}
+// ── ARCHIVOS GRANDES ── Un documento de Mongo no puede pasar de 16 MB: los archivos de más de 8 MB van a GridFS
+// (bucket «docsPersonalArchivos») y el documento solo guarda su id. Así no hay que partir PDFs escaneados.
+const GRANDE = 8 * 1024 * 1024;
+async function _bucket() { const { GridFSBucket } = require('mongodb'); return new GridFSBucket(await getDB(), { bucketName: 'docsPersonalArchivos' }); }
+async function _guardarGrande(buf, nombre, mime) {
+  const b = await _bucket();
+  return new Promise((ok, ko) => { const up = b.openUploadStream(nombre || 'documento', { metadata: { mime } }); up.on('error', ko).on('finish', () => ok(up.id)); up.end(buf); });
+}
+// El contenido de un documento, esté dentro o en GridFS.
+async function datos(d) {
+  if (!d) return null;
+  if (d.data) return Buffer.from(d.data.buffer || d.data);
+  if (!d.gridId) return null;
+  const b = await _bucket(); const trozos = [];
+  await new Promise((ok, ko) => b.openDownloadStream(d.gridId).on('data', c => trozos.push(c)).on('error', ko).on('end', ok));
+  return Buffer.concat(trozos);
+}
+async function archivo(id) {
+  const db = await getDB(); const d = await db.collection('docsPersonal').findOne({ _id: _oid(id) });
+  if (d && !d.data && d.gridId) d.data = await datos(d);
+  return d;
+}
 
 // ── VISTAS ──
 // Para cada trabajador, el documento vigente de cada tipo que piden las obras y su semáforo.
@@ -278,7 +304,7 @@ async function paqueteObra({ userIds = [], obraId = null, conEmpresa = true } = 
       const d = vigente(docs, k);
       if (!d) { indice.push(`  ✗ FALTA: ${t.nombre}`); continue; }
       const cad = d.caduca && diasHasta(d.caduca) < 0;
-      archivos.push({ nombre: `Empresa/${limpio(t.nombre)}${d.mes ? '_' + d.mes : ''}.${ext(d.mime)}`, datos: Buffer.from(d.data.buffer || d.data) });
+      archivos.push({ nombre: `Empresa/${limpio(t.nombre)}${d.mes ? '_' + d.mes : ''}.${ext(d.mime)}`, datos: await datos(d) });
       indice.push(`  ${cad ? '⚠ CADUCADO' : '✓'} ${t.nombre}${d.mes ? ' (' + d.mes + ')' : ''}${d.caduca ? ' · válido hasta ' + d.caduca.split('-').reverse().join('/') : ''}`);
     }
     indice.push('');
@@ -291,7 +317,7 @@ async function paqueteObra({ userIds = [], obraId = null, conEmpresa = true } = 
       const d = vigente(docs, k);
       if (!d) { indice.push(`  ✗ FALTA: ${t.nombre}`); continue; }
       const cad = d.caduca && diasHasta(d.caduca) < 0;
-      archivos.push({ nombre: `${limpio(w.name)}/${limpio(t.nombre)}.${ext(d.mime)}`, datos: Buffer.from(d.data.buffer || d.data) });
+      archivos.push({ nombre: `${limpio(w.name)}/${limpio(t.nombre)}.${ext(d.mime)}`, datos: await datos(d) });
       indice.push(`  ${cad ? '⚠ CADUCADO' : '✓'} ${t.nombre}${d.caduca ? ' · válido hasta ' + d.caduca.split('-').reverse().join('/') : ''}`);
     }
     indice.push('');
@@ -343,4 +369,4 @@ async function miArchivo(userId, id) {
   return d;
 }
 
-module.exports = { leerImportesNomina, leerImportesPendientes, TIPOS, TIPOS_EMPRESA, TIPOS_OBRA, diasHasta, getConfig, setConfig, subir, analizar, editar, borrar, archivo, resumen, carpeta, paqueteObra, revisarCaducidades, misDocs, miArchivo, _matchTrabajador };
+module.exports = { datos, leerImportesNomina, leerImportesPendientes, TIPOS, TIPOS_EMPRESA, TIPOS_OBRA, diasHasta, getConfig, setConfig, subir, analizar, editar, borrar, archivo, resumen, carpeta, paqueteObra, revisarCaducidades, misDocs, miArchivo, _matchTrabajador };
