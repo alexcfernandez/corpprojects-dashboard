@@ -147,18 +147,21 @@ function cpUpdateBanner(){
 <!-- INICIO -->
 <div id="tab-inicio" class="panel active">
   <div class="tools-quick">
-    <button class="tq" onclick="location.href='/compras'"><span class="em">🧾</span><span class="lb">Compras (revisar)</span></button>
+    <button class="tq" onclick="location.href='/cobrar'"><span class="em">💶</span><span class="lb">Cobros y promesas</span></button>
+    <button class="tq" onclick="location.href='/movimientos'"><span class="em">🧾</span><span class="lb">Movimientos y cuadre</span></button>
+    <button class="tq" onclick="location.href='/trimestre'"><span class="em">📅</span><span class="lb">Cierre del trimestre</span></button>
+    <button class="tq" onclick="location.href='/compras#cuentas'"><span class="em">🏭</span><span class="lb">Cuentas proveedores</span></button>
+    <button class="tq" onclick="location.href='/compras'"><span class="em">🔎</span><span class="lb">Compras por revisar</span></button>
     <button class="tq" onclick="location.href='/compra'"><span class="em">📤</span><span class="lb">Subir factura</span></button>
-    <button class="tq" onclick="location.href='/almacen'"><span class="em">📦</span><span class="lb">Almacén</span></button>
-    <button class="tq" onclick="location.href='/sitios'"><span class="em">🔎</span><span class="lb">¿Dónde hemos estado?</span></button>
     <button class="tq" onclick="showTab('obras',document.querySelector('.nav-btn[onclick*=&quot;obras&quot;]'));setTimeout(()=>{const b=document.querySelector('#obras-container .btab[onclick*=nueva]');if(window.CP&&CP.Obras)CP.Obras.showTab('nueva',b);},80)"><span class="em">🏗️</span><span class="lb">＋ Nueva obra</span></button>
     <button class="tq" onclick="location.href='/medir'"><span class="em">📐</span><span class="lb">Mediciones</span></button>
-    <button class="tq" onclick="location.href='/presupuestos'"><span class="em">💶</span><span class="lb">Presupuestos</span></button>
-    <button class="tq" onclick="location.href='/activos'"><span class="em">🔑</span><span class="lb">Llaves y herram.</span></button>
-    <button class="tq" onclick="showTab('presencia',document.querySelector('.nav-btn[onclick*=&quot;presencia&quot;]'))"><span class="em">📅</span><span class="lb">Presencia</span></button>
+    <button class="tq" onclick="location.href='/presupuestos'"><span class="em">📝</span><span class="lb">Presupuestos</span></button>
+    <button class="tq" onclick="location.href='/rrhh'"><span class="em">🧑‍🔧</span><span class="lb">Candidatos</span></button>
+    <button class="tq" onclick="location.href='/personal'"><span class="em">📂</span><span class="lb">Documentación personal</span></button>
     <button class="tq" onclick="location.href='/fichajes'"><span class="em">🕐</span><span class="lb">Fichajes (hoy)</span></button>
-    <button class="tq" onclick="location.href='/fichar'"><span class="em">▶</span><span class="lb">Fichar jornada</span></button>
-    <button class="tq" onclick="location.href='/parte'"><span class="em">📋</span><span class="lb">Parte de trabajo</span></button>
+    <button class="tq" onclick="location.href='/documentos'"><span class="em">📄</span><span class="lb">Documentos clientes</span></button>
+    <button class="tq" onclick="location.href='/vehiculos'"><span class="em">🚐</span><span class="lb">Vehículos</span></button>
+    <button class="tq" onclick="location.href='/activos'"><span class="em">🔑</span><span class="lb">Llaves y herram.</span></button>
   </div>
   <div id="inicio-reservas"></div>
   <div id="inicio-hoy"></div>
@@ -1511,6 +1514,11 @@ async function renderInicio(){
   add(ped.rojo||0,'pedidos urgentes','obras','pedidos','var(--red)');
   add(em.urgentes||0,'emails urgentes','ajustes','emails','var(--blue)');
   add(par.porFacturar||0,'partes por facturar','obras','partes','var(--amber)');
+  const cb=d.cobros||{}, rh=d.rrhh||{};
+  add(cb.hoyPagan||0,'dicen que pagan hoy','','','var(--blue)','/cobrar');
+  add(cb.incumplidas||0,'promesas de pago sin cumplir','','','var(--red)','/cobrar');
+  add(cb.recordatorios||0,'recordatorios de cobro por enviar','','','var(--amber)','/cobrar');
+  add(rh.nuevos||0,'candidatos nuevos','','','var(--blue)','/rrhh');
   const kpi2=(label,val,sub,color,onclick)=>`<div class="card ini-kpi" style="margin:0;${onclick?'cursor:pointer':''}" ${onclick?`onclick="${onclick}"`:''}>
       <div class="k-l">${label}</div><div class="k-v" style="color:${color||'var(--text)'}">${val}</div><div class="k-s">${sub||''}</div></div>`;
   // Gráfica con barras en degradado

@@ -879,6 +879,13 @@ app.get('/api/inicio', requireAuth, async (req, res) => {
   } catch (e) { out.banco = []; } })());
   t.push((async () => { try { out.compras = { porRevisar: await require('./compras').contarPendientes() }; } catch (e) { out.compras = { porRevisar: null }; } })());
   try { out.stel = require('./stelorder').estadoPausa(); } catch (e) {}
+  // 11) Cobros (promesas y recordatorios) y candidatos nuevos, para «Hoy toca». Como mucho 5 s.
+  t.push((async () => { try { if (users.canSeeMoney(req.user?.role || 'owner')) {
+    const p = require('./recordatoriosCobro').propuestas(); p.catch(() => {});
+    const r = await Promise.race([p, new Promise(ok => setTimeout(() => ok(null), 5000))]);
+    if (r) out.cobros = { recordatorios: r.propuestas.filter(x => !x.yaPorEmail).length, hoyPagan: r.hoyPagan.length, incumplidas: r.incumplidas.length };
+    const db = await require('./db').getDB(); out.rrhh = { nuevos: await db.collection('candidatos').countDocuments({ estado: 'nuevo' }) };
+  } } catch (e) {} })());
   // 10) ¿Cómo vamos de dinero?: como mucho 5 s; si tarda más (primera vez), sigue por detrás y sale en la siguiente carga.
   t.push((async () => { try { if (users.canSeeMoney(req.user?.role || 'owner')) { const p = require('./caja').resumen(); p.catch(() => {}); out.caja = await Promise.race([p, new Promise(r => setTimeout(() => r({ calculando: true }), 5000))]); } } catch (e) { out.caja = null; } })());
   await Promise.all(t);
