@@ -2075,6 +2075,10 @@ app.get('/api/personal/nominas-pagos', requireAuthOficina, async (req, res) => {
 });
 // Traer a Compras facturas concretas que llegaron al correo y no están (Dueño): quedan en «archivo», sin avisos,
 // para que el cuadre las case con sus recibos del banco.
+app.post('/api/compras/reparar-duplicados', requireAuth, async (req, res) => {
+  if ((req.user?.role || 'owner') !== 'owner') return res.status(403).json({ error: 'Solo Dueño' });
+  try { res.json(await require('./compras').repararDuplicados()); } catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.post('/api/compras/desde-correo', requireAuth, express.json(), async (req, res) => {
   if ((req.user?.role || 'owner') !== 'owner') return res.status(403).json({ error: 'Solo Dueño' });
   try {

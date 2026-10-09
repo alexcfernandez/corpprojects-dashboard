@@ -187,10 +187,21 @@ async function buscarDuplicado(db, doc) {
   if (!doc.proveedorNorm || !doc.numero) return null;
   const q = { empresaId: EMPRESA, estado: { $ne: 'descartada' }, proveedorNorm: doc.proveedorNorm, numero: doc.numero };
   // Mismo correo ya procesado (y no descartado) con el mismo nº: repetida. Un correo con dos facturas distintas no.
-  if (doc.gmailId) { const e = await db.collection(COL).findOne({ empresaId: EMPRESA, gmailId: doc.gmailId, estado: { $ne: 'descartada' }, numero: doc.numero, _id: { $ne: doc._id } }, { projection: { _id: 1 } }); if (e) return String(e._id); }
+  if (doc.gmailId) { const e = await db.collection(COL).findOne({ empresaId: EMPRESA, gmailId: doc.gmailId, estado: { $ne: 'descartada' }, numero: doc.numero, _id: { $ne: doc._id }, ...(doc.createdAt ? { createdAt: { $lt: doc.createdAt } } : {}) }, { projection: { _id: 1 } }); if (e) return String(e._id); }
   if (doc._id) q._id = { $ne: doc._id };
+  // La original es la que entró antes: así dos copias no se marcan la una a la otra (y no se pierden las dos).
+  if (doc.createdAt) q.createdAt = { $lt: doc.createdAt };
   const d = await db.collection(COL).findOne(q, { projection: { _id: 1 } });
   return d ? String(d._id) : null;
+}
+
+// Vuelve a mirar las marcadas como repetidas (antes dos copias podían marcarse la una a la otra y no contaba ninguna).
+async function repararDuplicados() {
+  const db = await getDB();
+  const l = await db.collection(COL).find({ empresaId: EMPRESA, duplicadoDe: { $ne: null }, estado: { $ne: 'descartada' } }).project({ _id: 1, proveedorNorm: 1, numero: 1, gmailId: 1, createdAt: 1, duplicadoDe: 1 }).toArray();
+  const cambios = [];
+  for (const c of l) { const dup = await buscarDuplicado(db, c); if (dup !== c.duplicadoDe) { await db.collection(COL).updateOne({ _id: c._id }, { $set: { duplicadoDe: dup } }); cambios.push({ id: String(c._id), numero: c.numero, antes: c.duplicadoDe, ahora: dup }); } }
+  return { revisadas: l.length, cambios };
 }
 
 // ── ALTA (trabajador u oficina) ──────────────────────────────────
@@ -961,4 +972,4 @@ async function resumenPendientes({ dryRun = false } = {}) {
   return { pendientes: pend.length, enviado: ok > 0 };
 }
 
-module.exports = { subidaMasiva, estadoMasiva, _unaMasiva, _gemelaTicket, _partirPdf, propuestaLineas, _repartoDeLineas, separarFoto, n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, albaranesDelCorreo, repartoPorAlbaran, obraDeTexto, _aprenderAliasObras: aprenderAliasObras, clasificacionesParaStel, reglaProveedorDe, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };
+module.exports = { repararDuplicados, subidaMasiva, estadoMasiva, _unaMasiva, _gemelaTicket, _partirPdf, propuestaLineas, _repartoDeLineas, separarFoto, n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, albaranesDelCorreo, repartoPorAlbaran, obraDeTexto, _aprenderAliasObras: aprenderAliasObras, clasificacionesParaStel, reglaProveedorDe, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };
