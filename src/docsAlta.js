@@ -131,4 +131,4 @@ async function recordar({ hoy = new Date(), _enviar = null } = {}) {
   return { recordados: n };
 }
 
-module.exports = { pedir, abiertaDe, listar, cerrar, recibir, recordar, PIEZAS, _textoPeticion: textoPeticion };
+module.exports = { pedir, abiertaDe, listar, cerrar, recibir, recordar, PIEZAS, TIPO_PERSONAL, _textoPeticion: textoPeticion };

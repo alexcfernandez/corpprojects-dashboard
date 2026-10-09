@@ -29,6 +29,11 @@ const TIPOS = {
   carnet: { nombre: 'Carnés y permisos (conducir, plataforma, carretilla…)', obra: true },
   contrato: { nombre: 'Contrato de trabajo', obra: false },
   nomina: { nombre: 'Nómina', obra: false, mensual: true, privado: true },
+  formacion_oficio: { nombre: 'Formación por oficio 20 h (convenio de la construcción)', obra: true },
+  maquinaria_aut: { nombre: 'Autorización de uso de maquinaria', obra: false },
+  maquinaria_form: { nombre: 'Formación en maquinaria (RD 1215/1997)', obra: false },
+  tarjeta_ss: { nombre: 'Nº de la Seguridad Social (tarjeta o documento)', obra: false },
+  extranjeria: { nombre: 'Papeles de extranjería (residencia, admisión a trámite…)', obra: false },
   otro: { nombre: 'Otro', obra: false },
 };
 const TIPOS_EMPRESA = {
@@ -38,10 +43,26 @@ const TIPOS_EMPRESA = {
   seguro_rc: { nombre: 'Seguro de responsabilidad civil (póliza y recibo)', obra: true, caducaMeses: 12 },
   rea: { nombre: 'Registro de Empresas Acreditadas (REA)', obra: true, caducaMeses: 36 },
   prl_empresa: { nombre: 'Evaluación de riesgos / Plan de PRL / modalidad preventiva', obra: true },
+  ita: { nombre: 'ITA (Informe de Trabajadores en Alta) actualizado', obra: true, caducaMeses: 1 },
+  cert_spa: { nombre: 'Certificado del Servicio de Prevención (al corriente de pago)', obra: true, caducaMeses: 12 },
+  mutua: { nombre: 'Asociación con la Mutua y centro asistencial más cercano', obra: true, caducaMeses: 12 },
+  seguro_acc: { nombre: 'Seguro de accidentes de convenio (póliza y recibo)', obra: true, caducaMeses: 12 },
+  ta7: { nombre: 'Alta de la empresa en la Seguridad Social (TA.7)', obra: false },
+  iae: { nombre: 'Alta en el IAE', obra: false },
   escrituras: { nombre: 'Escrituras / CIF', obra: false },
   otro_empresa: { nombre: 'Otro', obra: false },
 };
-const tipoDe = (ambito, t) => (ambito === 'empresa' ? TIPOS_EMPRESA : TIPOS)[t];
+// Papeles de UNA obra (los formularios del contratista, firmados): van con su obraId.
+const TIPOS_OBRA = {
+  contrato_obra: { nombre: 'Contrato con el contratista (firmado)' },
+  adhesion_pss: { nombre: 'Adhesión al Plan de Seguridad y Salud (sellado y firmado)' },
+  trab_designado: { nombre: 'Nombramiento de Trabajador Designado (sellado y firmado)' },
+  aut_libro: { nombre: 'Autorización de firma del Libro de Subcontratación' },
+  recibi_doc: { nombre: 'Recibí de la relación de documentación (firmado)' },
+  cert_hacienda_contratista: { nombre: 'Certificado de Hacienda específico para el contratista (art. 43.1.f)', caducaMeses: 12 },
+  otro_obra: { nombre: 'Otro de la obra' },
+};
+const tipoDe = (ambito, t) => (ambito === 'empresa' ? TIPOS_EMPRESA : ambito === 'obra' ? TIPOS_OBRA : TIPOS)[t];
 
 // ── AJUSTES (qué ve el trabajador) ──
 const CFG_DEF = { visibleTrabajadores: false, nominasVisibles: false };
@@ -64,14 +85,15 @@ function _caduca(ambito, tipo, fecha, caduca) {
 }
 const _publico = d => ({ id: String(d._id), ambito: d.ambito, userId: d.userId || null, tipo: d.tipo, tipoNombre: (tipoDe(d.ambito, d.tipo) || {}).nombre || d.tipo, nombre: d.nombre, fecha: d.fecha, caduca: d.caduca, dias: diasHasta(d.caduca), mes: d.mes, mime: d.mime, size: d.size, estado: d.estado, notas: d.notas || '', ia: d.ia || null, subido: d.subido, por: d.por, visibleTrabajador: d.visibleTrabajador !== false, importes: d.importes || null });
 
-async function subir({ ambito = 'trabajador', userId, tipo, archivo, fecha, caduca, mes, notas, visibleTrabajador = true }, por) {
+async function subir({ ambito = 'trabajador', userId, obraId, tipo, archivo, fecha, caduca, mes, notas, visibleTrabajador = true }, por) {
   if (!archivo || !archivo.buffer) throw new Error('Falta el archivo');
   if (!/^(image\/|application\/pdf)/.test(archivo.mimetype || '')) throw new Error('Sube un PDF o una foto');
-  ambito = ambito === 'empresa' ? 'empresa' : 'trabajador';
+  ambito = ['empresa', 'obra'].includes(ambito) ? ambito : 'trabajador';
+  if (ambito === 'obra' && !/^[a-f0-9]{24}$/.test(String(obraId || ''))) throw new Error('¿De qué obra es?');
   if (!tipoDe(ambito, tipo)) throw new Error('Tipo de documento no válido');
   if (ambito === 'trabajador' && !userId) throw new Error('¿De qué trabajador es?');
   const db = await getDB();
-  const doc = { ambito, userId: ambito === 'trabajador' ? String(userId) : null, tipo, nombre: txt(archivo.originalname || (tipoDe(ambito, tipo) || {}).nombre, 120), fecha: fechaOk(fecha), mes: mesOk(mes), notas: txt(notas, 300),
+  const doc = { ambito, userId: ambito === 'trabajador' ? String(userId) : null, obraId: ambito === 'obra' ? String(obraId) : null, tipo, nombre: txt(archivo.originalname || (tipoDe(ambito, tipo) || {}).nombre, 120), fecha: fechaOk(fecha), mes: mesOk(mes), notas: txt(notas, 300),
     mime: archivo.mimetype, size: archivo.size || archivo.buffer.length, data: archivo.buffer, estado: 'ok', visibleTrabajador: visibleTrabajador !== false && visibleTrabajador !== 'false', subido: new Date(), por: por || '' };
   doc.caduca = _caduca(ambito, tipo, doc.fecha, caduca);
   const r = await db.collection('docsPersonal').insertOne(doc);
@@ -318,4 +340,4 @@ async function miArchivo(userId, id) {
   return d;
 }
 
-module.exports = { leerImportesNomina, leerImportesPendientes, TIPOS, TIPOS_EMPRESA, getConfig, setConfig, subir, analizar, editar, borrar, archivo, resumen, carpeta, paqueteObra, revisarCaducidades, misDocs, miArchivo, _matchTrabajador };
+module.exports = { leerImportesNomina, leerImportesPendientes, TIPOS, TIPOS_EMPRESA, TIPOS_OBRA, diasHasta, getConfig, setConfig, subir, analizar, editar, borrar, archivo, resumen, carpeta, paqueteObra, revisarCaducidades, misDocs, miArchivo, _matchTrabajador };
