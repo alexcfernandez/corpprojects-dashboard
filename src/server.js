@@ -2242,6 +2242,35 @@ Corp Projects
 app.post('/api/obras/:id/docs-entrada/enviado', requireAuthOficina, async (req, res) => {
   try { res.json(await D_OBRA().marcarEnviado(req.params.id, req.user?.name)); } catch (err) { res.status(400).json({ error: err.message }); }
 });
+// Enlace firmado y con caducidad a UN documento (enlaceDoc.js), para mandarlo por WhatsApp sin dar acceso a nada más.
+app.get('/d/:token', async (req, res) => {
+  try {
+    const id = require('./enlaceDoc').verificar(req.params.token);
+    if (!id) return res.status(404).send('Enlace caducado o no válido. Pide uno nuevo a la oficina de Corp Projects.');
+    const d = await require('./personalDocs').archivo(id);
+    if (!d || !d.data) return res.status(404).send('Documento no encontrado');
+    res.setHeader('Content-Type', d.mime || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${String(d.nombre || 'documento').replace(/[^\w .()-]/g, '_')}"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.end(Buffer.from(d.data.buffer || d.data));
+  } catch (e) { res.status(500).send('Error'); }
+});
+// Enlaces para mandar por WhatsApp a quien tenga que firmar los papeles de una obra (p. ej. el administrador).
+app.post('/api/obras/:id/docs-entrada/enviar-firmar', requireAuthOficina, express.json(), async (req, res) => {
+  try {
+    const b = req.body || {}; const movil = require('./recordatoriosCobro')._movil(b.telefono);
+    if (!movil) throw new Error('Teléfono no válido');
+    const { getDB: gdb } = require('./db'); const db = await gdb(); const { ObjectId } = require('mongodb');
+    const ids = (Array.isArray(b.docIds) ? b.docIds : []).filter(x => /^[a-f0-9]{24}$/.test(String(x))).slice(0, 10);
+    const docs = await db.collection('docsPersonal').find({ _id: { $in: ids.map(x => new ObjectId(x)) }, obraId: String(req.params.id) }, { projection: { nombre: 1 } }).toArray();
+    if (!docs.length) throw new Error('Elige qué documentos');
+    const E = require('./enlaceDoc');
+    const txt = `${String(b.texto || '').trim()}\n\n${docs.map(d => `📄 ${d.nombre}\n${E.url(String(d._id), { dias: 7 })}`).join('\n\n')}\n\n(Los enlaces valen 7 días.)`.trim();
+    const ok = await require('./notifications').sendWhatsAppTo(movil, txt);
+    if (ok === false) throw new Error('No se pudo enviar el WhatsApp');
+    res.json({ ok: true, a: movil, texto: txt });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/docs-obra', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'docs-obra.html')));
 app.get('/api/personal/resumen', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./personalDocs').resumen()); } catch (err) { res.status(500).json({ error: err.message }); }
