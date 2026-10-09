@@ -104,8 +104,9 @@ tfoot td{background:#e8f0fe!important;font-weight:700;border-top:2px solid #1a1a
 </style>
 <link rel="stylesheet" href="/cp-ui.css">
 <script src="/nav.js" defer></script>
+<link rel="stylesheet" href="/tool-theme.css">
 </head>
-<body>
+<body><script>try{if(localStorage.getItem("cp_theme")==="light")document.body.classList.add("light");}catch(e){}</script>
 
 <div class="btn-bar no-print">
   <button class="btn btn-g" onclick="window.close()">✕ Cerrar</button>

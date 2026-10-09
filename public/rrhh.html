@@ -31,7 +31,7 @@ h3{font-size:12px;margin:0 0 10px;color:var(--text2);text-transform:uppercase;le
 @media(max-width:600px){.g2{grid-template-columns:1fr}.fila .btn{flex:1}}
 </style><link rel="stylesheet" href="/cp-ui.css">
 <script src="/nav.js" defer></script>
-</head><body>
+</head><body><script>try{if(localStorage.getItem("cp_theme")==="light")document.body.classList.add("light");}catch(e){}</script>
 <div class="header"><div class="logo">CP</div><div><div style="font-weight:600">Candidatos</div><div style="font-size:12px;color:var(--text3)">De la llamada a trabajador dado de alta: ficha, documentos, entrevista y alta</div></div><a class="hbtn" href="/">← Dashboard</a></div>
 <div id="toast"></div>
 <div class="wrap" id="app"><div class="vacio">Cargando…</div></div>
