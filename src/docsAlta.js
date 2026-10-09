@@ -41,7 +41,9 @@ async function pedir(userId, { extranjero = false, por = null, _enviar = null } 
   const movil = require('./recordatoriosCobro')._movil(u.whatsapp || u.telefono);
   if (!movil) throw new Error(`${u.name} no tiene un móvil en su ficha: pónselo en Usuarios`);
   const piezas = piezasDe(!!extranjero);
-  const txt = textoPeticion(primerNombre(u.name), piezas);
+  // Si ya se le había pedido (p. ej. el mensaje le salió «Esperando el mensaje» y no lo pudo abrir), se le dice.
+  const antes = await db.collection(COL).findOne({ userId: String(userId), estado: 'abierta' });
+  const txt = (antes ? 'Te lo repito por si no se te abrió el mensaje anterior: no hace falta abrir ningún enlace, solo mandar las fotos aquí mismo.\n\n' : '') + textoPeticion(primerNombre(u.name), piezas);
   const ok = await (_enviar || require('./notifications').sendWhatsAppTo)(movil, txt);
   if (ok === false) throw new Error('No se pudo enviar el WhatsApp (mira que Corpy esté conectado)');
   await db.collection(COL).updateMany({ userId: String(userId), estado: 'abierta' }, { $set: { estado: 'sustituida' } });
