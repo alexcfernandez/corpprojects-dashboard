@@ -129,12 +129,13 @@ async function cuentas({ desde = '2025-01-01' } = {}) {
     aplicarRectificativas(c.facturas);
     const tienda = aplicarTienda(c.facturas);
     const abonos = c.facturas.filter(f => f.estado === 'abono').reduce((a, f) => a + f.total, 0);
+    const abonosLibres = c.facturas.filter(f => f.estado === 'abono' && !(f.pagos || []).length).reduce((a, f) => a + f.total, 0);   // los ya descontados en un recibo no restan otra vez
     const pend = c.facturas.reduce((a, f) => a + f.pendiente, 0);
     const dom = domiciliado(c.facturas);
     const sinPagar = c.facturas.filter(f => f.estado === 'pendiente' || f.estado === 'parcial');
     const recientes = dom ? sinPagar.filter(f => recienteDom(f)) : [];
     return { clave: c.clave, proveedor: c.proveedor, nFacturas: c.facturas.length, total: r2(c.facturas.reduce((a, f) => a + f.total, 0)),
-      pagado: r2(c.facturas.reduce((a, f) => a + f.pagado, 0)), pendiente: r2(Math.max(0, pend + abonos)), abonos: r2(abonos), domiciliado: dom,
+      pagado: r2(c.facturas.reduce((a, f) => a + f.pagado, 0)), pendiente: r2(Math.max(0, pend + abonosLibres)), abonos: r2(abonos), domiciliado: dom,
       nPendientes: sinPagar.length - recientes.length, nDomiciliadas: recientes.length, ultima: c.facturas.map(f => f.fecha).sort().pop(),
       tienda, sinLocalizar: r2(c.facturas.reduce((a, f) => a + (f.sinLocalizar || 0), 0)) };
   }).sort((a, b) => b.pendiente - a.pendiente || String(b.ultima).localeCompare(String(a.ultima)));
@@ -196,11 +197,12 @@ async function cuenta(nombre, { desde = '2025-01-01' } = {}) {
   const dom = domiciliado(facturas, sinFactura);
   if (dom) facturas.forEach(f => { if (f.estado === 'pendiente' || f.estado === 'parcial') { if (recienteDom(f)) f.domiciliada = true; else f.reciboNoVisto = true; } });
   const abonos = facturas.filter(f => f.estado === 'abono').reduce((a, f) => a + f.total, 0);
+  const abonosLibres = facturas.filter(f => f.estado === 'abono' && !(f.pagos || []).length).reduce((a, f) => a + f.total, 0);
   const pend = facturas.reduce((a, f) => a + f.pendiente, 0);
   return {
     proveedor: nombreProv, facturas, sinFactura, tienda, domiciliado: dom,
     totales: { facturado: r2(facturas.filter(f => f.total > 0).reduce((a, f) => a + f.total, 0)), abonos: r2(abonos), pagado: r2(facturas.reduce((a, f) => a + f.pagado, 0)),
-      pendiente: r2(Math.max(0, pend + abonos)), pagosSinFactura: r2(sinFactura.reduce((a, m) => a + m.importe, 0)), sinLocalizar: r2(facturas.reduce((a, f) => a + (f.sinLocalizar || 0), 0)) },
+      pendiente: r2(Math.max(0, pend + abonosLibres)), pagosSinFactura: r2(sinFactura.reduce((a, m) => a + m.importe, 0)), sinLocalizar: r2(facturas.reduce((a, f) => a + (f.sinLocalizar || 0), 0)) },
   };
 }
 

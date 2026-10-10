@@ -69,4 +69,18 @@ async function mapa() {
   try { const l = await (await getDB()).collection(COL).find({}).toArray(); return new Map(l.map(x => [dig(x.recibo), { ...x, efectos: (x.efectos || []).map(e => ({ ...e, clave: dig(e.numero) })) }])); } catch (e) { return new Map(); }
 }
 
-module.exports = { esCorreoEfectos, desdeCorreo, importarDelCorreo, mapa, _dig: dig };
+// Las facturas de las cartas que no están ni en StelOrder ni en Compras: se buscan en el correo y se traen.
+async function completar() {
+  const T = require('./trimestre');
+  const rec = await T.recibidasPunteo(await T.todasRecibidas());
+  const hay = new Set(rec.filter(r => /saltoki/i.test(r.proveedor || '')).map(r => dig(r.refProveedor)));
+  const out = [];
+  for (const ef of (await mapa()).values()) for (const e of ef.efectos || []) {
+    if (hay.has(e.clave)) continue;
+    try { const r = await require('./facturaOriginal').buscar({ ref: e.numero, proveedor: 'Saltoki', total: Math.abs(e.importe) }); out.push({ recibo: ef.recibo, efecto: e.numero, importe: e.importe, compraId: r.compraId || null }); if (r.compraId) hay.add(e.clave); }
+    catch (err) { out.push({ recibo: ef.recibo, efecto: e.numero, error: err.message }); }
+  }
+  return out;
+}
+
+module.exports = { esCorreoEfectos, desdeCorreo, importarDelCorreo, completar, mapa, _dig: dig };

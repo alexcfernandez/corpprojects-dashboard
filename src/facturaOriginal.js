@@ -23,7 +23,10 @@ async function buscar({ ref, proveedor = '', total = null } = {}) {
   const EI = require('./email-intelligence');
   const gmail = EI.getGmailClient();
   // Primero el número tal cual; si no, solo su parte numérica larga (los proveedores lo escriben distinto).
-  const consultas = [`"${ref.replace(/"/g, '')}" has:attachment`, ...(dig(ref).length >= 5 && dig(ref) !== ref ? [`"${dig(ref)}" has:attachment`] : [])];
+  // (también sin ceros delante y con punto de miles, como Saltoki: «Factura nº 30.629» y «30629.pdf»).
+  const sinCeros = dig(ref).replace(/^0+/, ''), conPunto = sinCeros.length > 3 ? sinCeros.slice(0, -3) + '.' + sinCeros.slice(-3) : null;
+  const consultas = [...new Set([`"${ref.replace(/"/g, '')}" has:attachment`, ...(dig(ref).length >= 5 && dig(ref) !== ref ? [`"${dig(ref)}" has:attachment`] : []),
+    ...(sinCeros.length >= 4 && sinCeros !== ref ? [`"${sinCeros}" has:attachment`] : []), ...(conPunto ? [`"${conPunto}" has:attachment`] : [])])];
   const vistos = new Set();
   for (const q of consultas) {
     const r = await gmail.users.messages.list({ userId: 'me', q, maxResults: 6 });
