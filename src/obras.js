@@ -228,7 +228,7 @@ async function nuevaFase(id, { desde, nombre } = {}) {
   if (!o) throw new Error('Obra no encontrada');
   const n = await db.collection('obras').countDocuments({ faseDe: String(o._id) });
   const ref = String(nombre || '').trim() || `${o.reference} – Fase ${n + 2}`;
-  const nueva = await createObra({ clientName: o.clientName, reference: ref, address: o.address, description: o.description, aliases: o.aliases || [], tags: o.tags || [], startDate: desde, faseDe: String(o._id), notes: `Fase nueva de «${o.reference}» desde el ${desde.split('-').reverse().join('/')}` });
+  const nueva = await createObra({ clientName: o.clientName, reference: ref, address: o.address, description: o.description, aliases: [...new Set([...(o.aliases || []), o.reference].filter(Boolean))], tags: o.tags || [], startDate: desde, faseDe: String(o._id),   // el nombre viejo, para que cuenten las horas fichadas con él notes: `Fase nueva de «${o.reference}» desde el ${desde.split('-').reverse().join('/')}` });
   const idN = String(nueva.id), idV = String(o._id);
   const antes = new Date(new Date(desde + 'T12:00:00Z').getTime() - 86400000).toISOString().slice(0, 10);
   // Compras: las de la obra y las que la llevan en su reparto por líneas.
