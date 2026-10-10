@@ -336,12 +336,12 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
     const fCit = fechaCitada(f.concepto);
     // Las que StelOrder ya da por pagadas (pendiente 0) no entran: se pagaron en otro trimestre.
     const todas = recibidas.filter(r => !usadasRec.has(r.id) && Math.abs(r.total) > 0.005 && !(r.pendienteStel != null && Math.abs(r.pendienteStel) < 0.01) && nombraR(f.concepto, r) && dias(f.fecha, r.fecha) >= -7 && dias(f.fecha, r.fecha) <= 150
-      && (!fCit || (dias(fCit, r.fecha) >= 0 && dias(fCit, r.fecha) <= 10)));
+      && (!fCit || (dias(fCit, r.fecha) >= 0 && dias(fCit, r.fecha) <= 21)));   // el recibo de Saltoki junta ~3 semanas
     // Cada proveedor por separado («Sant Narcis» puede nombrar a más de uno): el de más facturas candidatas primero.
     const porProv = {}; todas.forEach(r => { (porProv[r.proveedor] = porProv[r.proveedor] || []).push(r); });
     const grupos = Object.values(porProv).sort((a, b) => b.length - a.length).map(g => g.sort((a, b) => String(a.fecha).localeCompare(String(b.fecha))));
     const cands = grupos[0] || [];
-    if (!cands.length) continue;
+    if (!cands.length && !fCit) continue;
     const objetivo = -f.importe;
     let combo = null;
     for (const g of grupos) {
@@ -353,7 +353,7 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
     // El recibo cita la fecha (Saltoki): si no cuadra, entran también las que StelOrder da por pagadas sin pago en el
     // banco (las marca pagadas a mano y el recibo es justo su pago: 97,39 + 192,06 = 289,45 del 20/04).
     if (!combo && fCit) {
-      const conStel = recibidas.filter(r => !usadasRec.has(r.id) && Math.abs(r.total) > 0.005 && nombraR(f.concepto, r) && dias(fCit, r.fecha) >= 0 && dias(fCit, r.fecha) <= 10 && (!cands.length || r.proveedor === cands[0].proveedor))
+      const conStel = recibidas.filter(r => !usadasRec.has(r.id) && Math.abs(r.total) > 0.005 && nombraR(f.concepto, r) && dias(fCit, r.fecha) >= 0 && dias(fCit, r.fecha) <= 21 && (!cands.length || r.proveedor === cands[0].proveedor))
         .sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
       if (conStel.length > cands.length) combo = tramo(conStel, objetivo) || combinacionAmplia(conStel.slice(-14), objetivo);
     }
@@ -367,6 +367,7 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
       continue;
     }
     // Sin cuadre: la cuenta con ese proveedor, para elegir a mano o ver cuánto falta por llegar.
+    if (!cands.length) continue;
     const antes = cands.filter(r => dias(f.fecha, r.fecha) >= 0);
     const pendiente = r2(antes.reduce((a, r) => a + r.total, 0));
     f.candidatas = cands.slice(-30).map(r => ({ id: r.id, ref: r.numero, refProveedor: r.refProveedor, tercero: r.proveedor, total: r.total, fecha: r.fecha }));

@@ -66,3 +66,11 @@ test('Saltoki: recibo con «Fecha Factura» paga también las que StelOrder ya d
   const f = C.conciliar({ movimientos: [{ id: 'm', fecha: '2026-05-25', importe: -289.45, concepto: 'Recibo Saltoki Girona S.a., Concepto: Factura N: 4/147359 Fecha Factura: 20/04/2026 Vto.: 001', codigo: '061' }], emitidas: [], recibidas: rec }).filas[0];
   assert.equal(f.estado, 'punteado'); assert.deepEqual(f.docs.map(d => d.refProveedor), ['19815', '21166']);
 });
+
+test('Saltoki: el recibo del 20/07 paga 3 semanas (facturas y abonos del 4 al 18)', () => {
+  const P = 'Saltoki girona S.A';
+  const d = (id, fecha, total) => ({ id, numero: id, refProveedor: id, proveedor: P, fecha, total });
+  const rec = [d('038912', '2026-07-04', -240.73), d('038913', '2026-07-04', 164.18), d('040308', '2026-07-11', -17.82), d('040309', '2026-07-11', 147.04), d('041763', '2026-07-18', -42.82), d('041764', '2026-07-18', 494.95)];
+  const f = C.conciliar({ movimientos: [{ id: 'm', fecha: '2026-08-25', importe: -504.8, concepto: 'Recibo Saltoki Girona S.a., Concepto: Factura N: 4/150527 Fecha Factura: 20/07/2026 Vto.: 001', codigo: '061' }], emitidas: [], recibidas: rec }).filas[0];
+  assert.equal(f.estado, 'punteado'); assert.equal(f.docs.length, 6);
+});
