@@ -2125,6 +2125,10 @@ app.post('/api/embargos/:id/pago', requireAuthOficina, express.json(), async (re
     const b = req.body || {}; res.json(await require('./embargos').apuntarPago(req.params.id, { importe: b.importe, fecha: b.fecha, nota: b.nota }, req.user?.name || 'Oficina')); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+// Absentismes del mes para la gestoría: borrador en Gmail + resumen (los días sin apuntar, para revisarlos).
+app.post('/api/personal/absentismes', requireAuthOficina, express.json(), async (req, res) => {
+  try { res.json(await require('./absentismes').preparar({ mes: (req.body || {}).mes, avisar: false })); } catch (err) { res.status(400).json({ error: err.message }); }
+});
 // Lo pagado en efectivo de una nómina (no sale en el banco).
 app.post('/api/personal/nominas/:id/efectivo', requireAuthOficina, express.json(), async (req, res) => {
   try { if (!users.canSeeMoney(req.user?.role || 'owner')) return res.status(403).json({ error: 'Solo Dueño y Oficina' });

@@ -2114,6 +2114,15 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
     return handlerQuienTrabaja(texto, from);
   }
 
+  // C0.absentismes) «prepara los absentismes (de septiembre)»: rehace la respuesta a la gestoría con la presencia.
+  if (!imagenes.length && /\b(prepara|haz|rehaz|vuelve a (hacer|preparar)|manda|envia)\b[\s\S]*\babsentism/.test(_ni)) {
+    const MES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    const im = MES.findIndex(x => _ni.includes(x)); let mes = null;
+    if (im >= 0) { const hoy = new Date(); const y = im > hoy.getMonth() ? hoy.getFullYear() - 1 : hoy.getFullYear(); mes = `${y}-${String(im + 1).padStart(2, '0')}`; }
+    try { const r = await require('./absentismes').preparar({ mes, avisar: false }); return r.aviso; }
+    catch (e) { console.error('[Absentismes]', e.message); return 'No he podido preparar los absentismes ahora mismo: ' + e.message; }
+  }
+
   // C0.horas) PREGUNTAS de presencia y horas («¿cuántas horas lleva David esta semana?», «¿quién estuvo de vacaciones
   // en agosto?», «¿cuántas horas llevamos en la Claudia?»): las contesta el agente con los datos reales (solo lee).
   // Solo preguntas: «pon a Javi de vacaciones» sigue siendo una orden y va por su camino.

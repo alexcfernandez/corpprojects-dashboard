@@ -458,6 +458,16 @@ async function procesarEmail(gmail, messageId) {
       }
     } catch (e) { console.warn('[Email] nóminas:', e.message); }
 
+    // Petición mensual de ABSENTISMES de la gestoría: respuesta preparada (borrador en el hilo) + aviso a Álex.
+    try {
+      const AB = require('./absentismes');
+      if (process.env.ABSENTISMES_CORREO !== 'off' && AB.esPeticion({ de, asunto, cuerpo })) {
+        const mid = (headers.find(h => /^message-id$/i.test(h.name)) || {}).value || null;
+        const r = await AB.desdeCorreo({ de, asunto, cuerpo, fecha, threadId: msg.data.threadId, messageIdHeader: mid });
+        console.log(`[Email] absentismes ${r && r.mes}: borrador listo`);
+      }
+    } catch (e) { console.warn('[Email] absentismes:', e.message); }
+
     // Carta de efectos de Saltoki (qué facturas junta cada recibo): para que el cuadre case cada recibo exacto.
     try {
       const EP = require('./efectosProveedor');
