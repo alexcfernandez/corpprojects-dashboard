@@ -85,7 +85,7 @@ REGLAS DURAS:
 - Distingue: "en el calendario / en la agenda" + fecha/hora = evento personal → crear_evento_agenda. "en <comunidad> que <hecho>" = nota de comunidad → anadir_nota_comunidad. Si es ambiguo, pregunta.
 - Resuelve fechas relativas ("mañana", "el lunes", "el 19") a YYYY-MM-DD respecto a hoy.
 - HORA: si es INEQUÍVOCA ("19:30", "a las 19", "a las 8 de la mañana", "mediodía") → HH:MM en 24h. Si es AMBIGUA mañana/tarde ("las 7.30", "a las 8", "a las 5" sin "de la mañana/tarde" ni formato 24h) → NO la asumas: PREGUNTA "¿mañana o tarde? (p. ej. 07:30 o 19:30)" antes de crear el evento. Si no dice hora → null.
-- Presencia, horas, quién trabajó/vino/faltó, vacaciones, bajas → consultar_presencia. Horas o coste de una obra → horas_obra. Contesta SOLO con lo que devuelvan (si no hay datos, dilo). «Esta semana» = desde el lunes.
+- Presencia, horas, quién trabajó/vino/faltó, vacaciones, bajas → consultar_presencia. Para «cuántos días faltó/trabajó/lleva X» usa resumenPorPersona: «faltó» = faltaInjustificada + faltaJustificada + sinApuntar (días laborables sin nada apuntado); dilo desglosado y con las fechas si son pocas. Si preguntan «cuántos días lleva» sin decir de qué, da días trabajados (y vacaciones/baja si hay). Horas o coste de una obra → horas_obra. Contesta SOLO con lo que devuelvan (si no hay datos, dilo). «Esta semana» = desde el lunes.
 - Al contestar con datos: breve, para WhatsApp (*negritas* para nombres y totales, una línea por persona u obra).
 - Responde en español y breve.`;
 }
@@ -146,13 +146,33 @@ async function consultarPresencia({ desde, hasta, trabajador = null, obra = null
     porPersona: Object.entries(porPersona).map(([nombre, x]) => ({ nombre, ...x })).sort((a, b) => b.horas - a.horas),
     porObra: Object.entries(porObra).map(([nombre, x]) => ({ nombre, horas: x.horas, personas: [...x.personas] })).sort((a, b) => b.horas - a.horas),
     detalle: l.slice(0, 80).map(e => ({ fecha: e.date, trabajador: e.workerName, estado: e.estado || 'obra', horas: e.horas, obras: (e.obras || []).map(o => `${o.clientName} ${o.horas || ''}h`).join(', ') || e.clientName || '' })) };
-  // Quién no tiene nada apuntado (solo para días sueltos o semanas, y sin filtro de obra/estado).
-  if (!obra && !estado && (new Date(hasta) - new Date(desde)) / 86400000 <= 7) {
+  // Resumen POR PERSONA del periodo: días trabajados, vacaciones, baja, faltas y laborables SIN NADA APUNTADO (cuentan
+  // como faltas si no hay otra explicación), con sus fechas. Laborables = lunes a viernes menos festivos, desde el
+  // primer día que esa persona tiene algo apuntado (para no contar lo de antes de entrar) y hasta hoy.
+  if (!obra) {
     try {
-      const us = (await require('./users').getUsers(false)).filter(u => u.active !== false && ['tecnico', 'encargado'].includes(require('./users').normalizeRole(u.role)) && (!trabajador || _casa(u.name, trabajador)));
-      const dias = []; for (let d = new Date(desde + 'T12:00:00Z'); d <= new Date(hasta + 'T12:00:00Z'); d = new Date(d.getTime() + 86400000)) { const w = d.getUTCDay(); if (w !== 0 && w !== 6) dias.push(d.toISOString().slice(0, 10)); }
-      out.sinApuntar = dias.map(f => ({ fecha: f, quienes: us.filter(u => !l.some(e => e.date === f && String(e.workerId) === String(u._id))).map(u => u.name) })).filter(x => x.quienes.length);
-    } catch (e) {}
+      const U = require('./users');
+      const us = (await U.getUsers(false)).filter(u => ['tecnico', 'encargado', 'oficina'].includes(U.normalizeRole(u.role)) && (trabajador ? _casa(u.name, trabajador) : u.active !== false));
+      const ext = await require('./attendance').extremosPorTrabajador();
+      const fest = {}; for (const y of new Set([desde.slice(0, 4), hasta.slice(0, 4)])) Object.assign(fest, await require('./festivos').lista(y).catch(() => ({})));
+      const hoy = hoyMadridISO();
+      const NOM = { obra: 'trabajados', oficina: 'oficina', vacaciones: 'vacaciones', baja: 'baja', falta_j: 'faltaJustificada', falta_i: 'faltaInjustificada', libre: 'libre', festivo: 'festivo' };
+      out.resumenPorPersona = us.map(u => {
+        const e = ext.get(String(u._id)) || {};
+        const ini = [desde, e.primero || desde].sort().pop(), fin = [hasta, hoy, ...(u.active === false && e.ultimo ? [e.ultimo] : [])].sort()[0];
+        const suyos = l.filter(x => String(x.workerId) === String(u._id));
+        const r = { nombre: u.name, desde: ini, hasta: fin, laborables: 0, trabajados: 0, oficina: 0, vacaciones: 0, baja: 0, faltaJustificada: 0, faltaInjustificada: 0, libre: 0, festivo: 0, horas: 0, sinApuntar: 0, fechasSinApuntar: [], fechasFaltas: [], fechasVacaciones: [], fechasBaja: [] };
+        for (const x of suyos) { const k = NOM[x.estado || 'obra'] || 'trabajados'; r[k]++; if (['obra', 'oficina'].includes(x.estado || 'obra')) r.horas += Number(x.horas) || 0;
+          if (/falta/.test(x.estado || '')) r.fechasFaltas.push(x.date); if (x.estado === 'vacaciones') r.fechasVacaciones.push(x.date); if (x.estado === 'baja') r.fechasBaja.push(x.date); }
+        if (!estado) for (let d = new Date(ini + 'T12:00:00Z'); ini <= fin && d <= new Date(fin + 'T12:00:00Z'); d = new Date(d.getTime() + 86400000)) {
+          const f = d.toISOString().slice(0, 10), w = d.getUTCDay(); if (w === 0 || w === 6 || fest[f]) continue;
+          r.laborables++; if (!suyos.some(x => x.date === f)) { r.sinApuntar++; r.fechasSinApuntar.push(f); }
+        }
+        for (const k of ['fechasSinApuntar', 'fechasFaltas', 'fechasVacaciones', 'fechasBaja']) r[k] = r[k].sort().slice(0, 31);
+        if (!e.primero || e.primero > hasta) r.nota = 'Sin nada apuntado en este periodo (o aún no había empezado).';
+        return r;
+      }).filter(r => trabajador || r.laborables || r.trabajados);
+    } catch (e) { console.warn('[Agente] resumen por persona:', e.message); }
   }
   return out;
 }

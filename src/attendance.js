@@ -533,7 +533,15 @@ async function buscarSitio(texto, { from, to, todos = false } = {}) {
   return { q: texto, from: from || null, to: to || null, todos, sitios: out };
 }
 
+// Primer y último día con algo apuntado de cada trabajador (para no contar como «sin apuntar» lo de antes de entrar).
+async function extremosPorTrabajador() {
+  const db = await getDB();
+  const l = await db.collection('attendance').aggregate([{ $group: { _id: '$workerId', primero: { $min: '$date' }, ultimo: { $max: '$date' } } }]).toArray();
+  return new Map(l.map(x => [String(x._id), { primero: x.primero, ultimo: x.ultimo }]));
+}
+
 module.exports = {
+  extremosPorTrabajador,
   buscarSitio, getObras,
   WORKERS, ESTADOS, getWorkers,
   saveAttendance, deleteAttendance, getAttendance, syncPresenceFromParte, marcarPresenciaFichaje, actualizarHorasFichaje, jornadaSinSalida, horasDelDia,
