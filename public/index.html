@@ -1039,7 +1039,14 @@ async function verCatBanco(k,nombre){if(!k)return;let el=document.getElementById
   let l;try{l=await af('/api/bank/movimientos?categoria='+encodeURIComponent(k)+'&from='+desde+'&to='+hasta+'&limit=2000');}catch(e){el.innerHTML='<div style="color:var(--red)">'+e.message+'</div>';return;}
   l=Array.isArray(l)?l:(l.movimientos||[]);
   const quien=m=>(m.contraparte||String(m.concepto||'').replace(/^(transferencia( inmediata)? (a favor de|de)|recibo|compra( internet)? en|pago movil en|transaccion contactless)\s+/i,'').replace(/[,.:]?\s+(concepto|n[º°o]\.?\s*recibo|ref\.?\s*mandato|tarj).*$/i,'')).trim().slice(0,40)||'—';
-  const g={};l.forEach(m=>{const q=quien(m);(g[q]=g[q]||{n:0,t:0,ms:[]});g[q].n++;g[q].t+=Math.abs(m.importe);g[q].ms.push(m);});
+  // El mismo proveedor escrito de varias formas («Saint-gobain Weber», «Saint Gobain Weber», «… Cemarksa»): una fila.
+  const nq=x=>String(x).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\b(s\.?\s?l\.?\s?u?|s\.?\s?a\.?\s?u?|slu|sau|sl|sa|scs|sccl)\b\.?/g,' ').replace(/[^a-z0-9ñç]+/g,' ').replace(/\b(girona|gerona|barcelona|madrid|es)\b/g,' ').replace(/\s+/g,' ').trim().replace(/^(compra|pago|recibo)\s+/,'');
+  const GEN=/^(pintur\w*|ferreter\w*|construcc\w*|material\w*|taller\w*|recambio\w*|recanvi\w*|servei\w*|servicio\w*|transport\w*|cafeteria|restaurant\w*|hermanos|germans|grupo?|comercial|distribuc\w*|suministro\w*|instal\w*|reformas?|obras?|gestio\w*|autos?|electric\w*|fontaner\w*|compra|pago)$/;
+  const g0={};l.forEach(m=>{const q=quien(m),k=nq(q)||q;(g0[k]=g0[k]||{n:0,t:0,ms:[],nombres:{}});g0[k].n++;g0[k].t+=Math.abs(m.importe);g0[k].ms.push(m);g0[k].nombres[q]=(g0[k].nombres[q]||0)+1;});
+  const ks=Object.keys(g0).sort((a,b)=>g0[b].t-g0[a].t),dest={};
+  for(const k of ks){const w=k.split(' ');if(w[0].length<5||GEN.test(w[0]))continue;const o=ks.find(x=>x!==k&&!dest[x]&&(()=>{const xw=x.split(' ');const [a,b]=xw.length<=w.length?[xw,w]:[w,xw];return a.every((y,i)=>b[i]===y);})());if(o&&!dest[k]&&g0[o].t>=g0[k].t)dest[k]=o;}
+  for(const [k,o] of Object.entries(dest)){const d=g0[o],x=g0[k];d.n+=x.n;d.t+=x.t;d.ms.push(...x.ms);for(const [nm,c] of Object.entries(x.nombres))d.nombres[nm]=(d.nombres[nm]||0)+c;delete g0[k];}
+  const g={};for(const x of Object.values(g0)){const nm=Object.entries(x.nombres).sort((a,b)=>b[1]-a[1])[0][0];x.ms.sort((a,b)=>String(b.fechaOperacion).localeCompare(String(a.fechaOperacion)));g[nm]=x;}
   const filas=Object.entries(g).sort((a,b)=>b[1].t-a[1].t);const tot=filas.reduce((a,[,x])=>a+x.t,0);
   el.innerHTML=`<div class="card-title">${nombre} · ${catY==='all'?'todo':catY} · ${l.length} movimientos · ${eur(tot)}</div>
     <table><thead><tr><th>A quién</th><th style="text-align:right">Pagos</th><th style="text-align:right">Total</th></tr></thead><tbody>
