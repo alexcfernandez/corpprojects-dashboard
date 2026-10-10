@@ -74,3 +74,12 @@ test('Saltoki: el recibo del 20/07 paga 3 semanas (facturas y abonos del 4 al 18
   const f = C.conciliar({ movimientos: [{ id: 'm', fecha: '2026-08-25', importe: -504.8, concepto: 'Recibo Saltoki Girona S.a., Concepto: Factura N: 4/150527 Fecha Factura: 20/07/2026 Vto.: 001', codigo: '061' }], emitidas: [], recibidas: rec }).filas[0];
   assert.equal(f.estado, 'punteado'); assert.equal(f.docs.length, 6);
 });
+
+test('Saltoki: el recibo 4/148453 son exactamente las facturas de su carta de efectos (aunque un abono difiera en céntimos)', () => {
+  const P = 'Saltoki girona S.A';
+  const d = (id, ref, fecha, total) => ({ id, numero: id, refProveedor: ref, proveedor: P, fecha, total });
+  const rec = [d('a', '25925', '2026-05-09', 378.61), d('b', '27336', '2026-05-16', 766.83), d('c', 'ABONO 28800', '2026-05-23', -39.7), d('e', '28801', '2026-05-23', 288.95), d('x', '823.932', '2026-05-04', 30.71)];
+  const ef = new Map([['4148453', { recibo: '4 148453', clave: '4148453', importe: 1394.51, efectos: [{ numero: '025925', clave: '25925', importe: 378.61 }, { numero: '027336', clave: '27336', importe: 766.83 }, { numero: '028800', clave: '28800', importe: -39.88 }, { numero: '028801', clave: '28801', importe: 288.95 }] }]]);
+  const f = C.conciliar({ movimientos: [{ id: 'm', fecha: '2026-06-25', importe: -1394.51, concepto: 'Recibo Saltoki Girona S.a., Concepto: Factura N: 4/148453 Fecha Factura: 25/05/2026 Vto.: 001', codigo: '061' }], emitidas: [], recibidas: rec, efectos: ef }).filas[0];
+  assert.equal(f.estado, 'punteado'); assert.equal(f.docs.length, 4); assert.match(f.nota, /028800: -39\.88/);
+});

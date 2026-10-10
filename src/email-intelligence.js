@@ -458,6 +458,12 @@ async function procesarEmail(gmail, messageId) {
       }
     } catch (e) { console.warn('[Email] nóminas:', e.message); }
 
+    // Carta de efectos de Saltoki (qué facturas junta cada recibo): para que el cuadre case cada recibo exacto.
+    try {
+      const EP = require('./efectosProveedor');
+      if (EP.esCorreoEfectos({ de, asunto, adjuntos })) console.log(`[Email] efectos: ${JSON.stringify(await EP.desdeCorreo(messageId, adjuntos, { fecha }))}`);
+    } catch (e) { console.warn('[Email] efectos:', e.message); }
+
     // Documentación mensual de la gestoría (ITA, RNT/RLC, certificados): entra sola en Personal → Empresa.
     try {
       const DG = require('./docsGestoriaCorreo');

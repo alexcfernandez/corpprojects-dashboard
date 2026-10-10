@@ -335,7 +335,7 @@ async function punteo(q) {
     const porId = {}; man.forEach(x => { porId[x._id] = x; });
     movs.forEach(m => { if (porId[m.id]) m.manual = porId[m.id]; });
   } catch (e) {}
-  const res = C.conciliar({ movimientos: movs, emitidas: em, recibidas: rec });
+  const res = C.conciliar({ movimientos: movs, emitidas: em, recibidas: rec, efectos: await require('./efectosProveedor').mapa() });
   const recTrim = rec.filter(r => enRango(r.fecha, R));
   let sinPago = recTrim.filter(r => !res.recibidasUsadas.has(r.id) && r.total > 0);
   // ¿Se pagaron DESPUÉS del trimestre? Se mira en los extractos ya subidos posteriores.
@@ -734,7 +734,7 @@ async function mapaPagos() {
   const man = await db.collection('punteoManual').find({}).toArray();
   const porId = {}; man.forEach(x => { porId[x._id] = x; });
   movs.forEach(m => { if (porId[m.id]) m.manual = porId[m.id]; });
-  const res = C.conciliar({ movimientos: movs, emitidas: em, recibidas: rec });
+  const res = C.conciliar({ movimientos: movs, emitidas: em, recibidas: rec, efectos: await require('./efectosProveedor').mapa() });
   const porDoc = new Map(), porMov = new Map();
   for (const f of res.filas) {
     porMov.set(f.id, { estado: f.estado, tipo: f.tipo || null, confianza: f.confianza || null, nota: f.nota || null, persona: f.persona || null, docs: (f.docs || []).map(d => ({ ref: d.ref, refProveedor: d.refProveedor || null, tercero: d.tercero || null, total: d.total, fecha: d.fecha || null, compraId: d.compraId || null })) });

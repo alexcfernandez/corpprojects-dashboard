@@ -152,7 +152,7 @@ function combinacionAmplia(cands, objetivo, max = 5) {
   return mejor;
 }
 
-function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
+function conciliar({ movimientos = [], emitidas = [], recibidas = [], efectos = null } = {}) {
   const usadasRec = new Set(), usadasEm = new Set();
   const emPorNum = new Map(); emitidas.forEach(e => { const n = numFactura(e.numero); if (n != null) emPorNum.set(n, e); });
   const filas = movimientos.map((m, i) => ({ i, ...m, importe: r2(m.importe), ...(m.fijo || tipoMovimiento(m)), docs: [], confianza: null }));
@@ -192,6 +192,25 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
     f.estado = 'punteado'; f.confianza = 'alta';
     if (!igual(suma, f.importe)) { f.nota = f.importe < suma ? `Cobro parcial (factura ${suma.toFixed(2)} €)` : `Cobra más que la factura (${suma.toFixed(2)} €)`; f.confianza = 'media'; }
     docs.forEach(d => usadasEm.add(d.id));
+  }
+
+  // 1b) RECIBO cuyas facturas dice el propio proveedor (carta «Renovació d'efectes» de Saltoki, efectosProveedor.js):
+  //     el banco cita «Factura N: 4/148453» y ese recibo son exactamente esas facturas y abonos.
+  const soloDig = x => String(x || '').replace(/\D/g, '').replace(/^0+/, '');
+  if (efectos && efectos.size) for (const f of filas.filter(x => !x.estado && x.importe < 0)) {
+    const m = /factura n[º°o.]*:?\s*([0-9][0-9 /.-]{3,}?)\s+fecha/i.exec(f.concepto || '') || /factura n[º°o.]*:?\s*([0-9][0-9 /.-]{3,})/i.exec(f.concepto || '');
+    const ef = m && efectos.get(soloDig(m[1])); if (!ef) continue;
+    const docs = [], falta = [], difs = [];
+    for (const e of ef.efectos || []) {
+      const r = recibidas.find(x => !usadasRec.has(x.id) && soloDig(x.refProveedor) === e.clave && (nombraR(f.concepto, x) || /saltoki/i.test(x.proveedor || '')));
+      if (!r) { falta.push(e.numero); continue; }
+      docs.push(r); if (Math.abs(Math.abs(r.total) - Math.abs(e.importe)) >= 0.01 || Math.sign(r.total) !== Math.sign(e.importe)) difs.push(`${e.numero}: ${e.importe.toFixed(2)} € en la carta y ${r.total.toFixed(2)} € en StelOrder`);
+    }
+    if (!docs.length) continue;
+    f.estado = 'punteado'; f.confianza = 'alta';
+    f.docs = docs.map(r => ({ ref: r.numero, tercero: r.proveedor, total: r.total, fecha: r.fecha, refProveedor: r.refProveedor }));
+    docs.forEach(r => usadasRec.add(r.id));
+    f.nota = `Recibo ${ef.recibo}: ${docs.length} de ${(ef.efectos || []).length} documentos según la carta de efectos del proveedor` + (falta.length ? ` · faltan en el sistema: ${falta.join(', ')}` : '') + (difs.length ? ` · importes distintos: ${difs.join('; ')}` : '');
   }
 
   // 2) PAGOS: candidatos con el MISMO importe, fecha razonable y, mejor, el nombre del proveedor en el concepto

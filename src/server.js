@@ -2083,6 +2083,11 @@ app.post('/api/banco/reclasificar-combustible', requireAuth, async (req, res) =>
   if ((req.user?.role || 'owner') !== 'owner') return res.status(403).json({ error: 'Solo Dueño' });
   try { res.json(await require('./banco').reclasificarCombustible()); } catch (err) { res.status(400).json({ error: err.message }); }
 });
+app.post('/api/proveedores/efectos/importar', requireAuth, async (req, res) => {
+  if ((req.user?.role || 'owner') !== 'owner') return res.status(403).json({ error: 'Solo Dueño' });
+  req.setTimeout && req.setTimeout(300000);
+  try { res.json(await require('./efectosProveedor').importarDelCorreo({ meses: 12 })); } catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.post('/api/compras/reparar-duplicados', requireAuth, async (req, res) => {
   if ((req.user?.role || 'owner') !== 'owner') return res.status(403).json({ error: 'Solo Dueño' });
   try { res.json(await require('./compras').repararDuplicados()); } catch (err) { res.status(400).json({ error: err.message }); }
