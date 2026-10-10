@@ -38,6 +38,20 @@ let estado = 'connecting'; // connecting | open | close | loggedOut
 let bucleArrancado = false;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// REENVÍO cuando el móvil que recibe no pudo descifrar el mensaje (le sale «Esperando el mensaje»; pasa sobre todo con
+// contactos nuevos): WhatsApp pide un reintento y Baileys necesita el mensaje original (getMessage) y un contador de
+// reintentos. Se guardan en memoria los últimos 500 enviados (los reintentos llegan en segundos o minutos).
+const enviados = new Map();
+function guardarEnviado(msg) {
+  if (!msg || !msg.key || !msg.key.id || !msg.message) return;
+  enviados.set(msg.key.id, msg.message);
+  if (enviados.size > 500) enviados.delete(enviados.keys().next().value);
+}
+const contadorReintentos = (() => {
+  const m = new Map();
+  return { get: (k) => m.get(k), set: (k, v) => { m.set(k, v); if (m.size > 2000) m.delete(m.keys().next().value); }, del: (k) => { m.delete(k); }, flushAll: () => m.clear() };
+})();
+
 // +34XXXXXXXXX  ↔  34XXXXXXXXX@s.whatsapp.net
 function jidToPhone(jid) {
   const n = String(jid || '').split('@')[0].split(':')[0].replace(/\D/g, '');
@@ -158,7 +172,7 @@ async function bucleSalida() {
           if (!sockActual || estado !== 'open') throw new Error('WhatsApp no conectado (' + estado + ')');
           // Un grupo se escribe tal cual (…@g.us); un número, por su chat conocido o su JID.
           const destino = String(m.to || '').endsWith('@g.us') ? String(m.to) : (chatPorTelefono.get(soloDigitos(m.to)) || phoneToJid(m.to));
-          await sockActual.sendMessage(destino, { text: String(m.body || '') });
+          guardarEnviado(await sockActual.sendMessage(destino, { text: String(m.body || '') }));
           console.log('[Bridge] enviado a', m.to, '->', destino);
           acks.push({ id: m.id, ok: true });
         } catch (e) {
@@ -178,7 +192,8 @@ async function bucleSalida() {
 async function start() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
   const { version } = await fetchLatestBaileysVersion();
-  const sock = makeWASocket({ version, auth: state, printQRInTerminal: false, logger: pino({ level: 'silent' }) });
+  const sock = makeWASocket({ version, auth: state, printQRInTerminal: false, logger: pino({ level: 'silent' }),
+    msgRetryCounterCache: contadorReintentos, getMessage: async (key) => enviados.get(key.id) });
   sockActual = sock;
   estado = 'connecting';
 
