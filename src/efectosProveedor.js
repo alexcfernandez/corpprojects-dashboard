@@ -6,7 +6,8 @@
 'use strict';
 async function getDB() { return require('./db').getDB(); }
 const COL = 'efectosProveedor';
-const dig = x => String(x || '').replace(/\D/g, '').replace(/^0+/, '');
+// Solo dígitos, sin la «/01» del vencimiento («4 152108/01» = «4/152108» del banco).
+const dig = x => String(x || '').replace(/\/\s*\d{1,2}\s*$/, '').replace(/\D/g, '').replace(/^0+/, '');
 
 const esCorreoEfectos = ({ de = '', asunto = '', adjuntos = [] } = {}) =>
   /saltoki/i.test(de) && /renovaci[oó] d.?efectes|renovaci[oó]n de efectos|regularitzaci/i.test(asunto) && (adjuntos || []).some(a => /pdf/i.test(a.mimeType || '') || /\.pdf$/i.test(a.filename || ''));
@@ -65,7 +66,7 @@ async function importarDelCorreo({ meses = 12 } = {}) {
 
 // Para el cuadre: clave del recibo (solo dígitos) → claves de sus facturas/abonos.
 async function mapa() {
-  try { const l = await (await getDB()).collection(COL).find({}).toArray(); return new Map(l.map(x => [x.clave, x])); } catch (e) { return new Map(); }
+  try { const l = await (await getDB()).collection(COL).find({}).toArray(); return new Map(l.map(x => [dig(x.recibo), { ...x, efectos: (x.efectos || []).map(e => ({ ...e, clave: dig(e.numero) })) }])); } catch (e) { return new Map(); }
 }
 
 module.exports = { esCorreoEfectos, desdeCorreo, importarDelCorreo, mapa, _dig: dig };
