@@ -350,6 +350,13 @@ function conciliar({ movimientos = [], emitidas = [], recibidas = [] } = {}) {
       combo = tramo(g, objetivo) || combinacionAmplia(cerca, objetivo);
       if (combo) break;
     }
+    // El recibo cita la fecha (Saltoki): si no cuadra, entran también las que StelOrder da por pagadas sin pago en el
+    // banco (las marca pagadas a mano y el recibo es justo su pago: 97,39 + 192,06 = 289,45 del 20/04).
+    if (!combo && fCit) {
+      const conStel = recibidas.filter(r => !usadasRec.has(r.id) && Math.abs(r.total) > 0.005 && nombraR(f.concepto, r) && dias(fCit, r.fecha) >= 0 && dias(fCit, r.fecha) <= 10 && (!cands.length || r.proveedor === cands[0].proveedor))
+        .sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
+      if (conStel.length > cands.length) combo = tramo(conStel, objetivo) || combinacionAmplia(conStel.slice(-14), objetivo);
+    }
     if (combo && !(combo.length === 1 && igual(combo[0].total, objetivo))) {
       const suma = r2(combo.reduce((a, r) => a + r.total, 0));
       const dif = r2(objetivo - suma);

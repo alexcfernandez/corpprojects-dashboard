@@ -44,6 +44,8 @@ async function _datos() {
 function olvidar() { _cache = null; }
 // Cobra por RECIBO domiciliado (Quartix, la oficina virtual, Marcel Navarro…): lo pendiente se cargará solo, no hay
 // que pagarlo a mano. Se ve en cómo se pagaron sus facturas (o en sus recibos sin factura).
+// Una domiciliada «se carga sola» si es reciente; pasados 75 días, si el recibo no aparece es que falta casarlo (o no se cargó).
+const recienteDom = (f, hoy = new Date()) => (hoy - new Date(String(f.fecha) + 'T12:00:00Z')) / 86400000 <= 75;
 const ES_RECIBO = /^\s*(recibo|adeudo|domiciliaci)/i;
 function domiciliado(facturas, sueltos = []) {
   return facturas.some(f => (f.pagos || []).some(p => ES_RECIBO.test(p.concepto || ''))) || sueltos.some(m => ES_RECIBO.test(m.concepto || ''));
@@ -117,9 +119,10 @@ async function cuentas({ desde = '2025-01-01' } = {}) {
     const pend = c.facturas.reduce((a, f) => a + f.pendiente, 0);
     const dom = domiciliado(c.facturas);
     const sinPagar = c.facturas.filter(f => f.estado === 'pendiente' || f.estado === 'parcial');
+    const recientes = dom ? sinPagar.filter(f => recienteDom(f)) : [];
     return { clave: c.clave, proveedor: c.proveedor, nFacturas: c.facturas.length, total: r2(c.facturas.reduce((a, f) => a + f.total, 0)),
       pagado: r2(c.facturas.reduce((a, f) => a + f.pagado, 0)), pendiente: r2(Math.max(0, pend + abonos)), abonos: r2(abonos), domiciliado: dom,
-      nPendientes: dom ? 0 : sinPagar.length, nDomiciliadas: dom ? sinPagar.length : 0, ultima: c.facturas.map(f => f.fecha).sort().pop(),
+      nPendientes: sinPagar.length - recientes.length, nDomiciliadas: recientes.length, ultima: c.facturas.map(f => f.fecha).sort().pop(),
       tienda, sinLocalizar: r2(c.facturas.reduce((a, f) => a + (f.sinLocalizar || 0), 0)) };
   }).sort((a, b) => b.pendiente - a.pendiente || String(b.ultima).localeCompare(String(a.ultima)));
 }
@@ -178,7 +181,7 @@ async function cuenta(nombre, { desde = '2025-01-01' } = {}) {
   aplicarRectificativas(facturas);
   const tienda = aplicarTienda(facturas);
   const dom = domiciliado(facturas, sinFactura);
-  if (dom) facturas.forEach(f => { if (f.estado === 'pendiente' || f.estado === 'parcial') f.domiciliada = true; });
+  if (dom) facturas.forEach(f => { if (f.estado === 'pendiente' || f.estado === 'parcial') { if (recienteDom(f)) f.domiciliada = true; else f.reciboNoVisto = true; } });
   const abonos = facturas.filter(f => f.estado === 'abono').reduce((a, f) => a + f.total, 0);
   const pend = facturas.reduce((a, f) => a + f.pendiente, 0);
   return {

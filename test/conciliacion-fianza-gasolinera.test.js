@@ -58,3 +58,11 @@ test('Amazon: un cargo con tarjeta paga un pedido con varias facturas', () => {
   const f = C.conciliar({ movimientos: [{ id: 'k', fecha: '2026-06-18', importe: -98.01, concepto: 'Compra Www.amazon* Nf4752sa5, Luxembourg, Tarjeta 4176570174907925', fijo: { tipo: 'pago_tarjeta' } }], emitidas: [], recibidas: rec }).filas[0];
   assert.equal(f.estado, 'punteado'); assert.equal(f.docs.length, 2); assert.match(f.nota, /faltan facturas por 15\.27/);
 });
+
+test('Saltoki: recibo con «Fecha Factura» paga también las que StelOrder ya daba por pagadas', () => {
+  const P = 'Saltoki girona S.A';
+  const rec = [{ id: 'a', numero: 'FPR00665', refProveedor: '19815', proveedor: P, fecha: '2026-04-11', total: 97.39, pendienteStel: 0 },
+    { id: 'b', numero: 'FPR00676', refProveedor: '21166', proveedor: P, fecha: '2026-04-18', total: 192.06 }];
+  const f = C.conciliar({ movimientos: [{ id: 'm', fecha: '2026-05-25', importe: -289.45, concepto: 'Recibo Saltoki Girona S.a., Concepto: Factura N: 4/147359 Fecha Factura: 20/04/2026 Vto.: 001', codigo: '061' }], emitidas: [], recibidas: rec }).filas[0];
+  assert.equal(f.estado, 'punteado'); assert.deepEqual(f.docs.map(d => d.refProveedor), ['19815', '21166']);
+});
