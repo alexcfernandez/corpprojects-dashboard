@@ -68,6 +68,20 @@ async function cargarTrabajadores() {
   return _deUsuarios.length;
 }
 // Movimientos ya guardados que ahora se reconocen como nómina (trabajador nuevo o alias): se reclasifican.
+// Vuelve a pasar la regla de combustible por lo ya guardado (gasolineras que antes caían en material u otros).
+async function reclasificarCombustible() {
+  const db = await getDB();
+  const l = await db.collection('bancoMovimientos').find({ importe: { $lt: 0 }, categoria: { $nin: ['combustible', 'nomina', 'impuesto', 'seguridad_social'] } }).project({ concepto: 1, codigo: 1, importe: 1, categoria: 1 }).toArray();
+  const cambios = [];
+  for (const m of l) {
+    const c = clasificar(m.concepto, m.codigo, m.importe);
+    if (c.categoria !== 'combustible') continue;
+    await db.collection('bancoMovimientos').updateOne({ _id: m._id }, { $set: { categoria: c.categoria, categoriaLabel: c.label, flujo: c.flujo, recurrente: c.recurrente, reclasificadoAt: new Date() } });
+    cambios.push({ antes: m.categoria, concepto: String(m.concepto).slice(0, 60), importe: m.importe });
+  }
+  return { n: cambios.length, cambios: cambios.slice(0, 200) };
+}
+
 async function reclasificarNominas() {
   const db = await getDB();
   const l = await db.collection('bancoMovimientos').find({ importe: { $lt: 0 }, categoria: { $in: ['pago_proveedor', 'otro_gasto', 'tarjeta_otro'] } }).project({ concepto: 1, codigo: 1, importe: 1 }).toArray();
@@ -99,7 +113,8 @@ const REGLAS_PROVEEDOR = [
   { cat: 'telefonia',         re: /masmovil|xfera|yoigo|vodafone|movistar|orange/ },
   { cat: 'software_suscrip',  re: /apple\.com|canva|railway|framer|metapay|facebk|facebook|adobe|google\*|google ads|notion|openai|anthropic/ },
   { cat: 'publicidad_rrhh',   re: /adevinta|jobtoday|infojobs|indeed|linkedin/ },
-  { cat: 'combustible',       re: /e\.\s?s\.\s|estacion servicio|estaci[oó] de servei|repsol|cepsa|galp|petronor|tabuenca|gasolin|carburant/ },
+  // Gasolineras: antes que «material» (Esclatoil contiene «esclat», el súper) — Petroprix, Feixas Aulet, Zona Diesel…
+  { cat: 'combustible',       re: /\be\.\s?s\.|estacion (de )?servicio|estaci[oó] de servei|area de servei|repsol|cepsa|galp|petronor|tabuenca|gasolin|carburant|esclatoil|petroprix|feixas aulet|zona diesel|cedipsa|plenoil|ballenoil|petrocat|meroil|\bbp\b|\bshell\b|\bdisa\b|gasoil|bonarea.*(gasol|e\.s)/ },
   { cat: 'gestoria',          re: /burocracia|gestoria|asesoria/ },
   { cat: 'material',          re: /werkhaus|saltoki|pintures|oliveras|x-palahi|palahi|nuevas tecnicas del revestimiento|saint-?gobain|weber|leroy merlin|gotarra|caber ferreteri|ferreteri|barcelona led|recupluja|recuperacions|marcel navarro|bonpreu|esclat|graner|mercat|classicauto|taller/ },
   { cat: 'parking',           re: /estacioname|parking|aparcamiento/ },
@@ -529,7 +544,7 @@ function acc(bucket, cat, map, yKey, val) {
 
 module.exports = { saldosAnio,
   // núcleo
-  parseExcelBuffer, ingestExcelBuffer, norm, cargarTrabajadores, reclasificarNominas, costeFijoMes,
+  parseExcelBuffer, ingestExcelBuffer, norm, cargarTrabajadores, reclasificarNominas, reclasificarCombustible, costeFijoMes,
   // lectura dashboard
   getMovimientos, getResumen, getRecurrentesMensuales, getUltimoImport, getDashboardData,
   // utilidades expuestas por si las quiere reusar el asistente
