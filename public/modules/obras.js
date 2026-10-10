@@ -369,6 +369,7 @@
               <div style="font-size:16px;font-weight:700">${est.emoji} ${obra.reference}</div>
               <div style="font-size:12px;color:var(--text3);display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:2px">${obra.clientName?`👤 <b style="color:var(--text2)">${ce(obra.clientName)}</b>`:'<span style="color:var(--amber)">Sin cliente</span>'}
                 <button class="btn bgh" style="padding:1px 9px;font-size:11px" onclick="CP.Obras.ponerCliente('${id}')">${obra.clientName?'cambiar':'👤 Poner cliente'}</button>${obra.address?`<span>· ${ce(obra.address)}</span>`:''}</div>
+              ${obra.faseDe || obra.faseSiguiente ? `<div style="font-size:12px;color:var(--text3);margin-top:3px">${obra.faseDe ? `↩︎ Viene de <a href="#" onclick="event.preventDefault();CP.Obras.openObra('${obra.faseDe}')" style="color:var(--blue)">la fase anterior</a> · cuenta desde el ${ce(String(obra.startDate||'').split('-').reverse().join('/'))}` : ''}${obra.faseSiguiente ? `${obra.faseDe ? ' · ' : ''}Cerrada el ${ce(String(obra.endDate||'').split('-').reverse().join('/'))} · sigue en <a href="#" onclick="event.preventDefault();CP.Obras.openObra('${obra.faseSiguiente}')" style="color:var(--blue)">la fase siguiente</a> ↪︎` : ''}</div>` : ''}
               <div id="ob-cli-box"></div>
             </div>
             <button class="modal-close" onclick="document.getElementById('ob-modal').remove()">✕</button>
@@ -597,8 +598,10 @@
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <button class="btn bp" onclick="CP.Obras.saveObraChanges('${id}')">💾 Guardar</button>
               <button class="btn bgh" onclick="document.getElementById('ob-modal').remove()">Cerrar</button>
+              ${!obra.faseSiguiente && obra.status !== 'terminada' ? `<button class="btn bgh" onclick="CP.Obras.formFase('${id}')" title="Lo que se haga a partir de un día se factura aparte: obra nueva del mismo cliente">➕ Nueva fase</button>` : ''}
               <button class="btn bgh" style="color:var(--red);border-color:var(--red)" onclick="CP.Obras.eliminarObra('${id}','${String(obra.reference||'').replace(/'/g,'')}')">🗑️ Eliminar obra</button>
             </div>
+            <div id="ob-fase-box"></div>
             <div id="ob-modal-msg" style="margin-top:8px;font-size:11px;display:none"></div>
           </div>
         </div>`;
@@ -1068,6 +1071,34 @@ ${pago}
     } catch (err) { alert('No se pudo quitar: ' + err.message); }
   }
 
+  // NUEVA FASE: lo que se haga desde un día se factura aparte (obra nueva del mismo cliente; se le pasan las compras
+  // y partes desde ese día y esta se cierra el día antes; cada fase cuenta solo las horas de sus fechas).
+  function formFase(id) {
+    const o = (_obraData && _obraData.obra) || {}; const box = document.getElementById('ob-fase-box'); if (!box) return;
+    const hoy = new Date().toLocaleDateString('en-CA');
+    box.innerHTML = `<div style="margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--bg2)">
+      <div style="font-weight:600;margin-bottom:6px">➕ Nueva fase de esta obra</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:8px;line-height:1.45">Se crea otra obra del mismo cliente. Las compras y partes desde el día que elijas pasan a la nueva y esta queda <b>terminada</b> el día antes. Cada fase cuenta solo las horas de sus fechas.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+        <label style="font-size:12px">Desde el día<br><input type="date" id="ob-fase-desde" value="${hoy}" class="field-input" style="width:160px"></label>
+        <label style="font-size:12px;flex:1;min-width:180px">Nombre<br><input type="text" id="ob-fase-nombre" value="${String(o.reference||'').replace(/"/g,'&quot;')} – Fase 2" class="field-input"></label>
+        <button class="btn bp" onclick="CP.Obras.crearFase('${id}')">Crear fase</button>
+        <button class="btn bgh" onclick="document.getElementById('ob-fase-box').innerHTML=''">Cancelar</button>
+      </div><div id="ob-fase-msg" style="font-size:12px;margin-top:6px"></div></div>`;
+  }
+  async function crearFase(id) {
+    const desde = document.getElementById('ob-fase-desde').value, nombre = document.getElementById('ob-fase-nombre').value.trim(), msg = document.getElementById('ob-fase-msg');
+    if (!desde) { msg.textContent = 'Elige el día'; return; }
+    if (!confirm(`¿Crear «${nombre}» desde el ${desde.split('-').reverse().join('/')} y cerrar esta obra el día antes?`)) return;
+    msg.textContent = 'Creando…';
+    try {
+      const r = await api(`/api/obras/${id}/nueva-fase`, { method: 'POST', body: JSON.stringify({ desde, nombre }) });
+      if (r.error) throw new Error(r.error);
+      msg.innerHTML = `✔ Creada «${r.nueva.reference}»: ${r.compras} compra${r.compras === 1 ? '' : 's'} y ${r.partes} parte${r.partes === 1 ? '' : 's'} pasados. Abriéndola…`;
+      setTimeout(() => { openObra(r.nueva.id); try { loadResumen(); } catch (e) {} }, 900);
+    } catch (e) { msg.textContent = '❌ ' + e.message; }
+  }
+
   async function eliminarObra(id, ref) {
     if (!confirm('¿Eliminar la obra "' + (ref || '') + '"?\n\nNo borra partes, presencia ni facturas — solo quita la obra (útil para eliminar duplicadas).')) return;
     try {
@@ -1077,6 +1108,6 @@ ${pago}
     } catch (err) { alert('No se pudo borrar: ' + err.message); }
   }
 
-  CP.Obras = { decidirSug, buscarFactStel, enlazarFactStel, quitarFactStel, ponerCliente, guardarCliente, buscarPresuStel, anadirPresuStel, quitarPresuStel, partidasPresuStel, certMedicion, render, showTab, loadResumen, loadLista, loadEstudio, nuevaEstudio, estadoEstudio, openObra, saveObraChanges, ubicacion, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, addCert, certRapida, certEstado, conciliarCert, _ccPick, delCert, reciboCert, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick, _fpBack, _fpToggleAll, _fpSum, _fpAsignar };
+  CP.Obras = { formFase, crearFase, decidirSug, buscarFactStel, enlazarFactStel, quitarFactStel, ponerCliente, guardarCliente, buscarPresuStel, anadirPresuStel, quitarPresuStel, partidasPresuStel, certMedicion, render, showTab, loadResumen, loadLista, loadEstudio, nuevaEstudio, estadoEstudio, openObra, saveObraChanges, ubicacion, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, addCert, certRapida, certEstado, conciliarCert, _ccPick, delCert, reciboCert, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick, _fpBack, _fpToggleAll, _fpSum, _fpAsignar };
 
 })(window.CP = window.CP || {});
