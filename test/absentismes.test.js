@@ -25,7 +25,7 @@ test('reconoce la petición de Eduard y no las respuestas', () => {
 test('borrador en catalán en el hilo, con faltas y baja agrupadas; aviso con los días sin apuntar', async () => {
   const r = await A.preparar({ mes: '2026-08', threadId: 't1', messageId: '<m1>', asunto: "absentismes mes d'Agost" });
   assert.equal(borrador.threadId, 't1'); assert.equal(borrador.inReplyTo, '<m1>'); assert.match(borrador.asunto, /^Re: absentismes/);
-  assert.match(r.texto, /David Valencia: 2 dies de falta \(del 3\/8 al 4\/8\); baixa del 5\/8 al 7\/8/);
+  assert.match(r.texto, /David Valencia: 2 dies de falta \(del 3\/8 al 4\/8\); baixa per malaltia del 5\/8 al 7\/8/);
   assert.match(r.texto, /Diego Campillo: 1 dia de falta \(19\/8\)/); assert.doesNotMatch(r.texto, /Abdellah/);
   assert.match(wa, /sin nada apuntado[\s\S]*Diego Campillo: 21\/8/);
 });

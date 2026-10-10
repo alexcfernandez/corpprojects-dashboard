@@ -50,10 +50,10 @@ function texto(res) {
   for (const p of res.personas) {
     const parts = [];
     if (p.fechasFaltas.length) parts.push(`${p.fechasFaltas.length} ${p.fechasFaltas.length === 1 ? 'dia' : 'dies'} de falta (${tramos(p.fechasFaltas)})`);
-    if (p.fechasBaja.length) parts.push(`baixa ${tramos(p.fechasBaja)}`);
+    if (p.fechasBaja.length) parts.push(`baixa per malaltia ${tramos(p.fechasBaja)}`);
     for (const [tipo, x] of Object.entries(p.porAusencia || {})) {
       const f = x.fechas.sort(); const sigue = x.hasta && x.hasta > res.hasta;
-      parts.push(`${AUS_CA[tipo] || 'absència'} ${x.desde < res.desde ? `tot el mes (des del ${dm(x.desde)}/${x.desde.slice(0, 4)})` : `des del ${dm(f[0] || x.desde)}`}${sigue ? ` fins al ${dm(x.hasta)}/${x.hasta.slice(0, 4)}` : f.length ? ` al ${dm(f[f.length - 1])}` : ''}`);
+      parts.push(`${AUS_CA[tipo] || 'absència'} ${x.desde < res.desde ? `tot el mes (des del ${dm(x.desde)}/${x.desde.slice(0, 4)})` : `des del ${dm(x.desde >= res.desde ? x.desde : (f[0] || x.desde))}`}${sigue ? ` fins al ${dm(x.hasta)}/${x.hasta.slice(0, 4)}` : f.length ? ` al ${dm(f[f.length - 1])}` : ''}`);
     }
     if (p.fechasVacaciones.length) parts.push(`vacances ${tramos(p.fechasVacaciones)}`);
     if (parts.length) lin.push(`- ${p.nombre}: ${parts.join('; ')}`);
