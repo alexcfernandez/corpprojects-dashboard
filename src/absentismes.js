@@ -8,6 +8,7 @@
 'use strict';
 const MESOS = ['gener', 'febrer', 'març', 'abril', 'maig', 'juny', 'juliol', 'agost', 'setembre', 'octubre', 'novembre', 'desembre'];
 const hoyISO = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
+const deMes = nom => (/^[aeiouà]/i.test(nom) ? `d'${nom}` : `de ${nom}`);   // «d'octubre», «de setembre»
 const dm = f => `${Number(f.slice(8, 10))}/${Number(f.slice(5, 7))}`;
 
 const esPeticion = ({ de = '', asunto = '', cuerpo = '' } = {}) =>
@@ -38,7 +39,8 @@ async function resumen(mes) {
   const fin = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
   const hasta = [fin, hoyISO()].sort()[0];
   const r = await require('./agente')._consultarPresencia({ desde: `${mes}-01`, hasta });
-  return { mes, desde: `${mes}-01`, hasta, personas: (r.resumenPorPersona || []).filter(p => p.laborables || p.trabajados) };
+  // Solo asalariados: los autónomos facturan, no van en nómina.
+  return { mes, desde: `${mes}-01`, hasta, personas: (r.resumenPorPersona || []).filter(p => !p.autonomo && (p.laborables || p.trabajados)) };
 }
 
 function texto(res) {
@@ -51,7 +53,7 @@ function texto(res) {
     if (p.fechasVacaciones.length) parts.push(`vacances ${tramos(p.fechasVacaciones)}`);
     if (parts.length) lin.push(`- ${p.nombre}: ${parts.join('; ')}`);
   }
-  return `Bon dia Eduard,\n\n${lin.length ? `Els absentismes del mes de ${nom} són:\n\n${lin.join('\n')}` : `Aquest mes de ${nom} no hi ha cap absentisme.`}\n\nLa resta de treballadors, sense absentismes.\n\nSalutacions,\n\nCorp Projects Holding, S.L.\nhola@corpprojects.es`;
+  return `Bon dia Eduard,\n\n${lin.length ? `Els absentismes del mes ${deMes(nom)} són:\n\n${lin.join('\n')}` : `Aquest mes ${deMes(nom)} no hi ha cap absentisme.`}\n\nLa resta de treballadors, sense absentismes.\n\nSalutacions,\n\nCorp Projects Holding, S.L.\nhola@corpprojects.es`;
 }
 
 // Prepara el borrador (como respuesta al correo de Eduard si se sabe cuál) y avisa a Álex.

@@ -161,7 +161,7 @@ async function consultarPresencia({ desde, hasta, trabajador = null, obra = null
         const e = ext.get(String(u._id)) || {};
         const ini = [desde, e.primero || desde].sort().pop(), fin = [hasta, hoy, ...(u.active === false && e.ultimo ? [e.ultimo] : [])].sort()[0];
         const suyos = l.filter(x => String(x.workerId) === String(u._id));
-        const r = { nombre: u.name, desde: ini, hasta: fin, laborables: 0, trabajados: 0, oficina: 0, vacaciones: 0, baja: 0, faltaJustificada: 0, faltaInjustificada: 0, libre: 0, festivo: 0, horas: 0, sinApuntar: 0, fechasSinApuntar: [], fechasFaltas: [], fechasVacaciones: [], fechasBaja: [] };
+        const r = { nombre: u.name, autonomo: !!u.autonomo, activo: u.active !== false, desde: ini, hasta: fin, laborables: 0, trabajados: 0, oficina: 0, vacaciones: 0, baja: 0, faltaJustificada: 0, faltaInjustificada: 0, libre: 0, festivo: 0, horas: 0, sinApuntar: 0, fechasSinApuntar: [], fechasFaltas: [], fechasVacaciones: [], fechasBaja: [] };
         for (const x of suyos) { const k = NOM[x.estado || 'obra'] || 'trabajados'; r[k]++; if (['obra', 'oficina'].includes(x.estado || 'obra')) r.horas += Number(x.horas) || 0;
           if (/falta/.test(x.estado || '')) r.fechasFaltas.push(x.date); if (x.estado === 'vacaciones') r.fechasVacaciones.push(x.date); if (x.estado === 'baja') r.fechasBaja.push(x.date); }
         if (!estado) for (let d = new Date(ini + 'T12:00:00Z'); ini <= fin && d <= new Date(fin + 'T12:00:00Z'); d = new Date(d.getTime() + 86400000)) {
