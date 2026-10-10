@@ -38,10 +38,22 @@ async function _datos() {
   const T = require('./trimestre');
   const recStel = await T.todasRecibidas();
   const [rec, mapa] = await Promise.all([T.recibidasPunteo(recStel).catch(() => recStel), T.mapaPagos()]);
+  // Lo pagado FUERA del banco: compensado con un saldo a favor que tenía el proveedor (Grualpa), etc.
+  let comp = [];
+  try { comp = await (await require('./db').getDB()).collection('compensaciones').find({}).toArray(); } catch (e) {}
+  mapa.compensado = new Map(); comp.forEach(c => { const l = mapa.compensado.get(c.numero) || []; l.push(c); mapa.compensado.set(c.numero, l); });
   _cache = { rec, mapa }; _cacheAt = Date.now();
   return _cache;
 }
 function olvidar() { _cache = null; }
+// Apuntar lo que se pagó sin pasar por el banco (saldo a favor que el proveedor descuenta en la factura…).
+async function compensar({ numero, importe, fecha, nota = '' } = {}, por = '') {
+  const imp = r2(String(importe).replace(',', '.'));
+  if (!numero || !(imp > 0)) throw new Error('Falta la factura o el importe');
+  const db = await require('./db').getDB();
+  await db.collection('compensaciones').insertOne({ numero: String(numero), importe: imp, fecha: /^\d{4}-\d{2}-\d{2}$/.test(String(fecha || '')) ? fecha : new Date().toISOString().slice(0, 10), nota: String(nota).slice(0, 200), por, at: new Date() });
+  olvidar(); return { ok: true };
+}
 // Cobra por RECIBO domiciliado (Quartix, la oficina virtual, Marcel Navarro…): lo pendiente se cargará solo, no hay
 // que pagarlo a mano. Se ve en cómo se pagaron sus facturas (o en sus recibos sin factura).
 // Una domiciliada «se carga sola» si es reciente; pasados 75 días, si el recibo no aparece es que falta casarlo (o no se cargó).
@@ -54,7 +66,8 @@ function domiciliado(facturas, sueltos = []) {
 function _factura(r, mapa) {
   const total = r2(r.total);
   const pagos = (mapa.porDoc.get(String(r.numero)) || mapa.porDoc.get(String(r.compraId || '')) || mapa.porDoc.get(String(r.id)) || [])
-    .map(p => ({ fecha: p.fecha, importe: r2(p.conOtras > 0 ? Math.abs(total) : Math.abs(p.importe)), origen: p.origen, persona: p.persona || null, concepto: p.concepto, varias: p.conOtras > 0 }));
+    .map(p => ({ fecha: p.fecha, importe: r2(p.conOtras > 0 ? Math.abs(total) : Math.abs(p.importe)), origen: p.origen, persona: p.persona || null, concepto: p.concepto, varias: p.conOtras > 0 }))
+    .concat(((mapa.compensado && mapa.compensado.get(String(r.numero))) || []).map(c => ({ fecha: c.fecha, importe: r2(c.importe), origen: 'Compensado', concepto: c.nota || 'Compensado con un saldo a favor', compensado: true })));
   let pagado = r2(Math.min(Math.abs(total), pagos.reduce((a, p) => a + p.importe, 0)));
   let segun = pagos.length ? 'banco' : null;
   if (!pagos.length && r.pendienteStel != null && Math.abs(r.pendienteStel) < 0.01 && Math.abs(total) > 0) { pagado = Math.abs(total); segun = 'stelorder'; }
@@ -212,4 +225,4 @@ async function grupos({ desde = '2025-01-01' } = {}) {
   return [...g.values()];
 }
 
-module.exports = { _agrupador: agrupador, _domiciliado: domiciliado, _aplicarTienda: aplicarTienda, _aplicarRectificativas: aplicarRectificativas, cuentas, cuenta, deuda, grupos, olvidar, clave, _factura };
+module.exports = { compensar, _agrupador: agrupador, _domiciliado: domiciliado, _aplicarTienda: aplicarTienda, _aplicarRectificativas: aplicarRectificativas, cuentas, cuenta, deuda, grupos, olvidar, clave, _factura };

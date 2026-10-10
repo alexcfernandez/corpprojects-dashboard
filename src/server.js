@@ -1712,6 +1712,10 @@ app.post('/api/proveedores/original', requireAuthOficina, express.json(), async 
   try { const b = req.body || {}; res.json(await require('./facturaOriginal').buscar({ ref: b.ref, proveedor: b.proveedor, total: b.total != null ? Number(b.total) : null })); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+app.post('/api/proveedores/compensar', requireAuthOficina, express.json(), async (req, res) => {
+  try { const b = req.body || {}; res.json(await require('./cuentasProveedor').compensar({ numero: b.numero, importe: b.importe, fecha: b.fecha, nota: b.nota }, req.user?.name || 'Oficina')); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/proveedores/cuenta', requireAuthOficina, async (req, res) => {
   req.setTimeout && req.setTimeout(120000);
   try { res.json(await require('./cuentasProveedor').cuenta(req.query.nombre || '', { desde: req.query.desde || '2025-01-01' })); } catch (err) { res.status(400).json({ error: err.message }); }
