@@ -19,7 +19,37 @@ const TTL_ACLARA = 10 * 60 * 1000;
 function hoyMadridISO() { return new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' }); }
 
 // ── Herramientas del MVP (JSON Schema Anthropic) ──
+// Las de CONSULTA (solo leen) devuelven datos y el modelo redacta la respuesta con ellos (segunda llamada).
+const LECTURA = new Set(['consultar_presencia', 'horas_obra']);
 const TOOLS = [
+  {
+    name: 'consultar_presencia',
+    description: 'PRESENCIA Y HORAS de los trabajadores (solo lee): quién trabajó, dónde, cuántas horas, quién estuvo de vacaciones, de baja, libre o sin apuntar, en un día o un periodo. P. ej. «¿cuántas horas lleva David esta semana?», «¿quién estuvo en Simón Bombi el jueves?», «¿quién no ha venido hoy?», «¿cuántos días de vacaciones lleva Javi este año?».',
+    input_schema: {
+      type: 'object',
+      properties: {
+        desde: { type: 'string', description: 'YYYY-MM-DD (resuelve «hoy», «ayer», «esta semana» = desde el lunes, «este mes», «el jueves»… respecto a HOY).' },
+        hasta: { type: 'string', description: 'YYYY-MM-DD (igual que desde si es un solo día).' },
+        trabajador: { type: ['string', 'null'], description: 'Nombre o parte del nombre si pregunta por alguien concreto; null si es de todos.' },
+        obra: { type: ['string', 'null'], description: 'Obra o cliente si pregunta por una obra; null si no.' },
+        estado: { type: ['string', 'null'], enum: ['obra', 'oficina', 'vacaciones', 'baja', 'falta_j', 'falta_i', 'libre', 'festivo', null], description: 'Solo si pregunta por un estado concreto (vacaciones, baja…).' },
+      },
+      required: ['desde', 'hasta'],
+    },
+  },
+  {
+    name: 'horas_obra',
+    description: 'HORAS Y COSTE DE PERSONAL DE UNA OBRA (solo lee): total de horas, quién ha trabajado y cuánto, días, compras. P. ej. «¿cuántas horas llevamos en la Claudia?», «¿quién ha ido a la Simón Bombi fase 2?».',
+    input_schema: {
+      type: 'object',
+      properties: {
+        obra: { type: 'string', description: 'Nombre de la obra o del cliente.' },
+        desde: { type: ['string', 'null'], description: 'YYYY-MM-DD si pregunta por un periodo; null = toda la obra.' },
+        hasta: { type: ['string', 'null'], description: 'YYYY-MM-DD; null = hasta hoy.' },
+      },
+      required: ['obra'],
+    },
+  },
   {
     name: 'crear_evento_agenda',
     description: 'Crea un evento en la AGENDA/calendario personal del jefe (cita, recordatorio con fecha y opcionalmente hora). Úsala cuando pide apuntar algo en su agenda o calendario con una fecha, p. ej. "apunta mañana a las 19 dentista".',
@@ -55,23 +85,25 @@ REGLAS DURAS:
 - Distingue: "en el calendario / en la agenda" + fecha/hora = evento personal → crear_evento_agenda. "en <comunidad> que <hecho>" = nota de comunidad → anadir_nota_comunidad. Si es ambiguo, pregunta.
 - Resuelve fechas relativas ("mañana", "el lunes", "el 19") a YYYY-MM-DD respecto a hoy.
 - HORA: si es INEQUÍVOCA ("19:30", "a las 19", "a las 8 de la mañana", "mediodía") → HH:MM en 24h. Si es AMBIGUA mañana/tarde ("las 7.30", "a las 8", "a las 5" sin "de la mañana/tarde" ni formato 24h) → NO la asumas: PREGUNTA "¿mañana o tarde? (p. ej. 07:30 o 19:30)" antes de crear el evento. Si no dice hora → null.
+- Presencia, horas, quién trabajó/vino/faltó, vacaciones, bajas → consultar_presencia. Horas o coste de una obra → horas_obra. Contesta SOLO con lo que devuelvan (si no hay datos, dilo). «Esta semana» = desde el lunes.
+- Al contestar con datos: breve, para WhatsApp (*negritas* para nombres y totales, una línea por persona u obra).
 - Responde en español y breve.`;
 }
 
 // Llama al modelo con tools. Devuelve {tipo:'tool',name,input} | {tipo:'texto',texto} | {tipo:'nada'}.
-async function llamarModelo(messages, hoy) {
+async function llamarModelo(messages, hoy, { maxTokens = 500 } = {}) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return { tipo: 'nada' };
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: MODELO(), max_tokens: 500, system: systemPrompt(hoy), tools: TOOLS, messages }),
+    body: JSON.stringify({ model: MODELO(), max_tokens: maxTokens, system: systemPrompt(hoy), tools: TOOLS, messages }),
   });
   if (!r.ok) { console.error('[Agente] IA HTTP', r.status); return { tipo: 'nada' }; }
   const data = await r.json();
   const blocks = data.content || [];
   const tool = blocks.find(b => b.type === 'tool_use');
-  if (tool) return { tipo: 'tool', name: tool.name, input: tool.input || {} };
+  if (tool) return { tipo: 'tool', name: tool.name, input: tool.input || {}, id: tool.id, blocks };
   const txt = blocks.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
   return txt ? { tipo: 'texto', texto: txt } : { tipo: 'nada' };
 }
@@ -90,6 +122,58 @@ async function dentroDeCupo() {
     return true;
   } catch (e) { return true; }
 }
+
+// ── Consultas de presencia y obras (solo leen) ──
+const _n = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9ñ ]+/g, ' ').trim();
+const _casa = (texto, q) => { const t = _n(texto), ws = _n(q).split(' ').filter(w => w.length >= 2); return !!ws.length && ws.every(w => t.includes(w)); };
+const _fechaOk = d => /^\d{4}-\d{2}-\d{2}$/.test(String(d || ''));
+async function consultarPresencia({ desde, hasta, trabajador = null, obra = null, estado = null } = {}) {
+  if (!_fechaOk(desde)) desde = hoyMadridISO(); if (!_fechaOk(hasta)) hasta = desde;
+  if (hasta < desde) [desde, hasta] = [hasta, desde];
+  let l = await require('./attendance').getAttendance({ from: desde, to: hasta });
+  if (trabajador) l = l.filter(e => _casa(e.workerName, trabajador));
+  if (obra) l = l.filter(e => _casa([e.clientName, ...(e.obras || []).map(o => o.clientName)].join(' '), obra));
+  if (estado) l = l.filter(e => (e.estado || 'obra') === estado);
+  const porPersona = {}, porObra = {};
+  for (const e of l) {
+    const p = porPersona[e.workerName] = porPersona[e.workerName] || { dias: 0, horas: 0, estados: {} };
+    const est = e.estado || 'obra'; p.dias++; p.estados[est] = (p.estados[est] || 0) + 1;
+    const obras = (e.obras && e.obras.length) ? e.obras : (e.clientName ? [{ clientName: e.clientName, horas: e.horas }] : []);
+    if (est === 'obra' || est === 'oficina') p.horas += Number(e.horas) || obras.reduce((a, o) => a + (Number(o.horas) || 0), 0);
+    for (const o of obras) { if (obra && !_casa(o.clientName, obra)) continue; const k = o.clientName || '—'; porObra[k] = porObra[k] || { horas: 0, personas: new Set() }; porObra[k].horas += Number(o.horas) || 0; porObra[k].personas.add(e.workerName); }
+  }
+  const out = { desde, hasta, filtro: { trabajador, obra, estado }, registros: l.length,
+    porPersona: Object.entries(porPersona).map(([nombre, x]) => ({ nombre, ...x })).sort((a, b) => b.horas - a.horas),
+    porObra: Object.entries(porObra).map(([nombre, x]) => ({ nombre, horas: x.horas, personas: [...x.personas] })).sort((a, b) => b.horas - a.horas),
+    detalle: l.slice(0, 80).map(e => ({ fecha: e.date, trabajador: e.workerName, estado: e.estado || 'obra', horas: e.horas, obras: (e.obras || []).map(o => `${o.clientName} ${o.horas || ''}h`).join(', ') || e.clientName || '' })) };
+  // Quién no tiene nada apuntado (solo para días sueltos o semanas, y sin filtro de obra/estado).
+  if (!obra && !estado && (new Date(hasta) - new Date(desde)) / 86400000 <= 7) {
+    try {
+      const us = (await require('./users').getUsers(false)).filter(u => u.active !== false && ['tecnico', 'encargado'].includes(require('./users').normalizeRole(u.role)) && (!trabajador || _casa(u.name, trabajador)));
+      const dias = []; for (let d = new Date(desde + 'T12:00:00Z'); d <= new Date(hasta + 'T12:00:00Z'); d = new Date(d.getTime() + 86400000)) { const w = d.getUTCDay(); if (w !== 0 && w !== 6) dias.push(d.toISOString().slice(0, 10)); }
+      out.sinApuntar = dias.map(f => ({ fecha: f, quienes: us.filter(u => !l.some(e => e.date === f && String(e.workerId) === String(u._id))).map(u => u.name) })).filter(x => x.quienes.length);
+    } catch (e) {}
+  }
+  return out;
+}
+async function horasObra({ obra, desde = null, hasta = null } = {}) {
+  const O = require('./obras');
+  const todas = await O.getObras({ verEstudio: false });
+  const cands = todas.filter(o => _casa([o.reference, o.clientName, ...(o.aliases || [])].join(' '), obra));
+  if (!cands.length) return { error: `No encuentro ninguna obra que sea «${obra}».` };
+  const abiertas = cands.filter(o => o.status === 'activa');
+  if (cands.length > 1 && abiertas.length !== 1) return { varias: cands.slice(0, 8).map(o => ({ nombre: o.reference, cliente: o.clientName, estado: o.status })) };
+  const o = abiertas.length === 1 ? abiertas[0] : cands[0];
+  const r = await O.getRentabilidad(String(o._id));
+  const fechas = Object.keys(r.byDate || {}).filter(f => (!_fechaOk(desde) || f >= desde) && (!_fechaOk(hasta) || f <= hasta)).sort();
+  const porPersona = {}; let horas = 0;
+  for (const f of fechas) for (const x of r.byDate[f]) { porPersona[x.worker] = porPersona[x.worker] || { horas: 0, dias: 0 }; porPersona[x.worker].horas += x.horas; porPersona[x.worker].dias++; horas += x.horas; }
+  return { obra: o.reference, cliente: o.clientName, estado: o.status, desde: desde || (fechas[0] || null), hasta: hasta || (fechas[fechas.length - 1] || null), horas, dias: fechas.length,
+    porPersona: Object.entries(porPersona).map(([nombre, x]) => ({ nombre, ...x })).sort((a, b) => b.horas - a.horas),
+    ...(!desde && !hasta ? { costePersonal: Math.round(r.totalCostePersonal || 0), compras: Math.round((r.totalCompras || 0) * 100) / 100 } : {}),
+    porDia: fechas.slice(-20).map(f => ({ fecha: f, quienes: r.byDate[f].map(x => `${x.worker} ${x.horas}h`).join(', ') })) };
+}
+const LECTORES = { consultar_presencia: consultarPresencia, horas_obra: horasObra };
 
 async function ejecutarTool(name, input) {
   if (name === 'crear_evento_agenda') {
@@ -131,6 +215,16 @@ async function intentar({ texto, from, imagenes = [], puerta = null } = {}) {
   try { resp = await _impl.llamarModelo(messages, hoy); }
   catch (e) { console.error('[Agente] modelo:', e.message); return { handled: false }; }
 
+  // Consultas: se leen los datos y el modelo redacta la respuesta con ellos (hasta 3 consultas encadenadas).
+  for (let vuelta = 0; resp.tipo === 'tool' && LECTURA.has(resp.name) && vuelta < 3; vuelta++) {
+    let datos;
+    try { datos = await LECTORES[resp.name](resp.input || {}); } catch (e) { console.error('[Agente] lectura', resp.name, e.message); datos = { error: 'No he podido leer los datos ahora mismo.' }; }
+    messages.push({ role: 'assistant', content: resp.blocks }, { role: 'user', content: [{ type: 'tool_result', tool_use_id: resp.id, content: JSON.stringify(datos).slice(0, 20000) }] });
+    console.log(`[Agente] lectura=${resp.name} puerta=${puerta || '?'}`);
+    try { resp = await _impl.llamarModelo(messages, hoy, { maxTokens: 900 }); } catch (e) { console.error('[Agente] modelo:', e.message); return { handled: false }; }
+    if (resp.tipo === 'texto') { estado.delete(from); return { handled: true, reply: resp.texto }; }
+  }
+
   if (resp.tipo === 'tool') {
     estado.delete(from); // se resuelve la intención; limpiamos cualquier aclaración
     const out = await ejecutarTool(resp.name, resp.input);
@@ -149,4 +243,4 @@ async function intentar({ texto, from, imagenes = [], puerta = null } = {}) {
   return { handled: false };
 }
 
-module.exports = { intentar, TOOLS, _impl };
+module.exports = { intentar, TOOLS, _impl, _consultarPresencia: consultarPresencia, _horasObra: horasObra };

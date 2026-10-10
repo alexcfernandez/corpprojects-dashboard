@@ -2114,6 +2114,17 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
     return handlerQuienTrabaja(texto, from);
   }
 
+  // C0.horas) PREGUNTAS de presencia y horas («¿cuántas horas lleva David esta semana?», «¿quién estuvo de vacaciones
+  // en agosto?», «¿cuántas horas llevamos en la Claudia?»): las contesta el agente con los datos reales (solo lee).
+  // Solo preguntas: «pon a Javi de vacaciones» sigue siendo una orden y va por su camino.
+  if (!imagenes.length && /\b(horas|fichad[oa]s?|ha venido|han venido|no ha venido|no han venido|vacaciones|de baja|bajas|ha trabajado|han trabajado|trabajaron|trabajo (en|el|la)|presencia|faltas?|dias (ha|han|lleva|llevan))\b/.test(_ni)
+      && (/\?/.test(texto) || /^(cuant[oa]s?|quien(es)?|que|donde|cuando|dime|dame|resumen|lista|como va|cuanto)\b/.test(_ni))) {
+    try {
+      const res = await require('./agente').intentar({ texto, from, imagenes, puerta: 'presencia' });
+      if (res && res.handled) return res.reply;
+    } catch (e) { console.error('[Agente] presencia:', e.message); }
+  }
+
   // C0.apodos) Ver / borrar apodos guardados
   if (!imagenes.length) {
     if (/^\s*(apodos|ver apodos|lista de apodos|mis apodos|que apodos|qu[eé] apodos)\b/.test(_ni)) {

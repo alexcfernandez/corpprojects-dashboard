@@ -148,3 +148,18 @@ test('hora ambigua "7.30" → pregunta mañana/tarde → "de la tarde" → event
 });
 
 test.after(() => { Module._load = origLoad; });
+
+// ── E) Consultas de presencia: la IA pide los datos y redacta con ellos ──
+test('agente: consultar_presencia → lee los datos y responde con ellos (segunda llamada)', async () => {
+  estado._cache.clear();
+  const llamadas = [];
+  agente._impl.llamarModelo = async (messages) => {
+    llamadas.push(messages.length);
+    if (llamadas.length === 1) return { tipo: 'tool', name: 'consultar_presencia', id: 'tu1', input: { desde: '2026-10-05', hasta: '2026-10-09', trabajador: 'David' }, blocks: [{ type: 'tool_use', id: 'tu1', name: 'consultar_presencia', input: {} }] };
+    const res = messages[messages.length - 1].content[0];
+    assert.equal(res.type, 'tool_result'); assert.equal(res.tool_use_id, 'tu1');
+    return { tipo: 'texto', texto: 'David lleva *12 h* esta semana.' };
+  };
+  const r = await agente.intentar({ texto: '¿cuántas horas lleva David esta semana?', from: OWNER, puerta: 'presencia' });
+  assert.equal(r.handled, true); assert.match(r.reply, /12 h/); assert.equal(llamadas.length, 2);
+});
