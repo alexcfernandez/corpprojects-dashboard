@@ -77,7 +77,7 @@ async function completar() {
   const out = [];
   for (const ef of (await mapa()).values()) for (const e of ef.efectos || []) {
     if (hay.has(e.clave)) continue;
-    try { const r = await require('./facturaOriginal').buscar({ ref: e.numero, proveedor: 'Saltoki', total: Math.abs(e.importe) }); out.push({ recibo: ef.recibo, efecto: e.numero, importe: e.importe, compraId: r.compraId || null }); if (r.compraId) hay.add(e.clave); }
+    try { const r = await require('./facturaOriginal').buscar({ ref: String(e.numero).replace(/\/\s*\d{1,2}\s*$/, ''), proveedor: 'Saltoki', total: Math.abs(e.importe) }); out.push({ recibo: ef.recibo, efecto: e.numero, importe: e.importe, compraId: r.compraId || null }); if (r.compraId) hay.add(e.clave); }
     catch (err) { out.push({ recibo: ef.recibo, efecto: e.numero, error: err.message }); }
   }
   return out;
