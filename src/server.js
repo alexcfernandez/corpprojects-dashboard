@@ -3125,6 +3125,10 @@ app.post('/api/obras', requireAuth, async (req, res) => {
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
+app.post('/api/obras/:id/nueva-fase', requireAuthOficina, express.json(), async (req, res) => {
+  try { const b = req.body || {}; res.json(await obras.nuevaFase(req.params.id, { desde: b.desde, nombre: b.nombre })); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.put('/api/obras/:id', requireAuth, async (req, res) => {
   try {
     await obras.updateObra(req.params.id, req.body);

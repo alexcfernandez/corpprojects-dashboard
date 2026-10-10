@@ -203,6 +203,7 @@ async function createObra(data) {
     notes:        data.notes || '',
     tags:         data.tags || [],  // Weber, Nutersa, etc.
     aliases:      Array.isArray(data.aliases) ? data.aliases.map(s => String(s || '').trim()).filter(Boolean) : [],  // otros nombres que cuentan (partes/presencia)
+    faseDe:       data.faseDe ? String(data.faseDe) : null,   // obra partida en fases: de cuál viene (se factura aparte)
     createdAt:    new Date(),
     updatedAt:    new Date(),
   };
@@ -216,6 +217,26 @@ async function createObra(data) {
   // Dirección → coordenadas (en segundo plano) para comparar con dónde se ficha.
   if (obra.address) require('./geo').ubicarObra(result.insertedId).catch(() => {});
   return { id: result.insertedId, ...obra };
+}
+
+// NUEVA FASE de una obra (Simón Bombi: lo de ahora se factura aparte): obra nueva del mismo cliente desde `desde`;
+// se le pasan las compras (y su reparto) y los partes con fecha ≥ desde; la anterior se cierra el día antes.
+async function nuevaFase(id, { desde, nombre } = {}) {
+  const db = await getDB();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(desde || ''))) throw new Error('¿Desde qué día empieza la nueva fase?');
+  const o = await db.collection('obras').findOne({ _id: new ObjectId(String(id)) });
+  if (!o) throw new Error('Obra no encontrada');
+  const n = await db.collection('obras').countDocuments({ faseDe: String(o._id) });
+  const ref = String(nombre || '').trim() || `${o.reference} – Fase ${n + 2}`;
+  const nueva = await createObra({ clientName: o.clientName, reference: ref, address: o.address, description: o.description, aliases: o.aliases || [], tags: o.tags || [], startDate: desde, faseDe: String(o._id), notes: `Fase nueva de «${o.reference}» desde el ${desde.split('-').reverse().join('/')}` });
+  const idN = String(nueva.id), idV = String(o._id);
+  const antes = new Date(new Date(desde + 'T12:00:00Z').getTime() - 86400000).toISOString().slice(0, 10);
+  // Compras: las de la obra y las que la llevan en su reparto por líneas.
+  const c1 = await db.collection('compras').updateMany({ obraId: idV, fecha: { $gte: desde } }, { $set: { obraId: idN, obraRef: ref, updatedAt: new Date() } });
+  const c2 = await db.collection('compras').updateMany({ 'reparto.obraId': idV, fecha: { $gte: desde } }, { $set: { 'reparto.$[r].obraId': idN, 'reparto.$[r].obraRef': ref } }, { arrayFilters: [{ 'r.obraId': idV }] });
+  const p = await db.collection('partes').updateMany({ obraId: idV, date: { $gte: desde } }, { $set: { obraId: idN, clientName: ref } });
+  await db.collection('obras').updateOne({ _id: o._id }, { $set: { faseSiguiente: idN, endDate: antes, status: 'terminada', closedAt: new Date(), updatedAt: new Date() } });
+  return { ok: true, nueva: { id: idN, reference: ref }, compras: c1.modifiedCount, repartos: c2.modifiedCount, partes: p.modifiedCount, cerradaHasta: antes };
 }
 
 async function getObras({ clientName, status, search, verEstudio = true } = {}) {
@@ -242,7 +263,7 @@ async function getObra(id) {
 
 async function updateObra(id, data) {
   const db = await getDB();
-  const allowed = ['clientName','reference','description','address','status','startDate','endDate','budgetAmount','notes','tags','materiales','aliases','presupuestosStel','facturasStel'];
+  const allowed = ['clientName','reference','description','address','status','startDate','endDate','budgetAmount','notes','tags','materiales','aliases','presupuestosStel','facturasStel','faseDe','faseSiguiente'];
   const set = { updatedAt: new Date() };
   allowed.forEach(k => { if (data[k] !== undefined) set[k] = data[k]; });
   // Presupuestos de StelOrder enlazados a la obra (base sin IVA): el presupuesto de la obra es su suma.
@@ -531,7 +552,11 @@ async function getRentabilidad(obraId) {
   // 1. Partes asociados a esta obra: por obraId EXPLÍCITO (el operario la eligió
   //    en el parte) o por cualquiera de sus nombres/alias.
   const orPartes = [{ obraId: String(obra._id) }, ...orClientName];
-  const partes = await db.collection('partes').find({ $or: orPartes }).sort({ date: 1 }).toArray();
+  // Obra partida en FASES (mismo cliente, se factura aparte): cada fase cuenta los días de su tramo, porque
+  // partes y presencia se reconocen por el nombre y los dos tramos se llaman igual.
+  const fDesde = obra.faseDe && obra.startDate ? String(obra.startDate) : null, fHasta = obra.faseSiguiente && obra.endDate ? String(obra.endDate) : null;
+  const enTramo = d => (!fDesde || String(d) >= fDesde) && (!fHasta || String(d) <= fHasta);
+  const partes = (await db.collection('partes').find({ $or: orPartes }).sort({ date: 1 }).toArray()).filter(p => enTramo(p.date));
 
   // 2. Coste de personal — desde PARTES y, si no hay parte ese día, desde PRESENCIA.
   //    Tarifa real = coste/hora de la plantilla (con fallback razonable).
@@ -547,6 +572,7 @@ async function getRentabilidad(obraId) {
     presencias = await db.collection('attendance').find(
       (orClientName.length || orObrasClient.length) ? { $or: [...orClientName, ...orObrasClient] } : NADA
     ).toArray();
+    presencias = presencias.filter(e => enTramo(e.date));
   } catch (e) {}
 
   let totalHoras = 0;
@@ -767,6 +793,7 @@ async function _getResumenGeneral() {
 }
 
 module.exports = {
+  nuevaFase,
   ESTADOS_OBRA, CATEGORIAS_GASTO,
   ESTADOS_PREVIOS, createObra, getObras, getObra, updateObra, deleteObra, getSelector, getEnEstudio, resumenAbiertas, addMaterial, deleteMaterial,
   addCertificacion, setCertificacion, deleteCertificacion, resumenCertificaciones,
