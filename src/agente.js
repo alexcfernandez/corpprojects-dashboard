@@ -38,6 +38,21 @@ const TOOLS = [
     },
   },
   {
+    name: 'apuntar_ausencia',
+    description: 'Apunta una AUSENCIA LARGA de un trabajador con su fecha de fin (maternidad/paternidad, baja médica, accidente, lactancia, excedencia): así esos días no salen como «sin apuntar» y la gestoría recibe el tipo bien. P. ej. «Paula está de maternidad hasta el 12 de febrero», «Judit de baja hasta el lunes».',
+    input_schema: {
+      type: 'object',
+      properties: {
+        trabajador: { type: 'string' },
+        tipo: { type: 'string', enum: ['maternidad', 'baja', 'accidente', 'lactancia', 'excedencia', 'otra'] },
+        desde: { type: 'string', description: 'YYYY-MM-DD (si no lo dice: hoy).' },
+        hasta: { type: ['string', 'null'], description: 'YYYY-MM-DD del último día, o null si no se sabe.' },
+        nota: { type: ['string', 'null'] },
+      },
+      required: ['trabajador', 'tipo', 'desde'],
+    },
+  },
+  {
     name: 'horas_obra',
     description: 'HORAS Y COSTE DE PERSONAL DE UNA OBRA (solo lee): total de horas, quién ha trabajado y cuánto, días, compras. P. ej. «¿cuántas horas llevamos en la Claudia?», «¿quién ha ido a la Simón Bombi fase 2?».',
     input_schema: {
@@ -156,17 +171,22 @@ async function consultarPresencia({ desde, hasta, trabajador = null, obra = null
       const ext = await require('./attendance').extremosPorTrabajador();
       const fest = {}; for (const y of new Set([desde.slice(0, 4), hasta.slice(0, 4)])) Object.assign(fest, await require('./festivos').lista(y).catch(() => ({})));
       const hoy = hoyMadridISO();
+      const AUS = require('./ausencias'); const aus = await AUS.lista();   // maternidad, bajas largas… con su fecha de fin
       const NOM = { obra: 'trabajados', oficina: 'oficina', vacaciones: 'vacaciones', baja: 'baja', falta_j: 'faltaJustificada', falta_i: 'faltaInjustificada', libre: 'libre', festivo: 'festivo' };
       out.resumenPorPersona = us.map(u => {
         const e = ext.get(String(u._id)) || {};
         const ini = [desde, e.primero || desde].sort().pop(), fin = [hasta, hoy, ...(u.active === false && e.ultimo ? [e.ultimo] : [])].sort()[0];
         const suyos = l.filter(x => String(x.workerId) === String(u._id));
         const r = { nombre: u.name, autonomo: !!u.autonomo, activo: u.active !== false, desde: ini, hasta: fin, laborables: 0, trabajados: 0, oficina: 0, vacaciones: 0, baja: 0, faltaJustificada: 0, faltaInjustificada: 0, libre: 0, festivo: 0, horas: 0, sinApuntar: 0, fechasSinApuntar: [], fechasFaltas: [], fechasVacaciones: [], fechasBaja: [] };
-        for (const x of suyos) { const k = NOM[x.estado || 'obra'] || 'trabajados'; r[k]++; if (['obra', 'oficina'].includes(x.estado || 'obra')) r.horas += Number(x.horas) || 0;
+        r.porAusencia = {};   // { maternidad: { fechas, hasta, nota } } — lo de dentro de una ausencia larga apuntada
+        const enAus = (f) => AUS.deDia(aus, u._id, f);
+        const meter = (a, f) => { const k = a.tipo; (r.porAusencia[k] = r.porAusencia[k] || { fechas: [], hasta: a.hasta, desde: a.desde, nota: a.nota }).fechas.push(f); };
+        for (const x of suyos) { const a0 = /baja|falta_j/.test(x.estado || '') ? enAus(x.date) : null; if (a0) { meter(a0, x.date); continue; }
+          const k = NOM[x.estado || 'obra'] || 'trabajados'; r[k]++; if (['obra', 'oficina'].includes(x.estado || 'obra')) r.horas += Number(x.horas) || 0;
           if (/falta/.test(x.estado || '')) r.fechasFaltas.push(x.date); if (x.estado === 'vacaciones') r.fechasVacaciones.push(x.date); if (x.estado === 'baja') r.fechasBaja.push(x.date); }
         if (!estado) for (let d = new Date(ini + 'T12:00:00Z'); ini <= fin && d <= new Date(fin + 'T12:00:00Z'); d = new Date(d.getTime() + 86400000)) {
           const f = d.toISOString().slice(0, 10), w = d.getUTCDay(); if (w === 0 || w === 6 || fest[f]) continue;
-          r.laborables++; if (!suyos.some(x => x.date === f)) { r.sinApuntar++; r.fechasSinApuntar.push(f); }
+          r.laborables++; if (!suyos.some(x => x.date === f)) { const a = enAus(f); if (a) meter(a, f); else { r.sinApuntar++; r.fechasSinApuntar.push(f); } }
         }
         for (const k of ['fechasSinApuntar', 'fechasFaltas', 'fechasVacaciones', 'fechasBaja']) r[k] = r[k].sort().slice(0, 31);
         if (!e.primero || e.primero > hasta) r.nota = 'Sin nada apuntado en este periodo (o aún no había empezado).';
@@ -196,6 +216,13 @@ async function horasObra({ obra, desde = null, hasta = null } = {}) {
 const LECTORES = { consultar_presencia: consultarPresencia, horas_obra: horasObra };
 
 async function ejecutarTool(name, input) {
+  if (name === 'apuntar_ausencia') {
+    try {
+      const x = await require('./ausencias').poner({ nombre: input.trabajador, tipo: input.tipo, desde: input.desde || hoyMadridISO(), hasta: input.hasta || null, nota: input.nota || '' }, 'Corpy');
+      const f = d => d.split('-').reverse().join('/');
+      return { handled: true, reply: `📅 Apuntado: *${x.nombre}* — ${require('./ausencias').TIPOS[x.tipo].toLowerCase()} desde el ${f(x.desde)}${x.hasta ? ` hasta el ${f(x.hasta)}` : ' (sin fecha de fin)'}. Esos días ya no saldrán como «sin apuntar» y la gestoría lo recibirá así.` };
+    } catch (e) { return { handled: true, reply: e.message }; }
+  }
   if (name === 'crear_evento_agenda') {
     const { fecha, hora, titulo } = input || {};
     if (!fecha || !titulo) return { handled: true, reply: '¿Qué apunto y para qué día?' };

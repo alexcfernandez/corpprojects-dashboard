@@ -8,6 +8,7 @@
 'use strict';
 const MESOS = ['gener', 'febrer', 'març', 'abril', 'maig', 'juny', 'juliol', 'agost', 'setembre', 'octubre', 'novembre', 'desembre'];
 const hoyISO = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
+const AUS_CA = { maternidad: 'baixa per maternitat', baja: 'baixa per malaltia', accidente: 'baixa per accident laboral', lactancia: 'lactància', excedencia: 'excedència', otra: 'absència' };
 const deMes = nom => (/^[aeiouà]/i.test(nom) ? `d'${nom}` : `de ${nom}`);   // «d'octubre», «de setembre»
 const dm = f => `${Number(f.slice(8, 10))}/${Number(f.slice(5, 7))}`;
 
@@ -50,6 +51,10 @@ function texto(res) {
     const parts = [];
     if (p.fechasFaltas.length) parts.push(`${p.fechasFaltas.length} ${p.fechasFaltas.length === 1 ? 'dia' : 'dies'} de falta (${tramos(p.fechasFaltas)})`);
     if (p.fechasBaja.length) parts.push(`baixa ${tramos(p.fechasBaja)}`);
+    for (const [tipo, x] of Object.entries(p.porAusencia || {})) {
+      const f = x.fechas.sort(); const sigue = x.hasta && x.hasta > res.hasta;
+      parts.push(`${AUS_CA[tipo] || 'absència'} ${x.desde < res.desde ? `tot el mes (des del ${dm(x.desde)}/${x.desde.slice(0, 4)})` : `des del ${dm(f[0] || x.desde)}`}${sigue ? ` fins al ${dm(x.hasta)}/${x.hasta.slice(0, 4)}` : f.length ? ` al ${dm(f[f.length - 1])}` : ''}`);
+    }
     if (p.fechasVacaciones.length) parts.push(`vacances ${tramos(p.fechasVacaciones)}`);
     if (parts.length) lin.push(`- ${p.nombre}: ${parts.join('; ')}`);
   }
@@ -64,8 +69,8 @@ async function preparar({ mes = null, gmailId = null, threadId = null, messageId
   const b = await require('./gmailBorrador').crear({ para: [para], asunto: asunto ? (/^re:/i.test(asunto) ? asunto : `Re: ${asunto}`) : `Absentismes ${MESOS[Number(mes.slice(5, 7)) - 1]} — Corp Projects`, texto: cuerpo, threadId, inReplyTo: messageId });
   const sinApuntar = res.personas.filter(p => p.sinApuntar);
   let wa = `📋 *Absentismes de ${MESOS[Number(mes.slice(5, 7)) - 1]}* para la gestoría: te he dejado la respuesta preparada en Gmail (no se ha enviado).\n${b.url}\n\n`;
-  const con = res.personas.filter(p => p.fechasFaltas.length || p.fechasBaja.length || p.fechasVacaciones.length);
-  wa += con.length ? con.map(p => `• *${p.nombre}*: ${[p.fechasFaltas.length ? `${p.fechasFaltas.length} falta(s) ${tramos(p.fechasFaltas)}` : '', p.fechasBaja.length ? `baja ${tramos(p.fechasBaja)}` : '', p.fechasVacaciones.length ? `vacaciones ${tramos(p.fechasVacaciones)}` : ''].filter(Boolean).join('; ')}`).join('\n') : 'Sin faltas, bajas ni vacaciones apuntadas.';
+  const con = res.personas.filter(p => p.fechasFaltas.length || p.fechasBaja.length || p.fechasVacaciones.length || Object.keys(p.porAusencia || {}).length);
+  wa += con.length ? con.map(p => `• *${p.nombre}*: ${[p.fechasFaltas.length ? `${p.fechasFaltas.length} falta(s) ${tramos(p.fechasFaltas)}` : '', p.fechasBaja.length ? `baja ${tramos(p.fechasBaja)}` : '', p.fechasVacaciones.length ? `vacaciones ${tramos(p.fechasVacaciones)}` : '', ...Object.entries(p.porAusencia || {}).map(([t, x]) => `${t}${x.hasta ? ' hasta el ' + x.hasta.split('-').reverse().join('/') : ''}`)].filter(Boolean).join('; ')}`).join('\n') : 'Sin faltas, bajas ni vacaciones apuntadas.';
   if (sinApuntar.length) wa += `\n\n⚠️ *Días laborables sin nada apuntado* (¿faltó o falta poner la presencia?):\n${sinApuntar.map(p => `• ${p.nombre}: ${tramos(p.fechasSinApuntar)}`).join('\n')}\n\nArréglalos en Presencia y dime *«prepara los absentismes»* para rehacer el correo.`;
   if (avisar) { try { await require('./notifications').sendWhatsApp(wa); } catch (e) { console.warn('[Absentismes] WhatsApp:', e.message); } }
   return { ok: true, mes, borrador: b.url, texto: cuerpo, aviso: wa, sinApuntar: sinApuntar.map(p => ({ nombre: p.nombre, fechas: p.fechasSinApuntar })) };

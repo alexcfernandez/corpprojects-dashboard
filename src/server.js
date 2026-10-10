@@ -2125,6 +2125,12 @@ app.post('/api/embargos/:id/pago', requireAuthOficina, express.json(), async (re
     const b = req.body || {}; res.json(await require('./embargos').apuntarPago(req.params.id, { importe: b.importe, fecha: b.fecha, nota: b.nota }, req.user?.name || 'Oficina')); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+// Ausencias largas (maternidad, bajas, lactancia…) con fecha de fin.
+app.get('/api/personal/ausencias', requireAuthOficina, async (req, res) => { try { res.json(await require('./ausencias').lista()); } catch (err) { res.status(500).json({ error: err.message }); } });
+app.post('/api/personal/ausencias', requireAuthOficina, express.json(), async (req, res) => {
+  try { res.json(await require('./ausencias').poner(req.body || {}, req.user?.name || 'Oficina')); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.delete('/api/personal/ausencias/:id', requireAuthOficina, async (req, res) => { try { res.json(await require('./ausencias').quitar(req.params.id)); } catch (err) { res.status(400).json({ error: err.message }); } });
 // Absentismes del mes para la gestoría: borrador en Gmail + resumen (los días sin apuntar, para revisarlos).
 app.post('/api/personal/absentismes', requireAuthOficina, express.json(), async (req, res) => {
   try { res.json(await require('./absentismes').preparar({ mes: (req.body || {}).mes, avisar: false })); } catch (err) { res.status(400).json({ error: err.message }); }

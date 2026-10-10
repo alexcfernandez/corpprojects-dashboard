@@ -11,6 +11,7 @@ const AT = [
 ];
 stub('src/attendance.js', { getAttendance: async ({ from, to }) => AT.filter(e => e.date >= from && e.date <= to), extremosPorTrabajador: async () => new Map([['d', { primero: '2026-09-01', ultimo: '2026-10-09' }], ['j', { primero: '2026-10-09', ultimo: '2026-10-09' }], ['m', { primero: '2026-10-01', ultimo: '2026-10-07' }]]) });
 stub('src/festivos.js', { lista: async () => ({ '2026-10-12': 'Hispanitat' }) });
+stub('src/ausencias.js', { lista: async () => [{ userId: 'm', tipo: 'maternidad', desde: '2026-10-03', hasta: '2027-02-12' }], deDia: (l, u, f) => l.find(x => x.userId === String(u) && x.desde <= f && (!x.hasta || x.hasta >= f)) || null });
 stub('src/users.js', { getUsers: async () => [{ _id: 'd', name: 'David Taladros', role: 'tecnico' }, { _id: 'j', name: 'Javier Huaca', role: 'tecnico' }, { _id: 'm', name: 'Manolo', role: 'tecnico' }], normalizeRole: r => r });
 const A = require(path.join(root, 'src/agente.js'));
 
@@ -18,7 +19,9 @@ test('horas de David esta semana, por obra, y quién no tiene nada apuntado', as
   const r = await A._consultarPresencia({ desde: '2026-10-05', hasta: '2026-10-09', trabajador: 'david' });
   assert.equal(r.porPersona[0].horas, 12); assert.equal(r.porObra[0].nombre, 'Simón bombi');
   const t = await A._consultarPresencia({ desde: '2026-10-09', hasta: '2026-10-09' });
-  assert.deepEqual(t.resumenPorPersona.find(p => p.nombre === 'Manolo').fechasSinApuntar, ['2026-10-09']);
+  // Manolo tiene una ausencia larga apuntada (maternidad desde el 03/10): no sale como «sin apuntar»
+  const mt = t.resumenPorPersona.find(p => p.nombre === 'Manolo');
+  assert.deepEqual(mt.fechasSinApuntar, []); assert.deepEqual(mt.porAusencia.maternidad.fechas, ['2026-10-09']);
   // «¿Cuántos días faltó David este mes?»: 05/10 al 09/10 sin nada el 5, 6 y 7 (empezó en septiembre) → 3 sin apuntar
   const d = (await A._consultarPresencia({ desde: '2026-10-01', hasta: '2026-10-09', trabajador: 'David' })).resumenPorPersona[0];
   assert.equal(d.trabajados, 2); assert.equal(d.laborables, 7); assert.equal(d.sinApuntar, 5);
