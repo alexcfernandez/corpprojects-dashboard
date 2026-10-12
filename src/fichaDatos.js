@@ -14,7 +14,7 @@ function faltanDe(u) {
 }
 const lista = ks => { const l = ks.map(k => NOMBRES[k]); return l.length > 1 ? l.slice(0, -1).join(', ') + ' y ' + l[l.length - 1] : l[0] || ''; };
 
-async function pedir(userId, { por = 'Álex' } = {}) {
+async function pedir(userId, { por = 'Álex', cuando = null } = {}) {
   const db = await getDB();
   const u = await db.collection('users').findOne({ _id: new ObjectId(String(userId)) });
   if (!u) throw new Error('No encuentro ese trabajador');
@@ -23,7 +23,7 @@ async function pedir(userId, { por = 'Álex' } = {}) {
   const ya = await db.collection('encargos').findOne({ userId: String(userId), tipo: 'tallas', estado: { $in: ['abierto', 'programado'] } });
   if (ya) return { ok: true, yaPedido: true, nombre: u.name };
   const texto = `Hola ${primer(u.name)} 👋 Soy Corpy, de la oficina de Corp Projects. Para la ropa de trabajo y los EPIs necesito tu ${lista(faltan)}${faltan.includes('nacimiento') ? ' (la fecha es para felicitarte 🎂)' : ''}.\n\nContéstame en un solo mensaje, por ejemplo: «camiseta L, pantalón 42, zapato 43, nací el 5/3/1990». ¡Gracias!`;
-  return require('./encargos').crear({ userId, que: 'tallas y cumpleaños', mensaje: lista(faltan), tipo: 'tallas', textoCompleto: texto, por });
+  return require('./encargos').crear({ userId, que: 'tallas y cumpleaños', mensaje: lista(faltan), tipo: 'tallas', textoCompleto: texto, por, cuando });
 }
 
 // Quién NO cuenta como equipo aunque fiche (Álex tiene usuario de técnico para su presencia): EQUIPO_EXCLUIR=«Alex,…».
@@ -32,11 +32,11 @@ const EXCLUIR = () => String(process.env.EQUIPO_EXCLUIR || 'Alex').split(',').ma
 const delEquipo = u => u.active !== false && !u.autonomo && !u.esDueno && !EXCLUIR().includes(_norm(u.name));
 
 // A todos los de plantilla que les falte algo (no autónomos).
-async function pedirATodos({ por = 'Álex' } = {}) {
+async function pedirATodos({ por = 'Álex', cuando = null } = {}) {
   const U = require('./users');
   const us = (await U.getUsers(false)).filter(u => delEquipo(u) && ['tecnico', 'encargado'].includes(U.normalizeRole(u.role)));
   const out = [];
-  for (const u of us) { try { const r = await pedir(String(u._id), { por }); out.push({ nombre: u.name, ...(r.yaEsta ? { estado: 'ya las tiene' } : r.yaPedido ? { estado: 'ya pedidas' } : { estado: 'pedidas' }) }); } catch (e) { out.push({ nombre: u.name, error: e.message }); } }
+  for (const u of us) { try { const r = await pedir(String(u._id), { por, cuando }); out.push({ nombre: u.name, ...(r.yaEsta ? { estado: 'ya las tiene' } : r.yaPedido ? { estado: 'ya pedidas' } : { estado: 'pedidas' }) }); } catch (e) { out.push({ nombre: u.name, error: e.message }); } }
   return out;
 }
 
