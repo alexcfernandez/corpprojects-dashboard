@@ -31,7 +31,10 @@ async function rehacerProgramados() {
 // CUMPLEAÑOS desde el DNI/NIE de su carpeta (sin preguntarle: es sorpresa). La IA lee la fecha de nacimiento.
 async function cumplesDesdeDNI({ _leerDoc = null } = {}) {
   const db = await getDB(); const out = [];
-  const us = (await require('./users').getUsers(false)).filter(u => delEquipo(u) && !u.nacimiento);
+  // Una fecha leída del DNI que no cuadra con alguien en edad de trabajar (16–70 años) es una mala lectura: se borra y se vuelve a leer.
+  const todos = (await require('./users').getUsers(false)).filter(u => delEquipo(u));
+  for (const u of todos) if (u.nacimiento && u.nacimientoDe === 'dni' && !edadCreible(u.nacimiento)) { await db.collection('users').updateOne({ _id: u._id }, { $unset: { nacimiento: '', nacimientoDe: '' } }); u.nacimiento = null; }
+  const us = todos.filter(u => !u.nacimiento);
   for (const u of us) {
     const d = await db.collection('docsPersonal').find({ ambito: 'trabajador', userId: String(u._id), tipo: { $in: ['dni', 'extranjeria'] }, estado: 'ok' }).project({ _id: 1, mime: 1, nombre: 1 }).sort({ subido: -1 }).limit(3).toArray();
     let fecha = null;
@@ -45,7 +48,7 @@ async function cumplesDesdeDNI({ _leerDoc = null } = {}) {
           const j = await r.json(); const tu = (j.content || []).find(b => b.type === 'tool_use'); fecha = tu && tu.input && tu.input.nacimiento;
         }
       } catch (e) { fecha = null; }
-      if (/^\d{4}-\d{2}-\d{2}$/.test(String(fecha || ''))) break; else fecha = null;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(String(fecha || '')) && edadCreible(fecha)) break; else fecha = null;
     }
     if (fecha) await db.collection('users').updateOne({ _id: u._id }, { $set: { nacimiento: fecha, nacimientoDe: 'dni' } });
     out.push({ nombre: u.name, nacimiento: fecha, docs: d.length });
@@ -112,9 +115,11 @@ async function respuesta(e, userId, nombreTrab, texto, { _avisar = null, _leerIA
 }
 
 // Cumpleaños de hoy (cron de cada mañana): aviso a Álex.
+function edadCreible(f, hoy = new Date()) { const e = (hoy - new Date(String(f).slice(0, 10))) / (365.25 * 864e5); return e >= 16 && e <= 70; }
+
 async function cumpleHoy({ hoy = new Date(), _avisar = null } = {}) {
   const md = hoy.toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' }).slice(5);
-  const us = (await require('./users').getUsers(false)).filter(u => u.active !== false && u.nacimiento && String(u.nacimiento).slice(5) === md);
+  const us = (await require('./users').getUsers(false)).filter(u => u.active !== false && u.nacimiento && String(u.nacimiento).slice(5) === md && edadCreible(u.nacimiento, hoy));
   for (const u of us) { const anos = Number(hoy.toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' }).slice(0, 4)) - Number(String(u.nacimiento).slice(0, 4));
     try { await (_avisar || require('./notifications').sendWhatsApp)(`🎂 Hoy es el cumpleaños de *${u.name}* (${anos} años). ¡No te olvides de felicitarle!`); } catch (e) {} }
   return { n: us.length };
@@ -127,4 +132,4 @@ async function todas() {
     .map(u => ({ id: String(u._id), nombre: u.name, tallas: u.tallas || {}, nacimiento: u.nacimiento || null, faltan: faltanDe(u) }));
 }
 
-module.exports = { pedir, pedirATodos, respuesta, cumpleHoy, todas, faltanDe, delEquipo, rehacerProgramados, cumplesDesdeDNI };
+module.exports = { pedir, pedirATodos, respuesta, cumpleHoy, todas, faltanDe, delEquipo, rehacerProgramados, cumplesDesdeDNI, edadCreible };
