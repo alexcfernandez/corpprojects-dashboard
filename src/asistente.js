@@ -2114,6 +2114,17 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
     return handlerQuienTrabaja(texto, from);
   }
 
+  // C0.papeles) «pídele (otra vez) los papeles / el DNI / la documentación a Javi»: Corpy se lo pide por WhatsApp
+  // (si ya se le pidió, solo lo que falta) y vuelven a empezar los recordatorios.
+  if (!imagenes.length && /\b(pide|pidele|pídele|vuelve a pedir|vuelvele a pedir|recuerdale|recuérdale|reclama|reclamale)\b[\s\S]*\b(papeles|documentacion|documentos|dni|nie|alta|seguridad social)\b/.test(_ni)) {
+    const workers = await attendance.getWorkers().catch(() => []);
+    const m = _ni.match(/\ba\s+([a-zñ ]{2,40})$/) || _ni.match(/(?:pidele|pídele|recuerdale|recuérdale|reclamale)\s+(?:otra vez\s+)?(?:los papeles|la documentacion|el dni|los documentos)?\s*(?:a\s+)?([a-zñ]+)/);
+    const w = m ? resolverTrabajador(m[1].trim(), workers, await cargarAliasTrabajadores()) : null;
+    if (!w) return '¿A quién se los pido? Dime el nombre, p. ej. *«pídele otra vez los papeles a Javi»*.';
+    try { const r = await require('./docsAlta').pedir(w.id, { por: 'Corpy (orden de Álex)' }); return `📨 Hecho: Corpy se lo ha pedido a *${w.name}*.\n\n_${r.texto.slice(0, 400)}_\n\nSi en 2 recordatorios no lo manda, te aviso.`; }
+    catch (e) { return `No he podido pedírselo a ${w.name}: ${e.message}`; }
+  }
+
   // C0.absentismes) «prepara los absentismes (de septiembre)»: rehace la respuesta a la gestoría con la presencia.
   if (!imagenes.length && /\b(prepara|haz|rehaz|vuelve a (hacer|preparar)|manda|envia)\b[\s\S]*\babsentism/.test(_ni)) {
     const MES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];

@@ -43,11 +43,16 @@ async function pedir(userId, { extranjero = false, por = null, _enviar = null } 
   const piezas = piezasDe(!!extranjero);
   // Si ya se le había pedido (p. ej. el mensaje le salió «Esperando el mensaje» y no lo pudo abrir), se le dice.
   const antes = await db.collection(COL).findOne({ userId: String(userId), estado: 'abierta' });
-  const txt = (antes ? 'Te lo repito por si no se te abrió el mensaje anterior: no hace falta abrir ningún enlace, solo mandar las fotos aquí mismo.\n\n' : '') + textoPeticion(primerNombre(u.name), piezas);
+  const faltanAntes = antes ? piezas.filter(k => !(antes.recibidas || {})[k]) : piezas;
+  const txt = antes
+    ? `Hola${primerNombre(u.name) ? ' ' + primerNombre(u.name) : ''} 👋 Te lo recuerdo: para tu alta aún nos falta ${lista(faltanAntes.length ? faltanAntes : piezas)}. No hace falta abrir ningún enlace, solo mandar las fotos aquí mismo (de cerca y que se lean bien). ¡Gracias!`
+    : textoPeticion(primerNombre(u.name), piezas);
   const ok = await (_enviar || require('./notifications').sendWhatsAppTo)(movil, txt);
   if (ok === false) throw new Error('No se pudo enviar el WhatsApp (mira que Corpy esté conectado)');
   await db.collection(COL).updateMany({ userId: String(userId), estado: 'abierta' }, { $set: { estado: 'sustituida' } });
-  const doc = { userId: String(userId), nombre: u.name, movil, piezas, recibidas: {}, estado: 'abierta', por: por || '', at: new Date(), recordatorios: 0 };
+  // Lo que ya mandó se conserva (Manolo ya envió el DNI: solo se le vuelve a pedir lo que falta).
+  const yaRecibido = antes ? Object.fromEntries(Object.entries(antes.recibidas || {}).filter(([k]) => piezas.includes(k))) : {};
+  const doc = { userId: String(userId), nombre: u.name, movil, piezas, recibidas: yaRecibido, estado: 'abierta', por: por || '', at: new Date(), recordatorios: 0 };
   const r = await db.collection(COL).insertOne(doc);
   return { ok: true, id: String(r.insertedId), a: movil, texto: txt };
 }
@@ -118,19 +123,32 @@ async function recibir(pet, { buf, mime }, { _mirar: mirar = _mirar, _avisar = n
 }
 
 // Recordatorio (L-V por la mañana): a quien no ha mandado todo en 24 h, una vez al día y como mucho 2 veces.
-async function recordar({ hoy = new Date(), _enviar = null } = {}) {
+// Recordatorios (L-V a las 10:30, no en festivos): al día siguiente de pedirlo y a los 2 días del primero. Si tras los 2
+// sigue sin mandarlo, se avisa UNA vez a Álex («¿le llamas?») para que no se quede olvidado.
+async function recordar({ hoy = new Date(), _enviar = null, _avisarJefe = null } = {}) {
   const db = await getDB();
+  try { if (await require('./festivos').esFestivo(hoy.toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' }))) return { recordados: 0, festivo: true }; } catch (e) {}
   const ps = await db.collection(COL).find({ estado: 'abierta' }).toArray();
-  let n = 0;
+  let n = 0, avisos = 0;
+  const H = 3600 * 1000;
   for (const p of ps) {
-    if ((p.recordatorios || 0) >= 2 || hoy - new Date(p.ultimoRecordatorio || p.at) < 20 * 3600 * 1000) continue;
     const faltan = p.piezas.filter(k => !p.recibidas[k]);
     if (!faltan.length) continue;
+    const desde = hoy - new Date(p.ultimoRecordatorio || p.at);
+    if ((p.recordatorios || 0) >= 2) {
+      if (!p.avisadoJefe && desde >= 44 * H) {
+        const dias = Math.round((hoy - new Date(p.at)) / (24 * H));
+        const txt = `⏰ *${p.nombre}* sigue sin mandar la documentación del alta (pedida hace ${dias} días y recordada 2 veces). Le falta ${lista(faltan)}.\n\n¿Le llamas? Si quieres que Corpy se lo vuelva a pedir, dime *«pídele otra vez los papeles a ${primerNombre(p.nombre) || p.nombre}»*.`;
+        try { await (_avisarJefe || require('./notifications').sendWhatsApp)(txt); avisos++; await db.collection(COL).updateOne({ _id: p._id }, { $set: { avisadoJefe: hoy } }); } catch (e) {}
+      }
+      continue;
+    }
+    if (desde < ((p.recordatorios || 0) === 0 ? 20 : 44) * H) continue;   // 1º al día siguiente; 2º, dos días después
     const txt = `Hola${primerNombre(p.nombre) ? ' ' + primerNombre(p.nombre) : ''} 👋 Para tu alta aún nos falta ${lista(faltan)}. Mándalo por aquí cuando puedas (fotos de cerca y que se lean bien). ¡Gracias!`;
     const ok = await (_enviar || require('./notifications').sendWhatsAppTo)(p.movil, txt);
     if (ok !== false) { n++; await db.collection(COL).updateOne({ _id: p._id }, { $set: { ultimoRecordatorio: hoy }, $inc: { recordatorios: 1 } }); }
   }
-  return { recordados: n };
+  return { recordados: n, avisosJefe: avisos };
 }
 
 module.exports = { pedir, abiertaDe, listar, cerrar, recibir, recordar, PIEZAS, TIPO_PERSONAL, _textoPeticion: textoPeticion };
