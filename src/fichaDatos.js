@@ -26,10 +26,15 @@ async function pedir(userId, { por = 'Álex' } = {}) {
   return require('./encargos').crear({ userId, que: 'tallas y cumpleaños', mensaje: lista(faltan), tipo: 'tallas', textoCompleto: texto, por });
 }
 
+// Quién NO cuenta como equipo aunque fiche (Álex tiene usuario de técnico para su presencia): EQUIPO_EXCLUIR=«Alex,…».
+const _norm = x => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+const EXCLUIR = () => String(process.env.EQUIPO_EXCLUIR || 'Alex').split(',').map(_norm).filter(Boolean);
+const delEquipo = u => u.active !== false && !u.autonomo && !u.esDueno && !EXCLUIR().includes(_norm(u.name));
+
 // A todos los de plantilla que les falte algo (no autónomos).
 async function pedirATodos({ por = 'Álex' } = {}) {
   const U = require('./users');
-  const us = (await U.getUsers(false)).filter(u => u.active !== false && !u.autonomo && ['tecnico', 'encargado'].includes(U.normalizeRole(u.role)));
+  const us = (await U.getUsers(false)).filter(u => delEquipo(u) && ['tecnico', 'encargado'].includes(U.normalizeRole(u.role)));
   const out = [];
   for (const u of us) { try { const r = await pedir(String(u._id), { por }); out.push({ nombre: u.name, ...(r.yaEsta ? { estado: 'ya las tiene' } : r.yaPedido ? { estado: 'ya pedidas' } : { estado: 'pedidas' }) }); } catch (e) { out.push({ nombre: u.name, error: e.message }); } }
   return out;
@@ -78,8 +83,8 @@ async function cumpleHoy({ hoy = new Date(), _avisar = null } = {}) {
 // Para la lista de compra de EPIs y la pantalla de Personal.
 async function todas() {
   const U = require('./users');
-  return (await U.getUsers(false)).filter(u => u.active !== false && !u.autonomo && ['tecnico', 'encargado'].includes(U.normalizeRole(u.role)))
+  return (await U.getUsers(false)).filter(u => delEquipo(u) && ['tecnico', 'encargado'].includes(U.normalizeRole(u.role)))
     .map(u => ({ id: String(u._id), nombre: u.name, tallas: u.tallas || {}, nacimiento: u.nacimiento || null, faltan: faltanDe(u) }));
 }
 
-module.exports = { pedir, pedirATodos, respuesta, cumpleHoy, todas, faltanDe };
+module.exports = { pedir, pedirATodos, respuesta, cumpleHoy, todas, faltanDe, delEquipo };
