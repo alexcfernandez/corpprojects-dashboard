@@ -377,6 +377,7 @@ function startScheduler() {
   cron.schedule('30 8 * * 1', () => require('./pendientesEquipo').avisoSemanal(), { timezone: 'Europe/Madrid' });
   // Cumpleaños del día: aviso a Álex a primera hora (fichaDatos.js).
   cron.schedule('0 8 * * *', () => require('./fichaDatos').cumpleHoy().catch(e => console.warn('[Cumples]', e.message)), { timezone: 'Europe/Madrid' });
+  cron.schedule('* * * * *', () => require('./programados').tick().catch(e => console.warn('[Programados]', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('35 10 * * 1-5', () => require('./encargos').recordar().catch(e => console.warn('[Encargos] recordar:', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('10 9 * * 1-5', () => require('./personalDocs').revisarCaducidades().catch(e => console.warn('[Personal] caducidades:', e.message)), { timezone: 'Europe/Madrid' });
   // Flota: avisos de ITV, seguro, revisión y fin de renting (conductor + oficina).
