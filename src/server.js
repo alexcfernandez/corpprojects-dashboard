@@ -650,6 +650,19 @@ async function procesarTrabajador(from, body, media, trab, responder) {
     const guardadas = []; let noDoc = 0, fallos = 0;
     // ¿Le hemos pedido sus documentos para el alta? Entonces esto va a su carpeta de Personal (docsAlta.js).
     let petAlta = null; try { petAlta = await require('./docsAlta').abiertaDe(trab.userId); } catch (e) {}
+    // ¿Le hemos encargado algo (encargos.js)? Lo que mande (foto, papel) es la respuesta: a su carpeta y a Álex.
+    let encAb = []; if (!petAlta && trab.userId) { try { encAb = await require('./encargos').abiertosDe(trab.userId); } catch (e) {} }
+    if (encAb.length) {
+      const subidos = [];
+      for (const m of docs) {
+        try {
+          const buf = await _bajarMedia(m.url, 30000); const mime = String(m.type || 'image/jpeg').split(';')[0];
+          const g = await require('./personalDocs').subir({ ambito: 'trabajador', userId: trab.userId, tipo: 'otro', archivo: { buffer: buf, mimetype: mime, originalname: `${encAb[encAb.length - 1].que}.${/pdf/.test(mime) ? 'pdf' : 'jpg'}` }, fecha: new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' }), notas: `Respuesta al encargo «${encAb[encAb.length - 1].que}»` }, `${trab.name} (WhatsApp)`);
+          subidos.push({ id: g.id });
+        } catch (e) { console.error('[Encargos] archivo:', e.message); }
+      }
+      if (subidos.length) { const r = await require('./encargos').respuesta(trab.userId, trab.name, { texto, docs: subidos }); if (r) return responder(r); }
+    }
     const respAlta = [];
     for (const m of docs) {
       try {
@@ -680,6 +693,12 @@ async function procesarTrabajador(from, body, media, trab, responder) {
   }
 
   if (!texto) return responder(`Hola${nombreCap ? ' ' + nombreCap : ''} 👋` + lineaFichar);
+
+  // ¿Contesta a un encargo de Álex («¿qué talla de botas usas?»)? Se apunta y se le pasa a Álex.
+  if (trab.userId && !PALABRAS_FICHAJE.test(texto)) {
+    try { const r = await require('./encargos').respuesta(trab.userId, trab.name, { texto }); if (r) return responder(r); }
+    catch (e) { console.error('[Encargos] respuesta:', e.message); }
+  }
 
   // Texto → a la oficina (por WhatsApp si hay destino configurado; siempre queda en Conversaciones)
   try {
@@ -898,6 +917,7 @@ app.get('/api/inicio', requireAuth, async (req, res) => {
   } catch (e) { out.partes = out.partes || { porRevisar: 0, porFacturar: 0, error: e.message }; out.emails = out.emails || { urgentes: 0, sinLeer: 0 }; out.presencia = out.presencia || { hoy: null }; } })());
   // Obras de contratista con documentación por preparar (para entrar el día X)
   t.push((async () => { try { out.docsObra = await Promise.race([require('./docsObra').pendientes(), new Promise(r => setTimeout(() => r([]), 5000))]); } catch (e) { out.docsObra = []; } })());
+  t.push((async () => { try { out.encargos = await require('./encargos').lista(); } catch (e) { out.encargos = []; } })());
   // 7) Planificación: lo de hoy y el conteo de esta semana
   t.push((async () => { try {
     const { getPlanning } = require('./planning'); const now = new Date(); const hoy = now.toISOString().slice(0, 10);
@@ -2125,6 +2145,10 @@ app.post('/api/embargos/:id/pago', requireAuthOficina, express.json(), async (re
     const b = req.body || {}; res.json(await require('./embargos').apuntarPago(req.params.id, { importe: b.importe, fecha: b.fecha, nota: b.nota }, req.user?.name || 'Oficina')); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+// Encargos a trabajadores (lo que Álex les pide por Corpy): lista, crear y cerrar.
+app.get('/api/encargos', requireAuthOficina, async (req, res) => { try { res.json(await require('./encargos').lista({ abiertos: req.query.todos !== '1' })); } catch (err) { res.status(500).json({ error: err.message }); } });
+app.post('/api/encargos', requireAuthOficina, express.json(), async (req, res) => { try { const b = req.body || {}; res.json(await require('./encargos').crear({ userId: b.userId, que: b.que, mensaje: b.mensaje, por: req.user?.name || 'Oficina' })); } catch (err) { res.status(400).json({ error: err.message }); } });
+app.post('/api/encargos/:id/cerrar', requireAuthOficina, express.json(), async (req, res) => { try { res.json(await require('./encargos').cerrar(req.params.id, { como: (req.body || {}).como, por: req.user?.name || 'Oficina' })); } catch (err) { res.status(400).json({ error: err.message }); } });
 // Ausencias largas (maternidad, bajas, lactancia…) con fecha de fin.
 app.get('/api/personal/ausencias', requireAuthOficina, async (req, res) => { try { res.json(await require('./ausencias').lista()); } catch (err) { res.status(500).json({ error: err.message }); } });
 app.post('/api/personal/ausencias', requireAuthOficina, express.json(), async (req, res) => {

@@ -372,6 +372,8 @@ function startScheduler() {
   // Documentación del personal y de empresa que caduca (reconocimientos, certificados…): aviso a oficina.
   // Documentos del alta pedidos por Corpy: a quien no los ha mandado en un día se le recuerda (máx. 2 veces).
   cron.schedule('30 10 * * 1-5', () => require('./docsAlta').recordar().catch(e => console.warn('[DocsAlta] recordar:', e.message)), { timezone: 'Europe/Madrid' });
+  // Encargos a trabajadores: recordatorios y aviso a Álex si no contestan (encargos.js).
+  cron.schedule('35 10 * * 1-5', () => require('./encargos').recordar().catch(e => console.warn('[Encargos] recordar:', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('10 9 * * 1-5', () => require('./personalDocs').revisarCaducidades().catch(e => console.warn('[Personal] caducidades:', e.message)), { timezone: 'Europe/Madrid' });
   // Flota: avisos de ITV, seguro, revisión y fin de renting (conductor + oficina).
   // Banco automático (Enable Banking): la normativa deja leer cada cuenta ~4 veces al día sin la persona delante.

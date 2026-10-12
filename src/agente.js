@@ -38,6 +38,24 @@ const TOOLS = [
     },
   },
   {
+    name: 'encargar_a_trabajador',
+    description: 'ENCARGO a un trabajador: Corpy le pide algo por WhatsApp de parte del jefe y se lo recuerda hasta que conteste (p. ej. «pídele a Javi la talla de botas», «dile a Manolo que traiga mañana el carnet de conducir», «pregúntale a Diego si tiene el curso de PRL»). NO para los papeles del alta (DNI, Seguridad Social): eso va aparte.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        trabajador: { type: 'string' },
+        que: { type: 'string', description: 'Resumen muy corto de lo que se pide (3-6 palabras), p. ej. «talla de botas».' },
+        mensaje: { type: 'string', description: 'Lo que se le dice al trabajador, en tú, breve y claro, como lo diría el jefe. P. ej. «¿Qué talla de botas usas? Es para pedirte unas de seguridad.»' },
+      },
+      required: ['trabajador', 'que', 'mensaje'],
+    },
+  },
+  {
+    name: 'cerrar_encargo',
+    description: 'Da por hecho (o anula) un encargo a un trabajador: «Javi ya me ha dicho la talla», «Manolo ya trajo el carnet», «olvida lo de las botas de Javi».',
+    input_schema: { type: 'object', properties: { trabajador: { type: 'string' }, que: { type: ['string', 'null'], description: 'De qué encargo, si tiene varios.' }, anular: { type: 'boolean', description: 'true si ya no hace falta (anulado), false si está hecho.' } }, required: ['trabajador'] },
+  },
+  {
     name: 'apuntar_ausencia',
     description: 'Apunta una AUSENCIA LARGA de un trabajador con su fecha de fin (maternidad/paternidad, baja médica, accidente, lactancia, excedencia): así esos días no salen como «sin apuntar» y la gestoría recibe el tipo bien. P. ej. «Paula está de maternidad hasta el 12 de febrero», «Judit de baja hasta el lunes».',
     input_schema: {
@@ -100,6 +118,7 @@ REGLAS DURAS:
 - Distingue: "en el calendario / en la agenda" + fecha/hora = evento personal → crear_evento_agenda. "en <comunidad> que <hecho>" = nota de comunidad → anadir_nota_comunidad. Si es ambiguo, pregunta.
 - Resuelve fechas relativas ("mañana", "el lunes", "el 19") a YYYY-MM-DD respecto a hoy.
 - HORA: si es INEQUÍVOCA ("19:30", "a las 19", "a las 8 de la mañana", "mediodía") → HH:MM en 24h. Si es AMBIGUA mañana/tarde ("las 7.30", "a las 8", "a las 5" sin "de la mañana/tarde" ni formato 24h) → NO la asumas: PREGUNTA "¿mañana o tarde? (p. ej. 07:30 o 19:30)" antes de crear el evento. Si no dice hora → null.
+- «Pídele / dile / pregúntale / recuérdale a X que…» → encargar_a_trabajador (redacta el mensaje para el trabajador en tú, breve). «X ya lo ha hecho / ya me lo dio / olvida lo de…» → cerrar_encargo.
 - Presencia, horas, quién trabajó/vino/faltó, vacaciones, bajas → consultar_presencia. Para «cuántos días faltó/trabajó/lleva X» usa resumenPorPersona: «faltó» = faltaInjustificada + faltaJustificada + sinApuntar (días laborables sin nada apuntado); dilo desglosado y con las fechas si son pocas. Si preguntan «cuántos días lleva» sin decir de qué, da días trabajados (y vacaciones/baja si hay). Horas o coste de una obra → horas_obra. Contesta SOLO con lo que devuelvan (si no hay datos, dilo). «Esta semana» = desde el lunes.
 - Al contestar con datos: breve, para WhatsApp (*negritas* para nombres y totales, una línea por persona u obra).
 - Responde en español y breve.`;
@@ -215,7 +234,29 @@ async function horasObra({ obra, desde = null, hasta = null } = {}) {
 }
 const LECTORES = { consultar_presencia: consultarPresencia, horas_obra: horasObra };
 
+async function _trabajador(nombre) {
+  const us = (await require('./users').getUsers(false)).filter(u => u.active !== false);
+  const c = us.filter(u => _casa(u.name, nombre)); if (c.length === 1) return c[0];
+  const p = us.filter(u => _n(u.name).split(' ')[0] === _n(nombre).split(' ')[0]); if (p.length === 1) return p[0];
+  return { varios: (c.length ? c : p).map(u => u.name) };
+}
 async function ejecutarTool(name, input) {
+  if (name === 'encargar_a_trabajador') {
+    const u = await _trabajador(input.trabajador || '');
+    if (!u || u.varios) return { handled: true, reply: u && u.varios && u.varios.length ? `¿A quién? Hay varios: ${u.varios.join(', ')}.` : `No encuentro a «${input.trabajador}».`, aclara: true };
+    try { const r = await require('./encargos').crear({ userId: String(u._id), que: input.que, mensaje: input.mensaje, por: 'Álex (Corpy)' }); return { handled: true, reply: `📨 Se lo he pedido a *${u.name}*:\n_${input.mensaje}_\n\nCuando conteste te lo paso. Si no contesta, se lo recuerdo mañana y pasado, y si sigue sin contestar te aviso.` }; }
+    catch (e) { return { handled: true, reply: e.message }; }
+  }
+  if (name === 'cerrar_encargo') {
+    const u = await _trabajador(input.trabajador || '');
+    if (!u || u.varios) return { handled: true, reply: `¿De quién? No tengo claro «${input.trabajador}».` };
+    const E = require('./encargos'); let l = await E.abiertosDe(String(u._id));
+    if (input.que) { const f = l.filter(e => _casa(e.que + ' ' + e.mensaje, input.que)); if (f.length) l = f; }
+    if (!l.length) return { handled: true, reply: `${u.name} no tiene encargos pendientes.` };
+    if (l.length > 1 && !input.que) return { handled: true, reply: `${u.name} tiene ${l.length} encargos: ${l.map(e => '«' + e.que + '»').join(', ')}. ¿Cuál cierro?`, aclara: true };
+    await E.cerrar(String(l[0]._id), { como: input.anular ? 'cancelado' : 'hecho', por: 'Álex (Corpy)' });
+    return { handled: true, reply: `✔ ${input.anular ? 'Anulado' : 'Cerrado'} el encargo «${l[0].que}» de *${u.name}*.` };
+  }
   if (name === 'apuntar_ausencia') {
     try {
       const x = await require('./ausencias').poner({ nombre: input.trabajador, tipo: input.tipo, desde: input.desde || hoyMadridISO(), hasta: input.hasta || null, nota: input.nota || '' }, 'Corpy');
