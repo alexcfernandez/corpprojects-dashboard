@@ -700,12 +700,17 @@ async function procesarTrabajador(from, body, media, trab, responder) {
     catch (e) { console.error('[Encargos] respuesta:', e.message); }
   }
 
+  // Memoria: si deja algo pendiente («tengo que devolver…», «no encuentro el ticket»), se apunta y Corpy se lo vuelve a preguntar.
+  let pend = null;
+  if (trab.userId && !PALABRAS_FICHAJE.test(texto)) { try { pend = await require('./encargos').apuntarDeTrabajador(trab.userId, trab.name, texto); } catch (e) { console.warn('[Encargos] memoria:', e.message); } }
+
   // Texto → a la oficina (por WhatsApp si hay destino configurado; siempre queda en Conversaciones)
   try {
     const dest = String(process.env.FICHAJE_AVISOS_TO || process.env.WHATSAPP_TO || '').split(',').map(x => x.trim()).filter(Boolean);
-    const aviso = `👷 *${trab.name || from}* escribe al bot:\n"${texto.slice(0, 300)}"\n\nLo ves entero en Conversaciones: https://dashboard.corpprojects.es/conversaciones`;
+    const aviso = `👷 *${trab.name || from}* escribe al bot:\n"${texto.slice(0, 300)}"${pend ? `\n\n📌 Apuntado para seguirlo: «${pend.que}» (se lo vuelvo a preguntar${pend.cuando ? ' el ' + pend.cuando.split('-').reverse().join('/') : ' mañana'} hasta que esté).` : ''}\n\nLo ves entero en Conversaciones: https://dashboard.corpprojects.es/conversaciones`;
     for (const d of dest) await require('./notifications').sendWhatsAppTo(d, aviso);
   } catch (e) {}
+  if (pend) return responder(`Apuntado${nombreCap ? ', ' + nombreCap : ''} 📌. Te lo vuelvo a preguntar${pend.cuando ? ' el ' + pend.cuando.split('-').reverse().join('/') : ' mañana'} para ver si ya está.`);
   return responder(`Gracias${nombreCap ? ', ' + nombreCap : ''} 🙏, se lo paso a la oficina.` + (PALABRAS_FICHAJE.test(texto) ? lineaFichar : ''));
 }
 
@@ -2145,6 +2150,12 @@ app.post('/api/embargos/:id/pago', requireAuthOficina, express.json(), async (re
     const b = req.body || {}; res.json(await require('./embargos').apuntarPago(req.params.id, { importe: b.importe, fecha: b.fecha, nota: b.nota }, req.user?.name || 'Oficina')); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+// Lo que falta del equipo y EPIs (pendientesEquipo.js); tallas de cada uno (fichaDatos.js).
+app.get('/api/personal/pendientes', requireAuthOficina, async (req, res) => { try { const PE = require('./pendientesEquipo'); const r = await PE.resumen(); res.json({ ...r, texto: PE.texto(r) }); } catch (err) { res.status(500).json({ error: err.message }); } });
+app.get('/api/personal/epis/compra', requireAuthOficina, async (req, res) => { try { const PE = require('./pendientesEquipo'); const c = await PE.compraEpis(); res.json({ ...c, texto: PE.textoCompra(c) }); } catch (err) { res.status(500).json({ error: err.message }); } });
+app.post('/api/personal/epis/entregar', requireAuthOficina, express.json(), async (req, res) => { try { res.json(await require('./pendientesEquipo').entregarEpis({ userIds: (req.body || {}).userIds || null, por: req.user?.name || 'Oficina' })); } catch (err) { res.status(400).json({ error: err.message }); } });
+app.get('/api/personal/tallas', requireAuthOficina, async (req, res) => { try { res.json(await require('./fichaDatos').todas()); } catch (err) { res.status(500).json({ error: err.message }); } });
+app.post('/api/personal/tallas/pedir', requireAuthOficina, express.json(), async (req, res) => { try { const F = require('./fichaDatos'); const b = req.body || {}; res.json(b.userId ? await F.pedir(b.userId, { por: req.user?.name || 'Oficina' }) : await F.pedirATodos({ por: req.user?.name || 'Oficina' })); } catch (err) { res.status(400).json({ error: err.message }); } });
 // Encargos a trabajadores (lo que Álex les pide por Corpy): lista, crear y cerrar.
 app.get('/api/encargos', requireAuthOficina, async (req, res) => { try { res.json(await require('./encargos').lista({ abiertos: req.query.todos !== '1' })); } catch (err) { res.status(500).json({ error: err.message }); } });
 app.post('/api/encargos', requireAuthOficina, express.json(), async (req, res) => { try { const b = req.body || {}; res.json(await require('./encargos').crear({ userId: b.userId, que: b.que, mensaje: b.mensaje, por: req.user?.name || 'Oficina' })); } catch (err) { res.status(400).json({ error: err.message }); } });

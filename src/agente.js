@@ -39,13 +39,14 @@ const TOOLS = [
   },
   {
     name: 'encargar_a_trabajador',
-    description: 'ENCARGO a un trabajador: Corpy le pide algo por WhatsApp de parte del jefe y se lo recuerda hasta que conteste (p. ej. «pídele a Javi la talla de botas», «dile a Manolo que traiga mañana el carnet de conducir», «pregúntale a Diego si tiene el curso de PRL»). NO para los papeles del alta (DNI, Seguridad Social): eso va aparte.',
+    description: 'ENCARGO a un trabajador: Corpy (la oficina, con su propia autoridad) le pide algo por WhatsApp y se lo recuerda hasta que conteste (p. ej. «pídele a Javi la talla de botas», «dile a Manolo que traiga mañana el carnet de conducir», «pregúntale a Diego si tiene el curso de PRL»). NO para los papeles del alta (DNI, Seguridad Social): eso va aparte.',
     input_schema: {
       type: 'object',
       properties: {
         trabajador: { type: 'string' },
         que: { type: 'string', description: 'Resumen muy corto de lo que se pide (3-6 palabras), p. ej. «talla de botas».' },
-        mensaje: { type: 'string', description: 'Lo que se le dice al trabajador, en tú, breve y claro, como lo diría el jefe. P. ej. «¿Qué talla de botas usas? Es para pedirte unas de seguridad.»' },
+        cuando: { type: ['string', 'null'], description: 'YYYY-MM-DD si hay que decírselo más adelante («recuérdale el lunes…», «acuérdate de preguntarle el día 20…»); null = ahora.' },
+        mensaje: { type: 'string', description: 'Lo que Corpy (la oficina) le dice al trabajador, en tú, breve, claro y firme, SIN decir «de parte de Álex» ni «el jefe dice». P. ej. «Necesito que me digas qué talla de botas usas, para pedirte unas de seguridad.»' },
       },
       required: ['trabajador', 'que', 'mensaje'],
     },
@@ -54,6 +55,11 @@ const TOOLS = [
     name: 'cerrar_encargo',
     description: 'Da por hecho (o anula) un encargo a un trabajador: «Javi ya me ha dicho la talla», «Manolo ya trajo el carnet», «olvida lo de las botas de Javi».',
     input_schema: { type: 'object', properties: { trabajador: { type: 'string' }, que: { type: ['string', 'null'], description: 'De qué encargo, si tiene varios.' }, anular: { type: 'boolean', description: 'true si ya no hace falta (anulado), false si está hecho.' } }, required: ['trabajador'] },
+  },
+  {
+    name: 'pedir_tallas',
+    description: 'Pide a un trabajador (o a TODOS) sus tallas de ropa (camiseta, pantalón), calzado y fecha de nacimiento, y las guarda en su ficha. «pide las tallas a todos», «pídele la talla a Javi».',
+    input_schema: { type: 'object', properties: { trabajador: { type: ['string', 'null'], description: 'null o «todos» = a todos.' } } },
   },
   {
     name: 'apuntar_ausencia',
@@ -118,7 +124,7 @@ REGLAS DURAS:
 - Distingue: "en el calendario / en la agenda" + fecha/hora = evento personal → crear_evento_agenda. "en <comunidad> que <hecho>" = nota de comunidad → anadir_nota_comunidad. Si es ambiguo, pregunta.
 - Resuelve fechas relativas ("mañana", "el lunes", "el 19") a YYYY-MM-DD respecto a hoy.
 - HORA: si es INEQUÍVOCA ("19:30", "a las 19", "a las 8 de la mañana", "mediodía") → HH:MM en 24h. Si es AMBIGUA mañana/tarde ("las 7.30", "a las 8", "a las 5" sin "de la mañana/tarde" ni formato 24h) → NO la asumas: PREGUNTA "¿mañana o tarde? (p. ej. 07:30 o 19:30)" antes de crear el evento. Si no dice hora → null.
-- «Pídele / dile / pregúntale / recuérdale a X que…» → encargar_a_trabajador (redacta el mensaje para el trabajador en tú, breve). «X ya lo ha hecho / ya me lo dio / olvida lo de…» → cerrar_encargo.
+- Tallas de ropa/calzado y cumpleaños → pedir_tallas. «Pídele / dile / pregúntale / recuérdale a X que…» (también «acuérdate de preguntarle a X el lunes…») → encargar_a_trabajador (redacta el mensaje para el trabajador en tú, breve). «X ya lo ha hecho / ya me lo dio / olvida lo de…» → cerrar_encargo.
 - Presencia, horas, quién trabajó/vino/faltó, vacaciones, bajas → consultar_presencia. Para «cuántos días faltó/trabajó/lleva X» usa resumenPorPersona: «faltó» = faltaInjustificada + faltaJustificada + sinApuntar (días laborables sin nada apuntado); dilo desglosado y con las fechas si son pocas. Si preguntan «cuántos días lleva» sin decir de qué, da días trabajados (y vacaciones/baja si hay). Horas o coste de una obra → horas_obra. Contesta SOLO con lo que devuelvan (si no hay datos, dilo). «Esta semana» = desde el lunes.
 - Al contestar con datos: breve, para WhatsApp (*negritas* para nombres y totales, una línea por persona u obra).
 - Responde en español y breve.`;
@@ -244,7 +250,20 @@ async function ejecutarTool(name, input) {
   if (name === 'encargar_a_trabajador') {
     const u = await _trabajador(input.trabajador || '');
     if (!u || u.varios) return { handled: true, reply: u && u.varios && u.varios.length ? `¿A quién? Hay varios: ${u.varios.join(', ')}.` : `No encuentro a «${input.trabajador}».`, aclara: true };
-    try { const r = await require('./encargos').crear({ userId: String(u._id), que: input.que, mensaje: input.mensaje, por: 'Álex (Corpy)' }); return { handled: true, reply: `📨 Se lo he pedido a *${u.name}*:\n_${input.mensaje}_\n\nCuando conteste te lo paso. Si no contesta, se lo recuerdo mañana y pasado, y si sigue sin contestar te aviso.` }; }
+    try { const r = await require('./encargos').crear({ userId: String(u._id), que: input.que, mensaje: input.mensaje, cuando: input.cuando || null, por: 'Álex (Corpy)' });
+      if (r.programado) return { handled: true, reply: `🗓️ Apuntado: el *${r.programado.split('-').reverse().join('/')}* le diré a *${u.name}*:\n_${input.mensaje}_\n\nY le seguiré insistiendo hasta que conteste.` };
+      return { handled: true, reply: `📨 Se lo he pedido a *${u.name}*:\n_${input.mensaje}_\n\nCuando conteste te lo paso. Si no contesta, se lo recuerdo mañana y pasado, y si sigue sin contestar te aviso.` }; }
+    catch (e) { return { handled: true, reply: e.message }; }
+  }
+  if (name === 'pedir_tallas') {
+    const F = require('./fichaDatos');
+    if (!input.trabajador || /^tod/i.test(input.trabajador)) {
+      const r = await F.pedirATodos({ por: 'Álex (Corpy)' });
+      const ped = r.filter(x => x.estado === 'pedidas').map(x => x.nombre), ya = r.filter(x => x.estado === 'ya las tiene').map(x => x.nombre), err = r.filter(x => x.error);
+      return { handled: true, reply: `👕 Tallas y cumpleaños pedidos a ${ped.length}: ${ped.join(', ') || '—'}.${ya.length ? `\nYa las tienen: ${ya.join(', ')}.` : ''}${err.length ? `\n⚠️ ${err.map(x => x.nombre + ': ' + x.error).join('; ')}` : ''}\n\nSe las recuerdo hasta que contesten y las guardo en su ficha.` };
+    }
+    const u = await _trabajador(input.trabajador); if (!u || u.varios) return { handled: true, reply: `¿A quién? No tengo claro «${input.trabajador}».` };
+    try { const r = await F.pedir(String(u._id), { por: 'Álex (Corpy)' }); return { handled: true, reply: r.yaEsta ? `${u.name} ya tiene todas sus tallas apuntadas.` : r.yaPedido ? `A ${u.name} ya se las pedí; se las sigo recordando.` : `👕 Pedidas las tallas a *${u.name}*.` }; }
     catch (e) { return { handled: true, reply: e.message }; }
   }
   if (name === 'cerrar_encargo') {

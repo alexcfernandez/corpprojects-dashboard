@@ -2132,10 +2132,23 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
     if (!l.length) return '✔ No hay encargos pendientes con los trabajadores.';
     return `📨 *Encargos pendientes (${l.length}):*\n` + l.map(e => `• *${e.nombre}*: ${e.que} — hace ${e.dias} día${e.dias === 1 ? '' : 's'}${e.recordatorios ? `, recordado ${e.recordatorios} ${e.recordatorios === 1 ? 'vez' : 'veces'}` : ''}${e.ultimaRespuesta ? ` · dijo: "${String(e.ultimaRespuesta.texto || '').slice(0, 60)}"` : ''}`).join('\n') + '\n\nPara cerrar uno: *«Javi ya lo ha hecho»*.';
   }
-  if (!imagenes.length && /\b(pidele|p[ií]dele|dile|digale|preguntale|preg[uú]ntale|recuerdale|recu[eé]rdale|encargale|enc[aá]rgale|avisale|av[ií]sale)\b/.test(_ni)
+  if (!imagenes.length && (/\b(pidele|p[ií]dele|dile|digale|preguntale|preg[uú]ntale|recuerdale|recu[eé]rdale|encargale|enc[aá]rgale|avisale|av[ií]sale)\b/.test(_ni) || /\b(pide|pedir)\b[\s\S]*\btallas?\b|\bacuerdate de (preguntar|pedir|decir)/.test(_ni))
       && !/\b(papeles|documentacion del alta|dni|nie|seguridad social)\b/.test(_ni)) {
     try { const res = await require('./agente').intentar({ texto, from, imagenes, puerta: 'encargo' }); if (res && res.handled) return res.reply; }
     catch (e) { console.error('[Agente] encargo:', e.message); }
+  }
+
+  // C0.pendientes) «¿qué falta?» del equipo y obras; EPIs: lista de compra y entrega a todos (pendientesEquipo.js).
+  if (!imagenes.length && /^\s*(que|qu[eé]) (nos )?falta\b|\blo que (nos )?falta\b|\bpendientes del equipo\b|\bque falta del equipo\b/.test(_ni)) {
+    try { const PE = require('./pendientesEquipo'); return PE.texto(await PE.resumen()); } catch (e) { return 'No he podido sacar lo que falta: ' + e.message; }
+  }
+  if (!imagenes.length && /\b(lista de (la )?compra|que (hay que )?comprar|comprar)\b[\s\S]*\bepis?\b|\bepis?\b[\s\S]*\b(comprar|compra)\b/.test(_ni)) {
+    try { const PE = require('./pendientesEquipo'); return PE.textoCompra(await PE.compraEpis()); } catch (e) { return 'No he podido hacer la lista: ' + e.message; }
+  }
+  if (!imagenes.length && /\b(entrega|entregar|repartir|reparto|firmar|firma)\b[\s\S]*\bepis?\b[\s\S]*\btodos\b|\bepis?\b[\s\S]*\b(entregad|repartid)/.test(_ni)) {
+    try { const r = await require('./pendientesEquipo').entregarEpis({ por: 'Álex (Corpy)' }); if (!r.length) return '✔ Todos tienen ya la entrega de EPIs firmada.';
+      return `🦺 Entrega de EPIs enviada para firmar en su app a ${r.filter(x => x.ok).length}: ${r.filter(x => x.ok).map(x => x.nombre.split(' ')[0]).join(', ')}.${r.some(x => x.error) ? `\n⚠️ ${r.filter(x => x.error).map(x => x.nombre + ': ' + x.error).join('; ')}` : ''}\nCuando firmen te llega el aviso y queda el justificante en su carpeta.`; }
+    catch (e) { return 'No he podido enviar la entrega: ' + e.message; }
   }
 
   // C0.absentismes) «prepara los absentismes (de septiembre)»: rehace la respuesta a la gestoría con la presencia.

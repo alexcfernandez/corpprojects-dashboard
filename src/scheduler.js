@@ -373,6 +373,10 @@ function startScheduler() {
   // Documentos del alta pedidos por Corpy: a quien no los ha mandado en un día se le recuerda (máx. 2 veces).
   cron.schedule('30 10 * * 1-5', () => require('./docsAlta').recordar().catch(e => console.warn('[DocsAlta] recordar:', e.message)), { timezone: 'Europe/Madrid' });
   // Encargos a trabajadores: recordatorios y aviso a Álex si no contestan (encargos.js).
+  // Cada lunes a las 8:30, «lo que falta» del equipo y de las obras de contratista (pendientesEquipo.js).
+  cron.schedule('30 8 * * 1', () => require('./pendientesEquipo').avisoSemanal(), { timezone: 'Europe/Madrid' });
+  // Cumpleaños del día: aviso a Álex a primera hora (fichaDatos.js).
+  cron.schedule('0 8 * * *', () => require('./fichaDatos').cumpleHoy().catch(e => console.warn('[Cumples]', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('35 10 * * 1-5', () => require('./encargos').recordar().catch(e => console.warn('[Encargos] recordar:', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('10 9 * * 1-5', () => require('./personalDocs').revisarCaducidades().catch(e => console.warn('[Personal] caducidades:', e.message)), { timezone: 'Europe/Madrid' });
   // Flota: avisos de ITV, seguro, revisión y fin de renting (conductor + oficina).
