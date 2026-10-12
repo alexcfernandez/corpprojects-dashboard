@@ -98,7 +98,7 @@ async function recordar({ hoy = new Date(), _enviar = null, _avisarJefe = null }
       continue;
     }
     if (desde < ((e.recordatorios || 0) === 0 ? 20 : 44) * H) continue;
-    const txt = e.tipo === 'tallas' ? `Hola ${primer(e.nombre)} 👋 Te recuerdo: me faltan ${e.mensaje}. Contéstame en un mensaje, p. ej. «camiseta L, pantalón 42, zapato 43, nací el 5/3/1990». ¡Gracias!`
+    const txt = e.tipo === 'tallas' ? `Hola ${primer(e.nombre)} 👋 Te recuerdo: me faltan ${e.mensaje}. Contéstame en un mensaje, p. ej. «camiseta L, pantalón 42, zapato 43». ¡Gracias!`
       : e.origen === 'trabajador' ? `Hola ${primer(e.nombre)} 👋 ${e.mensaje}`
       : `Hola ${primer(e.nombre)} 👋 Sigo esperando esto: ${e.mensaje}\n\nContéstame por aquí en cuanto lo tengas, lo apunto yo.`;
     const ok = await (_enviar || require('./notifications').sendWhatsAppTo)(e.movil, txt);

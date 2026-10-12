@@ -64,7 +64,7 @@ test('tallas: se guardan en la ficha; si falta algo sigue abierto y pide solo es
   const e = cols.encargos.find(x => x.tipo === 'tallas');
   assert.ok(e); assert.match(e.textoInicial, /Soy Corpy/); assert.doesNotMatch(e.textoInicial, /de parte de/i);
   let r = await F.respuesta(e, String(UID), 'Javier Huaca', 'camiseta L y zapato 43', { _leerIA: async () => ({ ropa: 'L', calzado: '43' }), _avisar: async () => {} });
-  assert.match(r, /Me falta tu talla de pantalón y fecha de nacimiento/); assert.equal(cols.users[0].tallas.ropa, 'L'); assert.equal(e.estado, 'abierto');
+  assert.match(r, /Me falta tu talla de pantalón/); assert.doesNotMatch(r, /nacimiento/); assert.equal(cols.users[0].tallas.ropa, 'L'); assert.equal(e.estado, 'abierto');
   r = await F.respuesta(e, String(UID), 'Javier Huaca', 'pantalón 42, nací el 3/5/1990', { _leerIA: async () => ({ pantalon: '42', nacimiento: '1990-05-03' }), _avisar: async () => {} });
   assert.match(r, /Apuntadas tus tallas/); assert.equal(e.estado, 'hecho'); assert.equal(cols.users[0].nacimiento, '1990-05-03');
 });
