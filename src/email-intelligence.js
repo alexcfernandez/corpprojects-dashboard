@@ -148,7 +148,13 @@ function parsearRemitente(de) {
 }
 
 // ── Pre-filtro GRATIS (sin IA): publicidad/newsletters obvias ─────
+// Avisos que llegan desde «no-reply» pero NO son publicidad: pagos rechazados, saldo, devoluciones, embargos,
+// requerimientos, citas… (el 13/10 dos «Card payment declined – Insufficient balance» de Revolut acabaron como publicidad).
+const RE_AVISO = /declined|rechaza|denegad|insufficient|saldo insuficiente|sin saldo|descubierto|devoluci|devuelto|impagad|embargo|requerimiento|notificaci[oó]n (electr|de la|administ)|providencia|apremio|sanci[oó]n|multa|cita (m[eé]dica|previa)|citaci[oó]n|vencimiento|caduca|suspend|bloque/i;
+function esAvisoImportante(de, asunto) { return RE_AVISO.test(String(asunto || '')) && !/newsletter|marketing|promo/i.test(String(de || '')); }
+
 function esPublicidadObvia(de, asunto, cuerpo) {
+  if (esAvisoImportante(de, asunto)) return false;
   const d = String(de || '').toLowerCase();
   const t = (String(asunto || '') + ' ' + String(cuerpo || '').slice(0, 1500)).toLowerCase();
   if (/no-?reply|noreply|newsletter|marketing|promo|mailing|news@|info@b\./.test(d)) return true;
@@ -199,7 +205,8 @@ async function clasificarEmail(de, asunto, cuerpo) {
   } catch (e) { /* si falla el contador, seguimos */ }
 
   try {
-    const cuerpoLimpio = cuerpo.slice(0, 800);
+    const cuerpoLimpio = cuerpo.slice(0, 1500);
+    const hoy = new Date().toLocaleDateString('es-ES', { timeZone: 'Europe/Madrid', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -209,19 +216,22 @@ async function clasificarEmail(de, asunto, cuerpo) {
       },
       body: JSON.stringify({
         model: require('./config').ia.clasificador,
-        max_tokens: 250,
+        max_tokens: 400,
         messages: [{
           role: 'user',
-          content: `Clasifica este email de una empresa española de mantenimiento de fincas. Responde SOLO un JSON válido, sin markdown.
+          content: `Clasifica este email que llega a Corp Projects Holding SL (Girona): empresa de reformas, obras y mantenimiento de fincas, con trabajadores propios, obras como subcontratista (p. ej. para Seranco), gestoría laboral (Som Assessors), servicio de prevención (SPASS), aseguradoras y bancos. Hoy es ${hoy}. Responde SOLO un JSON válido, sin markdown.
 
 De: ${de}
 Asunto: ${asunto}
 Cuerpo: ${cuerpoLimpio}
 
-Categorías: INCIDENCIA (avería/urgencia) | PRESUPUESTO | FACTURA_PROVEEDOR | PAGO_RECIBIDO | COMUNICACION (comunidad/administración) | PEDIDO_ALBARAN | PUBLICIDAD | SPAM | OTRO
-Urgencia: ALTA (avería grave, agua, gas, plazo) | MEDIA | BAJA
+Categorías: INCIDENCIA (avería/urgencia) | PRESUPUESTO | FACTURA_PROVEEDOR | PAGO_RECIBIDO | COMUNICACION (comunidad/administración/organismos/contratistas/prevención/seguros/banco) | PEDIDO_ALBARAN | PUBLICIDAD | SPAM | OTRO
+Urgencia: ALTA (avería grave, agua, gas; cita o plazo para hoy o mañana; pago rechazado o falta de saldo; embargo, requerimiento o notificación de Hacienda/Seguridad Social/juzgado; un contratista que pide documentación o papeles para entrar en obra) | MEDIA | BAJA
+"avisar": true si alguien de la empresa tiene que hacer algo pronto (contestar, ir a una cita, pagar, mandar datos o documentos, firmar). false para informativos, confirmaciones automáticas y publicidad.
+"fechaLimite": la fecha (AAAA-MM-DD) de la cita o del plazo si la hay; si no, null.
+"documentos": true si trae adjuntos que son papeles a guardar (certificados, pólizas, contratos, reconocimientos médicos, cursos, altas…), no facturas.
 
-{"categoria":"...","urgencia":"...","resumen":"frase corta en español (máx 100 chars)","clienteDetectado":"nombre o null","accionSugerida":"máx 80 chars","confianza":0.85}`
+{"categoria":"...","urgencia":"...","resumen":"frase corta en español (máx 100 chars)","clienteDetectado":"nombre o null","accionSugerida":"qué hay que hacer, máx 100 chars","avisar":false,"fechaLimite":null,"documentos":false,"confianza":0.85}`
         }]
       })
     });
@@ -418,6 +428,8 @@ async function procesarEmail(gmail, messageId) {
       accionSugerida:   clasificacion.accionSugerida || 'Revisar manualmente',
       clienteDetectado: clasificacion.clienteDetectado || null,
       confianza:        clasificacion.confianza   || 0,
+      avisar:           clasificacion.avisar === true,
+      fechaLimite:      /^\d{4}-\d{2}-\d{2}$/.test(String(clasificacion.fechaLimite || '')) ? clasificacion.fechaLimite : null,
       remitente,
       permisos,
       estado:          'PENDIENTE',
@@ -474,11 +486,22 @@ async function procesarEmail(gmail, messageId) {
       if (EP.esCorreoEfectos({ de, asunto, adjuntos })) console.log(`[Email] efectos: ${JSON.stringify(await EP.desdeCorreo(messageId, adjuntos, { fecha }))}`);
     } catch (e) { console.warn('[Email] efectos:', e.message); }
 
-    // Documentación mensual de la gestoría (ITA, RNT/RLC, certificados): entra sola en Personal → Empresa.
+    // Papeles que llegan por correo (gestoría, SPASS, aseguradoras, contratistas, trabajadores): la IA lee cada PDF y lo
+    // guarda en Personal (empresa / trabajador / obra); lo dudoso queda como propuesta para confirmar. Ver docsCorreo.js.
     try {
-      const DG = require('./docsGestoriaCorreo');
-      if (process.env.DOCS_GESTORIA_CORREO !== 'off' && DG.esCorreoDocs({ de, asunto, adjuntos })) console.log(`[Email] docs gestoría: ${JSON.stringify(await DG.desdeCorreo(messageId, adjuntos, { de, asunto, fecha }))}`);
-    } catch (e) { console.warn('[Email] docs gestoría:', e.message); }
+      const DC = require('./docsCorreo'); const NC = require('./nominasCorreo');
+      if (process.env.DOCS_CORREO !== 'off' && !NC.esCorreoNominas({ de, asunto, adjuntos }) && DC.esCorreoDocs({ de, asunto, adjuntos, clasificacion })) console.log(`[Email] papeles: ${JSON.stringify(await DC.desdeCorreo(messageId, adjuntos, { de, asunto, fecha }))}`);
+    } catch (e) { console.warn('[Email] papeles:', e.message); }
+
+    // Lo que hay que hacer pronto (cita hoy, pago rechazado, plazo, contratista pidiendo papeles…): WhatsApp a Álex al
+    // momento, una sola vez. La gestoría ya tiene su propio aviso (abajo).
+    if (clasificacion.categoria !== 'GESTORIA' && !['PUBLICIDAD', 'SPAM', 'FACTURA_PROVEEDOR'].includes(clasificacion.categoria) && (clasificacion.urgencia === 'ALTA' || clasificacion.avisar === true)) {
+      try {
+        const fl = /^\d{4}-\d{2}-\d{2}$/.test(String(clasificacion.fechaLimite || '')) ? ` · ⏰ ${clasificacion.fechaLimite.split('-').reverse().join('/')}` : '';
+        await require('./notifications').sendWhatsApp(`🔔 *Correo para atender*${clasificacion.urgencia === 'ALTA' ? ' (urgente)' : ''}${fl}\n*${asunto}*\n${clasificacion.resumen || ''}\n➡ ${clasificacion.accionSugerida || 'Revisar'}\n_(${remitente.emailRemitente || de})_`);
+        await db.collection('emails').updateOne({ gmailId: messageId }, { $set: { avisadoOwner: true } });
+      } catch (e) { console.warn('[Email] aviso:', e.message); }
+    }
 
     // Fase 6a: aviso inmediato al owner por WhatsApp SOLO para gestoría. Una vez por
     // correo (procesarEmail deduplica por gmailId, así que esto corre una sola vez).
@@ -735,4 +758,5 @@ function intentCorreo(texto) {
   return null;
 }
 
-module.exports = { extractBody, extractAttachments, comprasDesdeCorreo, pollEmails, recuperarFacturasCorreo, documentosDeAdjuntos, enviarRespuesta, getGmailClient, diagnosticoIA, reclasificarPendientes, usoIAHoy, listAttachments, getAttachment, reenviarAdjuntoOCR, esGestoria, emailsRecientes, seccionCorreo, resumenCorreo, intentCorreo };
+module.exports = {
+  _esPublicidadObvia: esPublicidadObvia, extractBody, extractAttachments, comprasDesdeCorreo, pollEmails, recuperarFacturasCorreo, documentosDeAdjuntos, enviarRespuesta, getGmailClient, diagnosticoIA, reclasificarPendientes, usoIAHoy, listAttachments, getAttachment, reenviarAdjuntoOCR, esGestoria, emailsRecientes, seccionCorreo, resumenCorreo, intentCorreo };

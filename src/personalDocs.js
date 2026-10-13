@@ -85,18 +85,19 @@ function _caduca(ambito, tipo, fecha, caduca) {
 }
 const _publico = d => ({ id: String(d._id), ambito: d.ambito, userId: d.userId || null, tipo: d.tipo, tipoNombre: (tipoDe(d.ambito, d.tipo) || {}).nombre || d.tipo, nombre: d.nombre, fecha: d.fecha, caduca: d.caduca, dias: diasHasta(d.caduca), mes: d.mes, mime: d.mime, size: d.size, estado: d.estado, notas: d.notas || '', ia: d.ia || null, subido: d.subido, por: d.por, visibleTrabajador: d.visibleTrabajador !== false, importes: d.importes || null });
 
-async function subir({ ambito = 'trabajador', userId, obraId, tipo, archivo, fecha, caduca, mes, notas, visibleTrabajador = true }, por) {
+// estado 'propuesta' (lo que llega solo por correo y no está claro): queda para que oficina lo confirme, aunque no se sepa aún de quién es.
+async function subir({ ambito = 'trabajador', userId, obraId, tipo, archivo, fecha, caduca, mes, notas, visibleTrabajador = true, estado = 'ok' }, por) {
   if (!archivo || !archivo.buffer) throw new Error('Falta el archivo');
   if (!/^(image\/|application\/pdf)/.test(archivo.mimetype || '')) throw new Error('Sube un PDF o una foto');
   ambito = ['empresa', 'obra'].includes(ambito) ? ambito : 'trabajador';
   if (ambito === 'obra' && !/^[a-f0-9]{24}$/.test(String(obraId || ''))) throw new Error('¿De qué obra es?');
   if (!tipoDe(ambito, tipo)) throw new Error('Tipo de documento no válido');
-  if (ambito === 'trabajador' && !userId) throw new Error('¿De qué trabajador es?');
+  if (ambito === 'trabajador' && !userId && estado !== 'propuesta') throw new Error('¿De qué trabajador es?');
   const db = await getDB();
   // multer da el nombre del archivo en latin1: «AdhesiÃ³n» → «Adhesión».
   if (archivo.originalname && /[ÃÂ]/.test(archivo.originalname)) { try { const u = Buffer.from(archivo.originalname, 'latin1').toString('utf8'); if (!u.includes('\ufffd')) archivo.originalname = u; } catch (e) {} }
-  const doc = { ambito, userId: ambito === 'trabajador' ? String(userId) : null, obraId: ambito === 'obra' ? String(obraId) : null, tipo, nombre: txt(archivo.originalname || (tipoDe(ambito, tipo) || {}).nombre, 120), fecha: fechaOk(fecha), mes: mesOk(mes), notas: txt(notas, 300),
-    mime: archivo.mimetype, size: archivo.size || archivo.buffer.length, data: archivo.buffer.length > GRANDE ? null : archivo.buffer, estado: 'ok', visibleTrabajador: visibleTrabajador !== false && visibleTrabajador !== 'false', subido: new Date(), por: por || '' };
+  const doc = { ambito, userId: ambito === 'trabajador' && userId ? String(userId) : null, obraId: ambito === 'obra' ? String(obraId) : null, tipo, nombre: txt(archivo.originalname || (tipoDe(ambito, tipo) || {}).nombre, 120), fecha: fechaOk(fecha), mes: mesOk(mes), notas: txt(notas, 300),
+    mime: archivo.mimetype, size: archivo.size || archivo.buffer.length, data: archivo.buffer.length > GRANDE ? null : archivo.buffer, estado: estado === 'propuesta' ? 'propuesta' : 'ok', visibleTrabajador: visibleTrabajador !== false && visibleTrabajador !== 'false', subido: new Date(), por: por || '' };
   doc.caduca = _caduca(ambito, tipo, doc.fecha, caduca);
   if (!doc.data) doc.gridId = await _guardarGrande(archivo.buffer, doc.nombre, doc.mime);
   const r = await db.collection('docsPersonal').insertOne(doc);
@@ -122,6 +123,7 @@ const HERRAMIENTA = {
     ssTrabajador: { type: 'number', description: 'Solo nóminas: aportación del trabajador a la Seguridad Social, en euros' },
     embargo: { type: 'number', description: 'Solo nóminas: descuento por EMBARGO (líneas «EMBARG…», retención de sueldo de un juzgado, Hacienda o la Seguridad Social), en euros; 0 si no hay' },
     resumen: { type: 'string', description: 'Una frase: qué es (p. ej. «Apto sin restricciones, Quirón Prevención»). Sin datos médicos.' },
+    contratista: { type: 'string', description: 'Solo certificados de Hacienda para contratistas/subcontratistas (art. 43.1.f): nombre de la empresa con la que se contrata (p. ej. «SERANCO SA»)' },
   }, required: ['ambito', 'tipo'] } } }, required: ['documentos'] },
 };
 function _matchTrabajador(plantilla, nombre, dni) {
@@ -140,7 +142,7 @@ async function _clasificarIA(archivo, plantilla) {
   const b64 = archivo.buffer.toString('base64');
   const contenido = /pdf/i.test(archivo.mimetype) ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } } : { type: 'image', source: { type: 'base64', media_type: archivo.mimetype, data: b64 } };
   const tipos = [...Object.entries(TIPOS).map(([k, t]) => `${k} (trabajador): ${t.nombre}`), ...Object.entries(TIPOS_EMPRESA).map(([k, t]) => `${k} (empresa): ${t.nombre}`)].join('\n');
-  const prompt = `Eres el administrativo de una empresa de reformas (Corp Projects Holding SL). Clasifica este documento de personal o de empresa.\nTipos posibles:\n${tipos}\n\nTrabajadores de la empresa: ${plantilla.map(p => p.name + (p.dni ? ' (' + p.dni + ')' : '')).join(', ')}.\nSi el PDF trae documentos de varias personas (p. ej. las nóminas de todos), devuelve uno por persona con sus páginas. Del reconocimiento médico solo interesa la aptitud y la fecha, nunca datos de salud. Llama a la herramienta «clasificar_documentos».`;
+  const prompt = `Eres el administrativo de una empresa de reformas (Corp Projects Holding SL). Clasifica este documento de personal o de empresa.\nTipos posibles:\n${tipos}\n\nTrabajadores de la empresa: ${plantilla.map(p => p.name + (p.dni ? ' (' + p.dni + ')' : '')).join(', ')}.\nSi el PDF trae documentos de varias personas (p. ej. las nóminas de todos), devuelve uno por persona con sus páginas. Del reconocimiento médico solo interesa la aptitud y la fecha, nunca datos de salud. Ojo: «Resolución: inscripción de empresario en el sistema de la Seguridad Social» es ta7 (no ita); el ITA es el «Informe de trabajadores en alta». El certificado de Hacienda «para contratistas y subcontratistas» es cert_hacienda (indica con quién se contrata en «contratista»). Llama a la herramienta «clasificar_documentos».`;
   try {
     const c = new AbortController(); const t = setTimeout(() => c.abort(), 90000);
     const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', signal: c.signal, headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
@@ -374,4 +376,4 @@ async function miArchivo(userId, id) {
   return d;
 }
 
-module.exports = { datos, _clasificarIA, leerImportesNomina, leerImportesPendientes, TIPOS, TIPOS_EMPRESA, TIPOS_OBRA, diasHasta, getConfig, setConfig, subir, analizar, editar, borrar, archivo, resumen, carpeta, paqueteObra, revisarCaducidades, misDocs, miArchivo, _matchTrabajador };
+module.exports = { datos, _clasificarIA, _plantilla, _extraerPaginas, leerImportesNomina, leerImportesPendientes, TIPOS, TIPOS_EMPRESA, TIPOS_OBRA, diasHasta, getConfig, setConfig, subir, analizar, editar, borrar, archivo, resumen, carpeta, paqueteObra, revisarCaducidades, misDocs, miArchivo, _matchTrabajador };
