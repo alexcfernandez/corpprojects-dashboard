@@ -36,7 +36,7 @@ const PLANTILLAS = {
       { de: 'empresa', tipo: 'ta7', quien: 'gestoria', nota: 'Para el contrato' },
       { de: 'empresa', tipo: 'iae', quien: 'gestoria', nota: 'Para el contrato' },
       { de: 'empresa', tipo: 'rea', quien: 'nosotros', nota: 'Inscripción o última renovación' },
-      { de: 'empresa', tipo: 'cert_spa', quien: 'gestoria', nota: 'Al corriente de pago (lo tramita Eduard, de la gestoría)' },
+      { de: 'empresa', tipo: 'cert_spa', quien: 'prevencion', nota: 'Al corriente de pago del concierto (lo da SPASS; Eduard confirmó el 13/10 que no es suyo)' },
       { de: 'empresa', tipo: 'prl_empresa', quien: 'prevencion', nota: 'Evaluación de riesgos' },
       { de: 'empresa', tipo: 'seguro_rc', quien: 'aseguradora', nota: 'Póliza entera y justificante bancario del pago' },
       { de: 'empresa', tipo: 'seguro_acc', quien: 'aseguradora', nota: 'Póliza entera y justificante bancario del pago' },
