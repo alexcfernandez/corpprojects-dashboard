@@ -68,3 +68,14 @@ test('tallas: se guardan en la ficha; si falta algo sigue abierto y pide solo es
   r = await F.respuesta(e, String(UID), 'Javier Huaca', 'pantalón 42, nací el 3/5/1990', { _leerIA: async () => ({ pantalon: '42', nacimiento: '1990-05-03' }), _avisar: async () => {} });
   assert.match(r, /Apuntadas tus tallas/); assert.equal(e.estado, 'hecho'); assert.equal(cols.users[0].nacimiento, '1990-05-03');
 });
+
+test('dos encargos a la vez (tallas y cursos): cada respuesta va al suyo', () => {
+  const E = require(path.join(__dirname, '..', 'src/encargos.js'));
+  const tallas = { tipo: 'tallas', que: 'tallas de ropa y calzado', mensaje: 'talla de camiseta, pantalón y calzado' };
+  const cursos = { tipo: 'libre', que: 'cursos de PRL (60 h, 20 h oficio, TPC)', mensaje: 'qué cursos de prevención (PRL) tienes' };
+  const abiertos = [tallas, cursos];
+  assert.equal(E._elegir(abiertos, 'Camiseta m Pamtalon 40 Zapatos 42 Sudadera m'), tallas);
+  assert.equal(E._elegir(abiertos, 'No tengo ningún curso'), cursos);
+  assert.equal(E._elegir(abiertos, '', [{ id: 'd1' }]), cursos);   // una foto: el diploma, no las tallas
+  assert.equal(E._elegir([cursos]), cursos);
+});

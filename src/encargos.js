@@ -52,7 +52,7 @@ async function lista({ abiertos = true } = {}) {
   const db = await getDB();
   const l = await db.collection(COL).find(abiertos ? { estado: { $in: ['abierto', 'programado'] } } : {}).sort({ at: -1 }).limit(100).toArray();
   const ahora = Date.now();
-  return l.map(e => ({ id: String(e._id), userId: e.userId, nombre: e.nombre, que: e.que, estado: e.estado, cuando: e.cuando || null, origen: e.origen || null, at: e.at, dias: Math.floor((ahora - new Date(e.at)) / (24 * H)), recordatorios: e.recordatorios || 0, ultimaRespuesta: (e.respuestas || []).slice(-1)[0] || null }));
+  return l.map(e => ({ id: String(e._id), userId: e.userId, nombre: e.nombre, que: e.que, estado: e.estado, cuando: e.cuando || null, origen: e.origen || null, at: e.at, respuestas: (e.respuestas || []).map(r => ({ at: r.at, texto: r.texto })), dias: Math.floor((ahora - new Date(e.at)) / (24 * H)), recordatorios: e.recordatorios || 0, ultimaRespuesta: (e.respuestas || []).slice(-1)[0] || null }));
 }
 
 async function cerrar(id, { como = 'hecho', por = 'Álex' } = {}) {
@@ -61,13 +61,40 @@ async function cerrar(id, { como = 'hecho', por = 'Álex' } = {}) {
   return { ok: true };
 }
 
+// ¿A cuál de sus encargos abiertos contesta? (13/10: a David le llegaron a la vez «tallas» y «cursos» y su
+// «camiseta M, pantalón 40…» cerró el de cursos, porque se cogía siempre el último). Tallas si suena a tallas;
+// una foto o un papel, a lo que no es tallas; si no, al que comparta más palabras con lo que dice (o el último).
+const RE_TALLAS = /\b(camiseta|sudadera|pantal\w*|zapat\w*|calzado|botas?|tallas?|xxl|xl|xs)\b/i;
+const _n = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]/g, ' ');
+function elegir(abiertos, texto = '', docs = []) {
+  if (abiertos.length <= 1) return abiertos[0] || null;
+  const tallas = abiertos.filter(e => e.tipo === 'tallas'), otros = abiertos.filter(e => e.tipo !== 'tallas');
+  if (texto && !docs.length && tallas.length && RE_TALLAS.test(texto)) return tallas[tallas.length - 1];
+  const cand = otros.length ? otros : abiertos;
+  if (cand.length === 1) return cand[0];
+  const pal = x => new Set(_n(x).split(/\s+/).filter(w => w.length >= 4));
+  const t = pal(texto); let mejor = cand[cand.length - 1], p = 0;
+  for (const e of cand) { const c = [...pal(`${e.que} ${e.mensaje || ''}`)].filter(w => t.has(w)).length; if (c > p) { p = c; mejor = e; } }
+  return mejor;
+}
+
 // El trabajador contesta (texto o archivo). Devuelve la respuesta para él, o null si no tenía encargos abiertos.
 async function respuesta(userId, nombreTrab, { texto = '', docs = [] } = {}, { _avisar = null } = {}) {
   const abiertos = await abiertosDe(userId);
   if (!abiertos.length) return null;
-  const e = abiertos[abiertos.length - 1];   // el más reciente: es al que suele contestar
+  let e = elegir(abiertos, texto, docs);
   const db = await getDB();
-  if (e.tipo === 'tallas' && texto) return require('./fichaDatos').respuesta(e, userId, nombreTrab, texto, { _avisar });
+  if (e.tipo === 'tallas' && texto) {
+    const r = await require('./fichaDatos').respuesta(e, userId, nombreTrab, texto, { _avisar, soloSiEntiende: true });
+    if (r) return r;
+    // No eran tallas: a otro encargo suyo si lo hay; si no, se le pasa a Álex tal cual (que no se pierda).
+    const otros = abiertos.filter(x => x.tipo !== 'tallas');
+    if (!otros.length) {
+      try { await (_avisar || require('./notifications').sendWhatsApp)(`💬 *${nombreTrab || e.nombre}* escribe al bot (le pedí las tallas, pero dice otra cosa):\n"${String(texto).slice(0, 500)}"`); } catch (err) {}
+      return `👍 Se lo paso a la oficina. Y cuando puedas, me dices tu ${e.mensaje || 'talla de camiseta, pantalón y calzado'}.`;
+    }
+    e = elegir(otros, texto, docs);
+  }
   const aplaza = !docs.length && APLAZA.test(String(texto || ''));
   const r = { at: new Date(), texto: String(texto || '').slice(0, 1000), docs: docs.map(d => d.id).filter(Boolean) };
   await db.collection(COL).updateOne({ _id: e._id }, { $push: { respuestas: r }, ...(aplaza ? {} : { $set: { estado: 'hecho', cerradoAt: new Date(), cerradoPor: 'respuesta del trabajador' } }) });
@@ -146,4 +173,4 @@ async function resumenInicio() {
   return { n: l.length, personas: [...new Set(l.map(e => e.nombre))], viejos: l.filter(e => e.dias >= 3).length };
 }
 
-module.exports = { apuntarDeTrabajador, detectarPendiente, crear, abiertosDe, lista, cerrar, respuesta, recordar, resumenInicio, _APLAZA: APLAZA };
+module.exports = { _elegir: elegir, apuntarDeTrabajador, detectarPendiente, crear, abiertosDe, lista, cerrar, respuesta, recordar, resumenInicio, _APLAZA: APLAZA };

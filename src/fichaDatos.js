@@ -96,13 +96,15 @@ async function _leer(texto) {
 }
 
 // Respuesta al encargo de tallas: se guarda lo que diga; si falta algo, sigue abierto y se le pide lo que falta.
-async function respuesta(e, userId, nombreTrab, texto, { _avisar = null, _leerIA = null } = {}) {
+// soloSiEntiende: si no se lee ninguna talla devuelve null (y no apunta nada) para que el mensaje vaya a otro sitio.
+async function respuesta(e, userId, nombreTrab, texto, { _avisar = null, _leerIA = null, soloSiEntiende = false } = {}) {
   const db = await getDB();
   const x = await (_leerIA || _leer)(texto);
   const u0 = (await db.collection('users').findOne({ _id: new ObjectId(String(userId)) })) || {};
   const set = {};
   for (const k of ['ropa', 'pantalon', 'calzado']) if (x[k]) set[`tallas.${k}`] = String(x[k]).toUpperCase().slice(0, 8);
   if (x.nacimiento && /^\d{4}-\d{2}-\d{2}$/.test(x.nacimiento) && !u0.nacimiento) set.nacimiento = x.nacimiento;   // si lo dice él, se guarda
+  if (soloSiEntiende && !['ropa', 'pantalon', 'calzado'].some(k => x[k])) return null;
   if (Object.keys(set).length) await db.collection('users').updateOne({ _id: new ObjectId(String(userId)) }, { $set: set });
   const u = await db.collection('users').findOne({ _id: new ObjectId(String(userId)) });
   const faltan = faltanDe(u);

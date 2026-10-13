@@ -641,6 +641,8 @@ async function procesarTrabajador(from, body, media, trab, responder) {
       if (t === null) return responder('🎙️ He recibido tu audio. ¿Me lo escribes, por favor?');
       if (!t) return responder('🎙️ No he oído nada claro en el audio. ¿Me lo repites o me lo escribes?');
       texto = t;
+      // Que en Conversaciones se vea lo que dijo (antes solo quedaba «[audio]»).
+      require('./waLog').registrar({ dir: 'in', canal: media.canal || null, numero: from, texto: `🎙️ (audio) ${t}`, media: [] }).catch(() => {});
     } catch (e) { return responder('🎙️ No he conseguido entender el audio. ¿Me lo escribes?'); }
   }
 
