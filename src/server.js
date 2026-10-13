@@ -646,6 +646,13 @@ async function procesarTrabajador(from, body, media, trab, responder) {
     } catch (e) { return responder('🎙️ No he conseguido entender el audio. ¿Me lo escribes?'); }
   }
 
+  // «No me deja abrir los mensajes» / «esperando el mensaje»: no es una respuesta a un encargo (el 13/10 a Javier se le
+  // contestó «👍 Apuntado»). Se avisa a Álex para reenviárselo y se le dice que lo estamos mirando.
+  if (texto && /no (se )?(me )?(dejan?|puedo|puede) (abrir|leer|ver)|no se (abren?|pueden abrir|ven)|esperando (el|este) mensaje|no (me )?(llegan?|entiendo) (los|tus) mensajes/i.test(texto)) {
+    try { await require('./notifications').sendWhatsApp(`⚠️ *${trab.name}* dice que no puede abrir los mensajes del bot: "${texto.slice(0, 200)}"\nHay que reenviárselos (problema de cifrado de WhatsApp con su número).`); } catch (e) {}
+    return responder(`Gracias por avisar, ${nombreCap} 🙏. Lo estamos mirando y te los vuelvo a mandar.`);
+  }
+
   // Fotos / PDF → Compras si son documentos de compra
   const docs = [...(media.fotos || []), ...(media.pdf ? [media.pdf] : [])];
   if (docs.length) {
