@@ -80,3 +80,15 @@ test('recordatorios: no en festivo; al día siguiente y a los 2 días; luego avi
   const nueva = cols.peticionesDocs.find(x => String(x.userId) === String(U2) && x.estado === 'abierta');
   assert.equal(Object.keys(nueva.recibidas).length, 1); assert.match(env[env.length - 1], /Te lo recuerdo/);
 });
+
+test('extranjero: la tasa 790 no vale como admisión a trámite; la admisión sí, y la petición pasa a pasaporte + admisión', async () => {
+  cols.peticionesDocs.forEach(x => { if (x.estado === 'abierta') x.estado = 'completa'; });
+  const U3 = new ObjectId(); cols.users.push({ _id: U3, name: 'Javier Huaca', whatsapp: '+34 672 86 15 28' });
+  await A.pedir(String(U3), { _enviar: async () => true });
+  const pet = await A.abiertaDe(String(U3)); const foto = { buf: Buffer.from('x'), mime: 'image/jpeg' }; const avisos = [];
+  let r = await A.recibir(pet, foto, { _mirar: async () => ({ tipo: 'extranjeria_tramite', legible: true, numero: 'Z5544266Y' }), _avisar: async t => avisos.push(t) });
+  assert.match(r.respuesta, /admisión a trámite/); assert.match(avisos[0], /no puede trabajar/);
+  assert.deepEqual(pet.piezas, ['pasaporte', 'extranjeria', 'seguridad_social']); assert.equal(pet.recibidas.extranjeria, undefined);
+  r = await A.recibir(pet, foto, { _mirar: async () => ({ tipo: 'extranjeria', legible: true }) });
+  assert.match(r.respuesta, /Recibido: la carta de \*admisión a trámite\*/);
+});

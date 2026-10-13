@@ -17,7 +17,7 @@ const PIEZAS = {
   doc_detras: 'DNI o NIE por detrás',
   seguridad_social: 'el número de la Seguridad Social (la tarjeta o un papel donde salga)',
   pasaporte: 'el pasaporte (la hoja de la foto)',
-  extranjeria: 'el papel de extranjería (solicitud de residencia o admisión a trámite)',
+  extranjeria: 'la carta de *admisión a trámite* de extranjería (la que dice que puedes trabajar mientras se resuelve) o la resolución',
 };
 const piezasDe = extranjero => (extranjero ? ['pasaporte', 'extranjeria', 'seguridad_social'] : ['doc_delante', 'doc_detras', 'seguridad_social']);
 // A qué tipo de la carpeta de Personal va cada pieza.
@@ -34,7 +34,8 @@ async function _usuario(db, userId) {
   return db.collection('users').findOne({ _id: new ObjectId(String(userId)) }, { projection: { name: 1, whatsapp: 1, telefono: 1, active: 1 } });
 }
 
-async function pedir(userId, { extranjero = false, por = null, _enviar = null } = {}) {
+// olvidar: piezas que se dieron por buenas y no lo eran (p. ej. la tasa 790 tomada como admisión a trámite).
+async function pedir(userId, { extranjero = false, por = null, olvidar = [], _enviar = null } = {}) {
   const db = await getDB();
   const u = await _usuario(db, userId);
   if (!u) throw new Error('No encuentro ese trabajador');
@@ -43,6 +44,7 @@ async function pedir(userId, { extranjero = false, por = null, _enviar = null } 
   const piezas = piezasDe(!!extranjero);
   // Si ya se le había pedido (p. ej. el mensaje le salió «Esperando el mensaje» y no lo pudo abrir), se le dice.
   const antes = await db.collection(COL).findOne({ userId: String(userId), estado: 'abierta' });
+  if (antes && olvidar.length) antes.recibidas = Object.fromEntries(Object.entries(antes.recibidas || {}).filter(([k]) => !olvidar.includes(k)));
   const faltanAntes = antes ? piezas.filter(k => !(antes.recibidas || {})[k]) : piezas;
   const txt = antes
     ? `Hola${primerNombre(u.name) ? ' ' + primerNombre(u.name) : ''} 👋 Te lo recuerdo: para tu alta aún nos falta ${lista(faltanAntes.length ? faltanAntes : piezas)}. No hace falta abrir ningún enlace, solo mandar las fotos aquí mismo (de cerca y que se lean bien). ¡Gracias!`
@@ -75,7 +77,7 @@ async function cerrar(id) {
 
 // Qué documento es y si se lee bien (solo eso: no se guarda ningún dato del documento salvo el número).
 const HERR = { name: 'documento_alta', description: 'Qué documento de identidad o de Seguridad Social es la imagen y si se lee bien', input_schema: { type: 'object', properties: {
-  tipo: { type: 'string', enum: ['doc_delante', 'doc_detras', 'pasaporte', 'seguridad_social', 'extranjeria', 'ticket_o_factura', 'otro'], description: 'doc_delante/doc_detras = DNI español o NIE/TIE (tarjeta de extranjero); seguridad_social = tarjeta o documento con el nº de afiliación; extranjeria = resguardo de solicitud de residencia, admisión a trámite, resolución…; ticket_o_factura = compra, albarán' },
+  tipo: { type: 'string', enum: ['doc_delante', 'doc_detras', 'pasaporte', 'seguridad_social', 'extranjeria', 'extranjeria_tramite', 'ticket_o_factura', 'otro'], description: 'doc_delante/doc_detras = DNI español o NIE/TIE (tarjeta de extranjero); seguridad_social = tarjeta o documento con el nº de afiliación; extranjeria = ADMISIÓN A TRÁMITE (carta de la Unidad de Tramitación que dice que «implica la autorización provisional a residir y trabajar») o RESOLUCIÓN favorable; extranjeria_tramite = SOLO el pago de la tasa (modelo 790) o el justificante de haber presentado la solicitud, que NO autorizan a trabajar; ticket_o_factura = compra, albarán' },
   legible: { type: 'boolean', description: 'true si se leen bien TODOS los números y letras (sin desenfoque, reflejos ni cortes)' },
   problema: { type: 'string', description: 'Si no es legible: qué pasa, en pocas palabras (borrosa, cortada, reflejo, muy oscura…)' },
   numero: { type: 'string', description: 'El número principal (DNI/NIE, pasaporte o nº de la Seguridad Social) si se lee' },
@@ -103,6 +105,18 @@ async function recibir(pet, { buf, mime }, { _mirar: mirar = _mirar, _avisar = n
   if (v.tipo === 'ticket_o_factura') return { aCompras: true };
   const nombre = primerNombre(pet.nombre);
   if (!v.legible) return { respuesta: `📸 Esta foto no se lee bien${v.problema ? ' (' + String(v.problema).slice(0, 60) + ')' : ''}. ¿Me la repites más de cerca, con buena luz y sin reflejos?` };
+  // Papeles de extranjería en una petición «de DNI»: es extranjero sin tarjeta → se le piden pasaporte + admisión a trámite.
+  if (/^extranjeria/.test(v.tipo) && !pet.piezas.includes('extranjeria')) {
+    pet.piezas = [...new Set([...piezasDe(true), ...pet.piezas.filter(k => k === 'seguridad_social')])];
+    await db.collection(COL).updateOne({ _id: pet._id }, { $set: { piezas: pet.piezas, extranjero: true } });
+  }
+  // La tasa 790 o el justificante de solicitud NO dejan trabajar (13/10: Javier mandó la tasa y se dio por buena).
+  // Se guarda en su carpeta, pero se le pide la admisión a trámite y se avisa a Álex: sin ella no hay alta.
+  if (v.tipo === 'extranjeria_tramite') {
+    await require('./personalDocs').subir({ ambito: 'trabajador', userId: pet.userId, tipo: 'extranjeria', archivo: { buffer: buf, mimetype: mime, originalname: `Solicitud o tasa de extranjería (WhatsApp).${/pdf/.test(mime) ? 'pdf' : 'jpg'}` }, notas: `Solo la solicitud / tasa 790: NO autoriza a trabajar todavía${v.numero ? ' · nº ' + String(v.numero).slice(0, 30) : ''}`, visibleTrabajador: true }, 'Corpy (WhatsApp)');
+    try { await (_avisar || require('./notifications').sendWhatsApp)(`⚠️ *${pet.nombre}* ha mandado la tasa o la solicitud de extranjería, pero no la *admisión a trámite*. Hasta tenerla (o la resolución) no puede trabajar ni darse de alta.`); } catch (e) {}
+    return { respuesta: `✅ Guardado, ${nombre || 'gracias'}. Esto es el pago o la solicitud; para darte de alta necesito la carta de *admisión a trámite* (la que dice que puedes trabajar mientras se resuelve) o la resolución. Te llega a la sede electrónica o al correo de quien te hizo los papeles. ¿Me la mandas?` };
+  }
   // DNI/NIE: si ya está una cara y llega «la misma», se entiende la que falta (la IA a veces no distingue).
   let pieza = v.tipo;
   if ((pieza === 'doc_delante' || pieza === 'doc_detras') && pet.recibidas[pieza] && pet.piezas.includes('doc_delante')) pieza = pieza === 'doc_delante' ? 'doc_detras' : 'doc_delante';

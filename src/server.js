@@ -2402,7 +2402,7 @@ const uploadPersonal = multer({ storage: multer.memoryStorage(), limits: { fileS
 const _porPers = async (req) => { const q = (await _quienPush(req)) || {}; return q.name || 'Oficina'; };
 // Corpy le pide a un trabajador sus documentos para el alta (DNI/NIE y nº de la Seguridad Social) por WhatsApp.
 app.post('/api/personal/pedir-docs-alta', requireAuthOficina, express.json(), async (req, res) => {
-  try { const b = req.body || {}; res.json(await require('./docsAlta').pedir(b.userId, { extranjero: !!b.extranjero, por: req.user?.name })); }
+  try { const b = req.body || {}; res.json(await require('./docsAlta').pedir(b.userId, { extranjero: !!b.extranjero, olvidar: Array.isArray(b.olvidar) ? b.olvidar : [], por: req.user?.name })); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.get('/api/personal/peticiones-alta', requireAuthOficina, async (req, res) => {
