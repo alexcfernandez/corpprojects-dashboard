@@ -11,7 +11,14 @@
 // La lista de grupos autorizados la da el dashboard (GET /api/bridge/config), así que
 // activar un grupo no obliga a reconstruir el contenedor.
 
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, downloadMediaMessage, extractMessageContent } = require('@whiskeysockets/baileys');
+// Baileys 7 (13/10/2026) es solo ESM: se carga con import() al arrancar (ver cargarBaileys). La 7 trae el soporte bueno
+// de los identificadores @lid de WhatsApp; con la 6.7 a algunos contactos les salía «Esperando el mensaje».
+let makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, downloadMediaMessage, extractMessageContent;
+async function cargarBaileys() {
+  const B = await import('@whiskeysockets/baileys');
+  makeWASocket = typeof B.default === 'function' ? B.default : (B.default && B.default.default) || B.makeWASocket;
+  ({ useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, downloadMediaMessage, extractMessageContent } = B);
+}
 const qrcode = require('qrcode-terminal');
 const axios = require('axios');
 const pino = require('pino');
@@ -265,4 +272,4 @@ async function start() {
   }
 }
 
-start().catch((e) => { console.error('[Bridge] fatal:', e.message); process.exit(1); });
+cargarBaileys().then(start).catch((e) => { console.error('[Bridge] fatal:', e.message); process.exit(1); });

@@ -373,7 +373,7 @@ app.post('/api/bridge/inbound', express.json({ limit: '40mb' }), (req, res) => {
   const pdfM = ok.find(m => /pdf/i.test(m.type));
   const fotos = ok.filter(m => /^image\//i.test(m.type));
   procesarWhatsApp(from, body, { numMedia: ok.length, canal: 'bridge', chatId: p.chatId, isGroup: false,
-    mediaUrl: audioM ? audioM.url : (ok[0] && ok[0].url), mediaType: audioM ? audioM.type : (ok[0] && ok[0].type), fotos, pdf: pdfM })
+    mediaUrl: audioM ? audioM.url : (ok[0] && ok[0].url), mediaType: audioM ? audioM.type : (ok[0] && ok[0].type), fotos, pdf: pdfM, archivos: ok })
     .catch(err => console.error('[Bridge] inbound:', err.message));
 });
 
@@ -523,6 +523,8 @@ async function procesarWhatsApp(from, body, media = {}) {
     try { const r = await respuestaFirmante(from, body, media); if (r) return responder(r); } catch (e) { console.error('[Firmar] respuesta:', e.message); }
     // ¿Es un cliente contestando a un recordatorio de cobro? Se apunta en su factura y se pasa a Álex.
     try { const rc = await require('./recordatoriosCobro').respuestaCliente(from, body || (media.fotos && media.fotos.length ? '(foto)' : '')); if (rc) return responder(rc); } catch (e) {}
+    // Alguien a quien Corpy ya escribió (Mathias el corredor, Alfonso, Kate…): no es «privado», se le pasa a Álex.
+    try { const r = await contactoConocido(from, body, media); if (r) return responder(r); } catch (e) { console.error('[Contacto] respuesta:', e.message); }
     return responder('🔒 Este asistente es privado.');
   }
 
@@ -611,6 +613,30 @@ async function respuestaFirmante(from, body, media = {}) {
   }
   try { await require('./notifications').sendWhatsApp(`✍️ *${f.nombre || movil}* ha contestado sobre los papeles de *${f.obraRef || 'la obra'}*${guardados ? `: ${guardados} archivo${guardados > 1 ? 's' : ''} guardado${guardados > 1 ? 's' : ''} en la obra` : ''}${body ? `\n«${String(body).slice(0, 300)}»` : ''}\n\nhttps://dashboard.corpprojects.es/docs-obra?obra=${f.obraId}`); } catch (e) {}
   return guardados ? `✅ Recibido${guardados > 1 ? ' (' + guardados + ')' : ''}, gracias. Se lo paso a Álex.` : 'Gracias, se lo paso a Álex.';
+}
+
+// Contacto externo que contesta a Corpy (le escribimos en los últimos 30 días): el texto va a Álex por WhatsApp y los
+// archivos (PDF, Excel, fotos…) a hola@ por correo, para que no se pierda nada (13/10: a Mathias se le dijo «privado»
+// cuando mandó un PDF y un Excel de los seguros).
+async function contactoConocido(from, body, media = {}) {
+  const d9 = String(from || '').replace(/\D/g, '').slice(-9);
+  if (d9.length !== 9) return null;
+  const db = await require('./db').getDB();
+  const ultimo = await db.collection('whatsappOutbox').findOne({ to: { $regex: d9 + '$' }, ts: { $gte: new Date(Date.now() - 30 * 24 * 3600 * 1000) } }, { sort: { ts: -1 }, projection: { body: 1 } });
+  if (!ultimo) return null;
+  const m = /^Hola ([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)/.exec(String(ultimo.body || ''));
+  const nombre = m ? m[1] : from;
+  const archivos = (media.archivos && media.archivos.length ? media.archivos : [...(media.fotos || []), ...(media.pdf ? [media.pdf] : [])]).filter(x => x && x.url);
+  const adjuntos = [];
+  for (const [i, a] of archivos.entries()) {
+    try { const buf = await _bajarMedia(a.url, 30000); const ext = (String(a.type || '').split('/')[1] || 'bin').replace(/[^a-z0-9]/gi, '').slice(0, 5); adjuntos.push({ filename: a.name || `archivo-${i + 1}.${ext}`, content: buf, contentType: a.type }); } catch (e) {}
+  }
+  const texto = String(body || '').trim();
+  if (adjuntos.length) {
+    try { await require('./notifications').sendEmail({ to: process.env.EMAIL_OFICINA || 'hola@corpprojects.es', subject: `WhatsApp de ${nombre} (${from}) a Corpy${texto ? ': ' + texto.slice(0, 60) : ''}`, text: `${nombre} (${from}) ha escrito a Corpy por WhatsApp:\n\n${texto || '(sin texto)'}\n\nAdjuntos: ${adjuntos.map(x => x.filename).join(', ')}`, attachments: adjuntos }); } catch (e) { console.error('[Contacto] correo:', e.message); }
+  }
+  try { await require('./notifications').sendWhatsApp(`📩 *${nombre}* (${from}) escribe a Corpy:${texto ? `\n"${texto.slice(0, 400)}"` : ''}${adjuntos.length ? `\n📎 ${adjuntos.length} archivo${adjuntos.length > 1 ? 's' : ''} (${adjuntos.map(x => x.filename).join(', ')}): te los he mandado a hola@corpprojects.es` : (archivos.length || media.numMedia ? '\n📎 Mandó un archivo que no he podido descargar: pídeselo por correo.' : '')}`); } catch (e) {}
+  return `Gracias, ${nombre} 🙏. Se lo paso a Álex${adjuntos.length ? ' (con los archivos)' : ''} y te contesta él.`;
 }
 
 function registrarEntradaWa(from, body, media = {}) {
