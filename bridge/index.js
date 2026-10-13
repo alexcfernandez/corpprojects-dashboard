@@ -171,7 +171,9 @@ async function bucleSalida() {
         try {
           if (!sockActual || estado !== 'open') throw new Error('WhatsApp no conectado (' + estado + ')');
           // Un grupo se escribe tal cual (…@g.us); un número, por su chat conocido o su JID.
-          const destino = String(m.to || '').endsWith('@g.us') ? String(m.to) : (chatPorTelefono.get(soloDigitos(m.to)) || phoneToJid(m.to));
+          // 13/10/2026: a los chats @lid, Baileys 6.7 cifra mal a veces y el otro ve «Esperando el mensaje» (Javier,
+          // Alfonso, Mathias). Por el número de teléfono llega bien: el @lid solo si no hay número.
+          const destino = String(m.to || '').endsWith('@g.us') ? String(m.to) : (soloDigitos(m.to).length >= 9 ? phoneToJid(m.to) : (chatPorTelefono.get(soloDigitos(m.to)) || phoneToJid(m.to)));
           guardarEnviado(await sockActual.sendMessage(destino, { text: String(m.body || '') }));
           console.log('[Bridge] enviado a', m.to, '->', destino);
           acks.push({ id: m.id, ok: true });
