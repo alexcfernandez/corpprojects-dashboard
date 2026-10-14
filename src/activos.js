@@ -90,6 +90,9 @@ async function crearActivo(data, by) {
     fechaCompra: data.fechaCompra || null,
     obraId:      data.obraId ? String(data.obraId) : null,
     obraRef:     String(data.obraRef || '').trim(),
+    // De qué compra viene (para ver la factura desde la ficha): la compra de Compras o la factura de StelOrder.
+    compraId:    /^[a-f0-9]{24}$/.test(String(data.compraId || '')) ? String(data.compraId) : null,
+    compraRef:   String(data.compraRef || '').trim().slice(0, 120) || null,
     foto:        data.foto || '',
     notas:       String(data.notas || '').trim(),
     estado:      'oficina',

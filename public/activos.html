@@ -285,6 +285,13 @@ function render(){
     <div>${badge(a)}</div></div>`;}).join('');
 }
 
+// Factura de la compra de la que viene la herramienta (desde Compras), en grande y con zoom.
+async function verFactura(compraId){try{const r=await fetch(`/api/compras/${compraId}/foto/0`,{headers:authH()});if(!r.ok)throw new Error('No se puede abrir la factura');const u=URL.createObjectURL(await r.blob());
+  const z=document.createElement('div');z.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:9999;display:flex;flex-direction:column';
+  z.innerHTML=`<div style="flex:none;display:flex;gap:8px;justify-content:center;padding:8px"><button data-a="-" style="min-width:44px;height:38px;border:none;border-radius:8px;font-weight:700">−</button><button data-a="fit" style="height:38px;border:none;border-radius:8px;font-weight:700;padding:0 12px">Ajustar</button><button data-a="+" style="min-width:44px;height:38px;border:none;border-radius:8px;font-weight:700">+</button><a href="/compras?id=${compraId}" style="height:38px;line-height:38px;background:#fff;color:#111;border-radius:8px;font-weight:700;padding:0 12px;text-decoration:none">Abrir en Compras</a><button data-a="x" style="min-width:44px;height:38px;border:none;border-radius:8px;font-weight:700;background:#e5484d;color:#fff">✕</button></div><div class="zw" style="flex:1;overflow:auto;-webkit-overflow-scrolling:touch"><img src="${u}" style="display:block;margin:10px auto;max-width:none"></div>`;
+  const im=z.querySelector('img'),wr=z.querySelector('.zw');let w=Math.min(window.innerWidth-20,1000);im.style.width=w+'px';
+  z.onclick=e=>{const a=e.target.dataset&&e.target.dataset.a;if(a==='x'||e.target===wr){z.remove();URL.revokeObjectURL(u);}if(a==='+'){w*=1.3;im.style.width=w+'px';}if(a==='-'){w=Math.max(200,w/1.3);im.style.width=w+'px';}if(a==='fit'){w=wr.clientWidth-20;im.style.width=w+'px';}};
+  document.body.appendChild(z);}catch(e){alert(e.message);}}
 // ── FICHA ──
 async function ficha(id){fichaId=id;
   try{const {activo:a,movimientos}=await api('GET','/api/activos/'+id);
@@ -298,7 +305,8 @@ async function ficha(id){fichaId=id;
     document.getElementById('ficha-body').innerHTML=`
       <div class="m-head"><div><div class="m-tipo">${TIPO_NOM[a.tipo]||a.tipo}</div><div class="m-cod">${esc(a.codigo)}</div></div>${badge(a)}</div>
       ${a.foto?`<img class="foto" src="${a.foto}">`:''}
-      <div class="sec">${detalle||'<div class="mini">Sin datos.</div>'}${a.obraRef?kv('Obra',a.obraRef):''}${a.notas?kv('Notas',a.notas):''}</div>
+      <div class="sec">${detalle||'<div class="mini">Sin datos.</div>'}${a.compraRef?kv('Factura',a.compraRef):''}${a.obraRef?kv('Obra',a.obraRef):''}${a.notas?kv('Notas',a.notas):''}</div>
+      ${a.compraId?`<button class="btn sec" style="margin:0 0 10px" onclick="verFactura('${a.compraId}')">📄 Ver la factura de compra</button>`:''}
       <div class="acts">
         ${a.estado==='oficina'?`<button class="btn" onclick="dar('${a._id}')">Entregar</button>`:`<button class="btn green" onclick="devolver('${a._id}')">Devolver a oficina</button>`}
         <button class="btn amber" onclick="etiqueta('${esc(a.codigo)}','${esc(a.tipo)}','${esc((a.nombre||a.clientName||'').replace(/'/g,''))}')">🏷️ Etiqueta</button>

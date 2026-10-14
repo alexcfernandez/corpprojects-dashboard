@@ -1830,6 +1830,10 @@ app.post('/api/compras/obra-sola', express.json(), async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./comprasVigilancia').obrasDesdePistas({ aplicar: (req.body || {}).aplicar === true })); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
+app.post('/api/compras/alta-herramientas', express.json(), async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./comprasVigilancia').altaHerramientas((req.body || {}).items, q.name)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/compras/repetidas', async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo Dueño y Oficina revisan compras' });
     const V = require('./comprasVigilancia'); const g = await V.repetidas({ dias: Number(req.query.dias) || 400 }); res.json({ grupos: g, texto: V.textoInforme(g), ventana: V.VENTANA }); }

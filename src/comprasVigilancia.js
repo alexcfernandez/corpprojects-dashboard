@@ -59,7 +59,7 @@ async function historial({ dias = 400, _stel = null } = {}) {
       if (ya.has(k)) { const e = out.find(x => x._k === k); if (e) { e.obra = e.obra || c.obraRef || null; e.quien = e.quien || (c.subidaPor && c.subidaPor.kind === 'worker' ? c.subidaPor.name : null); } continue; }
       ya.add(k);
       out.push({ _k: k, cat: cat.id, nombre: cat.nombre, fecha: c.fecha, proveedor: c.proveedor || '', articulo: l.descripcion, importe: imp, cantidad: cant, obra: c.obraRef || null, totalDoc: c.total,
-        quien: c.subidaPor && c.subidaPor.kind === 'worker' ? c.subidaPor.name : (c.compradoPor && c.compradoPor.name) || null, compraId: String(c._id) });
+        quien: c.subidaPor && c.subidaPor.kind === 'worker' ? c.subidaPor.name : (c.compradoPor && c.compradoPor.name) || null, compraId: String(c._id), numero: c.numero || null });
     }
   }
   try {
@@ -120,7 +120,31 @@ async function repetidas({ dias = 400, ventana = VENTANA, ...deps } = {}) {
     g.compras.forEach((x, i) => { const ant = g.compras[i - 1]; x.diasDesdeAnterior = ant ? Math.round((new Date(x.fecha) - new Date(ant.fecha)) / 864e5) : null; if (ant && x.diasDesdeAnterior <= ventana) g.repetidas++; });
     g.total = Math.round(g.compras.reduce((a, x) => a + (Number(x.importe) || 0), 0) * 100) / 100;
   }
+  // ¿Ya está en Herramientas? (por la compra enlazada o por la referencia de la factura)
+  try {
+    const act = await (await getDB()).collection('activos').find({ tipo: 'herramienta', $or: [{ compraId: { $ne: null } }, { compraRef: { $ne: null } }] }).project({ compraId: 1, compraRef: 1, codigo: 1, nombre: 1 }).toArray();
+    for (const g of Object.values(porCat)) for (const x of g.compras) { const a = act.find(a => (x.compraId && a.compraId === x.compraId && n(a.nombre) === n(x.articulo)) || (x.fpr && a.compraRef && a.compraRef.includes(x.fpr) && n(a.nombre) === n(x.articulo))); if (a) x.activo = { id: String(a._id), codigo: a.codigo }; }
+  } catch (e) {}
   return Object.values(porCat).filter(g => g.compras.length > 1).sort((a, b) => b.repetidas - a.repetidas || b.compras.length - a.compras.length);
+}
+
+// Dar de alta en Herramientas lo comprado (desde la pestaña de repetidas): una ficha por unidad, enlazada a su factura.
+async function altaHerramientas(items, por) {
+  const act = require('./activos'); const out = [];
+  const db = await getDB();
+  for (const x of (items || []).slice(0, 60)) {
+    const nombre = String(x.articulo || '').trim().slice(0, 120); if (!nombre) continue;
+    const ref = `${x.proveedor || ''}${x.numero ? ' nº ' + x.numero : x.fpr ? ' ' + x.fpr : ''}`.trim();
+    const ya = await db.collection('activos').findOne({ tipo: 'herramienta', nombre, $or: [x.compraId ? { compraId: String(x.compraId) } : { _id: null }, ref ? { compraRef: ref } : { _id: null }] });
+    if (ya) { out.push({ codigo: ya.codigo, nombre, ya: true }); continue; }
+    const cant = Math.min(10, Math.max(1, Math.round(Number(x.cantidad) || 1)));
+    for (let i = 0; i < cant; i++) {
+      const r = await act.crearActivo({ tipo: 'herramienta', nombre, valor: x.importe != null ? Math.round(Math.abs(Number(x.importe)) / cant * 100) / 100 : 0, fechaCompra: x.fecha || null, obraRef: x.obra || '',
+        compraId: x.compraId || null, compraRef: ref, notas: `Alta desde Compras (herramientas repetidas)${x.quien ? ' · la compró ' + x.quien : ''}. Comprobar dónde está.` }, por);
+      out.push({ codigo: r.codigo, nombre });
+    }
+  }
+  return out;
 }
 
 function textoInforme(gs) {
@@ -261,4 +285,4 @@ async function respuestaCompra(origen, texto, nombre) {
   return obra ? { obra: obra.reference } : {};
 }
 
-module.exports = { duplicados, limpiarDuplicados, obrasDesdePistas, categoria, historial, repetidas, textoInforme, alSubir, respuestaCompra, obraDeTexto, DURABLES, VENTANA };
+module.exports = { altaHerramientas, duplicados, limpiarDuplicados, obrasDesdePistas, categoria, historial, repetidas, textoInforme, alSubir, respuestaCompra, obraDeTexto, DURABLES, VENTANA };

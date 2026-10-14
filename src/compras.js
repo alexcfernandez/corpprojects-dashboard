@@ -573,7 +573,7 @@ async function _altaActivos(c, items, por) {
     const valorUd = Math.abs(Number(h.valor) || 0) / (Number(h.valorEsTotal) ? n : 1);
     for (let i = 0; i < n && total < 60; i++, total++) {
       try {
-        const r = await act.crearActivo({ tipo: h.tipo, nombre, talla: h.talla || '', marca: h.marca || '', modelo: h.modelo || '', valor: Math.round(valorUd * 100) / 100, fechaCompra: c.fecha || new Date().toISOString().slice(0, 10), notas: `Compra ${c.proveedor || ''}${c.numero ? ' nº ' + c.numero : ''}${n > 1 ? ` (${i + 1} de ${n})` : ''} (foto en Compras)` }, por);
+        const r = await act.crearActivo({ tipo: h.tipo, nombre, talla: h.talla || '', marca: h.marca || '', modelo: h.modelo || '', valor: Math.round(valorUd * 100) / 100, fechaCompra: c.fecha || new Date().toISOString().slice(0, 10), compraId: String(c._id), compraRef: `${c.proveedor || ''}${c.numero ? ' nº ' + c.numero : ''}`.trim(), notas: `Compra ${c.proveedor || ''}${c.numero ? ' nº ' + c.numero : ''}${n > 1 ? ` (${i + 1} de ${n})` : ''} (foto en Compras)` }, por);
         if (h.worker && h.worker.id) await act.darActivo(r.id, { holderType: 'operario', holderId: h.worker.id, holderName: h.worker.name, nota: 'Entregada al comprarla' }, por);
         creadas.push({ id: r.id, codigo: r.codigo, nombre: nombre + (h.talla ? ' ' + h.talla : ''), para: h.worker && h.worker.name || null });
       } catch (e) { console.warn('[Compras] alta:', e.message); }
