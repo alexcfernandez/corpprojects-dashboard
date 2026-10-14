@@ -133,11 +133,14 @@ function textoInforme(gs) {
 async function obraDeTexto(texto) {
   const db = await getDB();
   const os = await db.collection('obras').find({ status: { $nin: ['terminada', 'facturada', 'archivada', 'descartada'] } }, { projection: { reference: 1, clientName: 1, address: 1, aliases: 1 } }).toArray();
-  const stop = new Set(['obra', 'obras', 'para', 'esta', 'este', 'compra', 'creo', 'casa', 'calle', 'carrer', 'piso', 'comunidad']);
-  const t = n(texto).split(/[^a-z0-9]+/).filter(w => w.length >= 4 && !stop.has(w));
+  // «Múltiples comunidades», «varias obras»: no es de una obra.
+  if (/m[uú]ltiples|varias|varios|diverses|diversas/i.test(String(texto || ''))) return null;
+  const stop = new Set(['obra', 'obras', 'para', 'esta', 'este', 'compra', 'creo', 'casa', 'calle', 'carrer', 'piso', 'comunidad', 'comunidades', 'propietarios', 'propietaris', 'girona', 'corporacio', 'corp', 'projects', 'holding', 'direccion', 'entrega', 'nuestra', 'nuestro', 'obres', 'portal', 'bajo', 'baixos', 'planta']);
+  const t = n(texto).split(/[^a-z0-9]+/).filter(w => w.length >= 4 && !stop.has(w) && !/^\d+$/.test(w));
   if (!t.length) return null;
   const sc = os.map(o => { const s = n([o.reference, o.clientName, o.address, ...(o.aliases || [])].join(' ')); return { o, hits: t.filter(w => s.includes(w)).length }; }).filter(x => x.hits).sort((a, b) => b.hits - a.hits);
-  return sc.length && (sc.length === 1 || sc[0].hits > sc[1].hits) ? sc[0].o : null;
+  // Solo si el texto apunta a UNA obra (si nombra dos o más, p. ej. un albarán con varias direcciones, que lo mire una persona).
+  return sc.length === 1 ? sc[0].o : null;
 }
 
 // ── Duplicados: misma compra subida dos veces (foto del trabajador + correo + subida masiva…) ──
