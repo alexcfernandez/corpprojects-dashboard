@@ -55,8 +55,10 @@ async function historial({ dias = 400, _stel = null } = {}) {
       const imp = l.importe != null ? Number(l.importe) : (l.precio != null ? Number(l.precio) * cant : null);
       const cat = categoria(l.descripcion, l.precio != null ? l.precio : (imp != null ? imp / cant : null));
       if (!cat) continue;
-      const k = clave(c.proveedor, c.fecha, cat.id, imp); if (ya.has(k)) continue; ya.add(k);
-      out.push({ cat: cat.id, nombre: cat.nombre, fecha: c.fecha, proveedor: c.proveedor || '', articulo: l.descripcion, importe: imp, cantidad: cant, obra: c.obraRef || null,
+      const k = clave(c.proveedor, c.fecha, cat.id, imp);
+      if (ya.has(k)) { const e = out.find(x => x._k === k); if (e) { e.obra = e.obra || c.obraRef || null; e.quien = e.quien || (c.subidaPor && c.subidaPor.kind === 'worker' ? c.subidaPor.name : null); } continue; }
+      ya.add(k);
+      out.push({ _k: k, cat: cat.id, nombre: cat.nombre, fecha: c.fecha, proveedor: c.proveedor || '', articulo: l.descripcion, importe: imp, cantidad: cant, obra: c.obraRef || null,
         quien: c.subidaPor && c.subidaPor.kind === 'worker' ? c.subidaPor.name : null, compraId: String(c._id) });
     }
   }
@@ -73,11 +75,11 @@ async function historial({ dias = 400, _stel = null } = {}) {
         const cat = categoria(nom, Number.isFinite(p) ? p : null);
         if (!cat) continue;
         const k = clave(inv.supplier, f, cat.id, t); if (ya.has(k)) continue; ya.add(k);
-        out.push({ cat: cat.id, nombre: cat.nombre, fecha: f, proveedor: inv.supplier || '', articulo: nom, importe: Number.isFinite(t) ? t : null, cantidad: u, obra: null, quien: null, fpr: inv.number });
+        out.push({ _k: k, cat: cat.id, nombre: cat.nombre, fecha: f, proveedor: inv.supplier || '', articulo: nom, importe: Number.isFinite(t) ? t : null, cantidad: u, obra: null, quien: null, fpr: inv.number });
       }
     }
   } catch (e) { /* StelOrder sin cupo: solo con las de Compras */ }
-  return out.sort((a, b) => a.fecha.localeCompare(b.fecha));
+  return out.map(({ _k, ...x }) => x).sort((a, b) => a.fecha.localeCompare(b.fecha));
 }
 
 // Por herramienta: cuántas se han comprado y las que caen a menos de VENTANA días de la anterior.
