@@ -252,6 +252,9 @@ async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaP
   doc.updatedAt = new Date();
   const { _id, ...set } = doc;
   await db.collection(COL).updateOne({ _id }, { $set: set });
+  // Herramientas que se compran una y otra vez + «¿para qué obra es?» al trabajador (comprasVigilancia.js).
+  let vig = {};
+  if (!silencioso && doc.ia && doc.ia.ok && !doc.duplicadoDe) { try { vig = await require('./comprasVigilancia').alSubir(doc); } catch (e) { console.warn('[Compras] vigilancia:', e.message); } }
 
   // Aviso a oficina (push al momento; el WhatsApp va en el resumen de las 18:00). No se avisa de lo que sube la propia oficina.
   if (!silencioso) try {
@@ -259,7 +262,7 @@ async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaP
     const que = doc.ia.ok ? `${TIPO_TXT[doc.tipo]}${doc.proveedor ? ' de ' + doc.proveedor : ''}${doc.numero ? ' nº ' + doc.numero : ''}` : 'un documento (la IA no pudo leerlo)';
     await require('./push').sendToOficina({ title: origen === 'email' ? '📧 Factura llegada por correo' : `📸 Compra de ${quien}`, body: `${que}${doc.obraRef ? ' · ' + doc.obraRef : dest === 'varias' ? ' · para varias obras' : dest === 'herramientas' || dest === 'ropa' ? ' · ' + DESTINO_TXT[dest].toLowerCase() + (pw ? ' para ' + pw.name : ' (queda en oficina)') : dest === 'general' ? ' · gasto general' : ''}. Por revisar.`, url: '/compras', tag: 'compra-nueva' });
   } catch (e) {}
-  return { ok: true, id: String(doc._id), ...resumenParaTrabajador(doc) };
+  return { ok: true, id: String(doc._id), ...resumenParaTrabajador(doc), pregunta: vig.pregunta || null };
 }
 // ── SUBIDA MASIVA (oficina): las facturas que se bajan de golpe de la web de Obramat, Leroy… ──
 // Cada archivo es una factura (o cada página, si el PDF las junta). La IA las lee una a una en segundo plano y

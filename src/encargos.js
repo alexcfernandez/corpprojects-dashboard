@@ -95,10 +95,13 @@ async function respuesta(userId, nombreTrab, { texto = '', docs = [] } = {}, { _
     }
     e = elegir(otros, texto, docs);
   }
+  // Pregunta de una compra («¿para qué obra?», «¿qué pasó con el anterior?»): se guarda en la compra y pone la obra.
+  let deCompra = null;
+  if (e.origen && e.origen.tipo === 'compra' && texto) { try { deCompra = await require('./comprasVigilancia').respuestaCompra(e.origen, texto, nombreTrab || e.nombre); } catch (err) {} }
   const aplaza = !docs.length && APLAZA.test(String(texto || ''));
   const r = { at: new Date(), texto: String(texto || '').slice(0, 1000), docs: docs.map(d => d.id).filter(Boolean) };
   await db.collection(COL).updateOne({ _id: e._id }, { $push: { respuestas: r }, ...(aplaza ? {} : { $set: { estado: 'hecho', cerradoAt: new Date(), cerradoPor: 'respuesta del trabajador' } }) });
-  const aviso = `💬 *${nombreTrab || e.nombre}* contesta a tu encargo «${e.que}»:\n${texto ? `"${String(texto).slice(0, 400)}"` : ''}${docs.length ? `${texto ? '\n' : ''}📎 ${docs.length} archivo${docs.length > 1 ? 's' : ''} (guardado${docs.length > 1 ? 's' : ''} en su carpeta de Personal)` : ''}${aplaza ? '\n\n(Parece que aún no lo tiene: sigo recordándoselo.)' : '\n\n✔ Encargo cerrado.'}`;
+  const aviso = `💬 *${nombreTrab || e.nombre}* contesta a tu encargo «${e.que}»:\n${texto ? `"${String(texto).slice(0, 400)}"` : ''}${docs.length ? `${texto ? '\n' : ''}📎 ${docs.length} archivo${docs.length > 1 ? 's' : ''} (guardado${docs.length > 1 ? 's' : ''} en su carpeta de Personal)` : ''}${aplaza ? '\n\n(Parece que aún no lo tiene: sigo recordándoselo.)' : '\n\n✔ Encargo cerrado.'}${deCompra && deCompra.obra ? `\n🏗️ Compra apuntada en la obra *${deCompra.obra}*.` : ''}`;
   try { await (_avisar || require('./notifications').sendWhatsApp)(aviso); } catch (err) {}
   return aplaza ? `👍 Apuntado, ${primer(nombreTrab || e.nombre)}. Te lo vuelvo a preguntar si no me llega; cuando lo tengas, mándamelo por aquí.` : `✅ ¡Gracias, ${primer(nombreTrab || e.nombre)}! Apuntado.`;
 }

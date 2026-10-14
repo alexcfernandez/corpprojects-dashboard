@@ -715,7 +715,8 @@ async function procesarTrabajador(from, body, media, trab, responder) {
       } catch (e) { fallos++; console.error('[WhatsApp] compra de trabajador:', e.message); }
     }
     const partes = [...respAlta.slice(-2)];
-    if (guardadas.length) partes.push(`🧾 Recibido${guardadas.length > 1 ? ' (' + guardadas.length + ')' : ''}: ${guardadas.map(g => [g.tipoTxt || 'documento', g.proveedor].filter(Boolean).join(' de ')).join(', ')}. Lo revisa la oficina.${texto ? '' : ' Si es de una obra concreta, dime cuál (p. ej. «es de Rutlla»).'}`);
+    const preguntas = guardadas.map(g => g.pregunta).filter(Boolean);   // «¿para qué obra es?» / «¿qué pasó con el anterior?»
+    if (guardadas.length) partes.push(`🧾 Recibido${guardadas.length > 1 ? ' (' + guardadas.length + ')' : ''}: ${guardadas.map(g => [g.tipoTxt || 'documento', g.proveedor].filter(Boolean).join(' de ')).join(', ')}. Lo revisa la oficina.${preguntas.length ? '\n\n' + preguntas.join('\n\n') : (texto ? '' : ' Si es de una obra concreta, dime cuál (p. ej. «es de Rutlla»).')}`);
     if (noDoc) partes.push(`📸 Gracias${nombreCap ? ', ' + nombreCap : ''}. Para fichar no hace falta mandar fotos del sitio: basta con tu enlace.` + lineaFichar);
     if (fallos && !partes.length) partes.push('📎 He recibido tu archivo pero no lo he podido abrir. ¿Me lo mandas otra vez?');
     return responder(partes.join('\n\n') || '📎 Recibido.');
@@ -1808,6 +1809,12 @@ app.get('/api/compras/mias', async (req, res) => {
 });
 app.get('/api/compras/pendientes', async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json({ n: await require('./compras').contarPendientes() }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+// Herramientas compradas más de una vez (enrolladores, radiales, taladros…): cuándo, dónde, quién y para qué obra.
+app.get('/api/compras/repetidas', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo Dueño y Oficina revisan compras' });
+    const V = require('./comprasVigilancia'); const g = await V.repetidas({ dias: Number(req.query.dias) || 400 }); res.json({ grupos: g, texto: V.textoInforme(g), ventana: V.VENTANA }); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 app.get('/api/compras', async (req, res) => {
