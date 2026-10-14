@@ -317,6 +317,32 @@ async function preguntarObras({ dryRun = false, porPersona = 4, _crear = null, _
   return { preguntadas: hechas.length, hechas, sinQuien: sinQuien.length };
 }
 
+// ── «SIN OBRA»: las compras por revisar sin obra, con quién las compró y la obra PROBABLE: donde trabajaba la gente ese
+// día según la presencia (si solo hubo una obra, casi seguro es esa). Para ponerlas de un vistazo (Álex, 14/10/2026).
+async function sinObra({ limite = 300 } = {}) {
+  const db = await getDB();
+  const cs = await db.collection('compras').find({ estado: 'por_revisar', obraId: { $in: [null, ''] }, varias: { $ne: true } })
+    .project({ proveedor: 1, fecha: 1, total: 1, tipo: 1, destino: 1, subidaPor: 1, numero: 1, obraPista: 1, preguntaObra: 1, origen: 1, 'lineas.descripcion': 1 }).sort({ fecha: -1 }).limit(limite).toArray();
+  const fechas = [...new Set(cs.map(c => c.fecha).filter(Boolean))];
+  const att = fechas.length ? await db.collection('attendance').find({ date: { $in: fechas }, estado: 'obra' }, { projection: { date: 1, workerName: 1, clientName: 1, obras: 1 } }).toArray().catch(() => []) : [];
+  const obras = await db.collection('obras').find({}, { projection: { reference: 1, status: 1 } }).toArray();
+  const porRef = new Map(obras.map(o => [n(o.reference), o]));
+  const delDia = {};
+  for (const a of att) {
+    const lista = (a.obras || []).filter(x => x.obraId).map(x => ({ id: String(x.obraId), ref: x.clientName })).concat(a.clientName && porRef.get(n(a.clientName)) ? [{ id: String(porRef.get(n(a.clientName))._id), ref: a.clientName }] : []);
+    for (const o of lista) { const k = a.date + '|' + o.id; (delDia[a.date] = delDia[a.date] || {}); delDia[a.date][o.id] = delDia[a.date][o.id] || { id: o.id, ref: (obras.find(x => String(x._id) === o.id) || {}).reference || o.ref, gente: new Set() }; delDia[a.date][o.id].gente.add(String(a.workerName || '').split(' ')[0]); }
+  }
+  const out = [];
+  for (const c of cs) {
+    const sug = Object.values(delDia[c.fecha] || {}).map(x => ({ id: x.id, ref: x.ref, gente: [...x.gente] })).sort((a, b) => b.gente.length - a.gente.length).slice(0, 3);
+    let quien = c.subidaPor && c.subidaPor.kind === 'worker' ? c.subidaPor.name : null, porTarjeta = false;
+    if (!quien && c.total && c.fecha) { const x = { proveedor: c.proveedor || '', fecha: c.fecha, totalDoc: c.total, quien: null }; try { await ponerTarjetas([x], new Date(new Date(c.fecha).getTime() - 2 * 864e5).toISOString().slice(0, 10)); } catch (e) {} quien = x.quien; porTarjeta = !!x.quien; }
+    out.push({ id: String(c._id), fecha: c.fecha, proveedor: c.proveedor, numero: c.numero, total: c.total, tipo: c.tipo, destino: c.destino || 'obra', origen: c.origen, quien, porTarjeta, pista: c.obraPista || null,
+      articulos: (c.lineas || []).slice(0, 3).map(l => String(l.descripcion).slice(0, 50)), nLineas: (c.lineas || []).length, sugerencias: sug, preguntado: c.preguntaObra ? c.preguntaObra.a : null });
+  }
+  return out;
+}
+
 // El trabajador contesta a la pregunta de una compra: se guarda en la compra y, si nombra una obra, se pone.
 async function respuestaCompra(origen, texto, nombre) {
   const db = await getDB();
@@ -330,4 +356,4 @@ async function respuestaCompra(origen, texto, nombre) {
   return obra ? { obra: obra.reference, subida: !!(auto && auto.revisada) } : {};
 }
 
-module.exports = { preguntarObras, altaHerramientas, duplicados, limpiarDuplicados, obrasDesdePistas, categoria, historial, repetidas, textoInforme, alSubir, respuestaCompra, obraDeTexto, DURABLES, VENTANA };
+module.exports = { sinObra, preguntarObras, altaHerramientas, duplicados, limpiarDuplicados, obrasDesdePistas, categoria, historial, repetidas, textoInforme, alSubir, respuestaCompra, obraDeTexto, DURABLES, VENTANA };

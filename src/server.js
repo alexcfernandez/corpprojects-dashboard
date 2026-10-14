@@ -1826,6 +1826,21 @@ app.post('/api/compras/duplicado', express.json(), async (req, res) => {
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 // Compras sin obra cuyo papel dice la obra («obra Rutlla», dirección de entrega…): la pone sola (aplicar) o la propone.
+app.get('/api/compras/sin-obra', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./comprasVigilancia').sinObra()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+// Poner la obra (o el destino) a una compra desde «Sin obra» y, si ya está todo claro, que se revise y suba sola.
+app.post('/api/compras/:id/poner-obra', express.json(), async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' });
+    const b = req.body || {}, C = require('./compras');
+    const data = b.obraId ? { obraId: b.obraId, destino: 'obra' } : b.destino === 'general' ? { destino: 'general', categoria: b.categoria || 'material' } : b.destino ? { destino: b.destino } : {};
+    if (!Object.keys(data).length) return res.status(400).json({ error: 'Elige la obra o el destino' });
+    await C.editar(req.params.id, data, q.name);
+    const auto = await C.autoRevisar(req.params.id).catch(e => ({ ok: false, falta: [e.message] }));
+    res.json({ ok: true, auto }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.post('/api/compras/auto-revisar', express.json(), async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').autoRevisarPendientes({ aplicar: (req.body || {}).aplicar === true })); }
   catch (err) { res.status(500).json({ error: err.message }); }

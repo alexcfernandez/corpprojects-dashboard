@@ -677,7 +677,9 @@ async function claridad(c, db) {
   if (c.estado !== 'por_revisar') falta.push('no está por revisar');
   if (!['factura', 'ticket'].includes(c.tipo)) falta.push('no es factura ni ticket');
   if (!c.ia || !c.ia.ok || c.ia.calidad !== 'legible' || (c.ia.confianza != null && c.ia.confianza < 0.85)) falta.push('la IA no la lee del todo bien');
-  if (c.ia && c.ia.aviso) falta.push('la IA avisa: ' + c.ia.aviso);
+  // Avisos menores que no impiden nada (facturas simplificadas de Obramat: sin NIF del proveedor o sin desglose de IVA).
+  const avisoMenor = a => /^(?=.*\b(nif|cif|desglose|base imponible|iva)\b)(?!.*(ilegib|cortad|falta (una|la) p|presupuest|proforma|duplic|abono|no es)).*$/i.test(String(a || ''));
+  if (c.ia && c.ia.aviso && !avisoMenor(c.ia.aviso)) falta.push('la IA avisa: ' + c.ia.aviso);
   if (!c.proveedor || !c.numero || !c.fecha || !(Number(c.total) > 0)) falta.push('falta proveedor, nº, fecha o importe');
   if (c.duplicadoDe) falta.push('posible duplicado');
   else if (db.collection && c.proveedorNorm && c.total != null && c.fecha) {   // otra compra igual (el ticket de esta factura, otra copia…)
