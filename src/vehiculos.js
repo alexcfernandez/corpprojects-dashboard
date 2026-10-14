@@ -23,7 +23,7 @@ const txt = (s, n = 120) => String(s == null ? '' : s).trim().slice(0, n);
 const num = v => (v === '' || v == null || isNaN(Number(v)) ? null : r2(v));
 function _oid(id) { try { return new ObjectId(String(id)); } catch (e) { throw new Error('Vehículo no válido'); } }
 
-const CATEGORIAS = { taller: 'Taller y reparaciones', combustible: 'Combustible', neumaticos: 'Neumáticos', seguro: 'Seguro', itv: 'ITV', impuestos: 'Impuestos (IVTM)', peajes: 'Peajes y parking', lavado: 'Lavado', renting: 'Renting / leasing', gps: 'Localizador GPS', otros: 'Otros' };
+const CATEGORIAS = { taller: 'Taller y reparaciones', mantenimiento: 'Mantenimiento y líquidos (anticongelante, limpiaparabrisas, aceite, bombillas…)', combustible: 'Combustible', neumaticos: 'Neumáticos', seguro: 'Seguro', itv: 'ITV', impuestos: 'Impuestos (IVTM)', peajes: 'Peajes y parking', lavado: 'Lavado', renting: 'Renting / leasing', gps: 'Localizador GPS', otros: 'Otros' };
 const TIPOS = { furgoneta: 'Furgoneta', coche: 'Coche', camion: 'Camión', moto: 'Moto', remolque: 'Remolque', otro: 'Otro' };
 const COMBUSTIBLES = ['diésel', 'gasolina', 'híbrido', 'eléctrico', 'GLP'];
 const FORMAS = { compra: 'Comprado', renting: 'Renting', leasing: 'Leasing', prestamo: 'Comprado con préstamo' };
@@ -41,6 +41,8 @@ function sugerirCategoria(texto) {
   if (/renting|leasing|arval|ald |leaseplan|northgate/.test(n)) return 'renting';
   if (/quartix|localiza|gps|tracker/.test(n)) return 'gps';
   if (/lavado|rentat|wash/.test(n)) return 'lavado';
+  // Lo que se pone uno mismo (14/10: anticongelante y faro de Dinamic's, líquido de limpiaparabrisas): no es taller.
+  if (/anticongel|limpiaparabris|liquido (de )?parabris|lavaparabris|adblue|ad blue|aceite (de )?motor|refrigerante|escobilla|bombilla|lampara h\d|\bfaro\b|\bpilot(o|et)\b/.test(n)) return 'mantenimiento';
   if (/taller|mecan|auto|norauto|midas|recambi|recanvi|carrosser|chapa|feu vert|classicauto|kin\b/.test(n)) return 'taller';
   if (/ivtm|impuesto vehic|xaloc|circulacion/.test(n)) return 'impuestos';
   return 'otros';

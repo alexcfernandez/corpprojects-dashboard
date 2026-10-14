@@ -71,6 +71,7 @@ const PROMPT = `Eres el administrativo de una empresa de reformas en Girona. Te 
  "lineas": [{"descripcion": "texto de la línea", "cantidad": número o null, "unidad": "ud|m|m2|kg|saco|caja|…", "precio": "precio por unidad ANTES del descuento, o null", "dto": "% de descuento de la línea (columna Dto., Dte., DTE%, Desc.) o null", "importe": "importe de la línea (ya con el descuento), o null", "talla": "talla si es ropa (M, L, 42…) o null", "albaran": "en facturas que agrupan albaranes: nº del albarán al que pertenece la línea, o null", "obraTexto": "en facturas que agrupan albaranes: obra o dirección que pone en ese albarán (p. ej. «OBRA CARLES RAHOLA 13 ATIC»), o null"}],
  "albaranesRef": ["números de albarán que cite una FACTURA (si es una factura que agrupa albaranes), si no []"],
  "obraPista": "texto del documento que parezca referirse a una obra o dirección de entrega, o null",
+ "aNombreDe": "a nombre de quién está la factura (el CLIENTE/comprador que aparece, no el proveedor), o null si no aparece (ticket sin nombre)",
  "confianza": 0-1,
  "aviso": "una frase corta en español si hay algo que oficina deba mirar (importe ilegible, falta una página, es un presupuesto y no una compra…), o null"
 }
@@ -92,6 +93,7 @@ const HERRAMIENTA = {
       lineas: { type: 'array', items: { type: 'object', properties: { descripcion: { type: 'string' }, cantidad: _n, unidad: _s, precio: _n, dto: _n, importe: _n, talla: _s, albaran: _s, obraTexto: _s }, required: ['descripcion'] } },
       albaranesRef: { type: 'array', items: { type: 'string' } },
       obraPista: _s,
+      aNombreDe: { type: ['string', 'null'], description: 'Cliente/comprador al que va la factura (no el proveedor); null si no aparece' },
       confianza: _n,
       aviso: _s,
     },
@@ -178,6 +180,7 @@ function aplicarLectura(doc, d) {
     base: neg(num(d.base)), iva: neg(num(d.iva)), total: neg(num(d.total)), lineas,
     albaranesRef: (Array.isArray(d.albaranesRef) ? d.albaranesRef : []).map(x => String(x).trim()).filter(Boolean).slice(0, 60),
     obraPista: String(d.obraPista || '').trim().slice(0, 160) || null,
+    aNombreDe: String(d.aNombreDe || '').trim().slice(0, 120) || null,
   });
   return doc;
 }
@@ -255,6 +258,7 @@ async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaP
   // Herramientas que se compran una y otra vez + «¿para qué obra es?» al trabajador (comprasVigilancia.js).
   let vig = {};
   if (!silencioso && doc.ia && doc.ia.ok && !doc.duplicadoDe) { try { vig = await require('./comprasVigilancia').alSubir(doc); } catch (e) { console.warn('[Compras] vigilancia:', e.message); } }
+  if (!silencioso && doc.ia && doc.ia.ok) setTimeout(() => autoRevisar(String(doc._id)).catch(e => console.warn('[Compras] auto:', e.message)), 3000);
 
   // Aviso a oficina (push al momento; el WhatsApp va en el resumen de las 18:00). No se avisa de lo que sube la propia oficina.
   if (!silencioso) try {
@@ -583,7 +587,7 @@ async function _altaActivos(c, items, por) {
 }
 // CONFIRMAR: pasa a revisada. Las FACTURAS y TICKETS se mandan a StelOrder (n8n) en este
 // momento, con la obra ya correcta. Los albaranes y devoluciones se quedan en el dashboard.
-async function revisar(id, por, { enviarStel = true, herramientas = null, almacen = null } = {}) {
+async function revisar(id, por, { enviarStel = true, herramientas = null, almacen = null, avisar = true } = {}) {
   const db = await getDB();
   const c = await db.collection(COL).findOne({ _id: oid(id), empresaId: EMPRESA });
   if (!c) throw new Error('Compra no encontrada');
@@ -650,6 +654,65 @@ async function revisar(id, por, { enviarStel = true, herramientas = null, almace
   } catch (e) {}
   return getCompra(id);
 }
+// ── REVISIÓN AUTOMÁTICA (14/10/2026, Álex: «actívalo»): solo lo que está CLARO se revisa y sube a StelOrder solo.
+// Claro = factura o ticket bien leído (sin avisos), proveedor, nº, fecha e importe; ni duplicado ni herramienta repetida;
+// a nombre de Corp Projects (o ticket sin nombre); con su obra (o vehículo y tipo de gasto); y con un PAGO que casa
+// (tarjeta o banco: mismo importe, mismo comercio, de 1 día antes a 3 después). Lo demás sigue esperando a oficina.
+// COMPRAS_AUTO=off lo apaga.
+const NUESTRO = /corp\.?\s*projects?|b-?09899253/i;
+async function _pagoQueCasa(db, c) {
+  const tot = Math.abs(Number(c.total) || 0); if (!tot || !c.fecha) return null;
+  const f = new Date(c.fecha + 'T12:00:00Z'), d = x => new Date(f.getTime() + x * 864e5).toISOString().slice(0, 10);
+  const toks = norm([c.proveedor, c.razonSocial].filter(Boolean).join(' ')).replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length >= 4 && !/^(girona|materials|materiales|sociedad|limitada|tienda|store)$/.test(w));
+  if (/bauhaus/.test(norm(c.proveedor))) toks.push('werkhaus');
+  const ok = m => Math.abs(Math.abs(Number(m.importe)) - tot) < 0.02 && toks.some(w => norm(m.concepto).includes(w));
+  const [bm, tm] = await Promise.all([
+    db.collection('bancoMovimientos').find({ fechaOperacion: { $gte: d(-1), $lte: d(3) }, importe: { $lt: 0 } }, { projection: { fechaOperacion: 1, importe: 1, concepto: 1 } }).toArray().catch(() => []),
+    db.collection('tarjetaMovimientos').find({ fecha: { $gte: d(-1), $lte: d(3) }, importe: { $lt: 0 } }, { projection: { fecha: 1, importe: 1, concepto: 1, estado: 1 } }).toArray().catch(() => []),
+  ]);
+  return bm.find(ok) || tm.filter(m => !/declined|reverted|failed/i.test(m.estado || '')).find(ok) || null;
+}
+async function claridad(c, db) {
+  const falta = [];
+  if (c.estado !== 'por_revisar') falta.push('no está por revisar');
+  if (!['factura', 'ticket'].includes(c.tipo)) falta.push('no es factura ni ticket');
+  if (!c.ia || !c.ia.ok || c.ia.calidad !== 'legible' || (c.ia.confianza != null && c.ia.confianza < 0.85)) falta.push('la IA no la lee del todo bien');
+  if (c.ia && c.ia.aviso) falta.push('la IA avisa: ' + c.ia.aviso);
+  if (!c.proveedor || !c.numero || !c.fecha || !(Number(c.total) > 0)) falta.push('falta proveedor, nº, fecha o importe');
+  if (c.duplicadoDe) falta.push('posible duplicado');
+  if ((c.repetida || []).length) falta.push('herramienta repetida (que la mire Álex)');
+  if (/\bojo\b|cambi(o|ar) (de )?nombre/i.test(c.nota || '')) falta.push('tiene una nota de oficina');
+  if (c.aNombreDe && !NUESTRO.test(c.aNombreDe)) falta.push(`está a nombre de «${c.aNombreDe}»`);
+  if (/\bcinc\b/i.test(c.proveedor || '')) falta.push('CINC va aparte');
+  const dest = c.destino || 'obra';
+  if (dest === 'obra' && (!c.obraId || c.varias || (c.reparto || []).length)) falta.push('sin obra');
+  else if (dest === 'vehiculo' && !(c.vehiculoId && c.categoria)) falta.push('falta el vehículo o el tipo de gasto');
+  else if (!['obra', 'vehiculo'].includes(dest)) falta.push('destino ' + dest + ' (lo revisa oficina)');
+  if (!falta.length && !(await _pagoQueCasa(db, c))) falta.push('no encuentro el pago que casa');
+  return falta;
+}
+async function autoRevisar(id, { aplicar = true } = {}) {
+  if (process.env.COMPRAS_AUTO === 'off') return { ok: false, falta: ['apagado'] };
+  const db = await getDB();
+  const c = await db.collection(COL).findOne({ _id: oid(id), empresaId: EMPRESA });
+  if (!c) return { ok: false, falta: ['no existe'] };
+  const falta = await claridad(c, db);
+  if (falta.length || !aplicar) return { ok: !falta.length, falta, proveedor: c.proveedor, numero: c.numero, total: c.total };
+  const r = await revisar(String(c._id), 'Automático (todo cuadra)', { enviarStel: true });
+  await db.collection(COL).updateOne({ _id: c._id }, { $set: { autoRevisada: { at: new Date(), stel: !!(r.enviadaStel && r.enviadaStel.ok) } } });
+  return { ok: true, revisada: true, proveedor: c.proveedor, numero: c.numero, total: c.total, obra: c.obraRef || c.vehiculoNombre || null, stel: !!(r.enviadaStel && r.enviadaStel.ok) };
+}
+async function autoRevisarPendientes({ aplicar = true, limite = 60 } = {}) {
+  const db = await getDB();
+  const ids = (await db.collection(COL).find({ empresaId: EMPRESA, estado: 'por_revisar', tipo: { $in: ['factura', 'ticket'] } }, { projection: { _id: 1 } }).sort({ createdAt: 1 }).limit(400).toArray()).map(x => String(x._id));
+  const hechas = [], pendientes = {};
+  for (const id of ids) {
+    if (hechas.length >= limite) break;
+    try { const r = await autoRevisar(id, { aplicar }); if (r.ok) hechas.push({ id, ...r }); else for (const f of r.falta) { const k = f.replace(/«.*»/, '«…»').replace(/:.*/, ''); pendientes[k] = (pendientes[k] || 0) + 1; } } catch (e) { pendientes['error al revisar'] = (pendientes['error al revisar'] || 0) + 1; }
+  }
+  return { revisadas: hechas.length, aplicado: aplicar, hechas, porQueNo: pendientes };
+}
+
 // Dos copias de la misma compra: se queda «mantener», la otra se descarta (sin avisar a nadie) y lo que solo tenía la
 // descartada (la obra, quién la subió, la nota) pasa a la que se queda si esta no lo tiene y aún no está revisada.
 async function resolverDuplicado(mantener, quitar, por) {
@@ -997,4 +1060,4 @@ async function resumenPendientes({ dryRun = false } = {}) {
   return { pendientes: pend.length, enviado: ok > 0 };
 }
 
-module.exports = { resolverDuplicado, repararDuplicados, subidaMasiva, estadoMasiva, _unaMasiva, _gemelaTicket, _partirPdf, propuestaLineas, _repartoDeLineas, separarFoto, n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, albaranesDelCorreo, repartoPorAlbaran, obraDeTexto, _aprenderAliasObras: aprenderAliasObras, clasificacionesParaStel, reglaProveedorDe, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };
+module.exports = { autoRevisar, autoRevisarPendientes, claridad, resolverDuplicado, repararDuplicados, subidaMasiva, estadoMasiva, _unaMasiva, _gemelaTicket, _partirPdf, propuestaLineas, _repartoDeLineas, separarFoto, n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, albaranesDelCorreo, repartoPorAlbaran, obraDeTexto, _aprenderAliasObras: aprenderAliasObras, clasificacionesParaStel, reglaProveedorDe, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };

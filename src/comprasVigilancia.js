@@ -273,6 +273,49 @@ async function alSubir(compra, { _avisar = null, _crearEncargo = null, _hist = n
   return out;
 }
 
+// ── 17:00 (L-V): «¿para qué obra era?» a quien compró lo que sigue sin obra (Álex: «a las 17 ya han plegado y lo miran
+// con calma en casa»). Quién: el que la subió o, si llegó por correo, el de la tarjeta con la que se pagó. Una pregunta por
+// compra (queda como encargo: su respuesta pone la obra y, si todo cuadra, la compra se revisa y sube sola).
+async function compradorDe(c, users) {
+  if (c.subidaPor && c.subidaPor.kind === 'worker' && /^[a-f0-9]{24}$/.test(String(c.subidaPor.userId))) return { userId: String(c.subidaPor.userId), name: c.subidaPor.name };
+  if (!c.total || !c.fecha) return null;
+  const desde = new Date(new Date(c.fecha).getTime() - 2 * 864e5).toISOString().slice(0, 10);
+  const x = { proveedor: c.proveedor || '', fecha: c.fecha, totalDoc: c.total, quien: null };
+  try { await ponerTarjetas([x], desde); } catch (e) {}
+  if (!x.quien) return null;
+  const u = users.find(u => n(u.name) === n(x.quien));
+  return u ? { userId: String(u._id), name: u.name } : null;
+}
+async function preguntarObras({ dryRun = false, porPersona = 4, _crear = null, _avisar = null } = {}) {
+  const db = await getDB();
+  const U = require('./users');
+  const users = (await U.getUsers(false)).filter(u => u.active !== false && ['tecnico', 'encargado'].includes(U.normalizeRole(u.role)));
+  const desde = new Date(Date.now() - 45 * 864e5);
+  const cs = await db.collection('compras').find({ estado: 'por_revisar', obraId: { $in: [null, ''] }, varias: { $ne: true }, tipo: { $in: ['factura', 'ticket', 'albaran'] }, createdAt: { $gte: desde }, preguntaObra: { $exists: false } })
+    .project({ proveedor: 1, fecha: 1, total: 1, destino: 1, subidaPor: 1, 'lineas.descripcion': 1, numero: 1 }).sort({ fecha: 1 }).toArray();
+  const porU = {}, hechas = [], sinQuien = [];
+  for (const c of cs) {
+    if (c.destino && c.destino !== 'obra') continue;
+    const q = await compradorDe(c, users);
+    if (!q || !users.some(u => String(u._id) === q.userId)) { sinQuien.push(c); continue; }
+    if ((porU[q.userId] = (porU[q.userId] || 0) + 1) > porPersona) continue;
+    const art = (c.lineas || []).slice(0, 2).map(l => String(l.descripcion).slice(0, 40)).join(', ');
+    const mensaje = `¿Para qué obra fue la compra de *${c.proveedor || 'la tienda'}* del ${fmtF(c.fecha)} (${eur(c.total)})${art ? `: ${art}${(c.lineas || []).length > 2 ? '…' : ''}` : ''}? Dime la obra, o si era para el almacén, herramienta o la furgoneta.`;
+    if (!dryRun) {
+      try {
+        await (_crear || (o => require('./encargos').crear(o)))({ userId: q.userId, que: `obra de la compra (${String(c.proveedor || '').slice(0, 30)} ${fmtF(c.fecha)})`, mensaje, origen: { tipo: 'compra', compraId: String(c._id), sinObra: true }, por: 'Corpy' });
+        await db.collection('compras').updateOne({ _id: c._id }, { $set: { preguntaObra: { at: new Date(), a: q.name } } });
+      } catch (e) { console.warn('[Compras] pregunta obra:', e.message); continue; }
+    }
+    hechas.push({ a: q.name, proveedor: c.proveedor, fecha: c.fecha, total: c.total });
+  }
+  if (!dryRun && hechas.length) {
+    const g = {}; hechas.forEach(h => (g[h.a] = g[h.a] || []).push(h));
+    try { await (_avisar || require('./notifications').sendWhatsApp)(`📨 *Compras sin obra* — les he preguntado para qué obra eran:\n${Object.entries(g).map(([a, l]) => `• ${a}: ${l.map(h => `${h.proveedor} ${eur(h.total)}`).join(', ')}`).join('\n')}${sinQuien.length ? `\n\n${sinQuien.length} sin saber quién las compró: míralas en Compras.` : ''}`); } catch (e) {}
+  }
+  return { preguntadas: hechas.length, hechas, sinQuien: sinQuien.length };
+}
+
 // El trabajador contesta a la pregunta de una compra: se guarda en la compra y, si nombra una obra, se pone.
 async function respuestaCompra(origen, texto, nombre) {
   const db = await getDB();
@@ -282,7 +325,8 @@ async function respuestaCompra(origen, texto, nombre) {
   let obra = null;
   if (!c.obraId && origen.sinObra && texto) { obra = await obraDeTexto(texto); if (obra) { set.obraId = String(obra._id); set.obraRef = obra.reference; set.destino = 'obra'; } }
   await db.collection('compras').updateOne({ _id: c._id }, { $set: set, $push: { respuestasTrabajador: { at: new Date(), por: nombre || '', texto: String(texto || '').slice(0, 600) } } });
-  return obra ? { obra: obra.reference } : {};
+  let auto = null; if (obra) { try { auto = await require('./compras').autoRevisar(String(c._id)); } catch (e) {} }
+  return obra ? { obra: obra.reference, subida: !!(auto && auto.revisada) } : {};
 }
 
-module.exports = { altaHerramientas, duplicados, limpiarDuplicados, obrasDesdePistas, categoria, historial, repetidas, textoInforme, alSubir, respuestaCompra, obraDeTexto, DURABLES, VENTANA };
+module.exports = { preguntarObras, altaHerramientas, duplicados, limpiarDuplicados, obrasDesdePistas, categoria, historial, repetidas, textoInforme, alSubir, respuestaCompra, obraDeTexto, DURABLES, VENTANA };

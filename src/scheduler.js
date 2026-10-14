@@ -377,6 +377,9 @@ function startScheduler() {
   cron.schedule('30 8 * * 1', () => require('./pendientesEquipo').avisoSemanal(), { timezone: 'Europe/Madrid' });
   // Cumpleaños del día: aviso a Álex a primera hora (fichaDatos.js).
   cron.schedule('0 8 * * *', () => require('./fichaDatos').cumpleHoy().catch(e => console.warn('[Cumples]', e.message)), { timezone: 'Europe/Madrid' });
+  // Compras: las que están claras se revisan y suben solas (cada hora); a las 17:00 se pregunta la obra de las que no la tienen.
+  cron.schedule('20 8-20 * * 1-6', () => require('./compras').autoRevisarPendientes().then(r => { if (r.revisadas) console.log(`[Compras] auto: ${r.revisadas} revisada(s)`); }).catch(e => console.warn('[Compras] auto:', e.message)), { timezone: 'Europe/Madrid' });
+  cron.schedule('0 17 * * 1-5', () => require('./comprasVigilancia').preguntarObras().catch(e => console.warn('[Compras] 17h:', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('* * * * *', () => require('./programados').tick().catch(e => console.warn('[Programados]', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('35 10 * * 1-5', () => require('./encargos').recordar().catch(e => console.warn('[Encargos] recordar:', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('10 9 * * 1-5', () => require('./personalDocs').revisarCaducidades().catch(e => console.warn('[Personal] caducidades:', e.message)), { timezone: 'Europe/Madrid' });

@@ -1826,6 +1826,14 @@ app.post('/api/compras/duplicado', express.json(), async (req, res) => {
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 // Compras sin obra cuyo papel dice la obra («obra Rutlla», dirección de entrega…): la pone sola (aplicar) o la propone.
+app.post('/api/compras/auto-revisar', express.json(), async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').autoRevisarPendientes({ aplicar: (req.body || {}).aplicar === true })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/compras/preguntar-obras', express.json(), async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./comprasVigilancia').preguntarObras({ dryRun: (req.body || {}).enviar !== true })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
 app.post('/api/compras/obra-sola', express.json(), async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./comprasVigilancia').obrasDesdePistas({ aplicar: (req.body || {}).aplicar === true })); }
   catch (err) { res.status(500).json({ error: err.message }); }
