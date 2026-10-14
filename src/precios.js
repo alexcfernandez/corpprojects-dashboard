@@ -14,7 +14,10 @@ const SUBE = Number(process.env.PRECIO_SUBIDA_PCT || 8) / 100, BARATO = Number(p
 const RUIDO = /\b(contribucion|scrap|envalora|ecotasa|ecoraee|por unid|portes?|transporte|recargo|desplazamiento|descuento|redondeo|ticket desayuno|bolsa)\b/;
 // Servicios y mano de obra no son «precios de material» (partidas, mantenimiento, expedientes, reconocimientos…).
 const SERVICIO = /\b(ma d.?obra|partida|mantenimiento|reparacion|expediente|vigilancia|servicio|mano de obra|conceptos?|honorarios|cuota|alquiler|horas?|jornada|trabajos?|instalacion de|montaje|desmontaje|revision|certificado|tasa|licencia|plus cuba|cuba parcial)\b/;
-const esMaterial = d => { const x = n(d).split(/\s+[-—]\s+/)[0]; return !RUIDO.test(x) && !SERVICIO.test(x); };
+// El combustible ya se sigue en Vehículos (precio por litro de cada gasolinera): aquí no.
+const COMBUSTIBLE = /\b(diesel|gas ?oil|gasoleo|gasolina|sin plomo|adblue|efitec|carburante)\b/;
+const esMaterial = d => { if (COMBUSTIBLE.test(n(d))) return false; return _esMat(d); };
+const _esMat = d => { const x = n(d).split(/\s+[-—]\s+/)[0]; return !RUIDO.test(x) && !SERVICIO.test(x); };
 
 // Nombre de tienda estable («Saint-Gobain Weber Cemarksa, S.A.U» y «Weber» → «Weber»; Werkhaus → Bauhaus).
 function tienda(p) {
@@ -101,12 +104,12 @@ async function subidas({ limite = 12, ...deps } = {}) {
     for (const [cuando, p] of cmp) {
       const v = pct(ult.precio, p.precio);
       // más del 80 % suele ser otra unidad (paquete / m², caja / ud), no una subida
-      if (v != null && v >= SUBE * 100 && v <= 80) { subs.push({ articulo: ult.articulo, clave: k, tienda: ult.tienda, antes: p.precio, ahora: ult.precio, fechaAntes: p.fecha, fechaAhora: ult.fecha, pct: v, cuando, impacto: Math.round((ult.precio - p.precio) * (ult.cantidad || 1) * 100) / 100 }); break; }
+      if (v != null && v >= SUBE * 100 && v <= 80) { subs.push({ articulo: ult.articulo, nombre: bonito(ult.articulo), clave: k, tienda: ult.tienda, antes: p.precio, ahora: ult.precio, fechaAntes: p.fecha, fechaAhora: ult.fecha, pct: v, cuando, impacto: Math.round((ult.precio - p.precio) * (ult.cantidad || 1) * 100) / 100 }); break; }
     }
     // Más barato en otra tienda en los últimos 6 meses.
     const otras = ps.filter(p => p.tienda !== ult.tienda && (new Date(ult.fecha) - new Date(p.fecha)) / DIA <= 180);
     const mejor = otras.reduce((a, p) => !a || p.precio < a.precio ? p : a, null);
-    if (mejor && mejor.precio < ult.precio * (1 - BARATO) && mejor.precio >= ult.precio * 0.5) baratos.push({ articulo: ult.articulo, clave: k, tienda: ult.tienda, precio: ult.precio, fecha: ult.fecha, otra: mejor.tienda, precioOtra: mejor.precio, fechaOtra: mejor.fecha, pct: pct(ult.precio, mejor.precio) });
+    if (mejor && mejor.precio < ult.precio * (1 - BARATO) && mejor.precio >= ult.precio * 0.5) baratos.push({ articulo: ult.articulo, nombre: bonito(ult.articulo), clave: k, tienda: ult.tienda, precio: ult.precio, fecha: ult.fecha, otra: mejor.tienda, precioOtra: mejor.precio, fechaOtra: mejor.fecha, pct: pct(ult.precio, mejor.precio) });
   }
   subs.sort((a, b) => b.impacto - a.impacto || b.pct - a.pct);
   baratos.sort((a, b) => b.pct - a.pct);
@@ -133,4 +136,11 @@ async function alComprar(compra, { _avisar = null, _hist = null } = {}) {
   return { avisos };
 }
 
-module.exports = { historial, buscar, subidas, alComprar, tienda, clave };
+// Nombre para mostrar: sin códigos, sin paréntesis ni lo que va tras « - », y en minúsculas con mayúscula inicial.
+function bonito(desc) {
+  let x = String(desc || '').split(/\s+[-—]\s+/)[0].replace(/\([^)]*\)/g, ' ').replace(/\b\d{5,}\b/g, ' ').replace(/^\s*[\d/]+\s+/, '').replace(/\s{2,}/g, ' ').trim();
+  if (x === x.toUpperCase()) x = x.toLowerCase();
+  x = x.charAt(0).toUpperCase() + x.slice(1);
+  return x.length > 46 ? x.slice(0, 44).trim() + '…' : x;
+}
+module.exports = { bonito, historial, buscar, subidas, alComprar, tienda, clave };
