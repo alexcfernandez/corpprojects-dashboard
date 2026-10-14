@@ -66,9 +66,9 @@ const EQ_SERIE = [
   { nombre: 'Codo 90° multicapa 20 mm a presión', claves: ['codo igual multipress', 'codo 20mm multicapa'] },
   { nombre: 'Malla fibra de vidrio para fachada (€/m²)', claves: ['webertherm malla 160v', 'weberthrm malla 160v', 'malla fibra vidrio aisl', 'malla fibra vidrio'], factor: { 'webertherm malla 160v': 55, 'weberthrm malla 160v': 55 } },
 ];
-// Facturas de StelOrder con el descuento aplicado dos veces (14/10/2026: Weber 3911386942 y 3911387232): sus precios no
-// valen hasta que se corrijan en StelOrder.
-const FPR_MAL = new Set(['FPR00867', 'FPR00877']);
+// Facturas de StelOrder con precios mal metidos (p. ej. el descuento aplicado dos veces) que no deben contar en las gráficas.
+// Vacío desde el 14/10/2026: FPR00867 y FPR00877 (Weber) ya están corregidas en StelOrder.
+const FPR_MAL = new Set([]);
 async function equivalencias() {
   let l = [];
   try { const d = await (await getDB()).collection('appSettings').findOne({ key: 'preciosEquivalencias' }); l = (d && d.lista) || []; } catch (e) {}
