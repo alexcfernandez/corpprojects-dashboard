@@ -452,6 +452,38 @@ async function getSelector({ todas = false, conEstudio = false } = {}) {
 
 // Borrar una obra (p. ej. una duplicada). No toca partes/presencia/facturas;
 // solo elimina el registro de obra y su cálculo de rentabilidad.
+// FUSIONAR dos obras que son la misma (14/10/2026: «edificio seguridad social» creada al fichar = «INSS Girona (Seranco)»;
+// Carretera Barcelona 31 estaba tres veces). Todo lo de `origen` pasa a `destino`: fichajes, presencia, compras (y sus
+// repartos), partes, documentos, mediciones, presupuestos, herramientas, salidas de almacén, obras fijas…; el nombre de
+// la de origen queda como alias de la buena (se sigue encontrando así) y la de origen queda descartada (no se borra).
+const FUSION_CAMPOS = [['fichajeMarcas', 'obraId'], ['fichajes', 'obraId'], ['compras', 'obraId'], ['partes', 'obraId'], ['docsPersonal', 'obraId'], ['mediciones', 'obraId'],
+  ['partidas', 'obraId'], ['presupuestos', 'obraId'], ['activos', 'obraId'], ['almacenSalidas', 'obraId'], ['obrasFijas', 'obraId'], ['materiales', 'obraId'], ['facturaObraAsignada', 'obraId'], ['firmasPendientes', 'obraId']];
+async function fusionarObras(origenId, destinoId, by = '') {
+  const db = await getDB();
+  if (String(origenId) === String(destinoId)) throw new Error('Es la misma obra');
+  const [o, d] = await Promise.all([db.collection('obras').findOne({ _id: new ObjectId(String(origenId)) }), db.collection('obras').findOne({ _id: new ObjectId(String(destinoId)) })]);
+  if (!o || !d) throw new Error('No encuentro alguna de las dos obras');
+  const de = String(o._id), a = String(d._id), out = {};
+  for (const [col, campo] of FUSION_CAMPOS) {
+    try {
+      const set = { [campo]: a }; if (col === 'compras' || col === 'obrasFijas' || col === 'activos') set.obraRef = d.reference;
+      const r = await db.collection(col).updateMany({ [campo]: { $in: [de, o._id] } }, { $set: set });
+      if (r.modifiedCount) out[col] = r.modifiedCount;
+    } catch (e) { /* colección que no existe o sin ese campo */ }
+  }
+  // Arrays: presencia del día (attendance.obras[]) y repartos de compras (compras.reparto[]).
+  try { const r = await db.collection('attendance').updateMany({ 'obras.obraId': { $in: [de, o._id] } }, { $set: { 'obras.$[x].obraId': a, 'obras.$[x].clientName': d.reference } }, { arrayFilters: [{ 'x.obraId': { $in: [de, o._id] } }] }); if (r.modifiedCount) out.attendance = r.modifiedCount; } catch (e) {}
+  try { const r = await db.collection('attendance').updateMany({ clientName: o.reference }, { $set: { clientName: d.reference } }); if (r.modifiedCount) out.attendanceNombre = r.modifiedCount; } catch (e) {}
+  try { const r = await db.collection('compras').updateMany({ 'reparto.obraId': de }, { $set: { 'reparto.$[x].obraId': a, 'reparto.$[x].obraRef': d.reference } }, { arrayFilters: [{ 'x.obraId': de }] }); if (r.modifiedCount) out.repartos = r.modifiedCount; } catch (e) {}
+  const alias = [...new Set([...(d.aliases || []), o.reference, ...(o.aliases || [])].map(x => String(x || '').trim()).filter(Boolean).filter(x => x !== d.reference))];
+  const setD = { aliases: alias, updatedAt: new Date() };
+  if (!d.address && o.address) setD.address = o.address;
+  for (const k of ['presupuestosStel', 'facturasStel']) if (Array.isArray(o[k]) && o[k].length) setD[k] = [...new Set([...(d[k] || []), ...o[k]])];
+  await db.collection('obras').updateOne({ _id: d._id }, { $set: setD });
+  await db.collection('obras').updateOne({ _id: o._id }, { $set: { status: 'descartada', fusionadaCon: { id: a, ref: d.reference, at: new Date(), by }, updatedAt: new Date() } });
+  return { ok: true, de: o.reference, a: d.reference, movido: out, aliases: alias };
+}
+
 async function deleteObra(id) {
   const db = await getDB();
   await db.collection('obras').deleteOne({ _id: new ObjectId(id) });
@@ -794,7 +826,7 @@ async function _getResumenGeneral() {
 }
 
 module.exports = {
-  nuevaFase,
+  nuevaFase, fusionarObras,
   ESTADOS_OBRA, CATEGORIAS_GASTO,
   ESTADOS_PREVIOS, createObra, getObras, getObra, updateObra, deleteObra, getSelector, getEnEstudio, resumenAbiertas, addMaterial, deleteMaterial,
   addCertificacion, setCertificacion, deleteCertificacion, resumenCertificaciones,

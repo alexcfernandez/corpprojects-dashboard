@@ -3244,6 +3244,10 @@ app.post('/api/obras/:id/nueva-fase', requireAuthOficina, express.json(), async 
   try { const b = req.body || {}; res.json(await obras.nuevaFase(req.params.id, { desde: b.desde, nombre: b.nombre })); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+// Fusionar: la obra :id (repetida) pasa entera a «destino» y queda descartada. Solo Dueño/Oficina.
+app.post('/api/obras/:id/fusionar', requireAuthOficina, express.json(), async (req, res) => {
+  try { res.json(await require('./obras').fusionarObras(req.params.id, (req.body || {}).destino, req.user && (req.user.name || req.user.username))); } catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.put('/api/obras/:id', requireAuth, async (req, res) => {
   try {
     await obras.updateObra(req.params.id, req.body);
