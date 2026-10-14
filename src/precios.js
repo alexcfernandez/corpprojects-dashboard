@@ -43,7 +43,7 @@ const _esMat = d => { const x = n(d).split(/\s+[-—]\s+/)[0]; return !RUIDO.tes
 // Nombre de tienda estable («Saint-Gobain Weber Cemarksa, S.A.U» y «Weber» → «Weber»; Werkhaus → Bauhaus).
 function tienda(p) {
   const x = n(p);
-  const M = [[/rachid|ayada|9 ?electric|nou ?electric/, '9electric (Rachid)'], [/ruben esteban/, 'Rubén Esteban'], [/weber/, 'Weber'], [/bauhaus|werkhaus/, 'Bauhaus'], [/obramat|bricomart/, 'Obramat'], [/leroy/, 'Leroy Merlin'], [/saltoki/, 'Saltoki'], [/oliveras/, 'Oliveras'], [/palah/, 'Palahí'],
+  const M = [[/rachid|ayada|9 ?electric|nou ?electric/, '9electric (Rachid)'], [/nutersa|nuevas tecnicas/, 'Nutersa'], [/ruben esteban/, 'Rubén Esteban'], [/weber/, 'Weber'], [/bauhaus|werkhaus/, 'Bauhaus'], [/obramat|bricomart/, 'Obramat'], [/leroy/, 'Leroy Merlin'], [/saltoki/, 'Saltoki'], [/oliveras/, 'Oliveras'], [/palah/, 'Palahí'],
     [/bigmat|materials camps|forcemat/, 'BigMat'], [/sant narcis/, 'Pintures Sant Narcís'], [/bricoman|brico depot|bricodepot/, 'Brico Depôt'], [/grimal/, 'Ferretería Grimal'], [/ikea/, 'Ikea'], [/amazon/, 'Amazon']];
   for (const [re, nom] of M) if (re.test(x)) return nom;
   const w = x.replace(/[^a-z0-9 ]/g, ' ').replace(/\b(sl|slu|sa|sau|scs|scp|sc|servicio|de|del|la|el|i|y)\b/g, ' ').trim().split(/\s+/).filter(Boolean).slice(0, 2);
@@ -59,7 +59,16 @@ function clave(desc) {
 
 // «Es lo mismo» (Álex, 14/10: «el mortero M-7,5 y el sac morter sec gris silíceo es lo mismo»): varios nombres → un
 // artículo. appSettings 'preciosEquivalencias' = [{ nombre, claves: [] }]. Las de serie, aquí.
-const EQ_SERIE = [{ nombre: 'Mortero seco M-7,5 (saco 25 kg)', claves: ['mortero', 'sac morter sec gris', 'bensec morter', 'mortero gris 25kg', 'mortero seco', 'morter sec gris valsec', 'sac morter sec 25kg', 'mortero pro one 25kg'] }];
+// `factor`: para comparar lo que se vende en otra unidad (la malla de Weber va por rollo de 1,10 × 50 m = 55 m²; la de
+// Nutersa, por m²): precio / factor = precio en la unidad del grupo.
+const EQ_SERIE = [
+  { nombre: 'Mortero seco M-7,5 (saco 25 kg)', claves: ['mortero', 'sac morter sec gris', 'bensec morter', 'mortero gris 25kg', 'mortero seco', 'morter sec gris valsec', 'sac morter sec 25kg', 'mortero pro one 25kg'] },
+  { nombre: 'Codo 90° multicapa 20 mm a presión', claves: ['codo igual multipress', 'codo 20mm multicapa'] },
+  { nombre: 'Malla fibra de vidrio para fachada (€/m²)', claves: ['webertherm malla 160v', 'weberthrm malla 160v', 'malla fibra vidrio aisl', 'malla fibra vidrio'], factor: { 'webertherm malla 160v': 55, 'weberthrm malla 160v': 55 } },
+];
+// Facturas de StelOrder con el descuento aplicado dos veces (14/10/2026: Weber 3911386942 y 3911387232): sus precios no
+// valen hasta que se corrijan en StelOrder.
+const FPR_MAL = new Set(['FPR00867', 'FPR00877']);
 async function equivalencias() {
   let l = [];
   try { const d = await (await getDB()).collection('appSettings').findOne({ key: 'preciosEquivalencias' }); l = (d && d.lista) || []; } catch (e) {}
@@ -79,7 +88,8 @@ async function historial({ dias = 760, _stel = null } = {}) {
   const eqDe = k => EQ.find(e => e.claves.includes(k) || e.claves.some(c => k.startsWith(c + ' ') && c.split(' ').length >= 2 && !/blanc|hidro|cola|monocapa/.test(k.slice(c.length))));
   const desde = new Date(Date.now() - dias * DIA).toISOString().slice(0, 10);
   const out = [], ya = new Set();
-  const add = (p) => { if (p.clave && !p.mo) { const e = eqDe(p.clave); if (e) { p.clave = 'eq:' + e.nombre; p.nombreEq = e.nombre; } }
+  const add = (p) => { if (FPR_MAL.has(String(p.ref || ''))) return; if (p.cantidad != null && p.cantidad < 0) return;   // devoluciones: no son un precio de compra
+    if (p.clave && !p.mo) { const e = eqDe(p.clave); if (e) { const f = e.factor && e.factor[p.clave]; if (f && p.precio != null) p.precio = Math.round(p.precio / f * 100) / 100; p.clave = 'eq:' + e.nombre; p.nombreEq = e.nombre; } }
     if (!p.clave || p.precio == null || !(p.precio >= 0.05) || NO_TIENDA.test(n(p.tiendaRaw || p.tienda)) || (!p.mo && !esMaterial(p.articulo))) return; const k = `${p.tienda}|${p.fecha}|${p.clave}`; if (ya.has(k)) return; ya.add(k); p.familia = familia(p); out.push(p); };
   const cs = await db.collection('compras').find({ estado: { $in: ['revisada', 'por_revisar', 'archivo'] }, fecha: { $gte: desde }, tipo: { $in: ['factura', 'ticket', 'albaran'] } }).project({ proveedor: 1, fecha: 1, lineas: 1, numero: 1, obraRef: 1 }).toArray();
   for (const c of cs) for (const l of c.lineas || []) {
