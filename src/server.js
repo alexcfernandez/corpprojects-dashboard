@@ -1832,6 +1832,10 @@ app.get('/api/precios', async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./precios').buscar(String(req.query.q || ''), { clave: req.query.clave || null })); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
+app.post('/api/precios/unir', express.json(), async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); const r = await require('./precios').unir(req.body || {}, q.name); _famCache = null; _subidasCache = null; res.json(r); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/precios/retornables', async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./precios').retornables({ desde: req.query.desde || '2025-01-01' })); }
   catch (err) { res.status(500).json({ error: err.message }); }

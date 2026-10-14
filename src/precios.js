@@ -57,11 +57,30 @@ function clave(desc) {
   return t.slice(0, 4).join(' ');
 }
 
+// «Es lo mismo» (Álex, 14/10: «el mortero M-7,5 y el sac morter sec gris silíceo es lo mismo»): varios nombres → un
+// artículo. appSettings 'preciosEquivalencias' = [{ nombre, claves: [] }]. Las de serie, aquí.
+const EQ_SERIE = [{ nombre: 'Mortero seco M-7,5 (saco 25 kg)', claves: ['mortero', 'sac morter sec gris', 'bensec morter'] }];
+async function equivalencias() {
+  let l = [];
+  try { const d = await (await getDB()).collection('appSettings').findOne({ key: 'preciosEquivalencias' }); l = (d && d.lista) || []; } catch (e) {}
+  return [...EQ_SERIE, ...l];
+}
+async function unir({ nombre, claves = [] } = {}, por = '') {
+  if (!nombre || claves.length < 2) throw new Error('Di el nombre y al menos dos artículos');
+  const db = await getDB(); const d = await db.collection('appSettings').findOne({ key: 'preciosEquivalencias' });
+  const l = ((d && d.lista) || []).filter(x => x.nombre !== nombre); l.push({ nombre: String(nombre).slice(0, 80), claves: [...new Set(claves.map(String))], por, at: new Date() });
+  await db.collection('appSettings').updateOne({ key: 'preciosEquivalencias' }, { $set: { lista: l } }, { upsert: true });
+  return { ok: true, total: l.length };
+}
+
 async function historial({ dias = 760, _stel = null } = {}) {
   const db = await getDB();
+  const EQ = await equivalencias().catch(() => EQ_SERIE);
+  const eqDe = k => EQ.find(e => e.claves.includes(k) || e.claves.some(c => k.startsWith(c + ' ') && c.split(' ').length >= 2));
   const desde = new Date(Date.now() - dias * DIA).toISOString().slice(0, 10);
   const out = [], ya = new Set();
-  const add = (p) => { if (!p.clave || p.precio == null || !(p.precio >= 0.05) || NO_TIENDA.test(n(p.tiendaRaw || p.tienda)) || (!p.mo && !esMaterial(p.articulo))) return; const k = `${p.tienda}|${p.fecha}|${p.clave}`; if (ya.has(k)) return; ya.add(k); p.familia = familia(p); out.push(p); };
+  const add = (p) => { if (p.clave && !p.mo) { const e = eqDe(p.clave); if (e) { p.clave = 'eq:' + e.nombre; p.nombreEq = e.nombre; } }
+    if (!p.clave || p.precio == null || !(p.precio >= 0.05) || NO_TIENDA.test(n(p.tiendaRaw || p.tienda)) || (!p.mo && !esMaterial(p.articulo))) return; const k = `${p.tienda}|${p.fecha}|${p.clave}`; if (ya.has(k)) return; ya.add(k); p.familia = familia(p); out.push(p); };
   const cs = await db.collection('compras').find({ estado: { $in: ['revisada', 'por_revisar', 'archivo'] }, fecha: { $gte: desde }, tipo: { $in: ['factura', 'ticket', 'albaran'] } }).project({ proveedor: 1, fecha: 1, lineas: 1, numero: 1, obraRef: 1 }).toArray();
   for (const c of cs) for (const l of c.lineas || []) {
     const cant = Number(l.cantidad) || null;
@@ -103,7 +122,7 @@ async function buscar(q, { clave: cl = null, ...deps } = {}) {
   const enc = cl ? h0.filter(p => p.clave === cl) : h0.filter(p => pal.every(w => n(p.articulo).includes(w) || p.clave.includes(w)));
   const porC = {};
   for (const p of enc) (porC[p.clave] = porC[p.clave] || []).push(p);
-  const articulos = Object.entries(porC).map(([k, ps]) => ({ clave: k, nombre: bonito(ps[ps.length - 1].articulo), familia: FAMILIAS[ps[0].familia] || '', compras: ps.length, tiendas: [...new Set(ps.map(p => p.tienda))], ultimo: ps[ps.length - 1].precio, fecha: ps[ps.length - 1].fecha }))
+  const articulos = Object.entries(porC).map(([k, ps]) => ({ clave: k, nombre: bonito(ps[ps.length - 1].articulo, ps[ps.length - 1].nombreEq), familia: FAMILIAS[ps[0].familia] || '', compras: ps.length, tiendas: [...new Set(ps.map(p => p.tienda))], ultimo: ps[ps.length - 1].precio, fecha: ps[ps.length - 1].fecha }))
     .sort((a, b) => b.compras - a.compras || b.fecha.localeCompare(a.fecha)).slice(0, 15);
   const elegida = cl || (articulos[0] && articulos[0].clave);
   const h = elegida ? (porC[elegida] || []) : [];
@@ -114,7 +133,7 @@ async function buscar(q, { clave: cl = null, ...deps } = {}) {
   if (h.length) {
     const ult = h[h.length - 1], min = h.reduce((a, p) => p.precio < a.precio ? p : a, h[0]);
     const haceAno = cerca(h.filter(p => p.tienda === ult.tienda), ult.fecha, 270, 460);
-    resumen = { nombre: bonito(ult.articulo), ultimo: ult, minimo: min, haceAno, variacionAno: haceAno ? pct(ult.precio, haceAno.precio) : null, compras: h.length };
+    resumen = { nombre: bonito(ult.articulo, ult.nombreEq), ultimo: ult, minimo: min, haceAno, variacionAno: haceAno ? pct(ult.precio, haceAno.precio) : null, compras: h.length };
   }
   return { articulos, clave: elegida, series, resumen };
 }
@@ -137,12 +156,12 @@ async function subidas({ limite = 12, ...deps } = {}) {
     for (const [cuando, p] of cmp) {
       const v = pct(ult.precio, p.precio);
       // más del 80 % suele ser otra unidad (paquete / m², caja / ud), no una subida
-      if (v != null && v >= SUBE * 100 && v <= 80) { subs.push({ articulo: ult.articulo, nombre: bonito(ult.articulo), clave: k, tienda: ult.tienda, antes: p.precio, ahora: ult.precio, fechaAntes: p.fecha, fechaAhora: ult.fecha, pct: v, cuando, impacto: Math.round((ult.precio - p.precio) * (ult.cantidad || 1) * 100) / 100 }); break; }
+      if (v != null && v >= SUBE * 100 && v <= 80) { subs.push({ articulo: ult.articulo, nombre: bonito(ult.articulo, ult.nombreEq), clave: k, tienda: ult.tienda, antes: p.precio, ahora: ult.precio, fechaAntes: p.fecha, fechaAhora: ult.fecha, pct: v, cuando, impacto: Math.round((ult.precio - p.precio) * (ult.cantidad || 1) * 100) / 100 }); break; }
     }
     // Más barato en otra tienda en los últimos 6 meses.
     const otras = ps.filter(p => p.tienda !== ult.tienda && (new Date(ult.fecha) - new Date(p.fecha)) / DIA <= 180);
     const mejor = otras.reduce((a, p) => !a || p.precio < a.precio ? p : a, null);
-    if (mejor && mejor.precio < ult.precio * (1 - BARATO) && mejor.precio >= ult.precio * 0.5) baratos.push({ articulo: ult.articulo, nombre: bonito(ult.articulo), clave: k, tienda: ult.tienda, precio: ult.precio, fecha: ult.fecha, otra: mejor.tienda, precioOtra: mejor.precio, fechaOtra: mejor.fecha, pct: pct(ult.precio, mejor.precio) });
+    if (mejor && mejor.precio < ult.precio * (1 - BARATO) && mejor.precio >= ult.precio * 0.5) baratos.push({ articulo: ult.articulo, nombre: bonito(ult.articulo, ult.nombreEq), clave: k, tienda: ult.tienda, precio: ult.precio, fecha: ult.fecha, otra: mejor.tienda, precioOtra: mejor.precio, fechaOtra: mejor.fecha, pct: pct(ult.precio, mejor.precio) });
   }
   subs.sort((a, b) => b.impacto - a.impacto || b.pct - a.pct);
   baratos.sort((a, b) => b.pct - a.pct);
@@ -163,7 +182,7 @@ async function familias({ dias = 365, porFamilia = 12, ...deps } = {}) {
       const ult = {}; for (const p of l) ult[p.tienda] = p;   // último precio en cada tienda
       const tiendas = Object.values(ult).map(p => ({ tienda: p.tienda, precio: p.precio, fecha: p.fecha })).sort((a, b) => a.precio - b.precio);
       const primero = l[0], ultimo = l[l.length - 1];
-      return { clave: k, nombre: bonito(ultimo.articulo), compras: l.length, tiendas, ultimo: { precio: ultimo.precio, tienda: ultimo.tienda, fecha: ultimo.fecha },
+      return { clave: k, nombre: bonito(ultimo.articulo, ultimo.nombreEq), compras: l.length, tiendas, ultimo: { precio: ultimo.precio, tienda: ultimo.tienda, fecha: ultimo.fecha },
         variacion: (() => { if (primero.tienda !== ultimo.tienda || primero === ultimo) return null; const v = pct(ultimo.precio, primero.precio); return v != null && Math.abs(v) <= 80 ? v : null; })() };
     }).sort((a, b) => b.compras - a.compras);
     const idx = {};
@@ -237,10 +256,11 @@ async function alComprar(compra, { _avisar = null, _hist = null } = {}) {
 }
 
 // Nombre para mostrar: sin códigos, sin paréntesis ni lo que va tras « - », y en minúsculas con mayúscula inicial.
-function bonito(desc) {
+function bonito(desc, eq) {
+  if (eq) return eq;
   let x = String(desc || '').split(/\s+[-—]\s+/)[0].replace(/\([^)]*\)/g, ' ').replace(/\b\d{5,}\b/g, ' ').replace(/^\s*[\d/]+\s+/, '').replace(/\s{2,}/g, ' ').trim();
   if (x === x.toUpperCase()) x = x.toLowerCase();
   x = x.charAt(0).toUpperCase() + x.slice(1);
   return x.length > 46 ? x.slice(0, 44).trim() + '…' : x;
 }
-module.exports = { retornables, familias, FAMILIAS, bonito, historial, buscar, subidas, alComprar, tienda, clave };
+module.exports = { unir, equivalencias, retornables, familias, FAMILIAS, bonito, historial, buscar, subidas, alComprar, tienda, clave };
