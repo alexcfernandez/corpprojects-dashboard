@@ -177,34 +177,42 @@ async function familias({ dias = 365, porFamilia = 12, ...deps } = {}) {
 // ── PALETS Y ENVASES RETORNABLES (Álex, 14/10: «Weber nos cobra un montón de palets: ¿nos los abonan al devolverlos o se
 // pierden?»). Por proveedor: palets cobrados (uds y €) frente a abonados (líneas en negativo / facturas de abono). La
 // diferencia es dinero que se puede recuperar devolviéndolos (o que ya se ha perdido).
-const RETORNABLE = /\b(palet|palets|pallet|europalet|euroweber|palette|envase retornable|retornable|fianza envase|big ?bag)\b/;
+// Solo el PALET en sí (la línea empieza por «palet» o es el «coste palet retornable»), no el producto que viene en palet
+// o en big bag («lana de roca… 1 palet», «arena… bigbag 1000 kg»).
+const RETORNABLE = /^(?:\d+\s+)*(?:palet|palets|pallet|europalet)\b|coste palet|palet retornable|envase retornable|fianza envase/;
+const sinCodigo = d => n(d).replace(/^[\s\d./-]+/, '').trim();
 async function retornables({ desde = '2025-01-01', _stel = null } = {}) {
   const db = await getDB();
   const lineas = [];
   const cs = await db.collection('compras').find({ estado: { $ne: 'descartada' }, fecha: { $gte: desde } }).project({ proveedor: 1, fecha: 1, numero: 1, tipo: 1, lineas: 1 }).toArray();
-  for (const c of cs) for (const l of c.lineas || []) if (RETORNABLE.test(n(l.descripcion))) lineas.push({ fuente: 'compras', tienda: tienda(c.proveedor), fecha: c.fecha, ref: c.numero, articulo: l.descripcion, uds: (c.tipo === 'devolucion' ? -1 : 1) * Math.abs(Number(l.cantidad) || 1) * Math.sign(Number(l.importe) || 1) * (c.tipo === 'devolucion' && Number(l.importe) < 0 ? -1 : 1), importe: Number(l.importe) || 0 });
+  for (const c of cs) for (const l of c.lineas || []) if (RETORNABLE.test(sinCodigo(l.descripcion))) lineas.push({ fuente: 'compras', tienda: tienda(c.proveedor), fecha: c.fecha, ref: c.numero, articulo: l.descripcion, uds: (c.tipo === 'devolucion' ? -1 : 1) * Math.abs(Number(l.cantidad) || 1) * Math.sign(Number(l.importe) || 1) * (c.tipo === 'devolucion' && Number(l.importe) < 0 ? -1 : 1), importe: Number(l.importe) || 0 });
   try {
     for (const inv of (_stel ? await _stel() : await require('./stelorder').getPurchaseInvoices()) || []) {
       const f = String(inv.date || '').slice(0, 10); if (!f || f < desde) continue;
       for (const l of inv.lines || []) {
         if (l.deleted || (l['line-type'] && l['line-type'] !== 'ITEM')) continue;
         const nom = String(l['item-name'] || l['item-description'] || '');
-        if (!RETORNABLE.test(n(nom))) continue;
+        if (!RETORNABLE.test(sinCodigo(nom))) continue;
         const u = Number(l.units ?? l.quantity) || 0, t = Number(l['total-amount']);
         lineas.push({ fuente: 'stel', tienda: tienda(inv.supplier), fecha: f, ref: inv.number, articulo: nom, uds: u, importe: Number.isFinite(t) ? t : 0 });
       }
     }
   } catch (e) {}
   // Misma factura en Compras y en StelOrder: una vez (se queda StelOrder, que es la contabilidad).
-  const ya = new Set(), out = [];
-  for (const l of lineas.sort((a, b) => (a.fuente === 'stel' ? 0 : 1) - (b.fuente === 'stel' ? 0 : 1))) { const k = `${l.tienda}|${l.fecha}|${Math.round(Math.abs(l.importe))}`; if (ya.has(k)) continue; ya.add(k); out.push(l); }
+  const out = [];
+  for (const l of lineas.sort((a, b) => (a.fuente === 'stel' ? 0 : 1) - (b.fuente === 'stel' ? 0 : 1))) {
+    // La misma línea en Compras y en StelOrder (a veces con 1-3 días de diferencia): una vez.
+    if (l.fuente === 'compras' && out.some(o => o.fuente === 'stel' && o.tienda === l.tienda && Math.abs(o.importe - l.importe) < 0.02 && Math.abs(new Date(o.fecha) - new Date(l.fecha)) <= 3 * DIA)) continue;
+    out.push(l);
+  }
   const porT = {};
   for (const l of out) {
     const g = (porT[l.tienda] = porT[l.tienda] || { tienda: l.tienda, cobrados: 0, cobradoEur: 0, abonados: 0, abonadoEur: 0, lineas: [] });
     if (l.importe < 0 || l.uds < 0) { g.abonados += Math.abs(l.uds); g.abonadoEur += Math.abs(l.importe); } else { g.cobrados += Math.abs(l.uds); g.cobradoEur += l.importe; }
     g.lineas.push(l);
   }
-  return Object.values(porT).map(g => ({ ...g, cobradoEur: Math.round(g.cobradoEur * 100) / 100, abonadoEur: Math.round(g.abonadoEur * 100) / 100, sinAbonar: Math.max(0, g.cobrados - g.abonados), sinAbonarEur: Math.round((g.cobradoEur - g.abonadoEur) * 100) / 100,
+  return Object.values(porT).map(g => ({ ...g, cobradoEur: Math.round(g.cobradoEur * 100) / 100, abonadoEur: Math.round(g.abonadoEur * 100) / 100,
+    precioCobro: g.cobrados ? Math.round(g.cobradoEur / g.cobrados * 100) / 100 : null, precioAbono: g.abonados ? Math.round(g.abonadoEur / g.abonados * 100) / 100 : null, sinAbonar: Math.max(0, g.cobrados - g.abonados), sinAbonarEur: Math.round((g.cobradoEur - g.abonadoEur) * 100) / 100,
     lineas: g.lineas.sort((a, b) => b.fecha.localeCompare(a.fecha)) })).sort((a, b) => b.sinAbonarEur - a.sinAbonarEur);
 }
 
