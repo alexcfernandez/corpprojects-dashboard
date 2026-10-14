@@ -168,7 +168,7 @@ async function familias({ dias = 365, porFamilia = 12, ...deps } = {}) {
     }).sort((a, b) => b.compras - a.compras);
     const idx = {};
     for (const a of arts.filter(a => a.tiendas.length > 1)) { const min = a.tiendas[0].precio; if (a.tiendas[a.tiendas.length - 1].precio > min * 2.5) continue; for (const t of a.tiendas) { (idx[t.tienda] = idx[t.tienda] || []).push(t.precio / min); } }
-    const ranking = Object.entries(idx).filter(([, r]) => r.length >= 3).map(([t, r]) => ({ tienda: t, indice: Math.round(r.reduce((x, y) => x + y, 0) / r.length * 100), articulos: r.length })).sort((a, b) => a.indice - b.indice);
+    const ranking = Object.entries(idx).filter(([, r]) => r.length >= (fk.startsWith('mo') ? 1 : 3)).map(([t, r]) => ({ tienda: t, indice: Math.round(r.reduce((x, y) => x + y, 0) / r.length * 100), articulos: r.length })).sort((a, b) => a.indice - b.indice);
     out[fk] = { nombre: fnom, articulos: arts.slice(0, porFamilia), total: arts.length, compras: ps.length, ranking: ranking.slice(0, 8) };
   }
   return out;
