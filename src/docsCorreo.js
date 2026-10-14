@@ -28,6 +28,8 @@ function esCorreoDocs({ de, asunto, adjuntos, clasificacion = {} }) {
   const pdfs = (adjuntos || []).filter(esPdf).filter(a => !/^image0/i.test(a.filename || ''));
   if (!pdfs.length) return false;
   if (['FACTURA_PROVEEDOR', 'PUBLICIDAD', 'SPAM', 'PRESUPUESTO'].includes(clasificacion.categoria)) return false;
+  // Condiciones comerciales, tarifas y descuentos de proveedores (Weber, 14/10/2026) no son papeles del personal.
+  if (/condiciones comerciales|descuento|tarifa|oferta|promoci/.test(sinAcentos(asunto).toLowerCase())) return false;
   return confiable(de) || clasificacion.documentos === true || RE_ASUNTO.test(sinAcentos(asunto)) || pdfs.some(a => RE_ASUNTO.test(sinAcentos(a.filename)));
 }
 

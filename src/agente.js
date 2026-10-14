@@ -20,7 +20,7 @@ function hoyMadridISO() { return new Date().toLocaleDateString('en-CA', { timeZo
 
 // ── Herramientas del MVP (JSON Schema Anthropic) ──
 // Las de CONSULTA (solo leen) devuelven datos y el modelo redacta la respuesta con ellos (segunda llamada).
-const LECTURA = new Set(['consultar_presencia', 'horas_obra']);
+const LECTURA = new Set(['consultar_presencia', 'horas_obra', 'datos_empresa']);
 const TOOLS = [
   {
     name: 'consultar_presencia',
@@ -90,6 +90,23 @@ const TOOLS = [
     },
   },
   {
+    name: 'datos_empresa',
+    description: 'DATOS DE NUESTRA EMPRESA (solo lee): razón social, CIF, domicilio y qué documentos de la empresa tenemos guardados en Personal (escrituras/CIF, certificados de Hacienda y Seguridad Social, seguros, REA, TC…) con su fecha y caducidad. P. ej. «¿cuál es nuestro CIF?», «¿tenemos el certificado de Hacienda al día?».',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'pasar_documento',
+    description: 'PASA AL JEFE UN DOCUMENTO guardado en Personal, de la EMPRESA (CIF/escrituras, certificado de Hacienda o de la Seguridad Social, seguro, REA, TC, ITA…) o de un TRABAJADOR (DNI/NIE, Seguridad Social, contrato, nómina, reconocimiento médico, cursos de PRL, carnés…). P. ej. «pásame el CIF de la empresa», «mándame el DNI de Javi», «necesito el certificado de Hacienda», «envíame la última nómina de Manolo».',
+    input_schema: {
+      type: 'object',
+      properties: {
+        de: { type: 'string', description: '«empresa» si es de la empresa; si no, el nombre del trabajador.' },
+        que: { type: 'string', description: 'Qué documento, en pocas palabras (p. ej. «CIF», «certificado Hacienda», «DNI», «nómina septiembre», «curso PRL»).' },
+      },
+      required: ['de', 'que'],
+    },
+  },
+  {
     name: 'crear_evento_agenda',
     description: 'Crea un evento en la AGENDA/calendario personal del jefe (cita, recordatorio con fecha y opcionalmente hora). Úsala cuando pide apuntar algo en su agenda o calendario con una fecha, p. ej. "apunta mañana a las 19 dentista".',
     input_schema: {
@@ -126,6 +143,7 @@ REGLAS DURAS:
 - HORA: si es INEQUÍVOCA ("19:30", "a las 19", "a las 8 de la mañana", "mediodía") → HH:MM en 24h. Si es AMBIGUA mañana/tarde ("las 7.30", "a las 8", "a las 5" sin "de la mañana/tarde" ni formato 24h) → NO la asumas: PREGUNTA "¿mañana o tarde? (p. ej. 07:30 o 19:30)" antes de crear el evento. Si no dice hora → null.
 - Tallas de ropa/calzado y cumpleaños → pedir_tallas. «Pídele / dile / pregúntale / recuérdale a X que…» (también «acuérdate de preguntarle a X el lunes…») → encargar_a_trabajador (redacta el mensaje para el trabajador en tú, breve). «X ya lo ha hecho / ya me lo dio / olvida lo de…» → cerrar_encargo.
 - Presencia, horas, quién trabajó/vino/faltó, vacaciones, bajas → consultar_presencia. Para «cuántos días faltó/trabajó/lleva X» usa resumenPorPersona: «faltó» = faltaInjustificada + faltaJustificada + sinApuntar (días laborables sin nada apuntado); dilo desglosado y con las fechas si son pocas. Si preguntan «cuántos días lleva» sin decir de qué, da días trabajados (y vacaciones/baja si hay). Horas o coste de una obra → horas_obra. Contesta SOLO con lo que devuelvan (si no hay datos, dilo). «Esta semana» = desde el lunes.
+- Datos o documentos de NUESTRA empresa (CIF, razón social, domicilio, certificados) → datos_empresa. «Pásame / mándame / necesito / envíame <documento>» de la empresa o de un trabajador → pasar_documento (NO digas que no tienes acceso: búscalo).
 - Al contestar con datos: breve, para WhatsApp (*negritas* para nombres y totales, una línea por persona u obra).
 - Responde en español y breve.`;
 }
@@ -238,7 +256,46 @@ async function horasObra({ obra, desde = null, hasta = null } = {}) {
     ...(!desde && !hasta ? { costePersonal: Math.round(r.totalCostePersonal || 0), compras: Math.round((r.totalCompras || 0) * 100) / 100 } : {}),
     porDia: fechas.slice(-20).map(f => ({ fecha: f, quienes: r.byDate[f].map(x => `${x.worker} ${x.horas}h`).join(', ') })) };
 }
-const LECTORES = { consultar_presencia: consultarPresencia, horas_obra: horasObra };
+// Nuestra empresa: datos fiscales y qué papeles suyos hay en Personal.
+const EMPRESA = () => ({ razonSocial: 'CORP. PROJECTS HOLDING, S.L.', cif: process.env.EMPRESA_CIF || 'B09899253', domicilio: process.env.EMPRESA_DOMICILIO || 'C/ Nou 12, 2º 2B, 17001 Girona' });
+async function datosEmpresa() {
+  const P = require('./personalDocs');
+  let docs = [];
+  try { docs = (await P.carpeta({ ambito: 'empresa' })).map(d => ({ tipo: (P.TIPOS_EMPRESA[d.tipo] || {}).nombre || d.tipo, fecha: d.fecha || null, caduca: d.caduca || null, mes: d.mes || null, nombre: d.nombre || null })); } catch (e) {}
+  return { ...EMPRESA(), documentos: docs.slice(0, 40), nota: 'Para mandar un documento usa pasar_documento.' };
+}
+const LECTORES = { consultar_presencia: consultarPresencia, horas_obra: horasObra, datos_empresa: datosEmpresa };
+
+// Busca en Personal el documento que pide el jefe y le manda un enlace que caduca (solo al dueño).
+const _palabras = s => _n(s).split(' ').filter(w => w.length >= 3 && !['del', 'las', 'los', 'una', 'uno', 'de', 'la', 'el', 'que', 'por', 'para', 'ultimo', 'ultima', 'empresa'].includes(w));
+const SINONIMOS = [[/\b(cif|nif|escritura|constitucion)/, 'escrituras'], [/hacienda|aeat|tributari/, 'cert_hacienda'], [/seguridad social|tgss|corriente.*ss|\bss\b/, 'cert_ss'], [/\brea\b|empresas acreditadas/, 'rea'],
+  [/\btc\b|rnt|rlc/, 'rnt_rlc'], [/\bita\b|trabajadores en alta/, 'ita'], [/responsabilidad civil|\brc\b/, 'seguro_rc'], [/accidente/, 'seguro_acc'], [/\bdni\b|\bnie\b|pasaporte|residencia/, 'dni'],
+  [/nomina|nómina/, 'nomina'], [/contrato/, 'contrato'], [/medic|reconocimiento|aptitud/, 'reconocimiento'], [/prl|curso|formacion|formación/, 'formacion_prl'], [/carne|carné|conducir|plataforma/, 'carnet'], [/numero.*seguridad|tarjeta.*ss|nuss|afiliacion/, 'tarjeta_ss'], [/\bta ?7\b/, 'ta7'], [/\biae\b/, 'iae'], [/epi/, 'epis']];
+async function pasarDocumento({ de, que } = {}, from) {
+  if (!require('./acceso').esOwner(from)) return { handled: true, reply: 'Los documentos de la empresa y del personal solo se los paso a Álex.' };
+  const P = require('./personalDocs');
+  const esEmpresa = /^(la )?empresa|corp|nosotros|nuestr/i.test(String(de || '').trim());
+  let docs, quien;
+  if (esEmpresa) { docs = await P.carpeta({ ambito: 'empresa' }); quien = 'la empresa'; }
+  else {
+    const u = await _trabajador(de || '');
+    if (!u || u.varios) return { handled: true, reply: u && u.varios && u.varios.length ? `¿De quién? Hay varios: ${u.varios.join(', ')}.` : `No encuentro a «${de}».`, aclara: true };
+    docs = await P.carpeta({ userId: String(u._id) }); quien = u.name;
+  }
+  const nq = _n(que);
+  const tipo = (SINONIMOS.find(([re]) => re.test(nq)) || [])[1];
+  const ws = _palabras(que);
+  const nombreTipo = d => ((esEmpresa ? P.TIPOS_EMPRESA : P.TIPOS)[d.tipo] || {}).nombre || d.tipo;
+  const puntos = d => (tipo && d.tipo === tipo ? 10 : 0) + ws.filter(w => _n([nombreTipo(d), d.nombre, d.notas, d.mes].join(' ')).includes(w)).length;
+  const cand = docs.map(d => ({ d, p: puntos(d) })).filter(x => x.p > 0).sort((a, b) => b.p - a.p || String(b.d.fecha || b.d.subido || '').localeCompare(String(a.d.fecha || a.d.subido || '')));
+  const extra = esEmpresa && tipo === 'escrituras' ? `\nCIF: *${EMPRESA().cif}* · ${EMPRESA().razonSocial}` : '';
+  if (!cand.length) return { handled: true, reply: `No tengo «${que}» de ${quien} en Personal.${extra}\nSi lo tienes, súbelo en https://dashboard.corpprojects.es/personal y te lo paso cuando quieras.` };
+  const top = cand.filter(x => x.p === cand[0].p).slice(0, 3).map(x => x.d);
+  const E = require('./enlacesDoc'); const f = x => x ? String(x).slice(0, 10).split('-').reverse().join('/') : null;
+  const lineas = [];
+  for (const d of top) lineas.push(`📎 *${nombreTipo(d)}*${d.nombre ? ` (${d.nombre})` : ''}${d.fecha ? ` · ${f(d.fecha)}` : ''}${d.caduca ? ` · caduca ${f(d.caduca)}` : ''}\n${await E.crear(d.id || d._id, { nombre: d.nombre || nombreTipo(d), para: from })}`);
+  return { handled: true, reply: `${lineas.join('\n\n')}${extra}\n\n_El enlace es solo para ti y caduca en ${E.HORAS} h._` };
+}
 
 async function _trabajador(nombre) {
   const us = (await require('./users').getUsers(false)).filter(u => u.active !== false);
@@ -246,7 +303,8 @@ async function _trabajador(nombre) {
   const p = us.filter(u => _n(u.name).split(' ')[0] === _n(nombre).split(' ')[0]); if (p.length === 1) return p[0];
   return { varios: (c.length ? c : p).map(u => u.name) };
 }
-async function ejecutarTool(name, input) {
+async function ejecutarTool(name, input, from) {
+  if (name === 'pasar_documento') { try { return await pasarDocumento(input || {}, from); } catch (e) { console.error('[Agente] documento:', e.message); return { handled: true, reply: 'No he podido sacar el documento ahora mismo, inténtalo en un momento.' }; } }
   if (name === 'encargar_a_trabajador') {
     const u = await _trabajador(input.trabajador || '');
     if (!u || u.varios) return { handled: true, reply: u && u.varios && u.varios.length ? `¿A quién? Hay varios: ${u.varios.join(', ')}.` : `No encuentro a «${input.trabajador}».`, aclara: true };
@@ -334,7 +392,7 @@ async function intentar({ texto, from, imagenes = [], puerta = null } = {}) {
 
   if (resp.tipo === 'tool') {
     estado.delete(from); // se resuelve la intención; limpiamos cualquier aclaración
-    const out = await ejecutarTool(resp.name, resp.input);
+    const out = await ejecutarTool(resp.name, resp.input, from);
     if (out.aclara) estado.set(from, { accion: 'agente_aclara', textoOriginal: (enAclaracion && prev.textoOriginal) || texto, pregunta: out.reply, ts: Date.now() });
     console.log(`[Agente] tool=${resp.name} puerta=${puerta || '?'}`);
     return { handled: out.handled !== false, reply: out.reply };
@@ -350,4 +408,4 @@ async function intentar({ texto, from, imagenes = [], puerta = null } = {}) {
   return { handled: false };
 }
 
-module.exports = { intentar, TOOLS, _impl, _consultarPresencia: consultarPresencia, _horasObra: horasObra };
+module.exports = { intentar, TOOLS, _impl, _consultarPresencia: consultarPresencia, _horasObra: horasObra, _pasarDocumento: pasarDocumento, _datosEmpresa: datosEmpresa };

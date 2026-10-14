@@ -61,3 +61,8 @@ test('los avisos del banco o las citas no son publicidad aunque vengan de no-rep
   assert.equal(EI._esPublicidadObvia('Revolut Business <no-reply@revolut.com>', 'Card payment declined – Insufficient balance ⚠️', ''), false);
   assert.equal(EI._esPublicidadObvia('OBRAMAT <no-reply@mailing.obramat.es>', '¡UNIDADES LIMITADAS! al mejor precio', ''), true);
 });
+
+test('condiciones comerciales de un proveedor no son papeles del personal (Weber, descuento de obra)', () => {
+  const D = require(require('path').join(__dirname, '..', 'src/docsCorreo.js'));
+  assert.equal(D.esCorreoDocs({ de: 'apps.spm@saint-gobain.com', asunto: '[WFCOM] Condiciones Comerciales - Nuevo descuento de obra [Id: 78219]', adjuntos: [{ filename: 'Obra_78219.pdf', mimeType: 'application/pdf' }], clasificacion: { documentos: true } }), false);
+});
