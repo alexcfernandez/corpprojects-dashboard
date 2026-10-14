@@ -76,7 +76,7 @@ async function unir({ nombre, claves = [] } = {}, por = '') {
 async function historial({ dias = 760, _stel = null } = {}) {
   const db = await getDB();
   const EQ = await equivalencias().catch(() => EQ_SERIE);
-  const eqDe = k => EQ.find(e => e.claves.includes(k) || e.claves.some(c => k.startsWith(c + ' ') && c.split(' ').length >= 2));
+  const eqDe = k => EQ.find(e => e.claves.includes(k) || e.claves.some(c => k.startsWith(c + ' ') && c.split(' ').length >= 2 && !/blanc|hidro|cola|monocapa/.test(k.slice(c.length))));
   const desde = new Date(Date.now() - dias * DIA).toISOString().slice(0, 10);
   const out = [], ya = new Set();
   const add = (p) => { if (p.clave && !p.mo) { const e = eqDe(p.clave); if (e) { p.clave = 'eq:' + e.nombre; p.nombreEq = e.nombre; } }
@@ -107,7 +107,11 @@ async function historial({ dias = 760, _stel = null } = {}) {
       }
     }
   } catch (e) { /* StelOrder sin cupo: solo Compras */ }
-  return out.sort((a, b) => a.fecha.localeCompare(b.fecha));
+  // Puntos que no son del mismo artículo (un palet de mortero entre los sacos, otra unidad): fuera los que se alejan
+  // mucho de lo normal de ese artículo (más de 4 veces o menos de la cuarta parte de su mediana).
+  const porC = {}; for (const p of out) (porC[p.clave] = porC[p.clave] || []).push(p.precio);
+  const med = {}; for (const [k, l] of Object.entries(porC)) { const v = l.slice().sort((a, b) => a - b); med[k] = v[Math.floor(v.length / 2)]; }
+  return out.filter(p => !(porC[p.clave].length >= 4 && (p.precio > med[p.clave] * 4 || p.precio < med[p.clave] / 4))).sort((a, b) => a.fecha.localeCompare(b.fecha));
 }
 
 const cerca = (lista, fecha, minD, maxD) => { const t = new Date(fecha).getTime(); const c = lista.filter(p => { const d = (t - new Date(p.fecha).getTime()) / DIA; return d >= minD && d <= maxD; }); return c.length ? c[c.length - 1] : null; };
