@@ -680,6 +680,11 @@ async function claridad(c, db) {
   if (c.ia && c.ia.aviso) falta.push('la IA avisa: ' + c.ia.aviso);
   if (!c.proveedor || !c.numero || !c.fecha || !(Number(c.total) > 0)) falta.push('falta proveedor, nº, fecha o importe');
   if (c.duplicadoDe) falta.push('posible duplicado');
+  else if (db.collection && c.proveedorNorm && c.total != null && c.fecha) {   // otra compra igual (el ticket de esta factura, otra copia…)
+    try { const d0 = new Date(c.fecha + 'T12:00:00Z'), f = x => new Date(d0.getTime() + x * 864e5).toISOString().slice(0, 10);
+      const g = await db.collection(COL).findOne({ empresaId: EMPRESA, _id: { $ne: c._id }, estado: { $ne: 'descartada' }, proveedorNorm: c.proveedorNorm, fecha: { $in: [f(-1), f(0), f(1)] }, total: { $gte: c.total - 0.02, $lte: c.total + 0.02 } }, { projection: { _id: 1 } });
+      if (g) falta.push('hay otra compra igual (¿su ticket o una copia?)'); } catch (e) {}
+  }
   if ((c.repetida || []).length) falta.push('herramienta repetida (que la mire Álex)');
   if (/\bojo\b|cambi(o|ar) (de )?nombre/i.test(c.nota || '')) falta.push('tiene una nota de oficina');
   if (c.aNombreDe && !NUESTRO.test(c.aNombreDe)) falta.push(`está a nombre de «${c.aNombreDe}»`);

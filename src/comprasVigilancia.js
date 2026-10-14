@@ -289,7 +289,8 @@ async function compradorDe(c, users) {
 async function preguntarObras({ dryRun = false, porPersona = 4, _crear = null, _avisar = null } = {}) {
   const db = await getDB();
   const U = require('./users');
-  const users = (await U.getUsers(false)).filter(u => u.active !== false && ['tecnico', 'encargado'].includes(U.normalizeRole(u.role)));
+  const FD = require('./fichaDatos');   // solo el equipo (no Álex, ni autónomos)
+  const users = (await U.getUsers(false)).filter(u => u.active !== false && ['tecnico', 'encargado'].includes(U.normalizeRole(u.role)) && FD.delEquipo(u));
   const desde = new Date(Date.now() - 45 * 864e5);
   const cs = await db.collection('compras').find({ estado: 'por_revisar', obraId: { $in: [null, ''] }, varias: { $ne: true }, tipo: { $in: ['factura', 'ticket', 'albaran'] }, createdAt: { $gte: desde }, preguntaObra: { $exists: false } })
     .project({ proveedor: 1, fecha: 1, total: 1, destino: 1, subidaPor: 1, 'lineas.descripcion': 1, numero: 1 }).sort({ fecha: 1 }).toArray();
