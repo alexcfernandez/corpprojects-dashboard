@@ -1826,6 +1826,18 @@ app.post('/api/compras/duplicado', express.json(), async (req, res) => {
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 // Compras sin obra cuyo papel dice la obra («obra Rutlla», dirección de entrega…): la pone sola (aplicar) o la propone.
+// Precios: evolución por tienda (gráfica) y subidas / más barato en otra tienda (Inicio). Caché de 1 h para Inicio.
+let _subidasCache = null;
+app.get('/api/precios', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./precios').buscar(String(req.query.q || ''))); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/precios/subidas', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' });
+    if (!_subidasCache || Date.now() - _subidasCache.at > 3600e3 || req.query.fresco === '1') _subidasCache = { at: Date.now(), r: await require('./precios').subidas() };
+    res.json(_subidasCache.r); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
 app.get('/api/compras/sin-obra', async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./comprasVigilancia').sinObra()); }
   catch (err) { res.status(500).json({ error: err.message }); }

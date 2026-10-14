@@ -1451,6 +1451,15 @@ async function renderInformes(){
     ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top'}},scales:{y:{ticks:{callback:v=>eur(v)}}}}});
   }
 }
+// 📈 Subidas de precio (último año, últimos meses, compra anterior) y dónde está más barato: precios.js.
+async function cargarSubidasPrecio(){const el=document.getElementById('ini-precios');if(!el)return;try{const r=await apiCall('/api/precios/subidas');if(!r)return;
+  if(!(r.subidas||[]).length&&!(r.masBaratoEnOtra||[]).length){el.innerHTML='';return;}
+  const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const f=x=>String(x||'').split('-').reverse().slice(0,2).join('/');const e2=v=>Number(v).toFixed(2).replace('.',',')+' €';const q=s=>encodeURIComponent(String(s||'').split(' ').slice(0,3).join(' '));
+  el.innerHTML=`<div class="card" style="margin:0 0 14px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><b>📈 Precios</b><span style="font-size:12px;color:var(--text3)">${r.nSubidas} subidas · ${r.nBaratos} más baratos en otra tienda</span><a href="/compras#precios" style="margin-left:auto;font-size:12.5px">Ver gráficas</a></div>
+  ${(r.subidas||[]).slice(0,5).map(x=>`<div style="font-size:13px;padding:3px 0;border-top:1px solid var(--border)"><a href="/compras?precio=${q(x.clave)}" style="color:var(--text)">${esc(x.articulo)}</a> · ${esc(x.tienda)}: ${e2(x.antes)} → <b>${e2(x.ahora)}</b> <span style="color:var(--red);font-weight:700">+${x.pct} %</span> <span style="color:var(--text3);font-size:12px">desde ${esc(x.cuando)} (${f(x.fechaAntes)}→${f(x.fechaAhora)})</span></div>`).join('')}
+  ${(r.masBaratoEnOtra||[]).slice(0,3).map(x=>`<div style="font-size:13px;padding:3px 0;border-top:1px solid var(--border)">💡 <a href="/compras?precio=${q(x.clave)}" style="color:var(--text)">${esc(x.articulo)}</a>: ${e2(x.precio)} en ${esc(x.tienda)} · en <b>${esc(x.otra)}</b> ${e2(x.precioOtra)} <span style="color:var(--green);font-weight:700">(+${x.pct} % donde se compró)</span></div>`).join('')}</div>`;
+}catch(e){el.innerHTML='';}}
 async function renderInicio(){
   const c=document.getElementById('inicio-container');
   if(!c) return;
@@ -1567,6 +1576,7 @@ async function renderInicio(){
     ${d.stel&&d.stel.enPausa?`<div class="card" style="margin:0 0 14px;border-color:rgba(245,158,11,.5);font-size:13.5px;line-height:1.5">⏸️ ${d.stel.cupoAgotado?`<b>Cupo de StelOrder de hoy gastado</b> (${d.stel.usoHoy}/${d.stel.cupoDia} peticiones). Hasta mañana se enseñan los últimos datos buenos; marcar cobros y crear cosas sigue funcionando.`:`<b>StelOrder nos tiene bloqueados</b> (se ha gastado el cupo de 1.000 peticiones al día de la cuenta). Le volvemos a probar a las <b>${new Date(d.stel.hasta).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}</b>; mientras, se enseñan los últimos datos buenos.`}</div>`:''}
     ${urg.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"><span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:700;align-self:center;margin-right:4px">Hoy toca</span>${urg.join('')}</div>`:`<div style="font-size:13px;color:var(--green);margin-bottom:14px">✔ Nada urgente pendiente</div>`}
     ${enc.length?`<div id="enc-det" style="display:none;margin:-6px 0 14px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--bg2);font-size:13px;line-height:1.6">${enc.map(e=>`<div>📨 <b>${String(e.nombre||'').replace(/[<>&"]/g,'')}</b>: ${String(e.que||'').replace(/[<>&"]/g,'')} <span style="color:var(--text3)">· hace ${e.dias} día${e.dias===1?'':'s'}${e.recordatorios?` · recordado ${e.recordatorios}×`:''}${e.ultimaRespuesta&&e.ultimaRespuesta.texto?` · dijo «${String(e.ultimaRespuesta.texto).slice(0,60).replace(/[<>&"]/g,'')}»`:''}</span></div>`).join('')}<div style="color:var(--text3);font-size:12px;margin-top:4px">Para pedir algo: díselo a Corpy («pídele a Javi la talla de botas»). Para cerrar uno: «Javi ya lo ha hecho».</div></div>`:''}
+    <div id="ini-precios"></div>
     <div class="ini-kpis">
       ${kpi2('Facturado este mes',eur(f.mes),`${f.mesCount||0} facturas`,'var(--green)',"irA('dinero','facturas')")}
       ${kpi2('Pendiente de cobro',eur(f.pendiente),`${f.pendienteCount||0} facturas · ${f.criticas||0} críticas`,'var(--red)',"irA('dinero','pendientes')")}
@@ -1591,6 +1601,7 @@ async function renderInicio(){
   const mover=(id,slot)=>{const e=document.getElementById(id),s=document.getElementById(slot);if(e&&s&&e.parentElement!==s)s.appendChild(e);};
   mover('inicio-reservas','ini-slot-reservas');mover('inicio-hoy','ini-slot-hoy');mover('inicio-obras','ini-slot-hoy');
   const tq=document.querySelector('#tab-inicio .tools-quick');const sa=document.getElementById('ini-slot-accesos');
+  try{cargarSubidasPrecio();}catch(e){}
   if(tq&&sa){if(tq.parentElement!==sa){sa.innerHTML='<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin:8px 2px">Accesos rápidos</div>';sa.appendChild(tq);}tq.classList.add('compacto');}
 }
 function showGrupo(grp, btn){

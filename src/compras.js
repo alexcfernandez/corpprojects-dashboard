@@ -259,6 +259,8 @@ async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaP
   let vig = {};
   if (!silencioso && doc.ia && doc.ia.ok && !doc.duplicadoDe) { try { vig = await require('./comprasVigilancia').alSubir(doc); } catch (e) { console.warn('[Compras] vigilancia:', e.message); } }
   if (!silencioso && doc.ia && doc.ia.ok) setTimeout(() => autoRevisar(String(doc._id)).catch(e => console.warn('[Compras] auto:', e.message)), 3000);
+  // ¿Más caro que la última vez o más barato en otra tienda? (precios.js) — en segundo plano.
+  if (!silencioso && doc.ia && doc.ia.ok && !doc.duplicadoDe && ['factura', 'ticket', 'albaran'].includes(doc.tipo)) setTimeout(() => require('./precios').alComprar(doc).catch(e => console.warn('[Compras] precios:', e.message)), 5000);
 
   // Aviso a oficina (push al momento; el WhatsApp va en el resumen de las 18:00). No se avisa de lo que sube la propia oficina.
   if (!silencioso) try {

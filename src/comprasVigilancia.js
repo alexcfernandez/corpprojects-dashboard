@@ -348,6 +348,25 @@ async function sinObra({ limite = 300 } = {}) {
   return out;
 }
 
+// ── CADA 3 DÍAS: resumen para repasar Compras con Álex (Álex: «revisamos una vez cada tres días tú y yo»). ──
+async function resumenRevision({ _avisar = null, dryRun = false } = {}) {
+  const db = await getDB();
+  const hace3 = new Date(Date.now() - 3 * 864e5);
+  const [pend, auto, dups, sin, subs] = await Promise.all([
+    db.collection('compras').countDocuments({ estado: 'por_revisar' }),
+    db.collection('compras').countDocuments({ 'autoRevisada.at': { $gte: hace3 } }),
+    duplicados().then(l => l.length).catch(() => 0),
+    sinObra().catch(() => []),
+    require('./precios').subidas({ limite: 3 }).catch(() => ({ subidas: [], nSubidas: 0 })),
+  ]);
+  const unaObra = sin.filter(c => c.sugerencias.length === 1).length;
+  const t = `🧾 *Repaso de Compras* (cada 3 días)\n• Por revisar: *${pend}*${auto ? ` · ${auto} subidas solas a StelOrder estos días` : ''}\n• Sin obra: *${sin.length}*${unaObra ? ` (${unaObra} con una sola obra posible ese día: casi elegir y seguir)` : ''}\n• Duplicados por mirar: ${dups}` +
+    (subs.subidas.length ? `\n• Subidas de precio: ${subs.nSubidas}, p. ej. ${subs.subidas.slice(0, 2).map(x => `${x.articulo.slice(0, 30)} +${x.pct} % (${x.tienda})`).join(', ')}` : '') +
+    `\n\nCuando tengas un rato, ábreme (Claude) y lo repasamos juntos. Pestañas: https://dashboard.corpprojects.es/compras`;
+  if (!dryRun) { try { await (_avisar || require('./notifications').sendWhatsApp)(t); } catch (e) {} }
+  return { texto: t };
+}
+
 // El trabajador contesta a la pregunta de una compra: se guarda en la compra y, si nombra una obra, se pone.
 async function respuestaCompra(origen, texto, nombre) {
   const db = await getDB();
@@ -361,4 +380,4 @@ async function respuestaCompra(origen, texto, nombre) {
   return obra ? { obra: obra.reference, subida: !!(auto && auto.revisada) } : {};
 }
 
-module.exports = { sinObra, preguntarObras, altaHerramientas, duplicados, limpiarDuplicados, obrasDesdePistas, categoria, historial, repetidas, textoInforme, alSubir, respuestaCompra, obraDeTexto, DURABLES, VENTANA };
+module.exports = { resumenRevision, sinObra, preguntarObras, altaHerramientas, duplicados, limpiarDuplicados, obrasDesdePistas, categoria, historial, repetidas, textoInforme, alSubir, respuestaCompra, obraDeTexto, DURABLES, VENTANA };
