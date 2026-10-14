@@ -2704,6 +2704,19 @@ app.post('/api/bridge/grupos', requireAuthOficina, express.json(), async (req, r
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
+// Lo que Corpy ha leído en un grupo (texto, quién, qué fue a Compras y fotos de obra guardadas).
+app.get('/api/bridge/grupos/:jid/mensajes', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./grupoWhatsapp').mensajes(req.params.jid, { dias: req.query.dias })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/bridge/grupo-foto/:id', requireAuthOficina, async (req, res) => {
+  try {
+    const f = await require('./grupoWhatsapp').foto(req.params.id);
+    if (!f) return res.sendStatus(404);
+    res.set('Content-Type', f.mimetype || 'image/jpeg').send(Buffer.from(f.data.buffer || f.data));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── Enlaces de fichar (implantación): lista, activar, quién recibe, prueba y envío manual ──
 app.get('/api/fichaje/enlaces', requireAuthOficina, async (req, res) => {
   try {

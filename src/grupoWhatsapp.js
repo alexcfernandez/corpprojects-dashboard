@@ -6,13 +6,16 @@
 //   · cada foto o PDF que parezca un albarán/factura/ticket → Compras (origen 'grupo'),
 //     con quién lo mandó y el texto que lo acompañaba; las fotos que no son documentos
 //     (fotos de la obra) no se guardan;
+//   · las fotos que NO son documentos (fotos de la obra) se guardan aparte en grupoFotos (14/10/2026), con la
+//     obra si el texto la nombra, para ir ordenándolas por obra;
 //   · Corpy NO contesta en el grupo (modo escucha): el aviso va a oficina como cualquier compra.
 //
 //   bridgeGrupos  { _id: jid, nombre, activo, vistoAt, activadoAt, activadoPor, nMensajes, nCompras, ultimoMsgAt }
-//   grupoMensajes { jid, grupo, from, quien, texto, media:[{type,name}], compraId, ts }   (se borran a los 90 días)
+//   grupoMensajes { jid, grupo, from, quien, texto, media:[{type,name}], compraId, fotoIds, ts }   (se borran a los 90 días)
+//   grupoFotos    { jid, grupo, msgId, from, quien, texto, obraId, obraRef, mimetype, bytes, data, ts }
 
 async function getDB() { return require('./db').getDB(); }
-const COL = 'bridgeGrupos', MSG = 'grupoMensajes';
+const COL = 'bridgeGrupos', MSG = 'grupoMensajes', FOTOS = 'grupoFotos';
 let _idx = false;
 async function db() {
   const d = await getDB();
@@ -72,7 +75,7 @@ async function procesar(p) {
   const media = (p.media || []).filter(m => m && m.url);
   const doc = { jid, grupo: p.groupName || g.nombre || null, from: p.from || null, quien: quien.name, texto: texto || null, media: (p.media || []).map(m => ({ type: m.type, name: m.name || null, fallo: !m.url })), compraId: null, ts: new Date() };
   const ins = await d.collection(MSG).insertOne(doc);
-  let nCompras = 0;
+  let nCompras = 0; const fotoIds = [];
   const docs = media.filter(m => /^image\//i.test(m.type) || /pdf/i.test(m.type));
   for (const m of docs) {
     try {
@@ -85,11 +88,31 @@ async function procesar(p) {
         subidaPor: { kind: 'grupo', userId: quien.userId || String(p.from || 'grupo'), name: quien.name },
       });
       if (r && r.id) { nCompras++; await d.collection(MSG).updateOne({ _id: ins.insertedId }, { $set: { compraId: r.id } }); }
+      else if (r && r.noEsDocumento && /^image\//i.test(m.type)) {
+        // Foto de la obra: se guarda con la obra que nombre el texto (si nombra solo una).
+        const txt = texto || await textoReciente(d, jid, p.from);
+        let o = null; try { o = txt ? await require('./comprasVigilancia').obraDeTexto(txt) : null; } catch (e) {}
+        const f = await d.collection(FOTOS).insertOne({ jid, grupo: doc.grupo, msgId: ins.insertedId, from: p.from || null, quien: quien.name, texto: txt || null, obraId: o ? String(o._id) : null, obraRef: o ? (o.reference || o.clientName || null) : null, mimetype: m.type, bytes: buf.length, data: buf, ts: new Date() });
+        fotoIds.push(String(f.insertedId));
+      }
     } catch (e) { console.error('[Grupo] compra:', e.message); }
   }
-  await d.collection(COL).updateOne({ _id: jid }, { $inc: { nMensajes: 1, nCompras }, $set: { ultimoMsgAt: new Date(), ...(p.groupName ? { nombre: p.groupName } : {}) } });
-  if (docs.length) console.log(`[Grupo] ${doc.grupo}: ${quien.name} mandó ${docs.length} archivo(s) → ${nCompras} a Compras`);
-  return { ok: true, nCompras };
+  if (fotoIds.length) await d.collection(MSG).updateOne({ _id: ins.insertedId }, { $set: { fotoIds } });
+  await d.collection(COL).updateOne({ _id: jid }, { $inc: { nMensajes: 1, nCompras, nFotos: fotoIds.length }, $set: { ultimoMsgAt: new Date(), ...(p.groupName ? { nombre: p.groupName } : {}) } });
+  if (docs.length) console.log(`[Grupo] ${doc.grupo}: ${quien.name} mandó ${docs.length} archivo(s) → ${nCompras} a Compras, ${fotoIds.length} fotos de obra`);
+  return { ok: true, nCompras, nFotos: fotoIds.length };
 }
 
-module.exports = { grupoVisto, gruposPermitidos, listaGrupos, setGrupo, procesar, quienEs };
+// Lo que Corpy ha leído en un grupo (para repasarlo con oficina): mensajes de los últimos `dias`.
+async function mensajes(jid, { dias = 7 } = {}) {
+  const d = await db();
+  const desde = new Date(Date.now() - Math.min(90, Math.max(1, Number(dias) || 7)) * 24 * 3600 * 1000);
+  return d.collection(MSG).find({ jid: String(jid), ts: { $gte: desde } }).sort({ ts: -1 }).limit(500).toArray();
+}
+async function foto(id) {
+  const d = await db(); const { ObjectId } = require('mongodb');
+  if (!ObjectId.isValid(String(id))) return null;
+  return d.collection(FOTOS).findOne({ _id: new ObjectId(String(id)) });
+}
+
+module.exports = { grupoVisto, gruposPermitidos, listaGrupos, setGrupo, procesar, quienEs, mensajes, foto };
