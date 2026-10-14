@@ -301,7 +301,10 @@ async function preguntarObras({ dryRun = false, porPersona = 4, _crear = null, _
     if (!q || !users.some(u => String(u._id) === q.userId)) { sinQuien.push(c); continue; }
     if ((porU[q.userId] = (porU[q.userId] || 0) + 1) > porPersona) continue;
     const art = (c.lineas || []).slice(0, 2).map(l => String(l.descripcion).slice(0, 40)).join(', ');
-    const mensaje = `¿Para qué obra fue la compra de *${c.proveedor || 'la tienda'}* del ${fmtF(c.fecha)} (${eur(c.total)})${art ? `: ${art}${(c.lineas || []).length > 2 ? '…' : ''}` : ''}? Dime la obra, o si era para el almacén, herramienta o la furgoneta.`;
+    // Donde estaba él ese día según la presencia: se le propone («¿era para Claudia?»).
+    let suya = null;
+    try { const a = await db.collection('attendance').findOne({ workerId: q.userId, date: c.fecha, estado: 'obra' }, { projection: { clientName: 1, obras: 1 } }); suya = a && (((a.obras || [])[0] || {}).clientName || a.clientName) || null; } catch (e) {}
+    const mensaje = `¿Para qué obra fue la compra de *${c.proveedor || 'la tienda'}* del ${fmtF(c.fecha)} (${eur(c.total)})${art ? `: ${art}${(c.lineas || []).length > 2 ? '…' : ''}` : ''}?${suya ? ` ¿Era para *${suya}*, donde estabas ese día?` : ''} Dime la obra, o si era para el almacén, herramienta o la furgoneta.`;
     if (!dryRun) {
       try {
         await (_crear || (o => require('./encargos').crear(o)))({ userId: q.userId, que: `obra de la compra (${String(c.proveedor || '').slice(0, 30)} ${fmtF(c.fecha)})`, mensaje, origen: { tipo: 'compra', compraId: String(c._id), sinObra: true }, por: 'Corpy' });
@@ -337,6 +340,8 @@ async function sinObra({ limite = 300 } = {}) {
     const sug = Object.values(delDia[c.fecha] || {}).map(x => ({ id: x.id, ref: x.ref, gente: [...x.gente] })).sort((a, b) => b.gente.length - a.gente.length).slice(0, 3);
     let quien = c.subidaPor && c.subidaPor.kind === 'worker' ? c.subidaPor.name : null, porTarjeta = false;
     if (!quien && c.total && c.fecha) { const x = { proveedor: c.proveedor || '', fecha: c.fecha, totalDoc: c.total, quien: null }; try { await ponerTarjetas([x], new Date(new Date(c.fecha).getTime() - 2 * 864e5).toISOString().slice(0, 10)); } catch (e) {} quien = x.quien; porTarjeta = !!x.quien; }
+    // Si sabemos quién la compró, primero la obra donde estaba ÉL ese día.
+    if (quien) { const yo = n(String(quien).split(' ')[0]); sug.forEach(x => { x.suya = x.gente.some(g => n(g) === yo); }); sug.sort((a, b) => (b.suya ? 1 : 0) - (a.suya ? 1 : 0)); }
     out.push({ id: String(c._id), fecha: c.fecha, proveedor: c.proveedor, numero: c.numero, total: c.total, tipo: c.tipo, destino: c.destino || 'obra', origen: c.origen, quien, porTarjeta, pista: c.obraPista || null,
       articulos: (c.lineas || []).slice(0, 3).map(l => String(l.descripcion).slice(0, 50)), nLineas: (c.lineas || []).length, sugerencias: sug, preguntado: c.preguntaObra ? c.preguntaObra.a : null });
   }
