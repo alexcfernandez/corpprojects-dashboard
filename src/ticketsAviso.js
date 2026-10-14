@@ -57,12 +57,24 @@ async function pendientes({ dias = 30, hoy = new Date(), userId = null } = {}) {
     db.collection('ticketAvisos').find({}).toArray(), require('./trimestre').mapaPagos(),
   ]);
   const av = new Map(avisos.map(a => [String(a._id), a]));
+  // Compras ya subidas que son ese pago (14/10: Media Markt 195 €, Fustes Esteba 82,33 €… estaban en Compras y se seguía
+  // pidiendo el ticket): mismo comercio, mismo importe y de 3 días antes a 1 después.
+  const desde = iso(hoy.getTime() - (dias + 5) * DIA);
+  let compras = [];
+  try { compras = (await db.collection('compras').find({ estado: { $ne: 'descartada' }, fecha: { $gte: desde }, total: { $ne: null } }, { projection: { proveedor: 1, proveedorNorm: 1, razonSocial: 1, fecha: 1, total: 1 } }).toArray()) || []; } catch (e) { compras = []; }
+  const casa = p => { const con = nrm(p.concepto); return compras.find(c => {
+    if (Math.abs(Math.abs(Number(c.total)) - Math.abs(p.importe)) > 0.02) return false;
+    const dd = (new Date(p.fecha) - new Date(c.fecha)) / DIA; if (dd < -1 || dd > 3) return false;
+    const toks = nrm([c.proveedor, c.proveedorNorm, c.razonSocial].filter(Boolean).join(' ')).replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length >= 4 && !/^(girona|materials|materiales|sociedad|limitada|tienda|store)$/.test(w));
+    return toks.some(w => con.includes(w)) || (/werkhaus/.test(con) && toks.includes('bauhaus'));   // Bauhaus factura como Werkhaus SL
+  }); };
   const out = [];
   for (const p of pagos) {
     const pm = mapa.porMov.get(p.id);
     if (pm && (pm.estado === 'punteado' || pm.estado === 'no_requiere')) continue;
     const a = av.get(p.id);
     if (a && (a.compraId || a.respuesta)) continue;           // ya lo subió o contestó
+    if (casa(p)) continue;                                    // ya está en Compras
     const q = _quien(tarjetas, users, p.tarjeta);
     if (userId && !(q && q.user && String(q.user._id) === String(userId))) continue;
     out.push({ ...p, persona: q && q.persona, userId: q && q.user ? String(q.user._id) : null, nombre: q && q.user ? q.user.name : null, tel: q && q.tel, aviso: a || null });
