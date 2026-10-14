@@ -20,3 +20,12 @@ test('si el importe se lee, manda lo leído', () => {
   const d = C._aplicarLectura({}, { tipo: 'albaran', lineas: [{ descripcion: 'PENTRILO PAPER', cantidad: 1, precio: 28.06, dto: 20, importe: 22.45 }] });
   assert.equal(d.lineas[0].importe, 22.45);
 });
+
+test('nuestro NIF / razón social nunca queda como el del proveedor (BigMat Forcemat, Oliveras)', () => {
+  const a = C._aplicarLectura({}, { tipo: 'factura', proveedor: 'BigMat Forcemat', razonSocial: 'Forcemat', nif: 'B09899253', total: 85.49, lineas: [] });
+  assert.equal(a.nif, null); assert.equal(a.razonSocial, 'Forcemat');
+  const b = C._aplicarLectura({}, { tipo: 'factura', proveedor: 'Oliveras', razonSocial: 'Corp. Projects Holding, S.L', nif: 'ESB09899253', total: 1, lineas: [] });
+  assert.equal(b.nif, null); assert.equal(b.razonSocial, null);
+  const c = C._aplicarLectura({}, { tipo: 'factura', proveedor: 'BigMat', nif: 'B08897100', total: 1, lineas: [] });
+  assert.equal(c.nif, 'B08897100');
+});

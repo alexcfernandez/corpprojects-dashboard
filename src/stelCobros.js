@@ -136,6 +136,9 @@ async function sincronizar({ dryRun = true, desde = '2026-01-01', soloNumero = n
   if (!dryRun && por === 'auto') { const e = S().estadoPausa(); if (e.enPausa || e.usoHoy > e.cupoDia * 0.66) return { saltado: true, motivo: `StelOrder: ${e.usoHoy}/${e.cupoDia} peticiones hoy` }; }
   _enCurso = true;
   try {
+    // Las facturas que la subida automática acaba de mandar a StelOrder no salían: la lista de recibidas se sirve
+    // de caché (y caducada mientras se refresca por detrás), así que cada vuelta veía la de antes (14/10/2026).
+    if (!dryRun) { try { S().invalidate('purchases'); require('./trimestre').olvidarMapaPagos(); } catch (e) {} }
     let l = await plan({ desde });
     if (soloNumero) l = l.filter(p => p.numero === soloNumero);
     if (dryRun) return { dryRun: true, n: l.length, plan: l };

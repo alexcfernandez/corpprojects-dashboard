@@ -61,11 +61,19 @@ const num = v => { const n = Number(v); return Number.isFinite(n) ? Math.round(n
 const numN = v => (v == null || v === '' ? null : num(v));   // sin dato = null (no 0)
 
 // ── LECTURA CON IA ───────────────────────────────────────────────
+// El cliente (nosotros) sale en todas las facturas: si la IA lo toma por el proveedor, StelOrder acaba creando
+// «corp projects holding» como proveedor (pasó con BigMat Forcemat FPR00992 y Oliveras, 14/10/2026).
+const NUESTRO_NIF = '09899253';
+function _noSomos(v, max) {
+  const t = String(v || '').trim().slice(0, max);
+  if (!t || t.replace(/\D/g, '').includes(NUESTRO_NIF) || /corp\.?\s*projects/i.test(t)) return null;
+  return t;
+}
 const PROMPT = `Eres el administrativo de una empresa de reformas en Girona. Te paso la(s) foto(s) de UN documento de compra de material (albarán de entrega, factura, ticket de caja o abono/devolución). Devuelve SOLO un JSON con esta forma exacta, sin texto alrededor:
 {
  "calidad": "legible" | "borroso" | "cortado" | "no_es_documento",
  "tipo": "albaran" | "factura" | "ticket" | "devolucion" | "otro",
- "proveedor": "nombre comercial del proveedor (Saltoki, Leroy Merlin, Obramat…)", "razonSocial": "razón social completa tal cual aparece (p. ej. Obramat S.L.U.) o null", "nif": "CIF/NIF del proveedor o null",
+ "proveedor": "nombre comercial del proveedor (Saltoki, Leroy Merlin, Obramat…)", "razonSocial": "razón social completa tal cual aparece (p. ej. Obramat S.L.U.) o null", "nif": "CIF/NIF del PROVEEDOR o null (NUNCA el del cliente Corp. Projects Holding, B09899253; el del proveedor suele ir en el pie o en vertical en el margen)",
  "numero": "número del documento tal cual aparece, o null", "fecha": "YYYY-MM-DD o null",
  "base": número o null, "iva": número o null, "total": número o null,
  "lineas": [{"descripcion": "texto de la línea", "cantidad": número o null, "unidad": "ud|m|m2|kg|saco|caja|…", "precio": "precio por unidad ANTES del descuento, o null", "dto": "% de descuento de la línea (columna Dto., Dte., DTE%, Desc.) o null", "importe": "importe de la línea (ya con el descuento), o null", "talla": "talla si es ropa (M, L, 42…) o null", "albaran": "en facturas que agrupan albaranes: nº del albarán al que pertenece la línea, o null", "obraTexto": "en facturas que agrupan albaranes: obra o dirección que pone en ese albarán (p. ej. «OBRA CARLES RAHOLA 13 ATIC»), o null"}],
@@ -175,7 +183,7 @@ function aplicarLectura(doc, d) {
   })).filter(l => l.descripcion);
   Object.assign(doc, {
     tipo, proveedor: String(d.proveedor || '').trim().slice(0, 120) || null, proveedorNorm: norm(d.proveedor) || null,
-    razonSocial: String(d.razonSocial || '').trim().slice(0, 160) || null, nif: String(d.nif || '').trim().slice(0, 20) || null, numero: String(d.numero || '').trim().slice(0, 60) || null,
+    razonSocial: _noSomos(d.razonSocial, 160), nif: _noSomos(d.nif, 20), numero: String(d.numero || '').trim().slice(0, 60) || null,
     fecha: /^\d{4}-\d{2}-\d{2}$/.test(String(d.fecha || '')) ? d.fecha : null,
     base: neg(num(d.base)), iva: neg(num(d.iva)), total: neg(num(d.total)), lineas,
     albaranesRef: (Array.isArray(d.albaranesRef) ? d.albaranesRef : []).map(x => String(x).trim()).filter(Boolean).slice(0, 60),
