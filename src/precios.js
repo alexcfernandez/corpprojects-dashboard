@@ -21,6 +21,20 @@ const esMaterial = d => { if (COMBUSTIBLE.test(n(d))) return false; if (MO.test(
 const MO = /\b(ma d.?obra|mano de obra|m\.?o\.?\b)/;
 const TALLER = /taller|classicauto|norauto|midas|feu vert|recanvi|recambi|mecanic|carrosser|neumat|auto /;
 const moTaller = (desc, prov) => MO.test(n(desc)) && TALLER.test(n(prov) + ' ' + n(desc));
+// Mano de obra de SUBCONTRATAS (Rubén, 9electric…): €/hora del oficial o del ayudante. Una «unidad» entre 12 y 90 €
+// o en horas; lo que va por servicio cerrado (315 €) no es comparable y se deja fuera.
+const MO_SUB = /\b(servicio|mano de obra|ma d.?obra|mantenimiento y reparacion|reparacion y mantenimiento|hora|horas|oficial|ayudante)\b/;
+const moSub = (desc, prov, unidad, precio) => !TALLER.test(n(prov) + ' ' + n(desc)) && MO_SUB.test(n(desc)) && !/desplazamiento|kilometr|dieta/.test(n(desc)) && (/^h(oras?)?$/i.test(String(unidad || '')) || (precio >= 12 && precio <= 90));
+// Familias para ver de un vistazo: materiales, consumibles, herramientas y mano de obra.
+const CONSUMIBLE = /\b(disco|broca|silicona|silecona|sellador|cinta|tornill|taco|tacos|cola|masilla|aguaplast|pasta|cutter|cuchilla|lija|guante|rodillo|brocha|paletin|espuma|abrazadera|brida|capazo|cubo|plastico|film|cartucho|grapa|clavo|spray|punta|hoja|regleta|estano|pegamento|limpiador|trapo|esponja|mascarilla|gafas|tapon|teflon)\b/;
+const FAMILIAS = { material: 'Materiales', consumible: 'Consumibles', herramienta: 'Herramientas', mo_sub: 'Mano de obra · subcontratas', mo_taller: 'Mano de obra · taller' };
+function familia(p) {
+  if (p.mo === 'taller') return 'mo_taller';
+  if (p.mo === 'sub') return 'mo_sub';
+  try { if (require('./comprasVigilancia').categoria(p.articulo, p.precio)) return 'herramienta'; } catch (e) {}
+  if (CONSUMIBLE.test(n(p.articulo))) return 'consumible';
+  return 'material';
+}
 const _esMat = d => { const x = n(d).split(/\s+[-—]\s+/)[0]; return !RUIDO.test(x) && !SERVICIO.test(x); };
 
 // Nombre de tienda estable («Saint-Gobain Weber Cemarksa, S.A.U» y «Weber» → «Weber»; Werkhaus → Bauhaus).
@@ -44,14 +58,15 @@ async function historial({ dias = 760, _stel = null } = {}) {
   const db = await getDB();
   const desde = new Date(Date.now() - dias * DIA).toISOString().slice(0, 10);
   const out = [], ya = new Set();
-  const add = (p) => { if (!p.clave || p.precio == null || !(p.precio >= 0.05) || (!p.mo && !esMaterial(p.articulo))) return; const k = `${p.tienda}|${p.fecha}|${p.clave}|${p.precio.toFixed(2)}`; if (ya.has(k)) return; ya.add(k); out.push(p); };
+  const add = (p) => { if (!p.clave || p.precio == null || !(p.precio >= 0.05) || (!p.mo && !esMaterial(p.articulo))) return; const k = `${p.tienda}|${p.fecha}|${p.clave}|${p.precio.toFixed(2)}`; if (ya.has(k)) return; ya.add(k); p.familia = familia(p); out.push(p); };
   const cs = await db.collection('compras').find({ estado: { $in: ['revisada', 'por_revisar', 'archivo'] }, fecha: { $gte: desde }, tipo: { $in: ['factura', 'ticket', 'albaran'] } }).project({ proveedor: 1, fecha: 1, lineas: 1, numero: 1, obraRef: 1 }).toArray();
   for (const c of cs) for (const l of c.lineas || []) {
     const cant = Number(l.cantidad) || null;
     let pu = l.importe != null && cant ? Number(l.importe) / cant : l.precio != null ? Number(l.precio) * (1 - (Number(l.dto) || 0) / 100) : null;
     if (pu != null) pu = Math.round(pu * 100) / 100;
-    const mo = moTaller(l.descripcion, c.proveedor);
-    add({ fecha: c.fecha, tienda: tienda(c.proveedor), articulo: mo ? 'Mano de obra de taller (€/h)' : l.descripcion, clave: mo ? 'mano obra taller' : clave(l.descripcion), mo, precio: pu, cantidad: cant, unidad: l.unidad || null, ref: c.numero || '', compraId: String(c._id), obra: c.obraRef || null });
+    const mt = moTaller(l.descripcion, c.proveedor), ms = !mt && moSub(l.descripcion, c.proveedor, l.unidad, pu), ay = ms && /ayudante|peon/.test(n(l.descripcion));
+    const mo = mt ? 'taller' : ms ? 'sub' : null;
+    add({ fecha: c.fecha, tienda: tienda(c.proveedor), articulo: mt ? 'Mano de obra de taller (€/h)' : ms ? (ay ? 'Ayudante subcontratado (€/h)' : 'Oficial subcontratado (€/h)') : l.descripcion, clave: mt ? 'mano obra taller' : ms ? (ay ? 'mano obra ayudante' : 'mano obra oficial') : clave(l.descripcion), mo, precio: pu, cantidad: cant, unidad: l.unidad || null, ref: c.numero || '', compraId: String(c._id), obra: c.obraRef || null });
   }
   try {
     const invs = _stel ? await _stel() : await require('./stelorder').getPurchaseInvoices();
@@ -64,8 +79,9 @@ async function historial({ dias = 760, _stel = null } = {}) {
         let t = Number(l['total-amount']), p = Number(l['unit-price'] ?? l.price);
         let pu = Number.isFinite(t) && u ? t / u : Number.isFinite(p) ? p : null;
         if (pu != null) pu = Math.round(pu * 100) / 100;
-        const mo = moTaller(nom, inv.supplier);
-        add({ fecha: f, tienda: tienda(inv.supplier), articulo: mo ? 'Mano de obra de taller (€/h)' : nom, clave: mo ? 'mano obra taller' : clave(nom), mo, precio: pu, cantidad: u, unidad: null, ref: inv.number, compraId: null, obra: null });
+        const mt = moTaller(nom, inv.supplier), ms = !mt && moSub(nom, inv.supplier, null, pu), ay = ms && /ayudante|peon/.test(n(nom));
+        const mo = mt ? 'taller' : ms ? 'sub' : null;
+        add({ fecha: f, tienda: tienda(inv.supplier), articulo: mt ? 'Mano de obra de taller (€/h)' : ms ? (ay ? 'Ayudante subcontratado (€/h)' : 'Oficial subcontratado (€/h)') : nom, clave: mt ? 'mano obra taller' : ms ? (ay ? 'mano obra ayudante' : 'mano obra oficial') : clave(nom), mo, precio: pu, cantidad: u, unidad: null, ref: inv.number, compraId: null, obra: null });
       }
     }
   } catch (e) { /* StelOrder sin cupo: solo Compras */ }
@@ -84,7 +100,7 @@ async function buscar(q, { clave: cl = null, ...deps } = {}) {
   const enc = cl ? h0.filter(p => p.clave === cl) : h0.filter(p => pal.every(w => n(p.articulo).includes(w) || p.clave.includes(w)));
   const porC = {};
   for (const p of enc) (porC[p.clave] = porC[p.clave] || []).push(p);
-  const articulos = Object.entries(porC).map(([k, ps]) => ({ clave: k, nombre: bonito(ps[ps.length - 1].articulo), compras: ps.length, tiendas: [...new Set(ps.map(p => p.tienda))], ultimo: ps[ps.length - 1].precio, fecha: ps[ps.length - 1].fecha }))
+  const articulos = Object.entries(porC).map(([k, ps]) => ({ clave: k, nombre: bonito(ps[ps.length - 1].articulo), familia: FAMILIAS[ps[0].familia] || '', compras: ps.length, tiendas: [...new Set(ps.map(p => p.tienda))], ultimo: ps[ps.length - 1].precio, fecha: ps[ps.length - 1].fecha }))
     .sort((a, b) => b.compras - a.compras || b.fecha.localeCompare(a.fecha)).slice(0, 15);
   const elegida = cl || (articulos[0] && articulos[0].clave);
   const h = elegida ? (porC[elegida] || []) : [];
@@ -130,6 +146,31 @@ async function subidas({ limite = 12, ...deps } = {}) {
   return { subidas: subs.slice(0, limite), masBaratoEnOtra: baratos.slice(0, limite), nSubidas: subs.length, nBaratos: baratos.length };
 }
 
+// ── RESUMEN POR FAMILIAS (último año): dónde sale más barato de media y el precio de cada artículo en cada tienda ──
+// Índice de tienda: para los artículos comprados en 2+ tiendas, su precio / el más barato → media (100 % = siempre la más barata).
+async function familias({ dias = 365, porFamilia = 12, ...deps } = {}) {
+  const desde = new Date(Date.now() - dias * DIA).toISOString().slice(0, 10);
+  const h = (await historial(deps)).filter(p => p.fecha >= desde);
+  const out = {};
+  for (const [fk, fnom] of Object.entries(FAMILIAS)) {
+    const ps = h.filter(p => p.familia === fk);
+    const porC = {};
+    for (const p of ps) (porC[p.clave] = porC[p.clave] || []).push(p);
+    const arts = Object.entries(porC).map(([k, l]) => {
+      const ult = {}; for (const p of l) ult[p.tienda] = p;   // último precio en cada tienda
+      const tiendas = Object.values(ult).map(p => ({ tienda: p.tienda, precio: p.precio, fecha: p.fecha })).sort((a, b) => a.precio - b.precio);
+      const primero = l[0], ultimo = l[l.length - 1];
+      return { clave: k, nombre: bonito(ultimo.articulo), compras: l.length, tiendas, ultimo: { precio: ultimo.precio, tienda: ultimo.tienda, fecha: ultimo.fecha },
+        variacion: primero.tienda === ultimo.tienda && primero !== ultimo ? pct(ultimo.precio, primero.precio) : null };
+    }).sort((a, b) => b.compras - a.compras);
+    const idx = {};
+    for (const a of arts.filter(a => a.tiendas.length > 1)) { const min = a.tiendas[0].precio; for (const t of a.tiendas) { (idx[t.tienda] = idx[t.tienda] || []).push(t.precio / min); } }
+    const ranking = Object.entries(idx).filter(([, r]) => r.length >= 1).map(([t, r]) => ({ tienda: t, indice: Math.round(r.reduce((x, y) => x + y, 0) / r.length * 100), articulos: r.length })).sort((a, b) => a.indice - b.indice);
+    out[fk] = { nombre: fnom, articulos: arts.slice(0, porFamilia), total: arts.length, compras: ps.length, ranking: ranking.slice(0, 8) };
+  }
+  return out;
+}
+
 // Al entrar una compra: ¿algo más caro que la última vez o más barato en otra tienda?
 async function alComprar(compra, { _avisar = null, _hist = null } = {}) {
   if (!compra || !(compra.lineas || []).length || !compra.fecha) return { avisos: [] };
@@ -157,4 +198,4 @@ function bonito(desc) {
   x = x.charAt(0).toUpperCase() + x.slice(1);
   return x.length > 46 ? x.slice(0, 44).trim() + '…' : x;
 }
-module.exports = { bonito, historial, buscar, subidas, alComprar, tienda, clave };
+module.exports = { familias, FAMILIAS, bonito, historial, buscar, subidas, alComprar, tienda, clave };

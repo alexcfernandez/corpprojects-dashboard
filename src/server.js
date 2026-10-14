@@ -1832,6 +1832,13 @@ app.get('/api/precios', async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./precios').buscar(String(req.query.q || ''), { clave: req.query.clave || null })); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
+let _famCache = null;
+app.get('/api/precios/familias', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' });
+    if (!_famCache || Date.now() - _famCache.at > 3600e3 || req.query.fresco === '1') _famCache = { at: Date.now(), r: await require('./precios').familias() };
+    res.json(_famCache.r); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
 app.get('/api/precios/subidas', async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' });
     if (!_subidasCache || Date.now() - _subidasCache.at > 3600e3 || req.query.fresco === '1') _subidasCache = { at: Date.now(), r: await require('./precios').subidas() };
