@@ -59,7 +59,7 @@ function clave(desc) {
 
 // «Es lo mismo» (Álex, 14/10: «el mortero M-7,5 y el sac morter sec gris silíceo es lo mismo»): varios nombres → un
 // artículo. appSettings 'preciosEquivalencias' = [{ nombre, claves: [] }]. Las de serie, aquí.
-const EQ_SERIE = [{ nombre: 'Mortero seco M-7,5 (saco 25 kg)', claves: ['mortero', 'sac morter sec gris', 'bensec morter'] }];
+const EQ_SERIE = [{ nombre: 'Mortero seco M-7,5 (saco 25 kg)', claves: ['mortero', 'sac morter sec gris', 'bensec morter', 'mortero gris 25kg', 'mortero seco', 'morter sec gris valsec', 'sac morter sec 25kg', 'mortero pro one 25kg'] }];
 async function equivalencias() {
   let l = [];
   try { const d = await (await getDB()).collection('appSettings').findOne({ key: 'preciosEquivalencias' }); l = (d && d.lista) || []; } catch (e) {}
@@ -119,7 +119,10 @@ async function buscar(q, { clave: cl = null, ...deps } = {}) {
   const pal = n(q).split(/\s+/).filter(w => w.length >= 3);
   if (!pal.length && !cl) return { articulos: [], series: [], resumen: null };
   const h0 = await historial(deps);
-  const enc = cl ? h0.filter(p => p.clave === cl) : h0.filter(p => pal.every(w => n(p.articulo).includes(w) || p.clave.includes(w)));
+  // Lo que encaja con la búsqueda y, de esos artículos, TODAS sus compras (también las que se llaman distinto en otra
+  // tienda pero están unidas: «mortero» trae el «sac morter sec gris» de Oliveras).
+  const casa = cl ? null : new Set(h0.filter(p => pal.every(w => n(p.articulo).includes(w) || p.clave.includes(w) || n(p.nombreEq).includes(w))).map(p => p.clave));
+  const enc = cl ? h0.filter(p => p.clave === cl) : h0.filter(p => casa.has(p.clave));
   const porC = {};
   for (const p of enc) (porC[p.clave] = porC[p.clave] || []).push(p);
   const articulos = Object.entries(porC).map(([k, ps]) => ({ clave: k, nombre: bonito(ps[ps.length - 1].articulo, ps[ps.length - 1].nombreEq), familia: FAMILIAS[ps[0].familia] || '', compras: ps.length, tiendas: [...new Set(ps.map(p => p.tienda))], ultimo: ps[ps.length - 1].precio, fecha: ps[ps.length - 1].fecha }))
