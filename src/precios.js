@@ -13,10 +13,14 @@ const DIA = 864e5;
 const SUBE = Number(process.env.PRECIO_SUBIDA_PCT || 8) / 100, BARATO = Number(process.env.PRECIO_BARATO_PCT || 10) / 100;
 const RUIDO = /\b(contribucion|scrap|envalora|ecotasa|ecoraee|por unid|portes?|transporte|recargo|desplazamiento|descuento|redondeo|ticket desayuno|bolsa)\b/;
 // Servicios y mano de obra no son «precios de material» (partidas, mantenimiento, expedientes, reconocimientos…).
-const SERVICIO = /\b(ma d.?obra|partida|mantenimiento|reparacion|expediente|vigilancia|servicio|mano de obra|conceptos?|honorarios|cuota|alquiler|horas?|jornada|trabajos?|instalacion de|montaje|desmontaje|revision|certificado|tasa|licencia|plus cuba|cuba parcial)\b/;
+const SERVICIO = /\b(partida|mantenimiento|reparacion|expediente|vigilancia|servicio|mano de obra|conceptos?|honorarios|cuota|alquiler|horas?|jornada|trabajos?|instalacion de|montaje|desmontaje|revision|certificado|tasa|licencia|plus cuba|cuba parcial)\b/;
 // El combustible ya se sigue en Vehículos (precio por litro de cada gasolinera): aquí no.
-const COMBUSTIBLE = /\b(diesel|gas ?oil|gasoleo|gasolina|sin plomo|adblue|efitec|carburante)\b/;
-const esMaterial = d => { if (COMBUSTIBLE.test(n(d))) return false; return _esMat(d); };
+const COMBUSTIBLE = /\b(diesel|gas.?oil|gasoleo|gasolina|sin plomo|adblue|efitec|carburante)\b/;
+const esMaterial = d => { if (COMBUSTIBLE.test(n(d))) return false; if (MO.test(n(d))) return false; return _esMat(d); };
+// Mano de obra de TALLER (Álex: «me gustó verlo, es mucha diferencia»): se compara el precio de la hora entre talleres.
+const MO = /\b(ma d.?obra|mano de obra|m\.?o\.?\b)/;
+const TALLER = /taller|classicauto|norauto|midas|feu vert|recanvi|recambi|mecanic|carrosser|neumat|auto /;
+const moTaller = (desc, prov) => MO.test(n(desc)) && TALLER.test(n(prov) + ' ' + n(desc));
 const _esMat = d => { const x = n(d).split(/\s+[-—]\s+/)[0]; return !RUIDO.test(x) && !SERVICIO.test(x); };
 
 // Nombre de tienda estable («Saint-Gobain Weber Cemarksa, S.A.U» y «Weber» → «Weber»; Werkhaus → Bauhaus).
@@ -40,13 +44,14 @@ async function historial({ dias = 760, _stel = null } = {}) {
   const db = await getDB();
   const desde = new Date(Date.now() - dias * DIA).toISOString().slice(0, 10);
   const out = [], ya = new Set();
-  const add = (p) => { if (!p.clave || p.precio == null || !(p.precio >= 0.05) || !esMaterial(p.articulo)) return; const k = `${p.tienda}|${p.fecha}|${p.clave}|${p.precio.toFixed(2)}`; if (ya.has(k)) return; ya.add(k); out.push(p); };
+  const add = (p) => { if (!p.clave || p.precio == null || !(p.precio >= 0.05) || (!p.mo && !esMaterial(p.articulo))) return; const k = `${p.tienda}|${p.fecha}|${p.clave}|${p.precio.toFixed(2)}`; if (ya.has(k)) return; ya.add(k); out.push(p); };
   const cs = await db.collection('compras').find({ estado: { $in: ['revisada', 'por_revisar', 'archivo'] }, fecha: { $gte: desde }, tipo: { $in: ['factura', 'ticket', 'albaran'] } }).project({ proveedor: 1, fecha: 1, lineas: 1, numero: 1, obraRef: 1 }).toArray();
   for (const c of cs) for (const l of c.lineas || []) {
     const cant = Number(l.cantidad) || null;
     let pu = l.importe != null && cant ? Number(l.importe) / cant : l.precio != null ? Number(l.precio) * (1 - (Number(l.dto) || 0) / 100) : null;
     if (pu != null) pu = Math.round(pu * 100) / 100;
-    add({ fecha: c.fecha, tienda: tienda(c.proveedor), articulo: l.descripcion, clave: clave(l.descripcion), precio: pu, cantidad: cant, unidad: l.unidad || null, ref: c.numero || '', compraId: String(c._id), obra: c.obraRef || null });
+    const mo = moTaller(l.descripcion, c.proveedor);
+    add({ fecha: c.fecha, tienda: tienda(c.proveedor), articulo: mo ? 'Mano de obra de taller (€/h)' : l.descripcion, clave: mo ? 'mano obra taller' : clave(l.descripcion), mo, precio: pu, cantidad: cant, unidad: l.unidad || null, ref: c.numero || '', compraId: String(c._id), obra: c.obraRef || null });
   }
   try {
     const invs = _stel ? await _stel() : await require('./stelorder').getPurchaseInvoices();
@@ -59,7 +64,8 @@ async function historial({ dias = 760, _stel = null } = {}) {
         let t = Number(l['total-amount']), p = Number(l['unit-price'] ?? l.price);
         let pu = Number.isFinite(t) && u ? t / u : Number.isFinite(p) ? p : null;
         if (pu != null) pu = Math.round(pu * 100) / 100;
-        add({ fecha: f, tienda: tienda(inv.supplier), articulo: nom, clave: clave(nom), precio: pu, cantidad: u, unidad: null, ref: inv.number, compraId: null, obra: null });
+        const mo = moTaller(nom, inv.supplier);
+        add({ fecha: f, tienda: tienda(inv.supplier), articulo: mo ? 'Mano de obra de taller (€/h)' : nom, clave: mo ? 'mano obra taller' : clave(nom), mo, precio: pu, cantidad: u, unidad: null, ref: inv.number, compraId: null, obra: null });
       }
     }
   } catch (e) { /* StelOrder sin cupo: solo Compras */ }
