@@ -1829,7 +1829,7 @@ app.post('/api/compras/duplicado', express.json(), async (req, res) => {
 // Precios: evolución por tienda (gráfica) y subidas / más barato en otra tienda (Inicio). Caché de 1 h para Inicio.
 let _subidasCache = null;
 app.get('/api/precios', async (req, res) => {
-  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./precios').buscar(String(req.query.q || ''))); }
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./precios').buscar(String(req.query.q || ''), { clave: req.query.clave || null })); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 app.get('/api/precios/subidas', async (req, res) => {

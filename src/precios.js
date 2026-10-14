@@ -75,21 +75,29 @@ async function historial({ dias = 760, _stel = null } = {}) {
 const cerca = (lista, fecha, minD, maxD) => { const t = new Date(fecha).getTime(); const c = lista.filter(p => { const d = (t - new Date(p.fecha).getTime()) / DIA; return d >= minD && d <= maxD; }); return c.length ? c[c.length - 1] : null; };
 const pct = (a, b) => b ? Math.round((a - b) / b * 1000) / 10 : null;
 
-// Para la gráfica: los puntos de lo que se busca, por tienda, y un resumen.
-async function buscar(q, deps = {}) {
+// Para la gráfica: los artículos que encajan con la búsqueda (uno por clave) y los puntos de UNO (el elegido o el más
+// comprado), por tienda. Así no se mezclan cosas distintas que comparten una palabra («obra»: discos, capazos, mano de obra).
+async function buscar(q, { clave: cl = null, ...deps } = {}) {
   const pal = n(q).split(/\s+/).filter(w => w.length >= 3);
-  if (!pal.length) return { series: [], resumen: null, puntos: [] };
-  const h = (await historial(deps)).filter(p => pal.every(w => n(p.articulo).includes(w) || p.clave.includes(w)));
+  if (!pal.length && !cl) return { articulos: [], series: [], resumen: null };
+  const h0 = await historial(deps);
+  const enc = cl ? h0.filter(p => p.clave === cl) : h0.filter(p => pal.every(w => n(p.articulo).includes(w) || p.clave.includes(w)));
+  const porC = {};
+  for (const p of enc) (porC[p.clave] = porC[p.clave] || []).push(p);
+  const articulos = Object.entries(porC).map(([k, ps]) => ({ clave: k, nombre: bonito(ps[ps.length - 1].articulo), compras: ps.length, tiendas: [...new Set(ps.map(p => p.tienda))], ultimo: ps[ps.length - 1].precio, fecha: ps[ps.length - 1].fecha }))
+    .sort((a, b) => b.compras - a.compras || b.fecha.localeCompare(a.fecha)).slice(0, 15);
+  const elegida = cl || (articulos[0] && articulos[0].clave);
+  const h = elegida ? (porC[elegida] || []) : [];
   const porT = {};
   for (const p of h) (porT[p.tienda] = porT[p.tienda] || []).push(p);
-  const series = Object.entries(porT).map(([t, ps]) => ({ tienda: t, puntos: ps.map(p => ({ fecha: p.fecha, precio: p.precio, articulo: p.articulo, cantidad: p.cantidad, ref: p.ref, compraId: p.compraId })) })).sort((a, b) => b.puntos.length - a.puntos.length);
+  const series = Object.entries(porT).map(([t, ps]) => ({ tienda: t, puntos: ps.map(p => ({ fecha: p.fecha, precio: p.precio, articulo: p.articulo, cantidad: p.cantidad, ref: p.ref, compraId: p.compraId, obra: p.obra })) })).sort((a, b) => b.puntos.length - a.puntos.length);
   let resumen = null;
   if (h.length) {
     const ult = h[h.length - 1], min = h.reduce((a, p) => p.precio < a.precio ? p : a, h[0]);
     const haceAno = cerca(h.filter(p => p.tienda === ult.tienda), ult.fecha, 270, 460);
-    resumen = { ultimo: ult, minimo: min, haceAno, variacionAno: haceAno ? pct(ult.precio, haceAno.precio) : null, compras: h.length };
+    resumen = { nombre: bonito(ult.articulo), ultimo: ult, minimo: min, haceAno, variacionAno: haceAno ? pct(ult.precio, haceAno.precio) : null, compras: h.length };
   }
-  return { series, resumen, puntos: h.slice(-200) };
+  return { articulos, clave: elegida, series, resumen };
 }
 
 // Lo que más ha subido y lo que está más barato en otra tienda (artículos comprados al menos 2 veces).
