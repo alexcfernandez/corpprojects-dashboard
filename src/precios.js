@@ -12,6 +12,9 @@ const n = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g
 const DIA = 864e5;
 const SUBE = Number(process.env.PRECIO_SUBIDA_PCT || 8) / 100, BARATO = Number(process.env.PRECIO_BARATO_PCT || 10) / 100;
 const RUIDO = /\b(contribucion|scrap|envalora|ecotasa|ecoraee|por unid|portes?|transporte|recargo|desplazamiento|descuento|redondeo|ticket desayuno|bolsa)\b/;
+// Servicios y mano de obra no son «precios de material» (partidas, mantenimiento, expedientes, reconocimientos…).
+const SERVICIO = /\b(partida|mantenimiento|reparacion|expediente|vigilancia|servicio|mano de obra|conceptos?|honorarios|cuota|alquiler|horas?|jornada|trabajos?|instalacion de|montaje|desmontaje|revision|certificado|tasa|licencia|plus cuba|cuba parcial)\b/;
+const esMaterial = d => { const x = n(d).split(/\s+[-—]\s+/)[0]; return !RUIDO.test(x) && !SERVICIO.test(x); };
 
 // Nombre de tienda estable («Saint-Gobain Weber Cemarksa, S.A.U» y «Weber» → «Weber»; Werkhaus → Bauhaus).
 function tienda(p) {
@@ -19,7 +22,8 @@ function tienda(p) {
   const M = [[/weber/, 'Weber'], [/bauhaus|werkhaus/, 'Bauhaus'], [/obramat|bricomart/, 'Obramat'], [/leroy/, 'Leroy Merlin'], [/saltoki/, 'Saltoki'], [/oliveras/, 'Oliveras'], [/palah/, 'Palahí'],
     [/bigmat|materials camps|forcemat/, 'BigMat'], [/sant narcis/, 'Pintures Sant Narcís'], [/bricoman|brico depot|bricodepot/, 'Brico Depôt'], [/grimal/, 'Ferretería Grimal'], [/ikea/, 'Ikea'], [/amazon/, 'Amazon']];
   for (const [re, nom] of M) if (re.test(x)) return nom;
-  return String(p || '¿?').replace(/,?\s*(s\.?l\.?u?|s\.?a\.?u?|s\.?c\.?s?)\.?$/i, '').trim().split(/\s+/).slice(0, 3).join(' ');
+  const w = x.replace(/[^a-z0-9 ]/g, ' ').replace(/\b(sl|slu|sa|sau|scs|scp|sc|servicio|de|del|la|el|i|y)\b/g, ' ').trim().split(/\s+/).filter(Boolean).slice(0, 2);
+  return w.length ? w.map(t => t.charAt(0).toUpperCase() + t.slice(1)).join(' ') : '¿?';
 }
 // Clave del artículo: lo esencial del nombre (sin códigos, tasas ni medidas sueltas).
 function clave(desc) {
@@ -33,7 +37,7 @@ async function historial({ dias = 760, _stel = null } = {}) {
   const db = await getDB();
   const desde = new Date(Date.now() - dias * DIA).toISOString().slice(0, 10);
   const out = [], ya = new Set();
-  const add = (p) => { if (!p.clave || p.precio == null || !(p.precio > 0) || RUIDO.test(n(p.articulo))) return; const k = `${p.tienda}|${p.fecha}|${p.clave}|${p.precio.toFixed(2)}`; if (ya.has(k)) return; ya.add(k); out.push(p); };
+  const add = (p) => { if (!p.clave || p.precio == null || !(p.precio >= 0.05) || !esMaterial(p.articulo)) return; const k = `${p.tienda}|${p.fecha}|${p.clave}|${p.precio.toFixed(2)}`; if (ya.has(k)) return; ya.add(k); out.push(p); };
   const cs = await db.collection('compras').find({ estado: { $in: ['revisada', 'por_revisar', 'archivo'] }, fecha: { $gte: desde }, tipo: { $in: ['factura', 'ticket', 'albaran'] } }).project({ proveedor: 1, fecha: 1, lineas: 1, numero: 1, obraRef: 1 }).toArray();
   for (const c of cs) for (const l of c.lineas || []) {
     const cant = Number(l.cantidad) || null;
@@ -96,12 +100,13 @@ async function subidas({ limite = 12, ...deps } = {}) {
     const cmp = [['hace un año', ano], ['hace unos meses', tres], ['la compra anterior', ant]].filter(([, p]) => p && p !== ult);
     for (const [cuando, p] of cmp) {
       const v = pct(ult.precio, p.precio);
-      if (v != null && v >= SUBE * 100 && v < 300) { subs.push({ articulo: ult.articulo, clave: k, tienda: ult.tienda, antes: p.precio, ahora: ult.precio, fechaAntes: p.fecha, fechaAhora: ult.fecha, pct: v, cuando, impacto: Math.round((ult.precio - p.precio) * (ult.cantidad || 1) * 100) / 100 }); break; }
+      // más del 80 % suele ser otra unidad (paquete / m², caja / ud), no una subida
+      if (v != null && v >= SUBE * 100 && v <= 80) { subs.push({ articulo: ult.articulo, clave: k, tienda: ult.tienda, antes: p.precio, ahora: ult.precio, fechaAntes: p.fecha, fechaAhora: ult.fecha, pct: v, cuando, impacto: Math.round((ult.precio - p.precio) * (ult.cantidad || 1) * 100) / 100 }); break; }
     }
     // Más barato en otra tienda en los últimos 6 meses.
     const otras = ps.filter(p => p.tienda !== ult.tienda && (new Date(ult.fecha) - new Date(p.fecha)) / DIA <= 180);
     const mejor = otras.reduce((a, p) => !a || p.precio < a.precio ? p : a, null);
-    if (mejor && mejor.precio < ult.precio * (1 - BARATO)) baratos.push({ articulo: ult.articulo, clave: k, tienda: ult.tienda, precio: ult.precio, fecha: ult.fecha, otra: mejor.tienda, precioOtra: mejor.precio, fechaOtra: mejor.fecha, pct: pct(ult.precio, mejor.precio) });
+    if (mejor && mejor.precio < ult.precio * (1 - BARATO) && mejor.precio >= ult.precio * 0.5) baratos.push({ articulo: ult.articulo, clave: k, tienda: ult.tienda, precio: ult.precio, fecha: ult.fecha, otra: mejor.tienda, precioOtra: mejor.precio, fechaOtra: mejor.fecha, pct: pct(ult.precio, mejor.precio) });
   }
   subs.sort((a, b) => b.impacto - a.impacto || b.pct - a.pct);
   baratos.sort((a, b) => b.pct - a.pct);
@@ -114,15 +119,15 @@ async function alComprar(compra, { _avisar = null, _hist = null } = {}) {
   const h = _hist ? await _hist() : await historial({ dias: 500 });
   const t = tienda(compra.proveedor), avisos = [];
   for (const l of compra.lineas) {
-    const k = clave(l.descripcion); if (!k || RUIDO.test(n(l.descripcion))) continue;
+    const k = clave(l.descripcion); if (!k || !esMaterial(l.descripcion)) continue;
     const cant = Number(l.cantidad) || null;
     const pu = l.importe != null && cant ? Math.round(Number(l.importe) / cant * 100) / 100 : l.precio != null ? Math.round(Number(l.precio) * (1 - (Number(l.dto) || 0) / 100) * 100) / 100 : null;
     if (!(pu > 0)) continue;
     const prev = h.filter(p => p.clave === k && p.compraId !== String(compra._id) && p.fecha < compra.fecha);
     const mismaAnt = prev.filter(p => p.tienda === t).pop();
-    if (mismaAnt && pu >= mismaAnt.precio * (1 + SUBE)) avisos.push(`📈 *${l.descripcion}*: ${pu.toFixed(2)} € en ${t}; el ${String(mismaAnt.fecha).split('-').reverse().join('/')} costaba ${mismaAnt.precio.toFixed(2)} € (+${pct(pu, mismaAnt.precio)} %).`);
+    if (mismaAnt && pu >= mismaAnt.precio * (1 + SUBE) && pu <= mismaAnt.precio * 1.8) avisos.push(`📈 *${l.descripcion}*: ${pu.toFixed(2)} € en ${t}; el ${String(mismaAnt.fecha).split('-').reverse().join('/')} costaba ${mismaAnt.precio.toFixed(2)} € (+${pct(pu, mismaAnt.precio)} %).`);
     const otra = prev.filter(p => p.tienda !== t && (new Date(compra.fecha) - new Date(p.fecha)) / DIA <= 180).reduce((a, p) => !a || p.precio < a.precio ? p : a, null);
-    if (otra && otra.precio <= pu * (1 - BARATO)) avisos.push(`💡 *${l.descripcion}*: ${pu.toFixed(2)} € en ${t}; en *${otra.tienda}* lo pagamos a ${otra.precio.toFixed(2)} € el ${String(otra.fecha).split('-').reverse().join('/')} (${pct(pu, otra.precio)} % más barato allí).`);
+    if (otra && otra.precio <= pu * (1 - BARATO) && otra.precio >= pu * 0.5) avisos.push(`💡 *${l.descripcion}*: ${pu.toFixed(2)} € en ${t}; en *${otra.tienda}* lo pagamos a ${otra.precio.toFixed(2)} € el ${String(otra.fecha).split('-').reverse().join('/')} (${pct(pu, otra.precio)} % más barato allí).`);
   }
   if (avisos.length) { try { await (_avisar || require('./notifications').sendWhatsApp)(`🏷️ *Precios* — compra de ${t}${compra.numero ? ' nº ' + compra.numero : ''}:\n${avisos.slice(0, 6).join('\n')}`); } catch (e) {} }
   return { avisos };
