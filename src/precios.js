@@ -43,7 +43,7 @@ const _esMat = d => { const x = n(d).split(/\s+[-—]\s+/)[0]; return !RUIDO.tes
 // Nombre de tienda estable («Saint-Gobain Weber Cemarksa, S.A.U» y «Weber» → «Weber»; Werkhaus → Bauhaus).
 function tienda(p) {
   const x = n(p);
-  const M = [[/weber/, 'Weber'], [/bauhaus|werkhaus/, 'Bauhaus'], [/obramat|bricomart/, 'Obramat'], [/leroy/, 'Leroy Merlin'], [/saltoki/, 'Saltoki'], [/oliveras/, 'Oliveras'], [/palah/, 'Palahí'],
+  const M = [[/rachid|ayada|9 ?electric|nou ?electric/, '9electric (Rachid)'], [/ruben esteban/, 'Rubén Esteban'], [/weber/, 'Weber'], [/bauhaus|werkhaus/, 'Bauhaus'], [/obramat|bricomart/, 'Obramat'], [/leroy/, 'Leroy Merlin'], [/saltoki/, 'Saltoki'], [/oliveras/, 'Oliveras'], [/palah/, 'Palahí'],
     [/bigmat|materials camps|forcemat/, 'BigMat'], [/sant narcis/, 'Pintures Sant Narcís'], [/bricoman|brico depot|bricodepot/, 'Brico Depôt'], [/grimal/, 'Ferretería Grimal'], [/ikea/, 'Ikea'], [/amazon/, 'Amazon']];
   for (const [re, nom] of M) if (re.test(x)) return nom;
   const w = x.replace(/[^a-z0-9 ]/g, ' ').replace(/\b(sl|slu|sa|sau|scs|scp|sc|servicio|de|del|la|el|i|y)\b/g, ' ').trim().split(/\s+/).filter(Boolean).slice(0, 2);
@@ -61,7 +61,7 @@ async function historial({ dias = 760, _stel = null } = {}) {
   const db = await getDB();
   const desde = new Date(Date.now() - dias * DIA).toISOString().slice(0, 10);
   const out = [], ya = new Set();
-  const add = (p) => { if (!p.clave || p.precio == null || !(p.precio >= 0.05) || NO_TIENDA.test(n(p.tiendaRaw || p.tienda)) || (!p.mo && !esMaterial(p.articulo))) return; const k = `${p.tienda}|${p.fecha}|${p.clave}|${p.precio.toFixed(2)}`; if (ya.has(k)) return; ya.add(k); p.familia = familia(p); out.push(p); };
+  const add = (p) => { if (!p.clave || p.precio == null || !(p.precio >= 0.05) || NO_TIENDA.test(n(p.tiendaRaw || p.tienda)) || (!p.mo && !esMaterial(p.articulo))) return; const k = `${p.tienda}|${p.fecha}|${p.clave}`; if (ya.has(k)) return; ya.add(k); p.familia = familia(p); out.push(p); };
   const cs = await db.collection('compras').find({ estado: { $in: ['revisada', 'por_revisar', 'archivo'] }, fecha: { $gte: desde }, tipo: { $in: ['factura', 'ticket', 'albaran'] } }).project({ proveedor: 1, fecha: 1, lineas: 1, numero: 1, obraRef: 1 }).toArray();
   for (const c of cs) for (const l of c.lineas || []) {
     const cant = Number(l.cantidad) || null;
