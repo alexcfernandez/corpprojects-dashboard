@@ -47,7 +47,7 @@ async function historial({ dias = 400, _stel = null } = {}) {
   const db = await getDB();
   const desde = new Date(Date.now() - dias * 864e5).toISOString().slice(0, 10);
   const out = [], ya = new Set();
-  const propias = await db.collection('compras').find({ estado: { $ne: 'descartada' }, fecha: { $gte: desde } }).project({ proveedor: 1, fecha: 1, lineas: 1, obraRef: 1, subidaPor: 1, numero: 1, duplicadoDe: 1 }).toArray();
+  const propias = await db.collection('compras').find({ estado: { $ne: 'descartada' }, fecha: { $gte: desde } }).project({ proveedor: 1, fecha: 1, lineas: 1, obraRef: 1, subidaPor: 1, compradoPor: 1, numero: 1, duplicadoDe: 1, total: 1 }).toArray();
   for (const c of propias) {
     if (c.duplicadoDe || !c.fecha) continue;
     for (const l of c.lineas || []) {
@@ -58,8 +58,8 @@ async function historial({ dias = 400, _stel = null } = {}) {
       const k = clave(c.proveedor, c.fecha, cat.id, imp);
       if (ya.has(k)) { const e = out.find(x => x._k === k); if (e) { e.obra = e.obra || c.obraRef || null; e.quien = e.quien || (c.subidaPor && c.subidaPor.kind === 'worker' ? c.subidaPor.name : null); } continue; }
       ya.add(k);
-      out.push({ _k: k, cat: cat.id, nombre: cat.nombre, fecha: c.fecha, proveedor: c.proveedor || '', articulo: l.descripcion, importe: imp, cantidad: cant, obra: c.obraRef || null,
-        quien: c.subidaPor && c.subidaPor.kind === 'worker' ? c.subidaPor.name : null, compraId: String(c._id) });
+      out.push({ _k: k, cat: cat.id, nombre: cat.nombre, fecha: c.fecha, proveedor: c.proveedor || '', articulo: l.descripcion, importe: imp, cantidad: cant, obra: c.obraRef || null, totalDoc: c.total,
+        quien: c.subidaPor && c.subidaPor.kind === 'worker' ? c.subidaPor.name : (c.compradoPor && c.compradoPor.name) || null, compraId: String(c._id) });
     }
   }
   try {
@@ -75,11 +75,40 @@ async function historial({ dias = 400, _stel = null } = {}) {
         const cat = categoria(nom, Number.isFinite(p) ? p : null);
         if (!cat) continue;
         const k = clave(inv.supplier, f, cat.id, t); if (ya.has(k)) continue; ya.add(k);
-        out.push({ _k: k, cat: cat.id, nombre: cat.nombre, fecha: f, proveedor: inv.supplier || '', articulo: nom, importe: Number.isFinite(t) ? t : null, cantidad: u, obra: null, quien: null, fpr: inv.number });
+        out.push({ _k: k, cat: cat.id, nombre: cat.nombre, fecha: f, proveedor: inv.supplier || '', articulo: nom, importe: Number.isFinite(t) ? t : null, cantidad: u, obra: null, quien: null, fpr: inv.number, totalDoc: inv.total });
       }
     }
   } catch (e) { /* StelOrder sin cupo: solo con las de Compras */ }
-  return out.map(({ _k, ...x }) => x).sort((a, b) => a.fecha.localeCompare(b.fecha));
+  // Quién pagó: el pago con tarjeta del mismo comercio, por el total del documento, ese día o hasta 3 días antes.
+  try { await ponerTarjetas(out, desde); } catch (e) { /* sin banco: sin nombre */ }
+  return out.map(({ _k, totalDoc, ...x }) => x).sort((a, b) => a.fecha.localeCompare(b.fecha));
+}
+
+// Pagos con tarjeta (Revolut de cada uno y la de Santander) con la persona de cada tarjeta (Cierre del trimestre).
+async function pagosTarjeta(desde) {
+  const db = await getDB();
+  const [tm, bm, tarjetas, users] = await Promise.all([
+    db.collection('tarjetaMovimientos').find({ fecha: { $gte: desde }, importe: { $lt: 0 }, tipo: 'CARD_PAYMENT', interno: { $ne: true } }).project({ fecha: 1, importe: 1, concepto: 1, tarjeta: 1, estado: 1 }).toArray(),
+    db.collection('bancoMovimientos').find({ fechaOperacion: { $gte: desde }, importe: { $lt: 0 }, concepto: { $regex: 'tarj', $options: 'i' } }).project({ fechaOperacion: 1, importe: 1, concepto: 1 }).toArray(),
+    db.collection('tarjetas').find({}).toArray(), require('./users').getUsers(false),
+  ]);
+  const quien = last4 => { try { const q = require('./ticketsAviso')._quien(tarjetas, users, last4); return q ? ((q.user && q.user.name) || q.persona || null) : null; } catch (e) { return null; } };
+  return [
+    ...tm.filter(m => !/declined|reverted|failed/i.test(m.estado || '')).map(m => ({ fecha: String(m.fecha).slice(0, 10), importe: Math.abs(m.importe), concepto: m.concepto, persona: quien(m.tarjeta) })),
+    ...bm.map(m => { const t = /\*\s*\d*?(\d{4})\b/.exec(m.concepto || ''); return { fecha: String(m.fechaOperacion).slice(0, 10), importe: Math.abs(m.importe), concepto: m.concepto, persona: t ? quien(t[1]) : null }; }),
+  ].filter(p => p.persona);
+}
+async function ponerTarjetas(items, desde) {
+  const sin = items.filter(x => !x.quien && x.totalDoc);
+  if (!sin.length) return;
+  const pagos = await pagosTarjeta(desde);
+  for (const x of sin) {
+    const tok = n(x.proveedor).replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).find(w => w.length >= 4 && !/^(girona|materials|materiales|derivats|sociedad|limitada)$/.test(w));
+    if (!tok) continue;
+    const c = pagos.filter(p => n(p.concepto).includes(tok) && Math.abs(p.importe - Math.abs(x.totalDoc)) < 0.6 && (new Date(x.fecha) - new Date(p.fecha)) / 864e5 >= -1 && (new Date(x.fecha) - new Date(p.fecha)) / 864e5 <= 3);
+    const ps = [...new Set(c.map(p => p.persona))];
+    if (ps.length === 1) { x.quien = ps[0]; x.porTarjeta = true; }
+  }
 }
 
 // Por herramienta: cuántas se han comprado y las que caen a menos de VENTANA días de la anterior.
@@ -111,9 +140,77 @@ async function obraDeTexto(texto) {
   return sc.length && (sc.length === 1 || sc[0].hits > sc[1].hits) ? sc[0].o : null;
 }
 
+// ── Duplicados: misma compra subida dos veces (foto del trabajador + correo + subida masiva…) ──
+const nnum = x => String(x || '').replace(/[^0-9a-z]/gi, '').replace(/^0+/, '').toLowerCase();
+function puntos(c) {   // cuál se ve mejor / tiene más datos
+  return (c.estado === 'revisada' ? 100 : c.estado === 'por_revisar' ? 10 : 0) + (c.subidaPor && c.subidaPor.kind === 'worker' ? 5 : 0) + Math.min(c.nLineas || 0, 60) / 4
+    + (c.ia && c.ia.calidad === 'legible' ? 6 : c.ia && c.ia.calidad === 'cortado' ? -25 : 0) + (c.obraId ? 4 : 0) + Math.min(c.nFotos || 1, 4) + (c.total ? 2 : 0);
+}
+async function duplicados() {
+  const db = await getDB();
+  const l = (await db.collection('compras').find({ estado: { $ne: 'descartada' } }).project({ lineas: 0 }).sort({ createdAt: -1 }).limit(1500).toArray()).map(c => ({ ...c, _id: String(c._id) }));
+  const nl = await db.collection('compras').aggregate([{ $match: { estado: { $ne: 'descartada' } } }, { $project: { n: { $size: { $ifNull: ['$lineas', []] } } } }]).toArray().catch(() => []);
+  const nPor = Object.fromEntries(nl.map(x => [String(x._id), x.n])); l.forEach(c => { c.nLineas = nPor[c._id] || 0; });
+  const usado = new Set(), out = [];
+  for (const a of l) {
+    if (usado.has(a._id)) continue;
+    const g = [a];
+    for (const b of l) {
+      if (b === a || usado.has(b._id)) continue;
+      if (!((a.proveedorNorm && a.proveedorNorm === b.proveedorNorm) || (a.nif && a.nif === b.nif))) continue;
+      if ((a.tipo === 'albaran') !== (b.tipo === 'albaran')) continue;   // factura + su albarán no es un duplicado (se casan)
+      const mismoNum = a.numero && b.numero && nnum(a.numero) === nnum(b.numero);
+      const mismoImp = a.total != null && b.total != null && Math.abs(a.total - b.total) < 0.02;
+      const df = a.fecha && b.fecha ? Math.abs(new Date(a.fecha) - new Date(b.fecha)) / 864e5 : 99;
+      if (mismoNum || (mismoImp && df <= 1)) g.push(b);
+    }
+    if (g.length < 2 || !g.some(x => x.estado === 'por_revisar')) continue;
+    g.forEach(x => usado.add(x._id));
+    const orden = g.slice().sort((x, y) => puntos(y) - puntos(x));
+    const seguro = g.every(x => nnum(x.numero) && nnum(x.numero) === nnum(g[0].numero) && x.total != null && Math.abs(x.total - g[0].total) < 0.02 && x.tipo === g[0].tipo)
+      && !(g.filter(x => x.obraId).length > 1 && new Set(g.filter(x => x.obraId).map(x => x.obraId)).size > 1)   // obras distintas: que lo mire una persona
+      && !(orden[0].estado === 'revisada' && orden.slice(1).some(x => x.obraId && !orden[0].obraId));            // la que se va tiene la obra y la revisada no
+    out.push({ seguro, mantener: orden[0]._id, compras: orden.map(c => ({ id: c._id, estado: c.estado, tipo: c.tipo, proveedor: c.proveedor, numero: c.numero, fecha: c.fecha, total: c.total, nFotos: c.nFotos || 1, nLineas: c.nLineas, origen: c.origen,
+      subidaPor: (c.subidaPor || {}).name || '', calidad: c.ia && c.ia.calidad, obraRef: c.obraRef || null, puntos: Math.round(puntos(c)) })) });
+  }
+  return out;
+}
+// Limpieza: los duplicados seguros se resuelven solos (se queda la que más puntúa).
+async function limpiarDuplicados({ por = 'Corpy (limpieza)' } = {}) {
+  const C = require('./compras'); const r = { resueltos: [], paraMirar: [] };
+  for (const d of await duplicados()) {
+    if (!d.seguro) { r.paraMirar.push(d); continue; }
+    for (const c of d.compras.slice(1)) { try { r.resueltos.push({ ...(await C.resolverDuplicado(d.mantener, c.id, por)), proveedor: c.proveedor, numero: c.numero }); } catch (e) { r.paraMirar.push({ ...d, error: e.message }); } }
+  }
+  return r;
+}
+
+// ── La obra escrita en el papel («obra Rutlla», la dirección de entrega) → se pone sola ──
+async function obrasDesdePistas({ aplicar = false, soloId = null } = {}) {
+  const db = await getDB();
+  const q = { estado: 'por_revisar', obraId: { $in: [null, ''] }, varias: { $ne: true } };
+  if (soloId) q._id = new ObjectId(String(soloId));
+  const cs = await db.collection('compras').find(q).project({ obraPista: 1, nota: 1, destino: 1, proveedor: 1, numero: 1, total: 1, 'lineas.obraTexto': 1 }).toArray();
+  const out = [];
+  for (const c of cs) {
+    if (c.destino && c.destino !== 'obra') continue;
+    const pistas = [c.obraPista, ...new Set((c.lineas || []).map(l => l.obraTexto).filter(Boolean))].filter(Boolean);
+    if (!pistas.length) continue;
+    const o = await obraDeTexto(pistas.join(' · '));
+    if (!o) continue;
+    out.push({ id: String(c._id), proveedor: c.proveedor, numero: c.numero, total: c.total, pista: pistas.join(' · ').slice(0, 120), obra: o.reference });
+    if (aplicar) await db.collection('compras').updateOne({ _id: c._id }, { $set: { obraId: String(o._id), obraRef: o.reference, destino: 'obra', obraAuto: { desde: pistas.join(' · ').slice(0, 160), at: new Date() }, updatedAt: new Date() } });
+  }
+  return { n: out.length, aplicado: aplicar, lista: out };
+}
+
 // Al entrar una compra (ya leída por la IA).
 async function alSubir(compra, { _avisar = null, _crearEncargo = null, _hist = null } = {}) {
   if (!compra) return {};
+  // Si el papel dice la obra, se pone sola (y no se le pregunta al trabajador).
+  if (!compra.obraId && compra.obraPista && !compra.varias && (!compra.destino || compra.destino === 'obra')) {
+    try { const r = await obrasDesdePistas({ aplicar: true, soloId: compra._id }); if (r.lista[0]) { compra.obraRef = r.lista[0].obra; compra.obraId = 'auto'; } } catch (e) {}
+  }
   const nuevas = [];
   for (const l of compra.lineas || []) { const cant = Number(l.cantidad) || 1; const imp = l.importe != null ? Number(l.importe) : null; const c = categoria(l.descripcion, l.precio != null ? l.precio : (imp != null ? imp / cant : null)); if (c && !nuevas.some(x => x.cat.id === c.id)) nuevas.push({ cat: c, l, imp }); }
   const out = { repetidas: [] };
@@ -161,4 +258,4 @@ async function respuestaCompra(origen, texto, nombre) {
   return obra ? { obra: obra.reference } : {};
 }
 
-module.exports = { categoria, historial, repetidas, textoInforme, alSubir, respuestaCompra, obraDeTexto, DURABLES, VENTANA };
+module.exports = { duplicados, limpiarDuplicados, obrasDesdePistas, categoria, historial, repetidas, textoInforme, alSubir, respuestaCompra, obraDeTexto, DURABLES, VENTANA };

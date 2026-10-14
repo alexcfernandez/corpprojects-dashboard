@@ -1812,6 +1812,24 @@ app.get('/api/compras/pendientes', async (req, res) => {
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 // Herramientas compradas más de una vez (enrolladores, radiales, taladros…): cuándo, dónde, quién y para qué obra.
+// Duplicados: parejas para comparar y «quedarse con esta» (la otra se descarta sin avisar y le pasa la obra).
+app.get('/api/compras/duplicados', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./comprasVigilancia').duplicados()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/compras/duplicados/limpiar', express.json(), async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./comprasVigilancia').limpiarDuplicados({ por: q.name })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/compras/duplicado', express.json(), async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); const b = req.body || {}; res.json(await require('./compras').resolverDuplicado(b.mantener, b.quitar, q.name)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+// Compras sin obra cuyo papel dice la obra («obra Rutlla», dirección de entrega…): la pone sola (aplicar) o la propone.
+app.post('/api/compras/obra-sola', express.json(), async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./comprasVigilancia').obrasDesdePistas({ aplicar: (req.body || {}).aplicar === true })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
 app.get('/api/compras/repetidas', async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo Dueño y Oficina revisan compras' });
     const V = require('./comprasVigilancia'); const g = await V.repetidas({ dias: Number(req.query.dias) || 400 }); res.json({ grupos: g, texto: V.textoInforme(g), ventana: V.VENTANA }); }
@@ -1894,7 +1912,7 @@ app.post('/api/compras/:id/revisar', async (req, res) => {
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.post('/api/compras/:id/descartar', async (req, res) => {
-  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').descartar(req.params.id, q.name, (req.body || {}).motivo)); }
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./compras').descartar(req.params.id, q.name, (req.body || {}).motivo, { avisar: (req.body || {}).avisar !== false })); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.post('/api/compras/:id/reabrir', async (req, res) => {

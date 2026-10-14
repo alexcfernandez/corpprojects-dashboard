@@ -646,25 +646,47 @@ async function revisar(id, por, { enviarStel = true, herramientas = null, almace
   if (dest === 'vehiculo' && (c.lineas || []).some(l => l.vehiculoId)) { try { await require('./repostajes').alConfirmar(c); } catch (e) { console.warn('[Compras] repostajes:', e.message); } }
   // Cierra el aviso al trabajador con lo que ha pasado (push, sin importes)
   try {
-    if (c.subidaPor && c.subidaPor.kind === 'worker') await require('./push').sendToWorker(c.subidaPor.userId, { title: '✅ Compra revisada', body: `${TIPO_TXT[c.tipo]}${c.proveedor ? ' de ' + c.proveedor : ''} — ${c.obraRef || DESTINO_TXT[dest]}${(set.activosCreados || []).length ? ' · ' + set.activosCreados.length + (dest === 'ropa' ? ' prenda(s)' : ' herramienta(s)') + ' a tu nombre' : ''}.`, url: '/compra', tag: 'compra-revisada' });
+    if (avisar && c.subidaPor && c.subidaPor.kind === 'worker') await require('./push').sendToWorker(c.subidaPor.userId, { title: '✅ Compra revisada', body: `${TIPO_TXT[c.tipo]}${c.proveedor ? ' de ' + c.proveedor : ''} — ${c.obraRef || DESTINO_TXT[dest]}${(set.activosCreados || []).length ? ' · ' + set.activosCreados.length + (dest === 'ropa' ? ' prenda(s)' : ' herramienta(s)') + ' a tu nombre' : ''}.`, url: '/compra', tag: 'compra-revisada' });
   } catch (e) {}
   return getCompra(id);
 }
-async function descartar(id, por, motivo) {
+// Dos copias de la misma compra: se queda «mantener», la otra se descarta (sin avisar a nadie) y lo que solo tenía la
+// descartada (la obra, quién la subió, la nota) pasa a la que se queda si esta no lo tiene y aún no está revisada.
+async function resolverDuplicado(mantener, quitar, por) {
+  const db = await getDB();
+  const [k, q] = await Promise.all([db.collection(COL).findOne({ _id: oid(mantener), empresaId: EMPRESA }), db.collection(COL).findOne({ _id: oid(quitar), empresaId: EMPRESA })]);
+  if (!k || !q) throw new Error('Compra no encontrada');
+  if (String(k._id) === String(q._id)) throw new Error('Es la misma');
+  const set = { updatedAt: new Date() }, unset = {};
+  if (k.estado !== 'revisada') {
+    for (const f of ['obraId', 'obraRef', 'reparto', 'varias', 'vehiculoId', 'vehiculoNombre', 'clienteNombre']) if (q[f] != null && !(Array.isArray(q[f]) && !q[f].length) && (k[f] == null || (Array.isArray(k[f]) && !k[f].length))) set[f] = q[f];
+    if (set.obraId && (!k.destino || k.destino === 'obra')) set.destino = 'obra';
+    if (q.subidaPor && q.subidaPor.kind === 'worker' && !(k.subidaPor && k.subidaPor.kind === 'worker')) set.compradoPor = q.subidaPor;
+    if (q.nota && !k.nota) set.nota = q.nota;
+  }
+  if (k.duplicadoDe && String(k.duplicadoDe) === String(q._id)) unset.duplicadoDe = '';
+  if (k.duplicadoDe && String(k.duplicadoDe._id || k.duplicadoDe) === String(q._id)) unset.duplicadoDe = '';
+  await db.collection(COL).updateOne({ _id: k._id }, { $set: set, ...(Object.keys(unset).length ? { $unset: unset } : {}) });
+  await descartar(String(q._id), por, `Repetida: se queda la copia ${k.origen === 'email' ? 'del correo' : k.origen === 'masiva' ? 'de la subida masiva' : 'de ' + ((k.subidaPor && k.subidaPor.name) || 'Compras')}`, { avisar: false });
+  return { ok: true, mantener: String(k._id), quitar: String(q._id), heredado: Object.keys(set).filter(x => x !== 'updatedAt') };
+}
+
+// avisar:false = sin WhatsApp ni push al trabajador (limpieza de duplicados: no tiene que hacer nada).
+async function descartar(id, por, motivo, { avisar = true } = {}) {
   const db = await getDB();
   const c = await db.collection(COL).findOne({ _id: oid(id), empresaId: EMPRESA });
   if (!c) throw new Error('Compra no encontrada');
   await db.collection(COL).updateOne({ _id: c._id }, { $set: { estado: 'descartada', descartadaPor: por || '', descartadaAt: new Date(), descarteMotivo: String(motivo || '').trim().slice(0, 200) || null, updatedAt: new Date() } });
   // WhatsApp al trabajador: qué se descartó, por qué y, si es la foto, que la repita (con el enlace).
   try {
-    if (c.subidaPor && c.subidaPor.kind === 'worker' && c.subidaPor.userId) {
+    if (avisar && c.subidaPor && c.subidaPor.kind === 'worker' && c.subidaPor.userId) {
       const u = await db.collection('users').findOne({ _id: oid(c.subidaPor.userId) }, { projection: { name: 1, whatsapp: 1, telefono: 1 } }).catch(() => null);
       const d = String((u && (u.whatsapp || u.telefono)) || '').replace(/\D/g, '');
       const tel = d ? (d.length === 9 ? '+34' + d : '+' + d.replace(/^00/, '')) : null;
       if (tel) {
         const nom = String((u && u.name) || c.subidaPor.name || '').split(/\s+/)[0];
         const doc = `${(TIPO_TXT[c.tipo] || 'documento').toLowerCase()}${c.proveedor ? ' de ' + c.proveedor : ''} del ${new Date(c.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric' })}`;
-        const foto = /foto|ilegible|borros|cortad|no se ve|repet/i.test(String(motivo || ''));
+        const foto = /foto|ilegible|borros|cortad|no se ve|repite la|repetir la/i.test(String(motivo || ''));   // «repetida» (duplicado) no es «repite la foto»
         const base = String(process.env.DASHBOARD_URL || 'https://dashboard.corpprojects.es').replace(/\/$/, '');
         await require('./notifications').sendWhatsAppTo(tel, foto
           ? `Hola ${nom} 📸 La foto del ${doc} no se puede leer (${String(motivo).trim()}). ¿Puedes repetirla?\n\n✅ El papel entero dentro de la foto, plano sobre una superficie, con buena luz y sin sombras ni bolsas encima.\n\n${base}/compra`
@@ -673,7 +695,7 @@ async function descartar(id, por, motivo) {
     }
   } catch (e) { console.warn('[Compras] aviso de descarte:', e.message); }
   try {
-    if (c.subidaPor && c.subidaPor.kind === 'worker') await require('./push').sendToWorker(c.subidaPor.userId, { title: 'Compra descartada', body: `${TIPO_TXT[c.tipo]}${c.proveedor ? ' de ' + c.proveedor : ''}${motivo ? ': ' + String(motivo).slice(0, 80) : ''}. Si hace falta, vuelve a hacer la foto.`, url: '/compra', tag: 'compra-descartada' });
+    if (avisar && c.subidaPor && c.subidaPor.kind === 'worker') await require('./push').sendToWorker(c.subidaPor.userId, { title: 'Compra descartada', body: `${TIPO_TXT[c.tipo]}${c.proveedor ? ' de ' + c.proveedor : ''}${motivo ? ': ' + String(motivo).slice(0, 80) : ''}. Si hace falta, vuelve a hacer la foto.`, url: '/compra', tag: 'compra-descartada' });
   } catch (e) {}
   return getCompra(id);
 }
@@ -975,4 +997,4 @@ async function resumenPendientes({ dryRun = false } = {}) {
   return { pendientes: pend.length, enviado: ok > 0 };
 }
 
-module.exports = { repararDuplicados, subidaMasiva, estadoMasiva, _unaMasiva, _gemelaTicket, _partirPdf, propuestaLineas, _repartoDeLineas, separarFoto, n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, albaranesDelCorreo, repartoPorAlbaran, obraDeTexto, _aprenderAliasObras: aprenderAliasObras, clasificacionesParaStel, reglaProveedorDe, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };
+module.exports = { resolverDuplicado, repararDuplicados, subidaMasiva, estadoMasiva, _unaMasiva, _gemelaTicket, _partirPdf, propuestaLineas, _repartoDeLineas, separarFoto, n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, albaranesDelCorreo, repartoPorAlbaran, obraDeTexto, _aprenderAliasObras: aprenderAliasObras, clasificacionesParaStel, reglaProveedorDe, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };
