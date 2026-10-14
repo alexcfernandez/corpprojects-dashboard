@@ -14,6 +14,10 @@
 const store = new Map();    // key -> { value, expires }
 const MAX_STALE = parseInt(process.env.CACHE_MAX_STALE_MIN || 720) * 60 * 1000; // hasta 12 h se sirve caducado mientras se refresca
 const inflight = new Map(); // key -> Promise (descarga en curso)
+// Cuándo se pidió «Actualizar» (14/10/2026): una copia de Mongo anterior a eso ya no vale y se descarga de verdad.
+// Antes, tras vaciar la memoria se volvía a servir la copia (de hasta 6 h) y los cambios de StelOrder no se veían.
+const invalidadoKey = new Map(); let invalidadoTodo = 0;
+const _invalidadoEn = key => Math.max(invalidadoTodo, invalidadoKey.get(key) || 0);
 
 // COPIA EN MONGO (7/10/2026): cada reinicio (cada publicación) vaciaba la caché y volvía a descargar TODO de
 // StelOrder a la vez; con muchas publicaciones seguidas StelOrder devolvía 403. Ahora cada descarga buena se
@@ -84,7 +88,7 @@ async function cached(key, ttlMs, fetcher) {
   //     refresca por detrás (en cola).
   if (!hit) {
     const snap = await _leerSnap(key);
-    if (snap) {
+    if (snap && snap.at > _invalidadoEn(key)) {
       store.set(key, { value: snap.value, expires: snap.at + ttlMs });
       if (Date.now() >= snap.at + ttlMs && !inflight.has(key)) {
         const p = _enCola(async () => { try { const v = await fetcher(); store.set(key, { value: v, expires: Date.now() + ttlMs }); _guardarSnap(key, v); } catch (e) { /* se queda la copia */ } finally { inflight.delete(key); } });
@@ -126,9 +130,9 @@ async function cached(key, ttlMs, fetcher) {
  */
 function invalidate(key) {
   if (key) {
-    store.delete(key);
+    store.delete(key); invalidadoKey.set(key, Date.now());
   } else {
-    store.clear();
+    store.clear(); invalidadoTodo = Date.now();
   }
 }
 
