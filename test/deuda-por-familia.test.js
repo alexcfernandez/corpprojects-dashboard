@@ -11,6 +11,8 @@ require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: {
 
 process.env.OWNER_NUMBERS = '+34611223344';
 delete process.env.ANTHROPIC_API_KEY; // enrutado determinista: no debe hacer falta la IA
+process.env.JWT_SECRET = 'test-secret';
+process.env.DASHBOARD_URL = 'https://dash.test';
 
 const asistente = require(path.join(root, 'src/asistente.js'));
 const stel = require(path.join(root, 'src/stelorder.js'));
@@ -48,4 +50,37 @@ test('bloques: mayor deuda primero, clientes con subtotal, "Sin familia" al fina
 test('«qué debe la familia Bellpuig» NO es el listado por familias', async () => {
   const r = await asistente.responderConsulta('qué debe la familia Bellpuig', OWNER);
   assert.doesNotMatch(r, /Total pendiente: 3\.?450/);
+});
+
+// ── PDF para imprimir (pendientesFamiliaPdf) ──
+const PF = require(path.join(root, 'src/pendientesFamiliaPdf.js'));
+
+test('Corpy manda el enlace firmado al PDF y el enlace es válido', async () => {
+  const r = await asistente.responderConsulta('mándame el pdf de lo que nos deben', OWNER);
+  const m = r.match(/https:\/\/dash\.test\/informe\/pendientes\/(\S+)/);
+  assert.ok(m, r);
+  assert.equal(PF.verificarEnlace(m[1]), true);
+  assert.equal(PF.verificarEnlace(m[1].slice(0, -2) + 'xx'), false);                 // manipulado
+  const E = require(path.join(root, 'src/enlaceDoc.js'));
+  assert.equal(PF.verificarEnlace(E.crear('0'.repeat(24))), false);                // un /d/ de documento no sirve aquí
+});
+
+test('PDF: A4 válido, varias páginas si hace falta, con filtros de la pestaña', async () => {
+  const { PDFDocument } = require('pdf-lib');
+  const muchas = Array.from({ length: 120 }, (_, k) => ({ number: 'FAC' + k, client: 'Comunitat Prop. Carrer Àngel Guimerà ' + k + ' — L·lobet', family: k % 2 ? 'FINQUES ROCA' : '', pending: 10 + k, daysOverdue: k, alertLevel: k >= 60 ? 'critical' : 'ok' }));
+  const buf = await PF.generar(muchas);
+  assert.equal(buf.slice(0, 4).toString(), '%PDF');
+  const doc = await PDFDocument.load(buf);
+  assert.ok(doc.getPageCount() >= 3);
+  assert.deepEqual(doc.getPage(0).getSize(), { width: 595.28, height: 841.89 });
+  assert.equal(PF.filtrar(muchas, { nivel: 'critical' }).length, 60);
+  assert.equal(PF.filtrar(muchas, { familia: 'Sin familia' }).length, 60);
+  assert.equal(PF.filtrar(muchas, { q: 'Guimerà 7' }).length, 11); // 7 y 70-79
+  assert.equal((await PDFDocument.load(await PF.generar([]))).getPageCount(), 1); // sin datos: no rompe
+});
+
+test('agrupar/eur: orden por deuda, "Sin familia" al final, miles con punto', () => {
+  const g = PF.agrupar([{ client: 'A', family: 'X', pending: 1 }, { client: 'B', family: '', pending: 9000 }, { client: 'C', family: 'Y', pending: 5 }]);
+  assert.deepEqual(g.bloques.map(b => b.nombre), ['Y', 'X', 'Sin familia']);
+  assert.equal(PF.eur(1234567.5), '1.234.567,50 €');
 });

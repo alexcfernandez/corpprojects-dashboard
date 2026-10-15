@@ -201,6 +201,7 @@ function cpUpdateBanner(){
         <input type="text" class="srch" id="sPend" placeholder="Buscar cliente / nº / familia..." oninput="pp=0;rPend()">
         <select id="fFamPend" onchange="pp=0;rPend()"><option value="">Todas las familias</option></select>
         <button class="btn bgh" onclick="exportPendExcel()" title="Descargar en Excel lo que se ve ahora (respeta familia, días y búsqueda)">⬇️ Excel</button>
+        <button class="btn bgh" onclick="pdfPendFamilias()" title="PDF para imprimir: total y bloques por familia (respeta familia, días y búsqueda)">🖨️ PDF por familia</button>
         <button class="btn bp" onclick="checkAlerts()" id="alertBtn">🔔 Enviar alertas</button>
       </div>
     </div>
@@ -810,6 +811,17 @@ function ensureXLSX(){
     document.head.appendChild(s);
   });
   return _xlsxLoading;
+}
+// PDF para imprimir (lo genera el servidor): total + bloques por familia, con los filtros actuales.
+async function pdfPendFamilias(){
+  const w=window.open('','_blank');
+  const qs=new URLSearchParams({familia:document.getElementById('fFamPend')?.value||'',nivel:pf==='all'?'':pf,q:document.getElementById('sPend')?.value||''});
+  try{
+    const r=await fetch(`${API}/api/invoices/pending/pdf-familias?${qs}`,{headers:{'Authorization':`Bearer ${tok}`}});
+    if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||('HTTP '+r.status));
+    const url=URL.createObjectURL(await r.blob());
+    if(w)w.location.href=url; else window.location.href=url;
+  }catch(e){ if(w)w.close(); alert('No se pudo generar el PDF: '+e.message); }
 }
 // Descarga un Excel (.xlsx) de lo que se ve ahora, ordenado por familia y días,
 // con importes que suman, fechas reales y enlace clicable a la factura en PDF.

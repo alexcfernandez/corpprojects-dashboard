@@ -677,7 +677,8 @@ function pideDeudaPorFamilia(texto) {
   const n = norm(texto);
   const deuda = /\b(deben|debe|deuda|deudas|cobrar|cobro|cobros|impagad[oa]s?)\b|facturas pendientes|pendiente de cobr/.test(n);
   const porFam = /\b(por|en) (bloques?( de familias?)?|familias?)\b|\bagrupad[oa]s? por familia|\bcada familia\b|\btodas las familias\b/.test(n);
-  return deuda && porFam;
+  const pdf = /\b(pdf|imprimir|imprimirlo|listado)\b/.test(n); // "pdf de lo que nos deben" → el mismo listado
+  return deuda && (porFam || pdf);
 }
 const MAX_CLI_BLOQUE = 8;
 async function handlerDeudaPorFamilia(from) {
@@ -686,29 +687,20 @@ async function handlerDeudaPorFamilia(from) {
   catch (e) { console.error('[Asistente]', e.message); return '⚠️ No pude consultar StelOrder. Prueba en un momento.'; }
   if (!pend || pend.length === 0) return '✅ No hay facturas pendientes ahora mismo.';
 
-  const SIN = 'Sin familia';
-  const fams = {};
-  for (const i of pend) {
-    const f = (i.family || '').trim() || SIN, c = i.client || '(sin nombre)';
-    const b = fams[f] || (fams[f] = { nombre: f, total: 0, n: 0, cli: {} });
-    b.total += i.pending || 0; b.n++;
-    const x = b.cli[c] || (b.cli[c] = { total: 0, n: 0 });
-    x.total += i.pending || 0; x.n++;
-  }
-  // Mayor deuda primero; "Sin familia" siempre al final.
-  const bloques = Object.values(fams).sort((a, b) => (a.nombre === SIN) - (b.nombre === SIN) || b.total - a.total);
-  const total = pend.reduce((s, i) => s + (i.pending || 0), 0);
+  const PF = require('./pendientesFamiliaPdf');
+  const g = PF.agrupar(pend); // mayor deuda primero; "Sin familia" al final (igual que el PDF)
   const fmtBloque = b => {
-    const cli = Object.entries(b.cli).sort((x, y) => y[1].total - x[1].total);
     let t = `*${b.nombre}* — *${fmtEur(b.total)}* · ${b.n} fact.\n` +
-      cli.slice(0, MAX_CLI_BLOQUE).map(([c, v]) => `   • ${c} — ${fmtEur(v.total)}${v.n > 1 ? ` (${v.n})` : ''}`).join('\n');
-    if (cli.length > MAX_CLI_BLOQUE) t += `\n   …y ${cli.length - MAX_CLI_BLOQUE} clientes más`;
+      b.clientes.slice(0, MAX_CLI_BLOQUE).map(c => `   • ${c.nombre} — ${fmtEur(c.total)}${c.n > 1 ? ` (${c.n})` : ''}`).join('\n');
+    if (b.clientes.length > MAX_CLI_BLOQUE) t += `\n   …y ${b.clientes.length - MAX_CLI_BLOQUE} clientes más`;
     return t + '\n';
   };
-  const nFam = bloques.filter(b => b.nombre !== SIN).length;
+  let pdf = '';
+  try { pdf = `\n🖨️ PDF para imprimir (con todas las facturas): ${PF.enlace({ dias: 2 })}\n_(El enlace vale 2 días y siempre saca los datos del momento.)_`; }
+  catch (e) { console.error('[Asistente] enlace PDF pendientes:', e.message); }
   return pintar(from, {
-    items: bloques, titulo: 'Pendiente por familia',
-    encabezado: `💰 *Total pendiente: ${fmtEur(total)}*\n${pend.length} facturas · ${nFam} familia${nFam === 1 ? '' : 's'}${fams[SIN] ? ' + sin familia' : ''}`,
+    items: g.bloques, titulo: 'Pendiente por familia',
+    encabezado: `💰 *Total pendiente: ${fmtEur(g.total)}*\n${g.n} facturas · ${g.nFamilias} familia${g.nFamilias === 1 ? '' : 's'}${g.conSinFamilia ? ' + sin familia' : ''}${pdf}`,
     fmt: fmtBloque
   }, 0);
 }
