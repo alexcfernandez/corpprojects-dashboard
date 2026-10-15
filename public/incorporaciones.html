@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Altas de gente nueva — Corp Projects</title><link rel="stylesheet" href="/tool-theme.css">
+<meta name="theme-color" content="#4d9cf8">
+<style>*{box-sizing:border-box;margin:0;padding:0}:root{--bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.15);--text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;--green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 18px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:10}
+.logo{width:32px;height:32px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;flex-shrink:0}
+.hbtn{margin-left:auto;background:none;border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:6px 12px;font-size:13px;text-decoration:none;white-space:nowrap}
+.wrap{max-width:900px;margin:0 auto;padding:16px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:12px}
+h3{font-size:12px;margin:0 0 10px;color:var(--text2);text-transform:uppercase;letter-spacing:.05em}
+.btn,input,select{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;color:var(--text);padding:8px 12px;font:inherit;font-size:14px;text-decoration:none;max-width:100%}
+.btn{cursor:pointer;display:inline-flex;align-items:center;gap:6px}.btn.pri{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}.btn.peq{padding:5px 10px;font-size:13px}.btn:disabled{opacity:.5;cursor:wait}
+.cab{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}.cab .n{font-weight:700;font-size:17px}.cab .f{color:var(--text2);font-size:13px}
+.tag{font-size:12px;border-radius:99px;padding:2px 9px;border:1px solid var(--border2);white-space:nowrap}.tag.tarde{color:var(--red);border-color:rgba(240,82,82,.5)}.tag.ok{color:var(--green);border-color:rgba(34,196,135,.5)}
+.barra{height:8px;border-radius:99px;background:var(--bg3);overflow:hidden;margin:10px 0 6px}.barra div{height:100%;background:linear-gradient(90deg,#4d9cf8,#22c487)}
+.paso{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:4px 10px;padding:7px 0;border-bottom:1px solid var(--border);align-items:center}.paso:last-child{border-bottom:0}
+.paso .i{font-size:15px;text-align:center}.paso .t{font-size:14px}.paso .s{font-size:12px;color:var(--amber);margin-top:2px}.paso.hecho .t{color:var(--text2)}
+.sep{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;padding:10px 0 2px}
+.cfg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.cfg label{font-size:12px;color:var(--text3);display:block;margin-bottom:4px}.cfg select,.cfg input{width:100%}
+.chk{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--text2);padding:4px 0}.chk input{width:auto}
+.acc{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.vacio{color:var(--text3);font-size:14px;padding:6px 0}.nota{font-size:12.5px;color:var(--text3);margin-top:6px}
+details summary{cursor:pointer;color:var(--text2);font-size:13px;margin-top:8px}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--border2);padding:10px 16px;border-radius:10px;display:none;z-index:50;max-width:92vw}
+@media(max-width:700px){.cfg{grid-template-columns:1fr}}
+</style><link rel="stylesheet" href="/cp-ui.css">
+<script src="/nav.js" defer></script>
+</head><body><script>try{if(localStorage.getItem("cp_theme")==="light")document.body.classList.add("light");}catch(e){}</script>
+<div class="header"><div class="logo">CP</div><div><div style="font-weight:600">Altas de gente nueva</div><div style="font-size:12px;color:var(--text3)">Pones quién empieza y qué día, y se prepara solo: papeles, condiciones, firmas y gestoría</div></div><a class="hbtn" href="/">← Dashboard</a></div>
+<div id="toast"></div>
+<div class="wrap">
+  <div class="acc" style="margin:0 0 12px"><button class="btn pri" onclick="nueva()">+ Empieza alguien nuevo</button></div>
+  <div id="form"></div>
+  <div id="out"><div class="vacio">Cargando…</div></div>
+  <div id="cfg"></div>
+</div>
+<script>
+const tok=localStorage.getItem('cp_token');const H={'Authorization':'Bearer '+tok};
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fd=d=>d?String(d).slice(0,10).split('-').reverse().join('/'):'';
+function toast(t){const e=document.getElementById('toast');e.textContent=t;e.style.display='block';clearTimeout(window._tt);window._tt=setTimeout(()=>e.style.display='none',5000);}
+async function api(m,u,b){const o={method:m,headers:{...H}};if(b){o.headers['Content-Type']='application/json';o.body=JSON.stringify(b);}const r=await fetch(u,o);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'HTTP '+r.status);return d;}
+let D={lista:[]};
+const ACC={pedir_papeles:'Pedir papeles otra vez',formulario:'Rehacer formulario',firmas:'Enviar a firmar',gestoria:'Enviar a la gestoría',tallas:'Pedir tallas'};
+const ANTES_TXT={pedir_papeles:'Pedir papeles',formulario:'Generar formulario',firmas:'Enviar a firmar',gestoria:'Enviar a la gestoría',tallas:'Pedir tallas'};
+
+async function cargar(){
+  try{D=await api('GET','/api/incorporaciones');}catch(e){document.getElementById('out').innerHTML='<div class="vacio">'+esc(e.message)+'</div>';return;}
+  pintar();
+}
+function cuando(v){const d=v.diasParaEmpezar;if(d==null)return'';if(d<0)return'empezó hace '+(-d)+' días';if(d===0)return'empieza hoy';if(d===1)return'empieza mañana';return'empieza en '+d+' días';}
+function pintar(){
+  const o=document.getElementById('out');
+  if(!D.lista.length){o.innerHTML='<div class="card"><div class="vacio">No hay ninguna alta en marcha. Pulsa «Empieza alguien nuevo».</div></div>';}
+  else o.innerHTML=D.lista.map(v=>{
+    const pct=Math.round(v.hechos/v.total*100);
+    const filas=v.pasos.map((p,i)=>(i===v.pasos.findIndex(x=>!x.antes)?'<div class="sep">Primeros días</div>':'')+`<div class="paso ${p.ok?'hecho':''}"><div class="i">${p.ok?'✅':'⏳'}</div><div><div class="t">${esc(p.t)}</div>${p.nota&&!p.ok?`<div class="s">${esc(p.nota)}</div>`:''}</div><div>${p.accion?`<button class="btn peq" onclick="hacer('${v.id}','${p.accion}',this)">${esc(p.ok?ACC[p.accion]:ANTES_TXT[p.accion])}</button>`:''}</div></div>`).join('');
+    const c=v.condiciones||{};
+    return `<div class="card"><div class="cab"><span class="n">${esc(v.nombre)}</span><span class="f">${fd(v.fechaInicio)} · ${esc(cuando(v))}</span>${v.tarde?'<span class="tag tarde">Va tarde</span>':''}${v.hechos===v.total?'<span class="tag ok">Todo listo</span>':''}</div>
+      <div class="nota">${esc(D.tipos[c.tipo]||'')} · ${esc(D.categorias[c.categoria]||'')} · ${c.jornada==='completa'?'jornada completa':'parcial '+esc(c.horasSemana)+' h'} · ${c.salario==='conveni'?'sueldo de convenio':esc(c.salarioImporte)+' € brutos/año'}${v.dni?' · DNI '+esc(v.dni):''}</div>
+      <div class="barra"><div style="width:${pct}%"></div></div><div class="nota">${v.hechos} de ${v.total} pasos${v.siguiente?' · Siguiente: '+esc(v.siguiente):''}</div>
+      <div style="margin-top:8px">${filas}</div>
+      <div class="acc">${v.formularioId?`<button class="btn peq" onclick="verDoc('${v.formularioId}')">Ver formulario</button>`:''}${v.firmadoId?`<button class="btn peq" onclick="verDoc('${v.firmadoId}')">Ver firmado</button>`:''}<button class="btn peq" onclick="nueva('${v.id}')">Cambiar datos</button><button class="btn peq" onclick="hacer('${v.id}','avanzar',this)">Seguir preparando</button><button class="btn peq" onclick="cerrar('${v.id}')">Cerrar</button></div></div>`;
+  }).join('');
+  const cf=D.config||{};
+  document.getElementById('cfg').innerHTML=`<div class="card"><h3>Ajustes</h3><label class="chk"><input type="checkbox" ${cf.autoGestoria?'checked':''} onchange="setCfg(this.checked)"> Mandar solo el alta a la gestoría (${'eduard@somassessors.com'}) en cuanto esté todo firmado y con los papeles</label><div class="nota">Si está apagado, se manda con el botón «Enviar a la gestoría». Corpy avisa cada mañana de lo que va tarde.</div></div>`;
+}
+async function hacer(id,acc,b){b.disabled=true;try{await api('POST','/api/incorporaciones/'+id+'/'+acc);toast('Hecho');await cargar();}catch(e){toast(e.message);b.disabled=false;}}
+async function cerrar(id){if(!confirm('¿Cerrar esta alta? (ya está todo, o no viene)'))return;const hecha=confirm('¿Ha empezado y está todo? Aceptar = hecha · Cancelar = anulada (no viene)');try{await api('POST','/api/incorporaciones/'+id+'/'+(hecha?'hecha':'anular'));cargar();}catch(e){toast(e.message);}}
+async function setCfg(v){try{await api('POST','/api/incorporaciones/config',{autoGestoria:v});toast(v?'Se mandará solo':'Se mandará con el botón');}catch(e){toast(e.message);cargar();}}
+async function verDoc(id){const w=window.open('','_blank');try{const r=await fetch('/api/personal/docs/'+id+'/archivo',{headers:H});if(!r.ok)throw new Error('No se pudo abrir');const b=await r.blob();w.location=URL.createObjectURL(b);}catch(e){w.close();toast(e.message);}}
+
+function nueva(id){
+  const v=id?D.lista.find(x=>x.id===id):null;const c=(v&&v.condiciones)||D.porDefecto||{};
+  const opt=(obj,sel)=>Object.entries(obj).map(([k,t])=>`<option value="${k}" ${k===sel?'selected':''}>${esc(t)}</option>`).join('');
+  const ck=(k,t)=>`<label class="chk"><input type="checkbox" id="c-${k}" ${c[k]?'checked':''}> ${t}</label>`;
+  document.getElementById('form').innerHTML=`<div class="card"><h3>${v?'Cambiar datos de '+esc(v.nombre):'Empieza alguien nuevo'}</h3>
+   <div class="cfg">
+    <div><label>Nombre y apellidos</label><input id="f-nombre" value="${esc(v?v.nombre:'')}"></div>
+    <div><label>DNI / NIE</label><input id="f-dni" value="${esc(v?v.dni:'')}" placeholder="Si no lo sabes, Corpy se lo pide"></div>
+    <div><label>Móvil (WhatsApp)</label><input id="f-tel" value="${esc(v?v.telefono:'')}" placeholder="+34 6…"></div>
+    <div><label>Día que empieza</label><input id="f-fecha" type="date" value="${esc(v?v.fechaInicio:'')}"></div>
+    <div><label>Contrato</label><select id="c-tipo">${opt(D.tipos,c.tipo)}</select></div>
+    <div><label>Categoría</label><select id="c-categoria">${opt(D.categorias,c.categoria)}</select></div>
+    <div><label>Sueldo</label><select id="c-salario" onchange="document.getElementById('w-imp').style.display=this.value==='superior'?'':'none'"><option value="conveni" ${c.salario!=='superior'?'selected':''}>El de convenio para su categoría</option><option value="superior" ${c.salario==='superior'?'selected':''}>Más que convenio</option></select></div>
+    <div id="w-imp" style="${c.salario==='superior'?'':'display:none'}"><label>€ brutos al año</label><input id="c-salarioImporte" value="${esc(c.salarioImporte||'')}"></div>
+    <div><label>Jornada</label><select id="c-jornada" onchange="document.getElementById('w-h').style.display=this.value==='parcial'?'':'none'"><option value="completa" ${c.jornada!=='parcial'?'selected':''}>Completa (40 h)</option><option value="parcial" ${c.jornada==='parcial'?'selected':''}>Parcial</option></select></div>
+    <div id="w-h" style="${c.jornada==='parcial'?'':'display:none'}"><label>Horas a la semana</label><input id="c-horasSemana" value="${esc(c.horasSemana||'')}"></div>
+    <div style="grid-column:1/-1"><label>Horario</label><input id="c-horario" value="${esc(c.horario||'')}"></div>
+    <div style="grid-column:1/-1"><label>Centro de trabajo habitual</label><input id="c-centro" value="${esc(c.centro||'')}"></div>
+   </div>
+   ${ck('prueba15','15 días de período de prueba')}
+   <details><summary>Más datos del formulario (lo normal es dejarlo así)</summary>
+    ${ck('centroHabitual','Trabaja solo en el centro indicado')}${ck('nocturno','Trabajo nocturno habitual')}${ck('turnos','Trabajo por turnos')}${ck('incentivos','Primas o incentivos fuera de convenio')}${ck('formacionExtra','Formación adicional impuesta por la empresa')}${ck('sistemaAutomatico','Sistema automático para asignar horarios, tareas o sueldo')}${ck('extranjero','Trabajará en el extranjero más de 4 semanas')}
+    <div class="cfg" style="margin-top:6px"><div style="grid-column:1/-1"><label>Domicilio social de la empresa</label><input id="c-domicilioSocial" value="${esc(c.domicilioSocial||'')}"></div></div>
+    <div class="nota">Si marcas algo que Som Assessors pide consultar antes (contrato no indefinido, incentivos, otro centro, formación, sistema automático o extranjero), el formulario no se genera hasta que lo hables con ellos.</div>
+   </details>
+   <div class="acc"><button class="btn pri" id="b-guardar" onclick="guardar('${v?v.id:''}')">${v?'Guardar cambios':'Crear y poner en marcha'}</button><button class="btn" onclick="document.getElementById('form').innerHTML=''">Cancelar</button></div>
+   <div class="nota">${v?'Si ya se había generado el formulario, se rehace y hay que volver a firmarlo.':'Al crearla: se hace su ficha, Corpy le pide el DNI y la Seguridad Social, se rellena el formulario de Som Assessors y le llega a Alfonso para firmar con sello; cuando firma, le llega al trabajador.'}</div></div>`;
+  window.scrollTo(0,0);
+}
+async function guardar(id){
+  const g=k=>document.getElementById(k);const b=g('b-guardar');b.disabled=true;
+  const cond={};['tipo','categoria','salario','salarioImporte','jornada','horasSemana','horario','centro','domicilioSocial'].forEach(k=>{if(g('c-'+k))cond[k]=g('c-'+k).value;});
+  ['prueba15','centroHabitual','nocturno','turnos','incentivos','formacionExtra','sistemaAutomatico','extranjero'].forEach(k=>{if(g('c-'+k))cond[k]=g('c-'+k).checked;});
+  const body={nombre:g('f-nombre').value,dni:g('f-dni').value,telefono:g('f-tel').value,fechaInicio:g('f-fecha').value,condiciones:cond};
+  try{await api(id?'PUT':'POST','/api/incorporaciones'+(id?'/'+id:''),body);if(id)await api('POST','/api/incorporaciones/'+id+'/avanzar');g('form').innerHTML='';toast(id?'Guardado':'En marcha');cargar();}catch(e){toast(e.message);b.disabled=false;}
+}
+cargar();
+</script>
+</body></html>

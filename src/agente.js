@@ -90,6 +90,21 @@ const TOOLS = [
     },
   },
   {
+    name: 'nueva_incorporacion',
+    description: 'ALTA DE UNA PERSONA NUEVA que empieza a trabajar: «empieza Norman el lunes 19», «el día 2 entra Pedro García, su móvil es 6…, DNI …, oficial de primera». Prepara solo su ficha, le pide los papeles, rellena el formulario de condiciones de la gestoría y lo manda a firmar.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        nombre: { type: 'string', description: 'Nombre y apellidos tal cual los diga.' },
+        fechaInicio: { type: 'string', description: 'YYYY-MM-DD del primer día de trabajo.' },
+        telefono: { type: ['string', 'null'], description: 'Su móvil si lo dice; null si no.' },
+        dni: { type: ['string', 'null'] },
+        categoria: { type: ['string', 'null'], enum: ['peo', 'oficial_3', 'oficial_1', null], description: 'peón / oficial de tercera (ayudante) / oficial de primera, si lo dice.' },
+      },
+      required: ['nombre', 'fechaInicio'],
+    },
+  },
+  {
     name: 'datos_empresa',
     description: 'DATOS DE NUESTRA EMPRESA (solo lee): razón social, CIF, domicilio y qué documentos de la empresa tenemos guardados en Personal (escrituras/CIF, certificados de Hacienda y Seguridad Social, seguros, REA, TC…) con su fecha y caducidad. P. ej. «¿cuál es nuestro CIF?», «¿tenemos el certificado de Hacienda al día?».',
     input_schema: { type: 'object', properties: {} },
@@ -143,6 +158,7 @@ REGLAS DURAS:
 - HORA: si es INEQUÍVOCA ("19:30", "a las 19", "a las 8 de la mañana", "mediodía") → HH:MM en 24h. Si es AMBIGUA mañana/tarde ("las 7.30", "a las 8", "a las 5" sin "de la mañana/tarde" ni formato 24h) → NO la asumas: PREGUNTA "¿mañana o tarde? (p. ej. 07:30 o 19:30)" antes de crear el evento. Si no dice hora → null.
 - Tallas de ropa/calzado y cumpleaños → pedir_tallas. «Pídele / dile / pregúntale / recuérdale a X que…» (también «acuérdate de preguntarle a X el lunes…») → encargar_a_trabajador (redacta el mensaje para el trabajador en tú, breve). «X ya lo ha hecho / ya me lo dio / olvida lo de…» → cerrar_encargo.
 - Presencia, horas, quién trabajó/vino/faltó, vacaciones, bajas → consultar_presencia. Para «cuántos días faltó/trabajó/lleva X» usa resumenPorPersona: «faltó» = faltaInjustificada + faltaJustificada + sinApuntar (días laborables sin nada apuntado); dilo desglosado y con las fechas si son pocas. Si preguntan «cuántos días lleva» sin decir de qué, da días trabajados (y vacaciones/baja si hay). Horas o coste de una obra → horas_obra. Contesta SOLO con lo que devuelvan (si no hay datos, dilo). «Esta semana» = desde el lunes.
+- «Empieza / entra a trabajar X el día…», «da de alta a…» → nueva_incorporacion.
 - Datos o documentos de NUESTRA empresa (CIF, razón social, domicilio, certificados) → datos_empresa. «Pásame / mándame / necesito / envíame <documento>» de la empresa o de un trabajador → pasar_documento (NO digas que no tienes acceso: búscalo).
 - Al contestar con datos: breve, para WhatsApp (*negritas* para nombres y totales, una línea por persona u obra).
 - Responde en español y breve.`;
@@ -319,6 +335,17 @@ async function _trabajador(nombre) {
   return { varios: (c.length ? c : p).map(u => u.name) };
 }
 async function ejecutarTool(name, input, from) {
+  if (name === 'nueva_incorporacion') {
+    if (!require('./acceso').esOwner(from)) return { handled: true, reply: 'Las altas de gente nueva las pone Álex o la oficina desde el dashboard: https://dashboard.corpprojects.es/incorporaciones' };
+    try {
+      const I = require('./incorporaciones');
+      const v = await I.crear({ nombre: input.nombre, fechaInicio: input.fechaInicio, telefono: input.telefono || '', dni: input.dni || '', condiciones: input.categoria ? { categoria: input.categoria } : {} }, 'Álex (Corpy)');
+      const f = d => String(d).split('-').reverse().join('/');
+      const hecho = v.pasos.filter(p => p.ok).map(p => '✅ ' + p.t), falta = v.pasos.filter(p => !p.ok && p.antes).map(p => '⏳ ' + p.t + (p.nota ? ` (${p.nota})` : ''));
+      const pide = [!input.telefono && 'su *móvil*', !input.dni && 'su *DNI/NIE*'].filter(Boolean);
+      return { handled: true, reply: `🧑‍🔧 Alta de *${v.nombre}* en marcha, empieza el *${f(v.fechaInicio)}* (${I.CATEGORIAS[v.condiciones.categoria]}, indefinido, convenio, jornada completa, 15 días de prueba).\n\n${[...hecho, ...falta].join('\n')}${pide.length ? `\n\nPara seguir necesito ${pide.join(' y ')}: ponlos aquí: https://dashboard.corpprojects.es/incorporaciones` : '\n\nTodo en https://dashboard.corpprojects.es/incorporaciones'}` };
+    } catch (e) { return { handled: true, reply: e.message }; }
+  }
   if (name === 'pasar_documento') { try { return await pasarDocumento(input || {}, from); } catch (e) { console.error('[Agente] documento:', e.message); return { handled: true, reply: 'No he podido sacar el documento ahora mismo, inténtalo en un momento.' }; } }
   if (name === 'encargar_a_trabajador') {
     const u = await _trabajador(input.trabajador || '');

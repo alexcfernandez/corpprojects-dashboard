@@ -25,19 +25,20 @@ const hoyIso = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/
 
 const _sitios = a => (Array.isArray(a) ? a : []).slice(0, 40).map(f => ({ pag: f.pag === 'todas' ? 'todas' : Math.max(1, parseInt(f.pag, 10) || 1), x: +f.x || 0, y: +f.y || 0, w: Math.max(20, Math.min(400, +f.w || 160)), h: Math.max(10, Math.min(200, +f.h || 50)), sello: ['abajo', 'derecha', 'mini'].includes(f.sello) ? f.sello : false }));
 
-async function crear({ nombre, telefono, dni = '', cargo = 'Administrador único', docs = [], obraId = null, mensaje = '', sello = true, luego = null }, por, { _enviar = null } = {}) {
+// `clave`: qué lote sustituye a cuál (por defecto, la obra); las incorporaciones usan la suya para no pisarse entre ellas.
+async function crear({ nombre, telefono, dni = '', cargo = 'Administrador único', docs = [], obraId = null, mensaje = '', sello = true, luego = null, clave = null }, por, { _enviar = null } = {}) {
   const db = await getDB();
   const movil = require('./recordatoriosCobro')._movil(telefono);
   if (!movil) throw new Error('Teléfono no válido');
   if (!String(nombre || '').trim()) throw new Error('¿Quién firma?');
   const ids = (docs || []).map(d => String(d.docId || '')).filter(x => /^[a-f0-9]{24}$/.test(x)).slice(0, 15);
-  const enc = await db.collection('docsPersonal').find({ _id: { $in: ids.map(x => new ObjectId(x)) }, ambito: { $in: ['obra', 'empresa'] } }, { projection: { nombre: 1, ambito: 1, obraId: 1, tipo: 1, mime: 1 } }).toArray();
+  const enc = await db.collection('docsPersonal').find({ _id: { $in: ids.map(x => new ObjectId(x)) }, ambito: { $in: ['obra', 'empresa', 'trabajador'] } }, { projection: { nombre: 1, ambito: 1, obraId: 1, userId: 1, tipo: 1, mime: 1 } }).toArray();
   if (!enc.length) throw new Error('Elige qué documentos tiene que firmar');
   const P = require('./personalDocs');
   const items = enc.map(d => {
     const pedido = (docs || []).find(x => String(x.docId) === String(d._id)) || {};
-    const tipos = d.ambito === 'obra' ? P.TIPOS_OBRA : P.TIPOS_EMPRESA;
-    return { docId: String(d._id), nombre: d.nombre, ambito: d.ambito, obraId: d.obraId || obraId || null, tipoDestino: tipos[pedido.tipoDestino] ? pedido.tipoDestino : d.tipo, firmaEn: _sitios(pedido.firmaEn), estado: 'pendiente' };
+    const tipos = d.ambito === 'obra' ? P.TIPOS_OBRA : d.ambito === 'trabajador' ? P.TIPOS : P.TIPOS_EMPRESA;
+    return { docId: String(d._id), nombre: d.nombre, ambito: d.ambito, obraId: d.obraId || obraId || null, userId: d.userId || null, tipoDestino: tipos[pedido.tipoDestino] ? pedido.tipoDestino : d.tipo, firmaEn: _sitios(pedido.firmaEn), estado: 'pendiente' };
   });
   // Siguiente firmante: los documentos se indican por su posición en ESTE lote (n = índice en `docs`).
   let sig = null;
@@ -47,10 +48,10 @@ async function crear({ nombre, telefono, dni = '', cargo = 'Administrador único
       docs: (luego.docs || []).map(d => ({ docId: orden[Number(d.n)] || null, firmaEn: _sitios(d.firmaEn) })).filter(d => d.docId) };
     if (!sig.nombre || !sig.docs.length) sig = null;
   }
-  const lote = { nombre: ansi(nombre).slice(0, 80), movil, dni: ansi(dni).slice(0, 20), cargo: ansi(cargo).slice(0, 60), sello: sello !== false, obraId: obraId || items[0].obraId || null, items, luego: sig, por: por || '', at: new Date(), estado: 'pendiente' };
+  const lote = { nombre: ansi(nombre).slice(0, 80), movil, dni: ansi(dni).slice(0, 20), cargo: ansi(cargo).slice(0, 60), sello: sello !== false, obraId: obraId || items[0].obraId || null, items, luego: sig, por: por || '', at: new Date(), estado: 'pendiente', clave: clave != null ? String(clave) : (obraId || items[0].obraId || null) };
   const r = await db.collection(COL).insertOne(lote);
   // El enlace nuevo sustituye a los pendientes del mismo móvil y obra.
-  try { await db.collection(COL).updateMany({ movil, obraId: lote.obraId, estado: 'pendiente', _id: { $ne: r.insertedId } }, { $set: { estado: 'sustituido', sustituidoPor: String(r.insertedId) } }); } catch (e) {}
+  try { await db.collection(COL).updateMany({ movil, ...(clave != null ? { clave: lote.clave } : { obraId: lote.obraId, clave: { $in: [null, lote.obraId] } }), estado: 'pendiente', _id: { $ne: r.insertedId } }, { $set: { estado: 'sustituido', sustituidoPor: String(r.insertedId) } }); } catch (e) {}
   const token = require('./enlaceDoc').crear(String(r.insertedId), { dias: 7, uso: 'firma' });
   const url = `${process.env.DASHBOARD_URL || 'https://dashboard.corpprojects.es'}/firmar/${token}`;
   const txt = `${String(mensaje || '').trim() ? String(mensaje).trim() + '\n\n' : ''}Hola ${lote.nombre.split(/\s+/)[0]} 👋 Tienes ${items.length} documento${items.length > 1 ? 's' : ''} de Corp Projects para firmar con el dedo desde el móvil (se pueden leer antes):\n${url}\n\n(El enlace vale 7 días.)`;
@@ -152,7 +153,7 @@ async function firmar(token, { firmaDataUrl, n = null, notas = {}, ip = '', ua =
     const original = Buffer.from(d.data.buffer || d.data);
     const { pdf, huella } = await _estampar(original, d.mime, { nombreDoc: d.nombre, firmante: l.nombre, dni: l.dni, cargo: l.cargo, cuando, ip, ua, png, notas: ansi((notas || {})[i] || '').slice(0, 600), ref: String(l._id).slice(-8) + '-' + i, firmaEn: it.firmaEn || [], conSello: l.sello !== false });
     const nombre = String(d.nombre || 'documento').replace(/\s*\(SIN FIRMAR\)/i, '').replace(/\.(pdf|jpe?g|png|webp)$/i, '') + ` (firmado por ${l.nombre.split(/\s+/)[0]}).pdf`;
-    const g = await P.subir({ ambito: it.ambito, obraId: it.obraId, tipo: it.tipoDestino, archivo: { buffer: Buffer.from(pdf), mimetype: 'application/pdf', originalname: nombre }, fecha: hoyIso(), notas: `Firmado con el dedo por ${l.nombre} (${l.cargo}) el ${cuando}` }, `${l.nombre} (firma por enlace)`);
+    const g = await P.subir({ ambito: it.ambito, obraId: it.obraId, userId: it.userId || undefined, tipo: it.tipoDestino, archivo: { buffer: Buffer.from(pdf), mimetype: 'application/pdf', originalname: nombre }, fecha: hoyIso(), notas: `Firmado con el dedo por ${l.nombre} (${l.cargo}) el ${cuando}` }, `${l.nombre} (firma por enlace)`);
     await db.collection(COL).updateOne({ _id: l._id }, { $set: { [`items.${i}.estado`]: 'firmado', [`items.${i}.firmadoAt`]: new Date(), [`items.${i}.firmadoId`]: g.id, [`items.${i}.huella`]: huella, [`items.${i}.ip`]: ip } });
     hechos.push(d.nombre);
   }
@@ -166,7 +167,7 @@ async function firmar(token, { firmaDataUrl, n = null, notas = {}, ip = '', ua =
       if (!tel && s.userId) { const u = await db.collection('users').findOne({ _id: new ObjectId(s.userId) }, { projection: { whatsapp: 1, telefono: 1 } }); tel = u && (u.whatsapp || u.telefono); }
       const docs = s.docs.map(d => { const it = ya.items.find(i => i.docId === d.docId); return it && it.firmadoId ? { docId: it.firmadoId, tipoDestino: it.tipoDestino, firmaEn: d.firmaEn } : null; }).filter(Boolean);
       if (tel && docs.length) {
-        siguiente = await crear({ nombre: s.nombre, telefono: tel, dni: s.dni, cargo: s.cargo, docs, obraId: ya.obraId, mensaje: s.mensaje, sello: false }, `${l.nombre} (cadena de firma)`);
+        siguiente = await crear({ nombre: s.nombre, telefono: tel, dni: s.dni, cargo: s.cargo, docs, obraId: ya.obraId, mensaje: s.mensaje, sello: false, clave: ya.clave || null }, `${l.nombre} (cadena de firma)`);
         await db.collection(COL).updateOne({ _id: l._id }, { $set: { luegoId: siguiente.id, estado: 'firmado' } });
       }
     } catch (e) { console.error('[firma-externa] siguiente firmante:', e.message); }
@@ -175,4 +176,4 @@ async function firmar(token, { firmaDataUrl, n = null, notas = {}, ip = '', ua =
   return { ok: true, firmados: hechos.length, siguiente: siguiente ? siguiente.a : null };
 }
 
-module.exports = { crear, ver, documento, firmar };
+module.exports = { crear, ver, documento, firmar, _estampar };

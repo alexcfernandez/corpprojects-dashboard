@@ -14,7 +14,7 @@ stub('src/db.js', { getDB: async () => ({ collection: n => ({
   find: (q) => ({ toArray: async () => (cols[n] || []).filter(d => cumple(d, q)) }),
   findOne: async q => (cols[n] || []).find(d => cumple(d, q)) || null,
   insertOne: async d => { const _id = new ObjectId(); cols[n].push({ _id, ...d }); return { insertedId: _id }; },
-  updateMany: async (q, u) => { for (const d of (cols[n] || []).filter(x => Object.entries(q).every(([k, c]) => c && typeof c === 'object' && '$ne' in c ? String(x[k]) !== String(c.$ne) : String(x[k]) === String(c)))) Object.assign(d, u.$set); },
+  updateMany: async (q, u) => { for (const d of (cols[n] || []).filter(x => Object.entries(q).every(([k, c]) => c && typeof c === 'object' && '$ne' in c ? String(x[k]) !== String(c.$ne) : c && typeof c === 'object' && '$in' in c ? c.$in.some(v => (v == null ? x[k] == null : String(x[k]) === String(v))) : String(x[k]) === String(c)))) Object.assign(d, u.$set); },
   updateOne: async (q, u) => { const d = cols[n].find(x => cumple(x, q)); if (!d) return; for (const [k, v] of Object.entries(u.$set || {})) { const ps = k.split('.'); let o = d; ps.slice(0, -1).forEach(p => { o = o[p]; }); o[ps[ps.length - 1]] = v; } },
 }) }) });
 let pdf;

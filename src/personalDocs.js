@@ -28,6 +28,7 @@ const TIPOS = {
   dni: { nombre: 'DNI / NIE', obra: true },
   carnet: { nombre: 'Carnés y permisos (conducir, plataforma, carretilla…)', obra: true },
   contrato: { nombre: 'Contrato de trabajo', obra: false },
+  elementos_esenciales: { nombre: 'Elementos esenciales del contrato (RD 723/2026)', obra: false },
   nomina: { nombre: 'Nómina', obra: false, mensual: true, privado: true },
   formacion_oficio: { nombre: 'Formación por oficio 20 h (convenio de la construcción)', obra: true },
   maquinaria_aut: { nombre: 'Autorización de uso de maquinaria', obra: false },

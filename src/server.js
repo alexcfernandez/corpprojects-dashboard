@@ -1035,6 +1035,18 @@ app.get('/api/diag/ping', requireAuth, async (req, res) => {
   res.json(out);
 });
 app.get('/api/invoices/pending',   requireAuth, async (req,res) => res.json(await getPendingInvoices()));
+// PDF para imprimir: total + bloques por familia, con los mismos filtros que la pestaña (familia, nivel, búsqueda).
+app.get('/api/invoices/pending/pdf-familias', requireAuth, async (req,res) => {
+  try {
+    const P = require('./pendientesFamiliaPdf');
+    const filtro = { familia: String(req.query.familia || ''), nivel: String(req.query.nivel || ''), q: String(req.query.q || '') };
+    const pdf = await P.generar(P.filtrar(await getPendingInvoices(), filtro), { filtro });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="pendiente-por-familia-${new Date().toISOString().slice(0, 10)}.pdf"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.end(pdf);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 // Enlace al PDF oficial de una factura (campo pdf-path de StelOrder, cacheado 7 días). Devuelve {url}.
 app.get('/api/invoices/:id/pdf',   requireAuth, async (req,res) => {
   try {
@@ -2540,6 +2552,18 @@ Corp Projects
 app.post('/api/obras/:id/docs-entrada/enviado', requireAuthOficina, async (req, res) => {
   try { res.json(await D_OBRA().marcarEnviado(req.params.id, req.user?.name)); } catch (err) { res.status(400).json({ error: err.message }); }
 });
+// Enlace firmado que manda Corpy: el PDF de lo pendiente por familia, con datos del momento (pendientesFamiliaPdf.js).
+app.get('/informe/pendientes/:token', async (req, res) => {
+  try {
+    const P = require('./pendientesFamiliaPdf');
+    if (!P.verificarEnlace(req.params.token)) return res.status(404).send('Enlace caducado o no válido. Pídele a Corpy uno nuevo.');
+    const pdf = await P.generar(await getPendingInvoices());
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="pendiente-por-familia-${new Date().toISOString().slice(0, 10)}.pdf"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.end(pdf);
+  } catch (e) { res.status(500).send('Error'); }
+});
 // Enlace firmado y con caducidad a UN documento (enlaceDoc.js), para mandarlo por WhatsApp sin dar acceso a nada más.
 app.get('/d/:token', async (req, res) => {
   try {
@@ -2590,6 +2614,32 @@ app.post('/api/personal/firma-externa', requireAuthOficina, express.json(), asyn
   try { res.json(await require('./firmaExterna').crear(req.body || {}, req.user?.name || 'Oficina')); } catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.get('/docs-obra', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'docs-obra.html')));
+// ── Incorporaciones: alta de gente nueva paso a paso (incorporaciones.js) ──
+app.get('/incorporaciones', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'incorporaciones.html')));
+app.get('/api/incorporaciones', requireAuthOficina, async (req, res) => {
+  try { const I = require('./incorporaciones'); res.json({ lista: await I.lista({ todas: req.query.todas === '1' }), config: await I.config(), porDefecto: I.POR_DEFECTO, categorias: I.CATEGORIAS, tipos: I.TIPOS }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/incorporaciones', requireAuthOficina, express.json(), async (req, res) => {
+  try { const q = (await _quienPush(req)) || {}; res.json(await require('./incorporaciones').crear(req.body || {}, q.name || 'Oficina')); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/incorporaciones/config', requireAuthOficina, express.json(), async (req, res) => {
+  try { if (!_soloDueno(req)) return res.status(403).json({ error: 'Solo el dueño' }); res.json(await require('./incorporaciones').setConfig(req.body || {})); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/incorporaciones/:id', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./incorporaciones').ver(req.params.id)); } catch (err) { res.status(404).json({ error: err.message }); }
+});
+app.put('/api/incorporaciones/:id', requireAuthOficina, express.json(), async (req, res) => {
+  try { const q = (await _quienPush(req)) || {}; res.json(await require('./incorporaciones').editar(req.params.id, req.body || {}, q.name || 'Oficina')); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/incorporaciones/:id/:accion', requireAuthOficina, express.json(), async (req, res) => {
+  req.setTimeout && req.setTimeout(120000);
+  try { const q = (await _quienPush(req)) || {}; res.json(await require('./incorporaciones').accion(req.params.id, req.params.accion, q.name || 'Oficina')); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/personal/resumen', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./personalDocs').resumen()); } catch (err) { res.status(500).json({ error: err.message }); }
 });
