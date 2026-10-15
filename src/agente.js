@@ -286,11 +286,15 @@ async function pasarDocumento({ de, que } = {}, from) {
   const tipo = (SINONIMOS.find(([re]) => re.test(nq)) || [])[1];
   const ws = _palabras(que);
   const nombreTipo = d => ((esEmpresa ? P.TIPOS_EMPRESA : P.TIPOS)[d.tipo] || {}).nombre || d.tipo;
-  const puntos = d => (tipo && d.tipo === tipo ? 10 : 0) + ws.filter(w => _n([nombreTipo(d), d.nombre, d.notas, d.mes].join(' ')).includes(w)).length;
+  // Las palabras cuentan en el nombre del archivo y sus notas, no en el nombre del tipo (con «CIF» empataban todas las
+  // escrituras y se mandaban 3, 15/10/2026). Si no casa por tipo, el nombre del tipo sí ayuda a encontrarlo.
+  const puntos = d => (tipo && d.tipo === tipo ? 10 : 0) + ws.filter(w => _n([d.nombre, d.notas, d.mes, tipo ? '' : nombreTipo(d)].join(' ')).includes(w)).length;
   const cand = docs.map(d => ({ d, p: puntos(d) })).filter(x => x.p > 0).sort((a, b) => b.p - a.p || String(b.d.fecha || b.d.subido || '').localeCompare(String(a.d.fecha || a.d.subido || '')));
   const extra = esEmpresa && tipo === 'escrituras' ? `\nCIF: *${EMPRESA().cif}* · ${EMPRESA().razonSocial}` : '';
   if (!cand.length) return { handled: true, reply: `No tengo «${que}» de ${quien} en Personal.${extra}\nSi lo tienes, súbelo en https://dashboard.corpprojects.es/personal y te lo paso cuando quieras.` };
-  const top = cand.filter(x => x.p === cand[0].p).slice(0, 3).map(x => x.d);
+  // Uno solo (el que mejor encaja y, si empatan, el más reciente), salvo que pida varios («todos», «todas las nóminas»).
+  const varios = /\btod[oa]s\b/.test(nq);
+  const top = (varios ? cand.filter(x => x.p === cand[0].p).slice(0, 5) : cand.slice(0, 1)).map(x => x.d);
   const E = require('./enlacesDoc'); const f = x => x ? String(x).slice(0, 10).split('-').reverse().join('/') : null;
   // Por el puente, el archivo va dentro del chat (con el enlace de pie por si no se abre); con Twilio, solo el enlace.
   const W = require('./canalWhatsapp'); let mandados = 0;

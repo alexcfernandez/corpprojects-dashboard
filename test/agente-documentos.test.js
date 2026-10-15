@@ -33,3 +33,11 @@ test('si no está, lo dice y da el CIF igualmente', async () => {
   const r = await A._pasarDocumento({ de: 'empresa', que: 'seguro de accidentes' }, DUENO);
   assert.match(r.reply, /No tengo/);
 });
+
+test('con «CIF» manda solo el del CIF, no todas las escrituras', async () => {
+  EMP.push({ id: 'e3', tipo: 'escrituras', nombre: 'Tarjeta de identificación fiscal Corp Projects.pdf' }, { id: 'e4', tipo: 'escrituras', nombre: 'Escritura cese y nombramiento de cargos.pdf', fecha: '2025-12-23' });
+  const n = creados.length;
+  const r = await A._pasarDocumento({ de: 'empresa', que: 'el CIF' }, DUENO);
+  assert.equal(creados.length - n, 1); assert.equal(creados.at(-1).id, 'e1');
+  assert.equal((r.reply.match(/📎/g) || []).length, 1);
+});
