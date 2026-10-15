@@ -42,7 +42,6 @@ const fd=d=>d?String(d).slice(0,10).split('-').reverse().join('/'):'';
 function toast(t){const e=document.getElementById('toast');e.textContent=t;e.style.display='block';clearTimeout(window._tt);window._tt=setTimeout(()=>e.style.display='none',5000);}
 async function api(m,u,b){const o={method:m,headers:{...H}};if(b){o.headers['Content-Type']='application/json';o.body=JSON.stringify(b);}const r=await fetch(u,o);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'HTTP '+r.status);return d;}
 let D={lista:[]};
-const ACC={pedir_papeles:'Pedir papeles otra vez',formulario:'Rehacer formulario',firmas:'Enviar a firmar',gestoria:'Enviar a la gestoría',tallas:'Pedir tallas'};
 const ANTES_TXT={pedir_papeles:'Pedir papeles',formulario:'Generar formulario',firmas:'Enviar a firmar',gestoria:'Enviar a la gestoría',tallas:'Pedir tallas'};
 
 async function cargar(){
@@ -55,7 +54,7 @@ function pintar(){
   if(!D.lista.length){o.innerHTML='<div class="card"><div class="vacio">No hay ninguna alta en marcha. Pulsa «Empieza alguien nuevo».</div></div>';}
   else o.innerHTML=D.lista.map(v=>{
     const pct=Math.round(v.hechos/v.total*100);
-    const filas=v.pasos.map((p,i)=>(i===v.pasos.findIndex(x=>!x.antes)?'<div class="sep">Primeros días</div>':'')+`<div class="paso ${p.ok?'hecho':''}"><div class="i">${p.ok?'✅':'⏳'}</div><div><div class="t">${esc(p.t)}</div>${p.nota&&!p.ok?`<div class="s">${esc(p.nota)}</div>`:''}</div><div>${p.accion?`<button class="btn peq" onclick="hacer('${v.id}','${p.accion}',this)">${esc(p.ok?ACC[p.accion]:ANTES_TXT[p.accion])}</button>`:''}</div></div>`).join('');
+    const filas=v.pasos.map((p,i)=>(i===v.pasos.findIndex(x=>!x.antes)?'<div class="sep">Primeros días</div>':'')+`<div class="paso ${p.ok?'hecho':''}"><div class="i">${p.ok?'✅':'⏳'}</div><div><div class="t">${esc(p.t)}</div>${p.nota&&!p.ok?`<div class="s">${esc(p.nota)}</div>`:''}</div><div>${p.accion&&!p.ok?`<button class="btn peq" onclick="hacer('${v.id}','${p.accion}',this)">${esc(ANTES_TXT[p.accion])}</button>`:''}</div></div>`).join('');
     const c=v.condiciones||{};
     return `<div class="card"><div class="cab"><span class="n">${esc(v.nombre)}</span><span class="f">${fd(v.fechaInicio)} · ${esc(cuando(v))}</span>${v.tarde?'<span class="tag tarde">Va tarde</span>':''}${v.hechos===v.total?'<span class="tag ok">Todo listo</span>':''}</div>
       <div class="nota">${esc(D.tipos[c.tipo]||'')} · ${esc(D.categorias[c.categoria]||'')} · ${c.jornada==='completa'?'jornada completa':'parcial '+esc(c.horasSemana)+' h'} · ${c.salario==='conveni'?'sueldo de convenio':esc(c.salarioImporte)+' € brutos/año'}${v.dni?' · DNI '+esc(v.dni):''}</div>
