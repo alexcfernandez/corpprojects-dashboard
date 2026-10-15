@@ -191,7 +191,7 @@ async function crear(entrada = {}, por = 'Oficina', { arrancar = true } = {}) {
 async function editar(id, entrada = {}, por = 'Oficina') {
   const db = await getDB(); const i = await db.collection(COL).findOne({ _id: _oid(id) }); if (!i) throw new Error('No encuentro esa incorporación');
   const set = { condiciones: condiciones(entrada.condiciones || entrada, i.condiciones) };
-  if (entrada.confirmadas === true) set.confirmadas = true;
+  if (entrada.confirmadas === true || entrada.confirmadas === false) set.confirmadas = entrada.confirmadas;
   if (entrada.nombre) set.nombre = String(entrada.nombre).trim().slice(0, 80);
   if (entrada.dni) set.dni = limpiaDni(entrada.dni);
   if (entrada.telefono) set.telefono = String(entrada.telefono).trim();
