@@ -24,18 +24,19 @@ const GESTORIA = process.env.GESTORIA_ALTAS_EMAIL || 'eduard@somassessors.com';
 const ADMIN = { nombre: process.env.ADMIN_NOMBRE || 'Alfonso Gálvez Cámara', telefono: process.env.ADMIN_TELEFONO || '+34692270438', dni: process.env.ADMIN_DNI || '40347979E', cargo: 'Administrador único' };
 const EMPRESA = { nombre: 'CORP. PROJECTS HOLDING, S.L.', nif: 'B09899253' };
 
-const CATEGORIAS = { peo: 'Peón (nivel XII)', oficial_3: 'Oficial 3ª (ayudante oficial, nivel X)', oficial_1: 'Oficial 1ª (nivel VIII)' };
+// El formulario de Som Assessors solo trae peón, oficial 3ª y oficial 1ª; oficial 2ª (nivel IX) hay que consultarlo con ellos.
+const CATEGORIAS = { peo: 'Peón (nivel XII)', oficial_3: 'Oficial 3ª (ayudante oficial, nivel X)', oficial_2: 'Oficial 2ª (nivel IX)', oficial_1: 'Oficial 1ª (nivel VIII)' };
 const TIPOS = { indefinida: 'Indefinida', fixa_discontinua: 'Fija discontinua', temporal: 'Temporal', substitucio: 'Sustitución' };
 // Lo que se pone si no se dice otra cosa (lo habitual en Corp). `horario` y `centro` se revisan en cada alta; van en
 // catalán porque el formulario de Som Assessors es en catalán.
 const POR_DEFECTO = {
-  tipo: 'indefinida', categoria: 'peo', salario: 'conveni', salarioImporte: null, incentivos: false, jornada: 'completa', horasSemana: null,
-  horario: 'De dilluns a divendres, de 8:00 a 13:00 i de 14:00 a 17:00', nocturno: false, turnos: false, centroHabitual: true,
+  tipo: 'indefinida', categoria: 'peo', salario: 'conveni', salarioImporte: null, salarioNota: '', incentivos: false, jornada: 'completa', horasSemana: null,
+  horario: 'De dilluns a divendres, de 8:00 a 17:00 (1 hora per dinar)', nocturno: false, turnos: false, centroHabitual: true,
   formacionExtra: false, sistemaAutomatico: false, extranjero: false, prueba15: true,
   centro: "Obres de l'empresa a la província de Girona", domicilioSocial: process.env.EMPRESA_DOMICILIO_SOCIAL || 'C/ Nou, 12, 2º 2B, 17001 Girona',
 };
 // Si la respuesta es esta, Som Assessors pide que se le consulte ANTES de hacer la oferta.
-const CONSULTAR = c => [c.tipo !== 'indefinida' && 'el contrato no es indefinido', c.incentivos && 'hay primas o incentivos fuera de convenio', !c.centroHabitual && 'no trabajará solo en el centro indicado',
+const CONSULTAR = c => [c.categoria === 'oficial_2' && 'oficial 2ª no está en el formulario (solo peón, oficial 3ª y 1ª)', c.salario === 'superior' && !c.salarioImporte && `falta el sueldo bruto anual${c.salarioNota ? ` (pactado: ${c.salarioNota})` : ''}`, c.tipo !== 'indefinida' && 'el contrato no es indefinido', c.incentivos && 'hay primas o incentivos fuera de convenio', !c.centroHabitual && 'no trabajará solo en el centro indicado',
   c.formacionExtra && 'hay formación adicional impuesta por la empresa', c.sistemaAutomatico && 'se usa un sistema automático', c.extranjero && 'trabajará en el extranjero más de 4 semanas'].filter(Boolean);
 
 const hoy = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
@@ -54,7 +55,7 @@ function condiciones(entrada = {}, previas = {}) {
   c.salarioImporte = c.salario === 'superior' ? (Number(String(c.salarioImporte || '').replace(/\./g, '').replace(',', '.')) || null) : null;
   c.jornada = c.jornada === 'parcial' ? 'parcial' : 'completa';
   c.horasSemana = c.jornada === 'parcial' ? (Number(c.horasSemana) || null) : null;
-  for (const k of ['horario', 'centro', 'domicilioSocial']) c[k] = String(c[k] || '').trim().slice(0, 200);
+  for (const k of ['horario', 'centro', 'domicilioSocial', 'salarioNota']) c[k] = String(c[k] || '').trim().slice(0, 200);
   return c;
 }
 

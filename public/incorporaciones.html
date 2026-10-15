@@ -83,7 +83,7 @@ function nueva(id){
     <div><label>Contrato</label><select id="c-tipo">${opt(D.tipos,c.tipo)}</select></div>
     <div><label>Categoría</label><select id="c-categoria">${opt(D.categorias,c.categoria)}</select></div>
     <div><label>Sueldo</label><select id="c-salario" onchange="document.getElementById('w-imp').style.display=this.value==='superior'?'':'none'"><option value="conveni" ${c.salario!=='superior'?'selected':''}>El de convenio para su categoría</option><option value="superior" ${c.salario==='superior'?'selected':''}>Más que convenio</option></select></div>
-    <div id="w-imp" style="${c.salario==='superior'?'':'display:none'}"><label>€ brutos al año</label><input id="c-salarioImporte" value="${esc(c.salarioImporte||'')}"></div>
+    <div id="w-imp" style="${c.salario==='superior'?'':'display:none'}"><label>€ brutos al año (si no lo sabes, déjalo vacío)</label><input id="c-salarioImporte" value="${esc(c.salarioImporte||'')}"><label style="margin-top:6px">Lo pactado (p. ej. 1.600 € netos/mes + pagas)</label><input id="c-salarioNota" value="${esc(c.salarioNota||'')}"></div>
     <div><label>Jornada</label><select id="c-jornada" onchange="document.getElementById('w-h').style.display=this.value==='parcial'?'':'none'"><option value="completa" ${c.jornada!=='parcial'?'selected':''}>Completa (40 h)</option><option value="parcial" ${c.jornada==='parcial'?'selected':''}>Parcial</option></select></div>
     <div id="w-h" style="${c.jornada==='parcial'?'':'display:none'}"><label>Horas a la semana</label><input id="c-horasSemana" value="${esc(c.horasSemana||'')}"></div>
     <div style="grid-column:1/-1"><label>Horario</label><input id="c-horario" value="${esc(c.horario||'')}"></div>
@@ -101,7 +101,7 @@ function nueva(id){
 }
 async function guardar(id){
   const g=k=>document.getElementById(k);const b=g('b-guardar');b.disabled=true;
-  const cond={};['tipo','categoria','salario','salarioImporte','jornada','horasSemana','horario','centro','domicilioSocial'].forEach(k=>{if(g('c-'+k))cond[k]=g('c-'+k).value;});
+  const cond={};['tipo','categoria','salario','salarioImporte','salarioNota','jornada','horasSemana','horario','centro','domicilioSocial'].forEach(k=>{if(g('c-'+k))cond[k]=g('c-'+k).value;});
   ['prueba15','centroHabitual','nocturno','turnos','incentivos','formacionExtra','sistemaAutomatico','extranjero'].forEach(k=>{if(g('c-'+k))cond[k]=g('c-'+k).checked;});
   const body={nombre:g('f-nombre').value,dni:g('f-dni').value,telefono:g('f-tel').value,fechaInicio:g('f-fecha').value,condiciones:cond,confirmadas:true};
   try{await api(id?'PUT':'POST','/api/incorporaciones'+(id?'/'+id:''),body);if(id)await api('POST','/api/incorporaciones/'+id+'/avanzar');g('form').innerHTML='';toast(id?'Guardado':'En marcha');cargar();}catch(e){toast(e.message);b.disabled=false;}
