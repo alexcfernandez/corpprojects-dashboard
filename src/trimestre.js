@@ -107,16 +107,21 @@ async function reglasGestoria(R, _d = {}) {
   const [mapa, cl] = await Promise.all([stel.getAllOrdinaryInvoices(), stel.getClients()]);
   const cli = Object.fromEntries(((cl && cl.clients) || []).map(c => [String(c.id), c]));
   const em = Object.entries(mapa || {}).map(([id, o]) => ({ id, ...o })).filter(o => enRango(o.date, R) && Number(o.total) > 0);
+  // Facturas de clientes BORRADOS en StelOrder (no salen en la lista): se lee la ficha una a una (son pocas).
+  for (const accId of [...new Set(em.map(o => o.accountId).filter(a => a && !cli[a]))]) {
+    try { const d = (await stel._client.get(`/clients/${accId}`, { timeout: 20000 })).data; const c = Array.isArray(d) ? d[0] : d; if (c) cli[accId] = { ...c, _borrado: !!c.deleted }; } catch (e) { cli[accId] = { _borrado: true }; }
+  }
   const isp = Object.fromEntries((await db.collection('ispFacturas').find({ id: { $in: em.map(o => o.id) } }).toArray()).map(x => [x.id, x.que]));
   for (const o of em) {
     const c = cli[o.accountId] || {};
     const nombre = c['legal-name'] || c.name || '¿?';
     const nif = String(c['tax-identification-number'] || '').replace(/[\s.\-]/g, '').toUpperCase();
-    const f = { ref: o.number, fecha: String(o.date).slice(0, 10), quien: nombre, total: o.total };
-    if (!nif || /^X+$/.test(nif)) out.push({ ...f, que: 'Factura sin NIF del cliente (la gestoría lo necesita para el 347)' });
+    const f = { ref: o.number, fecha: String(o.date).slice(0, 10), quien: nombre + (c._borrado ? ' (cliente borrado en StelOrder)' : ''), total: o.total, nif: true };
+    if (!nif || /^X+$/.test(nif) || !/\d/.test(nif)) out.push({ ...f, que: 'Factura sin NIF del cliente (la gestoría lo necesita para el 347)' });
     else if (nif === NUESTRO_CIF) out.push({ ...f, que: 'La ficha del cliente tiene NUESTRO CIF: falta el NIF del cliente' });
     else if (ES_COMUNIDAD.test(nombre) && !/^H/.test(nif)) out.push({ ...f, que: `Comunidad con NIF ${nif}: el de una comunidad empieza por H` });
     // Lo de sin IVA, desde que se revisa cada mañana (ispFacturas.DESDE); lo anterior ya se arregló a mano el 15/10/2026.
+    delete f.nif;
     if (f.fecha >= require('./ispFacturas').DESDE && Math.abs(Number(o.iva) || 0) < 0.01 && !['anadir', 'ya_lleva', 'rectificada'].includes(isp[o.id])) {
       out.push({ ...f, que: /^[ABCDEFGJNPQRSUVW]\d/.test(nif) ? 'Sin IVA: comprueba que lleve la mención de inversión del sujeto pasivo' : 'Sin IVA a quien no es empresa: le falta el IVA o hay que rectificarla' });
     }
@@ -130,6 +135,23 @@ async function reglasGestoria(R, _d = {}) {
     else if (ag && c.numero && !ag.factura.test(String(c.numero).trim())) out.push({ ...f, que: `${ag.nombre}: esto es un albarán; a la gestoría va su factura quincenal` });
   }
   return out.sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
+}
+
+// Cada mañana (L-V), a Álex y a la oficina, hasta que se arregle: facturas del año sin NIF del cliente, con nuestro CIF
+// o de comunidades sin NIF H. El 347 es anual, así que se mira todo el año (y en enero, también el anterior).
+async function avisoNif({ hoy = new Date(), dryRun = false, _d = {} } = {}) {
+  const y = hoy.getFullYear();
+  const R = { from: `${hoy.getMonth() === 0 ? y - 1 : y}-01-01`, to: `${y}-12-31` };
+  const l = (await reglasGestoria(R, _d)).filter(x => /NIF|CIF/.test(x.que));
+  if (!l.length) return { n: 0 };
+  const txt = `🧾 *Facturas sin NIF bueno* (${l.length}). La gestoría las necesita para el 347; hay que poner el NIF en la ficha del cliente en StelOrder:\n\n` +
+    l.map(x => `• ${x.ref} (${x.fecha.split('-').reverse().join('/')}) · ${x.quien} · ${Number(x.total).toLocaleString('es-ES', { minimumFractionDigits: 2 })} € — ${x.que.replace(/ \(la gestoría.*\)$/, '')}`).join('\n') +
+    `\n\nTe lo recuerdo cada mañana hasta que estén todas.`;
+  if (dryRun) return { n: l.length, texto: txt };
+  const N = require('./notifications');
+  const dest = [...new Set([N.destinoDueno(), process.env.OFICINA_TELEFONO || '+34674013723'].filter(Boolean))];
+  for (const to of dest) { try { await N.sendWhatsAppTo(to, txt); } catch (e) { console.warn('[Trimestre] aviso NIF:', e.message); } }
+  return { n: l.length, texto: txt };
 }
 
 function sumar(lista, k) { return r2(lista.reduce((s, x) => s + (Number(x[k]) || 0), 0)); }
@@ -861,4 +883,4 @@ async function buscar(texto) {
   };
 }
 
-module.exports = { reglasGestoria, olvidarMapaPagos, enlazarCompra, todasRecibidas, rango, trimestrePorDefecto, estado, excel, revisionDiaria, resumenEmitidasXlsx, zipEmitidas, zipRecibidasCompras, punteo, paqueteGestoria, borrador303, textoGestoria, justificar, deshacerJustificacion, comercio, confirmarDesdePunteo, buscar, recibidasPunteo, mapaPagos, todasEmitidas };
+module.exports = { reglasGestoria, avisoNif, olvidarMapaPagos, enlazarCompra, todasRecibidas, rango, trimestrePorDefecto, estado, excel, revisionDiaria, resumenEmitidasXlsx, zipEmitidas, zipRecibidasCompras, punteo, paqueteGestoria, borrador303, textoGestoria, justificar, deshacerJustificacion, comercio, confirmarDesdePunteo, buscar, recibidasPunteo, mapaPagos, todasEmitidas };

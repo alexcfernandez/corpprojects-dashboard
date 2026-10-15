@@ -398,6 +398,8 @@ function startScheduler() {
   // Cobros (8/10/2026): quién dijo que paga hoy, promesas incumplidas y recordatorios por revisar en /cobrar.
   cron.schedule('10 9 * * 1-5', () => { if (process.env.AVISO_COBROS !== 'off') require('./recordatoriosCobro').avisoManana().catch(e => console.warn('[Cobros]', e.message)); }, { timezone: 'Europe/Madrid' });
   // Altas de gente nueva: avanzar lo que se pueda y avisar de lo que va tarde (incorporaciones.js).
+  // Facturas del año sin NIF bueno: aviso a Álex y a oficina cada mañana hasta que se arreglen (trimestre.avisoNif).
+  cron.schedule('5 9 * * 1-5', () => require('./trimestre').avisoNif().then(r => { if (r.n) console.log(`[Trimestre] aviso NIF: ${r.n}`); }).catch(e => console.warn('[Trimestre] aviso NIF:', e.message)), { timezone: 'Europe/Madrid' });
   // Facturas emitidas sin IVA: mención de inversión del sujeto pasivo o aviso (ispFacturas.js).
   cron.schedule('50 9 * * 1-5', () => require('./ispFacturas').revisar().then(r => { if (r.revisadas) console.log(`[ISP] ${r.revisadas} factura(s) sin IVA mirada(s)`); }).catch(e => console.warn('[ISP]', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('30 8 * * 1-6', () => require('./incorporaciones').revisarManana().catch(e => console.warn('[Incorporaciones] mañana:', e.message)), { timezone: 'Europe/Madrid' });
