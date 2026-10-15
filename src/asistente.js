@@ -650,7 +650,7 @@ async function handlerFacturas(texto, from, scope, rawTarget) {
     const top = rank.slice(0, 8).map(([c, v]) => `• ${c} — *${fmtEur(v)}*`);
     let msg = `💰 *Total pendiente: ${fmtEur(total)}*\n${pend.length} facturas · ${rank.length} clientes\n\n*Quién más debe:*\n${top.join('\n')}`;
     if (rank.length > 8) msg += `\n…y ${rank.length - 8} clientes más.`;
-    msg += `\n\nPregúntame por uno, p. ej.: *"¿qué debe Illa Verda?"*`;
+    msg += `\n\nPregúntame por uno, p. ej.: *"¿qué debe Illa Verda?"* · o *"lo que nos deben por familias"*`;
     ultima.delete(from);
     return msg;
   }
@@ -668,6 +668,48 @@ async function handlerFacturas(texto, from, scope, rawTarget) {
     items: sel, titulo: tit,
     encabezado: `📋 *${tit}*\n💰 Pendiente: *${fmtEur(total)}* · ${sel.length} factura(s)`,
     fmt: i => `• ${i.number} — *${fmtEur(i.pending)}*${i.daysOverdue ? ` · ${i.daysOverdue}d` : ''}`
+  }, 0);
+}
+
+// ── Listado de TODO lo pendiente de cobro: total + bloques por familia ──
+// "lo que nos deben por familias", "deuda por bloques de familia"…
+function pideDeudaPorFamilia(texto) {
+  const n = norm(texto);
+  const deuda = /\b(deben|debe|deuda|deudas|cobrar|cobro|cobros|impagad[oa]s?)\b|facturas pendientes|pendiente de cobr/.test(n);
+  const porFam = /\b(por|en) (bloques?( de familias?)?|familias?)\b|\bagrupad[oa]s? por familia|\bcada familia\b|\btodas las familias\b/.test(n);
+  return deuda && porFam;
+}
+const MAX_CLI_BLOQUE = 8;
+async function handlerDeudaPorFamilia(from) {
+  let pend;
+  try { pend = await stel.getPendingInvoices(); }
+  catch (e) { console.error('[Asistente]', e.message); return '⚠️ No pude consultar StelOrder. Prueba en un momento.'; }
+  if (!pend || pend.length === 0) return '✅ No hay facturas pendientes ahora mismo.';
+
+  const SIN = 'Sin familia';
+  const fams = {};
+  for (const i of pend) {
+    const f = (i.family || '').trim() || SIN, c = i.client || '(sin nombre)';
+    const b = fams[f] || (fams[f] = { nombre: f, total: 0, n: 0, cli: {} });
+    b.total += i.pending || 0; b.n++;
+    const x = b.cli[c] || (b.cli[c] = { total: 0, n: 0 });
+    x.total += i.pending || 0; x.n++;
+  }
+  // Mayor deuda primero; "Sin familia" siempre al final.
+  const bloques = Object.values(fams).sort((a, b) => (a.nombre === SIN) - (b.nombre === SIN) || b.total - a.total);
+  const total = pend.reduce((s, i) => s + (i.pending || 0), 0);
+  const fmtBloque = b => {
+    const cli = Object.entries(b.cli).sort((x, y) => y[1].total - x[1].total);
+    let t = `*${b.nombre}* — *${fmtEur(b.total)}* · ${b.n} fact.\n` +
+      cli.slice(0, MAX_CLI_BLOQUE).map(([c, v]) => `   • ${c} — ${fmtEur(v.total)}${v.n > 1 ? ` (${v.n})` : ''}`).join('\n');
+    if (cli.length > MAX_CLI_BLOQUE) t += `\n   …y ${cli.length - MAX_CLI_BLOQUE} clientes más`;
+    return t + '\n';
+  };
+  const nFam = bloques.filter(b => b.nombre !== SIN).length;
+  return pintar(from, {
+    items: bloques, titulo: 'Pendiente por familia',
+    encabezado: `💰 *Total pendiente: ${fmtEur(total)}*\n${pend.length} facturas · ${nFam} familia${nFam === 1 ? '' : 's'}${fams[SIN] ? ' + sin familia' : ''}`,
+    fmt: fmtBloque
   }, 0);
 }
 
@@ -2141,6 +2183,10 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
     if (nuevo) return despachar(ctxC.intent, from, 'cliente', nuevo);
   }
 
+  // B4) Listado de todo lo que nos deben, en bloques por familia (antes de ficha/resumen,
+  // que confundirían "resumen de lo que nos deben por familias" con la ficha de un cliente).
+  if (!imagenes.length && pideDeudaPorFamilia(texto)) return handlerDeudaPorFamilia(from);
+
   // C0.presu) PIEZA B — generar presupuesto técnico: "hazme/prepara/redacta un presupuesto de ..."
   // (distinto de "hay que hacer presupuesto para X" que registra una incidencia)
   const _np = norm(texto);
@@ -2522,7 +2568,7 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
     `🗂️ *Ficha de cliente* — "resumen de Illa Verda" (deuda + presupuestos + pedidos)\n` +
     `🔎 *Buscar un documento* — "dime el 309" · "la factura 309" · "la última factura"\n` +
     `📄 *Conceptos / desglose* — "conceptos del 509" · "qué lleva la factura 309" (o "conceptos" tras ver uno)\n` +
-    `💰 *Facturas* — "¿qué debe Illa Verda?" · "cuánto me deben en total"\n` +
+    `💰 *Facturas* — "¿qué debe Illa Verda?" · "cuánto me deben en total" · "lo que nos deben por familias"\n` +
     `📊 *Presupuestos* — "los aceptados" · "conceptos del 509" · "presupuestos de Cinc"\n` +
     `🔧 *Pedidos* — "cuántos pedidos tenemos" · "pedidos de Illa Verda"\n` +
     `🛒 *Proveedores y gasto* — "qué proveedor gastamos más" · "cuánto gastamos en Saltoki" · "la factura de proveedor 9"\n` +
