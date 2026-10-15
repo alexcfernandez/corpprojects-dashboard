@@ -2233,6 +2233,10 @@ app.post('/api/backup/ahora', requireAuthOficina, async (req, res) => {
   res.json({ ok: true, enCurso: true });
 });
 // ── RESERVAS: lo que hay que ir apartando (IVA, IRPF, Seguridad Social, nóminas) y lo que ya está guardado ──
+app.post('/api/reservas/real', requireAuthOficina, async (req, res) => {
+  try { if (!_soloDueno(req)) return res.status(403).json({ error: 'Solo el dueño' }); const b = req.body || {}; if (!/^[a-z]+:[\w-]+$/.test(String(b.clave || ''))) throw new Error('clave no válida'); res.json(await require('./reservas').ponerReal(b.clave, b.importe, b.nota)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/reservas', requireAuthOficina, async (req, res) => {
   req.setTimeout && req.setTimeout(120000);
   try { res.json(await require('./reservas').panel({ fresco: req.query.fresco === '1' })); } catch (err) { res.status(500).json({ error: err.message }); }

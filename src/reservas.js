@@ -93,6 +93,12 @@ async function panel({ hoy = new Date(), fresco = false } = {}) {
     const imp = r2(prov.totales.proximos30 + prov.totales.vencido);
     void imp;   // los proveedores se pagan con el día a día: van aparte (informativo), no suman a la reserva
   } catch (e) { console.warn('[Reservas] proveedores:', e.message); }
+  // Cifras reales que da la gestoría (mandan sobre la estimación): appSettings 'reservasReales' = { 'iva:2026-T3': { importe, nota } }.
+  try {
+    const rr = await db.collection('appSettings').findOne({ key: 'reservasReales' });
+    const v = (rr && rr.valor) || {};
+    for (const i of items) if (v[i.clave] && v[i.clave].importe != null) { i.estimado = i.importe; i.importe = r2(Math.max(0, Number(v[i.clave].importe) || 0)); i.detalle = `${v[i.clave].nota || 'cifra de la gestoría'} (la estimación era ${(i.estimado || 0).toFixed(2)})`; i.real = true; }
+  } catch (e) {}
   const res = await _saldoReserva(db);
   // Lo guardado cubre primero lo que vence antes.
   let queda = res.saldo || 0;
@@ -115,4 +121,36 @@ async function panel({ hoy = new Date(), fresco = false } = {}) {
   return _cache;
 }
 
-module.exports = { panel, venceTrimestre, trimestreDe };
+// Viernes por la mañana, a Álex: cuánto apartar esta semana en la cuenta de reserva y qué pagos vienen (lo pidió el
+// 15/10/2026: «esta semana tienes que guardar tanto, que se acercan estos pagos»).
+async function avisoViernes({ hoy = new Date(), dryRun = false, _panel = null, _enviar = null } = {}) {
+  const p = _panel || await panel({ hoy, fresco: true });
+  const eur = n => (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+  const dm = f => String(f).slice(0, 10).split('-').reverse().slice(0, 2).join('/');
+  const items = (p.items || []).filter(i => !i.error && (i.importe || 0) > 0.5);
+  const ya = items.filter(i => i.pagarYa || (i.dias != null && i.dias <= 7)), luego = items.filter(i => !ya.includes(i) && i.falta > 0.5);
+  const apartar = Math.max(p.totales.porSemana || 0, 0) + ya.reduce((a, i) => a + (i.falta || 0), 0);
+  const prov = p.proveedores ? (p.proveedores.proximas || []).filter(x => x.fecha <= new Date(hoy.getTime() + 7 * DIA).toISOString().slice(0, 10)) : [];
+  const lineas = [
+    `💰 *Reserva: esta semana aparta ${eur(apartar)}*${p.reserva && p.reserva.cuenta ? ` en ${p.reserva.cuenta}` : ''}.`,
+    `Guardado ahora: ${p.reserva && p.reserva.saldo != null ? eur(p.reserva.saldo) : '¿? (no se ha leído la cuenta)'} · hace falta en total ${eur(p.totales.necesario)}${p.totales.falta > 0 ? ` · faltan ${eur(p.totales.falta)}` : ' · cubierto ✓'}.`,
+    ya.length ? `\n*Vence en 7 días o menos:*\n${ya.map(i => `• ${i.concepto} · ${dm(i.vence)} · ${eur(i.importe)}${i.falta > 0.5 ? ` · *faltan ${eur(i.falta)}*` : ' · cubierto ✓'}`).join('\n')}` : '',
+    luego.length ? `\n*Lo que viene:*\n${luego.map(i => `• ${i.concepto} · ${dm(i.vence)} · ${eur(i.importe)} → aparta ${eur(i.porSemana)}/semana`).join('\n')}` : '',
+    prov.length ? `\n*Proveedores la semana que viene* (${eur(prov.reduce((a, x) => a + x.importe, 0))}): ${prov.slice(0, 8).map(x => `${String(x.proveedor).split(/[ ,]/)[0]} ${eur(x.importe)} (${dm(x.fecha)})`).join(' · ')}` : '',
+    `\nDetalle en el inicio del dashboard (tarjeta Reservas).`,
+  ].filter(Boolean);
+  const txt = lineas.join('\n');
+  if (dryRun) return { enviado: false, texto: txt, apartar };
+  const N = require('./notifications');
+  await (_enviar || ((to, t) => N.sendWhatsAppTo(to, t)))(N.destinoDueno(), txt);
+  return { enviado: true, texto: txt, apartar };
+}
+
+async function ponerReal(clave, importe, nota) {
+  const db = await getDB();
+  await db.collection('appSettings').updateOne({ key: 'reservasReales' }, { $set: { [`valor.${clave}`]: { importe: Number(importe), nota: String(nota || '').slice(0, 200), at: new Date() } } }, { upsert: true });
+  _cache = null;
+  return { ok: true };
+}
+
+module.exports = { panel, avisoViernes, ponerReal, venceTrimestre, trimestreDe };
