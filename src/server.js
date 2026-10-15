@@ -2614,6 +2614,17 @@ app.post('/api/personal/firma-externa', requireAuthOficina, express.json(), asyn
   try { res.json(await require('./firmaExterna').crear(req.body || {}, req.user?.name || 'Oficina')); } catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.get('/docs-obra', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'docs-obra.html')));
+// ── Ausencias largas (maternidad, baja, lactancia, excedencia…) con fecha de fin (ausencias.js) ──
+app.get('/api/ausencias', requireAuthOficina, async (req, res) => {
+  try { const A = require('./ausencias'); res.json({ lista: await A.lista(), tipos: A.TIPOS }); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/ausencias', requireAuthOficina, express.json(), async (req, res) => {
+  try { const q = (await _quienPush(req)) || {}; res.json(await require('./ausencias').poner(req.body || {}, q.name || 'Oficina')); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.delete('/api/ausencias/:id', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./ausencias').quitar(req.params.id)); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 // ── Incorporaciones: alta de gente nueva paso a paso (incorporaciones.js) ──
 app.get('/incorporaciones', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'incorporaciones.html')));
 app.get('/api/incorporaciones', requireAuthOficina, async (req, res) => {
