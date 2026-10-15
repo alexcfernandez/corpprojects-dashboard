@@ -26,3 +26,8 @@ test('rellena la plantilla real: datos, casillas y fecha, y queda aplanada', asy
   assert.equal(pdf.getForm().getFields().length, 0);   // aplanado: ya no se puede editar
   assert.ok(buf.length > 50000);
 });
+
+test('lo que ya está en Personal no se vuelve a pedir', () => {
+  assert.deepEqual(I.recibidasDe([{ tipo: 'dni', nombre: 'DNI Norman (delante).jpg' }]), { doc_delante: true });
+  assert.deepEqual(I.recibidasDe([{ tipo: 'dni', nombre: 'DNI.pdf' }, { tipo: 'tarjeta_ss', nombre: 'SS.jpg' }]), { doc_delante: true, doc_detras: true, seguridad_social: true });
+});

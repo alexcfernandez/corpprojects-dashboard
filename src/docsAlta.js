@@ -35,7 +35,8 @@ async function _usuario(db, userId) {
 }
 
 // olvidar: piezas que se dieron por buenas y no lo eran (p. ej. la tasa 790 tomada como admisión a trámite).
-async function pedir(userId, { extranjero = false, por = null, olvidar = [], _enviar = null } = {}) {
+// recibidas: piezas que ya tenemos por otro lado (p. ej. el DNI por delante que mandó a la oficina) y no se piden.
+async function pedir(userId, { extranjero = false, por = null, olvidar = [], recibidas = {}, _enviar = null } = {}) {
   const db = await getDB();
   const u = await _usuario(db, userId);
   if (!u) throw new Error('No encuentro ese trabajador');
@@ -48,12 +49,12 @@ async function pedir(userId, { extranjero = false, por = null, olvidar = [], _en
   const faltanAntes = antes ? piezas.filter(k => !(antes.recibidas || {})[k]) : piezas;
   const txt = antes
     ? `Hola${primerNombre(u.name) ? ' ' + primerNombre(u.name) : ''} 👋 Te lo recuerdo: para tu alta aún nos falta ${lista(faltanAntes.length ? faltanAntes : piezas)}. No hace falta abrir ningún enlace, solo mandar las fotos aquí mismo (de cerca y que se lean bien). ¡Gracias!`
-    : textoPeticion(primerNombre(u.name), piezas);
+    : textoPeticion(primerNombre(u.name), piezas.filter(k => !(recibidas || {})[k]).length ? piezas.filter(k => !(recibidas || {})[k]) : piezas);
   const ok = await (_enviar || require('./notifications').sendWhatsAppTo)(movil, txt);
   if (ok === false) throw new Error('No se pudo enviar el WhatsApp (mira que Corpy esté conectado)');
   await db.collection(COL).updateMany({ userId: String(userId), estado: 'abierta' }, { $set: { estado: 'sustituida' } });
   // Lo que ya mandó se conserva (Manolo ya envió el DNI: solo se le vuelve a pedir lo que falta).
-  const yaRecibido = antes ? Object.fromEntries(Object.entries(antes.recibidas || {}).filter(([k]) => piezas.includes(k))) : {};
+  const yaRecibido = { ...Object.fromEntries(Object.entries(recibidas || {}).filter(([k, v]) => v && piezas.includes(k))), ...(antes ? Object.fromEntries(Object.entries(antes.recibidas || {}).filter(([k]) => piezas.includes(k))) : {}) };
   const doc = { userId: String(userId), nombre: u.name, movil, piezas, recibidas: yaRecibido, estado: 'abierta', por: por || '', at: new Date(), recordatorios: 0 };
   const r = await db.collection(COL).insertOne(doc);
   return { ok: true, id: String(r.insertedId), a: movil, texto: txt };

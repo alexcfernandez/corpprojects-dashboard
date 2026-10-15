@@ -112,6 +112,20 @@ async function rellenarFormulario(inc) {
 const FIRMA_EMPRESA = [{ pag: 3, x: 42, y: 172, w: 190, h: 62, sello: 'mini' }, { pag: 1, x: 445, y: 38, w: 60, h: 24, sello: false }, { pag: 2, x: 445, y: 38, w: 60, h: 24, sello: false }];
 const FIRMA_TRABAJADOR = [{ pag: 3, x: 274, y: 172, w: 190, h: 62, sello: false }, { pag: 1, x: 512, y: 38, w: 60, h: 24, sello: false }, { pag: 2, x: 512, y: 38, w: 60, h: 24, sello: false }];
 
+// Qué piezas del alta ya están en su carpeta de Personal (para no pedírselas otra vez): el DNI cuenta como las dos
+// caras salvo que el nombre diga que es solo una («delante»/«detrás»).
+function recibidasDe(docs = []) {
+  const dni = docs.filter(d => d.tipo === 'dni'), r = {};
+  for (const d of dni) {
+    const n = String(d.nombre || '') + ' ' + String(d.notas || '');
+    if (/delante|anverso|frontal|davant/i.test(n)) r.doc_delante = true;
+    else if (/detr[aá]s|reverso|darrere/i.test(n)) r.doc_detras = true;
+    else { r.doc_delante = true; r.doc_detras = true; }
+  }
+  if (docs.some(d => d.tipo === 'tarjeta_ss')) r.seguridad_social = true;
+  return r;
+}
+
 // ── Estado de cada paso, mirando dónde está cada cosa de verdad ──
 async function pasos(inc, db) {
   const P = require('./personalDocs');
@@ -127,7 +141,7 @@ async function pasos(inc, db) {
   const t = (u && u.tallas) || {};
   const consultar = CONSULTAR(inc.condiciones || {});
   const l = [
-    { k: 'datos', t: 'Condiciones del contrato', ok: !!(inc.nombre && inc.dni && inc.fechaInicio), nota: consultar.length ? `Consultar antes con Som Assessors: ${consultar.join(', ')}.` : null, antes: true },
+    { k: 'datos', t: 'Condiciones del contrato', ok: !!(inc.nombre && inc.dni && inc.fechaInicio && inc.confirmadas), nota: consultar.length ? `Consultar antes con Som Assessors: ${consultar.join(', ')}.` : !inc.confirmadas ? 'Falta confirmar categoría, horario y demás condiciones' : !inc.dni ? 'Falta el DNI/NIE' : null, accion: inc.confirmadas ? null : 'confirmar', antes: true },
     { k: 'ficha', t: 'Ficha del trabajador y su WhatsApp', ok: !!(inc.userId && u && u.whatsapp), antes: true },
     { k: 'papeles', t: 'DNI/NIE y número de la Seguridad Social', ok: tiene('dni') && tiene('tarjeta_ss'), nota: tiene('dni') ? (tiene('tarjeta_ss') ? null : 'Falta el nº de la Seguridad Social') : 'Falta el DNI/NIE', accion: 'pedir_papeles', antes: true },
     { k: 'formulario', t: 'Formulario de elementos esenciales', ok: !!inc.formularioId, accion: 'formulario', antes: true },
@@ -166,14 +180,17 @@ async function crear(entrada = {}, por = 'Oficina', { arrancar = true } = {}) {
   const fechaInicio = /^\d{4}-\d{2}-\d{2}$/.test(String(entrada.fechaInicio || '')) ? entrada.fechaInicio : null;
   if (!fechaInicio) throw new Error('¿Qué día empieza?');
   const inc = { nombre, dni: limpiaDni(entrada.dni), telefono: String(entrada.telefono || '').trim(), fechaInicio, condiciones: condiciones(entrada.condiciones || entrada),
+    // Las condiciones van en un papel que firman los dos: no se genera hasta que alguien las confirma (en la pantalla o diciéndolas).
+    confirmadas: entrada.confirmadas === true,
     userId: null, formularioId: null, loteFirmaId: null, gestoria: null, estado: 'abierta', creadoPor: por, at: new Date(), historial: [{ at: new Date(), por, que: 'Creada' }] };
   const r = await db.collection(COL).insertOne(inc);
   const id = String(r.insertedId);
-  return arrancar ? avanzar(id, por) : ver(id);
+  return arrancar && entrada.arrancar !== false ? avanzar(id, por) : ver(id);
 }
 async function editar(id, entrada = {}, por = 'Oficina') {
   const db = await getDB(); const i = await db.collection(COL).findOne({ _id: _oid(id) }); if (!i) throw new Error('No encuentro esa incorporación');
   const set = { condiciones: condiciones(entrada.condiciones || entrada, i.condiciones) };
+  if (entrada.confirmadas === true) set.confirmadas = true;
   if (entrada.nombre) set.nombre = String(entrada.nombre).trim().slice(0, 80);
   if (entrada.dni) set.dni = limpiaDni(entrada.dni);
   if (entrada.telefono) set.telefono = String(entrada.telefono).trim();
@@ -194,15 +211,16 @@ async function avanzar(id, por = 'Corpy') {
   // 2) papeles: Corpy se los pide (una vez)
   if (i.userId && !i.papelesPedidos) {
     const P = require('./personalDocs'); const docs = await P.carpeta({ userId: i.userId });
-    if (!(docs.some(d => d.tipo === 'dni') && docs.some(d => d.tipo === 'tarjeta_ss'))) {
-      try { await require('./docsAlta').pedir(i.userId, { por }); await log('Corpy le ha pedido el DNI y la Seguridad Social'); } catch (e) { await log('No se pudieron pedir los papeles: ' + e.message); }
+    const ya = recibidasDe(docs);
+    if (!(ya.doc_delante && ya.doc_detras && ya.seguridad_social)) {
+      try { await require('./docsAlta').pedir(i.userId, { por, recibidas: ya }); await log('Corpy le ha pedido lo que falta del DNI y la Seguridad Social'); } catch (e) { await log('No se pudieron pedir los papeles: ' + e.message); }
     }
     await db.collection(COL).updateOne({ _id: i._id }, { $set: { papelesPedidos: new Date() } });
     // y de paso, las tallas
     try { await require('./fichaDatos').pedir(i.userId, { por }); } catch (e) {}
   }
   // 3) formulario y 4) firmas: si están los datos y no hay que consultar nada antes con la gestoría
-  if (i.userId && i.dni && !CONSULTAR(i.condiciones).length) {
+  if (i.userId && i.dni && i.confirmadas && !CONSULTAR(i.condiciones).length) {
     if (!i.formularioId) { await generarFormulario(String(i._id), por); i = await db.collection(COL).findOne({ _id: i._id }); }
     if (i.formularioId && !i.loteFirmaId) { await pedirFirmas(String(i._id), por); i = await db.collection(COL).findOne({ _id: i._id }); }
   }
@@ -264,7 +282,9 @@ async function enviarGestoria(id, por = 'Oficina', { _enviar = null } = {}) {
 
 async function accion(id, que, por) {
   if (que === 'avanzar') return avanzar(id, por);
-  if (que === 'pedir_papeles') { const i = await ver(id); if (!i.userId) throw new Error('Falta la ficha (pon su teléfono)'); await require('./docsAlta').pedir(i.userId, { por }); return ver(id); }
+  if (que === 'pedir_papeles') { const i = await ver(id); if (!i.userId) throw new Error('Falta la ficha (pon su teléfono)'); await require('./docsAlta').pedir(i.userId, { por, recibidas: recibidasDe(await require('./personalDocs').carpeta({ userId: i.userId })) }); return ver(id); }
+  if (que === 'ficha') { const db = await getDB(); const i = await db.collection(COL).findOne({ _id: _oid(id) }); if (!i.userId) { const userId = await _usuario(db, i); await db.collection(COL).updateOne({ _id: i._id }, { $set: { userId } }); } return ver(id); }
+  if (que === 'confirmar') { const db = await getDB(); await db.collection(COL).updateOne({ _id: _oid(id) }, { $set: { confirmadas: true }, $push: { historial: { at: new Date(), por, que: 'Condiciones confirmadas' } } }); return avanzar(id, por); }
   if (que === 'formulario') { await generarFormulario(id, por); return ver(id); }
   if (que === 'firmas') { await pedirFirmas(id, por); return ver(id); }
   if (que === 'gestoria') return enviarGestoria(id, por);
@@ -288,4 +308,4 @@ async function revisarManana({ _avisar = null } = {}) {
   return { revisadas: l.length, avisos: avisos.length };
 }
 
-module.exports = { lista, ver, crear, editar, avanzar, accion, generarFormulario, pedirFirmas, enviarGestoria, config, setConfig, revisarManana, rellenarFormulario, condiciones, CATEGORIAS, TIPOS, POR_DEFECTO, _consultar: CONSULTAR };
+module.exports = { recibidasDe, lista, ver, crear, editar, avanzar, accion, generarFormulario, pedirFirmas, enviarGestoria, config, setConfig, revisarManana, rellenarFormulario, condiciones, CATEGORIAS, TIPOS, POR_DEFECTO, _consultar: CONSULTAR };

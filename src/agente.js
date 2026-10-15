@@ -343,7 +343,7 @@ async function ejecutarTool(name, input, from) {
       const f = d => String(d).split('-').reverse().join('/');
       const hecho = v.pasos.filter(p => p.ok).map(p => '✅ ' + p.t), falta = v.pasos.filter(p => !p.ok && p.antes).map(p => '⏳ ' + p.t + (p.nota ? ` (${p.nota})` : ''));
       const pide = [!input.telefono && 'su *móvil*', !input.dni && 'su *DNI/NIE*'].filter(Boolean);
-      return { handled: true, reply: `🧑‍🔧 Alta de *${v.nombre}* en marcha, empieza el *${f(v.fechaInicio)}* (${I.CATEGORIAS[v.condiciones.categoria]}, indefinido, convenio, jornada completa, 15 días de prueba).\n\n${[...hecho, ...falta].join('\n')}${pide.length ? `\n\nPara seguir necesito ${pide.join(' y ')}: ponlos aquí: https://dashboard.corpprojects.es/incorporaciones` : '\n\nTodo en https://dashboard.corpprojects.es/incorporaciones'}` };
+      return { handled: true, reply: `🧑‍🔧 Alta de *${v.nombre}* en marcha, empieza el *${f(v.fechaInicio)}* \n\nCondiciones propuestas: ${I.CATEGORIAS[v.condiciones.categoria]}, indefinido, convenio, jornada completa, 15 días de prueba. *Confírmalas en la pantalla* antes de generar el papel para firmar.\n\n${[...hecho, ...falta].join('\n')}${pide.length ? `\n\nPara seguir necesito ${pide.join(' y ')}: ponlos aquí: https://dashboard.corpprojects.es/incorporaciones` : '\n\nTodo en https://dashboard.corpprojects.es/incorporaciones'}` };
     } catch (e) { return { handled: true, reply: e.message }; }
   }
   if (name === 'pasar_documento') { try { return await pasarDocumento(input || {}, from); } catch (e) { console.error('[Agente] documento:', e.message); return { handled: true, reply: 'No he podido sacar el documento ahora mismo, inténtalo en un momento.' }; } }

@@ -42,7 +42,7 @@ const fd=d=>d?String(d).slice(0,10).split('-').reverse().join('/'):'';
 function toast(t){const e=document.getElementById('toast');e.textContent=t;e.style.display='block';clearTimeout(window._tt);window._tt=setTimeout(()=>e.style.display='none',5000);}
 async function api(m,u,b){const o={method:m,headers:{...H}};if(b){o.headers['Content-Type']='application/json';o.body=JSON.stringify(b);}const r=await fetch(u,o);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'HTTP '+r.status);return d;}
 let D={lista:[]};
-const ANTES_TXT={pedir_papeles:'Pedir papeles',formulario:'Generar formulario',firmas:'Enviar a firmar',gestoria:'Enviar a la gestoría',tallas:'Pedir tallas'};
+const ANTES_TXT={confirmar:'Confirmar condiciones',pedir_papeles:'Pedir lo que falta',formulario:'Generar formulario',firmas:'Enviar a firmar',gestoria:'Enviar a la gestoría',tallas:'Pedir tallas'};
 
 async function cargar(){
   try{D=await api('GET','/api/incorporaciones');}catch(e){document.getElementById('out').innerHTML='<div class="vacio">'+esc(e.message)+'</div>';return;}
@@ -65,7 +65,7 @@ function pintar(){
   const cf=D.config||{};
   document.getElementById('cfg').innerHTML=`<div class="card"><h3>Ajustes</h3><label class="chk"><input type="checkbox" ${cf.autoGestoria?'checked':''} onchange="setCfg(this.checked)"> Mandar solo el alta a la gestoría (${'eduard@somassessors.com'}) en cuanto esté todo firmado y con los papeles</label><div class="nota">Si está apagado, se manda con el botón «Enviar a la gestoría». Corpy avisa cada mañana de lo que va tarde.</div></div>`;
 }
-async function hacer(id,acc,b){b.disabled=true;try{await api('POST','/api/incorporaciones/'+id+'/'+acc);toast('Hecho');await cargar();}catch(e){toast(e.message);b.disabled=false;}}
+async function hacer(id,acc,b){if(acc==='confirmar'){nueva(id);toast('Revisa las condiciones y guarda: así quedan confirmadas');return;}b.disabled=true;try{await api('POST','/api/incorporaciones/'+id+'/'+acc);toast('Hecho');await cargar();}catch(e){toast(e.message);b.disabled=false;}}
 async function cerrar(id){if(!confirm('¿Cerrar esta alta? (ya está todo, o no viene)'))return;const hecha=confirm('¿Ha empezado y está todo? Aceptar = hecha · Cancelar = anulada (no viene)');try{await api('POST','/api/incorporaciones/'+id+'/'+(hecha?'hecha':'anular'));cargar();}catch(e){toast(e.message);}}
 async function setCfg(v){try{await api('POST','/api/incorporaciones/config',{autoGestoria:v});toast(v?'Se mandará solo':'Se mandará con el botón');}catch(e){toast(e.message);cargar();}}
 async function verDoc(id){const w=window.open('','_blank');try{const r=await fetch('/api/personal/docs/'+id+'/archivo',{headers:H});if(!r.ok)throw new Error('No se pudo abrir');const b=await r.blob();w.location=URL.createObjectURL(b);}catch(e){w.close();toast(e.message);}}
@@ -103,7 +103,7 @@ async function guardar(id){
   const g=k=>document.getElementById(k);const b=g('b-guardar');b.disabled=true;
   const cond={};['tipo','categoria','salario','salarioImporte','jornada','horasSemana','horario','centro','domicilioSocial'].forEach(k=>{if(g('c-'+k))cond[k]=g('c-'+k).value;});
   ['prueba15','centroHabitual','nocturno','turnos','incentivos','formacionExtra','sistemaAutomatico','extranjero'].forEach(k=>{if(g('c-'+k))cond[k]=g('c-'+k).checked;});
-  const body={nombre:g('f-nombre').value,dni:g('f-dni').value,telefono:g('f-tel').value,fechaInicio:g('f-fecha').value,condiciones:cond};
+  const body={nombre:g('f-nombre').value,dni:g('f-dni').value,telefono:g('f-tel').value,fechaInicio:g('f-fecha').value,condiciones:cond,confirmadas:true};
   try{await api(id?'PUT':'POST','/api/incorporaciones'+(id?'/'+id:''),body);if(id)await api('POST','/api/incorporaciones/'+id+'/avanzar');g('form').innerHTML='';toast(id?'Guardado':'En marcha');cargar();}catch(e){toast(e.message);b.disabled=false;}
 }
 cargar();
