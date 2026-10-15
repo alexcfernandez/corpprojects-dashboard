@@ -155,7 +155,7 @@ async function firmar(token, { firmaDataUrl, n = null, notas = {}, ip = '', ua =
     const nombre = String(d.nombre || 'documento').replace(/\s*\(SIN FIRMAR\)/i, '').replace(/\.(pdf|jpe?g|png|webp)$/i, '') + ` (firmado por ${l.nombre.split(/\s+/)[0]}).pdf`;
     const g = await P.subir({ ambito: it.ambito, obraId: it.obraId, userId: it.userId || undefined, tipo: it.tipoDestino, archivo: { buffer: Buffer.from(pdf), mimetype: 'application/pdf', originalname: nombre }, fecha: hoyIso(), notas: `Firmado con el dedo por ${l.nombre} (${l.cargo}) el ${cuando}` }, `${l.nombre} (firma por enlace)`);
     await db.collection(COL).updateOne({ _id: l._id }, { $set: { [`items.${i}.estado`]: 'firmado', [`items.${i}.firmadoAt`]: new Date(), [`items.${i}.firmadoId`]: g.id, [`items.${i}.huella`]: huella, [`items.${i}.ip`]: ip } });
-    hechos.push(d.nombre);
+    hechos.push(String(d.nombre || 'documento').replace(/\s*\(SIN FIRMAR\)/i, ''));
   }
   await db.collection(COL).updateOne({ _id: l._id }, { $set: { firmaPng: png, ultimaFirma: new Date() } });
   // ¿Todo firmado y hay un siguiente firmante? Se le manda su enlace con las copias ya firmadas.
