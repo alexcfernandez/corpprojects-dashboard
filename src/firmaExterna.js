@@ -176,4 +176,26 @@ async function firmar(token, { firmaDataUrl, n = null, notas = {}, ip = '', ua =
   return { ok: true, firmados: hechos.length, siguiente: siguiente ? siguiente.a : null };
 }
 
-module.exports = { crear, ver, documento, firmar, _estampar };
+// Recordatorio a todos los que tienen algo pendiente de firmar (Álex, 15/10/2026: «que Corpy mande otra vez el
+// recordatorio de firma a todos»): enlace nuevo de 7 días al mismo lote, sin crear otro.
+async function recordarPendientes({ dias = 30, dryRun = false, _enviar = null } = {}, por = 'Oficina') {
+  const db = await getDB();
+  const ls = await db.collection(COL).find({ estado: 'pendiente', at: { $gte: new Date(Date.now() - dias * 864e5) } }).toArray();
+  const out = [];
+  for (const l of ls) {
+    const faltan = (l.items || []).filter(i => i.estado !== 'firmado');
+    if (!faltan.length) continue;
+    const token = require('./enlaceDoc').crear(String(l._id), { dias: 7, uso: 'firma' });
+    const url = `${process.env.DASHBOARD_URL || 'https://dashboard.corpprojects.es'}/firmar/${token}`;
+    const docs = faltan.map(i => '• ' + String(i.nombre || 'documento').replace(/\s*\(SIN FIRMAR\)/i, '')).join('\n');
+    const txt = `Hola ${String(l.nombre || '').split(/\s+/)[0]} 👋 Te recuerdo que tienes pendiente de firmar:\n${docs}\n\nSe firma con el dedo desde el móvil, es un momento:\n${url}\n\n¡Gracias!`;
+    if (dryRun) { out.push({ nombre: l.nombre, movil: l.movil, docs: faltan.map(i => i.nombre), ok: null }); continue; }
+    let ok = false;
+    try { ok = (await (_enviar || require('./notifications').sendWhatsAppTo)(l.movil, txt)) !== false; } catch (e) { ok = false; }
+    await db.collection(COL).updateOne({ _id: l._id }, { $push: { recordatorios: { at: new Date(), por, ok } } });
+    out.push({ nombre: l.nombre, movil: l.movil, docs: faltan.map(i => i.nombre), ok });
+  }
+  return { enviados: out.filter(x => x.ok).length, lista: out };
+}
+
+module.exports = { crear, ver, documento, firmar, recordarPendientes, _estampar };

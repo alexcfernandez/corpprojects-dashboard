@@ -2623,6 +2623,9 @@ app.post('/api/obras/:id/docs-entrada/enviar-firmar', requireAuthOficina, expres
 });
 // Firma con el dedo por enlace para quien no tiene la app (firmaExterna.js): administrador, contratistas…
 app.get('/firmar/:token', (req, res) => res.sendFile(path.join(__dirname, '../public/firmar.html')));
+app.post('/api/firma-externa-recordar', requireAuthOficina, async (req, res) => {
+  try { const q = (await _quienPush(req)) || {}; res.json(await require('./firmaExterna').recordarPendientes({ dryRun: req.query.dry === '1' }, q.name || req.user?.name || 'Oficina')); } catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/firma-externa/:token', async (req, res) => {
   try { res.json(await require('./firmaExterna').ver(req.params.token)); } catch (err) { res.status(404).json({ error: err.message }); }
 });
