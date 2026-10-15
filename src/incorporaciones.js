@@ -200,6 +200,9 @@ async function editar(id, entrada = {}, por = 'Oficina') {
   if (/^\d{4}-\d{2}-\d{2}$/.test(String(entrada.fechaInicio || ''))) set.fechaInicio = entrada.fechaInicio;
   // Si cambian las condiciones después de generar el formulario, hay que rehacerlo (y volver a firmarlo).
   if (i.formularioId && !(i.gestoria && i.gestoria.at)) { set.formularioId = null; set.loteFirmaId = null; }
+  // Ya enviado a la gestoría con un error (Javier, jornada, 15/10/2026): `rehacer` vuelve a generar el papel, a pedir
+  // las dos firmas y a dejar pendiente el envío (el envío anterior queda en el historial).
+  if (entrada.rehacer === true) { set.formularioId = null; set.loteFirmaId = null; set.gestoria = null; set.gestoriaAnterior = i.gestoria || null; }
   await db.collection(COL).updateOne({ _id: i._id }, { $set: set, $push: { historial: { at: new Date(), por, que: 'Datos cambiados' } } });
   return ver(id);
 }
