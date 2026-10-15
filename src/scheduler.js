@@ -375,6 +375,8 @@ function startScheduler() {
   // Encargos a trabajadores: recordatorios y aviso a Álex si no contestan (encargos.js).
   // Cada lunes a las 8:30, «lo que falta» del equipo y de las obras de contratista (pendientesEquipo.js).
   cron.schedule('30 8 * * 1', () => require('./pendientesEquipo').avisoSemanal(), { timezone: 'Europe/Madrid' });
+  // Viernes 9:00: lo que nos deben (total + familias) y el PDF para imprimir, a Álex, Alfonso y la oficina.
+  cron.schedule('0 9 * * 5', () => { if (process.env.PENDIENTES_VIERNES !== 'off') require('./pendientesFamiliaPdf').avisoViernes().then(r => console.log('[PendientesViernes]', r.enviado ? `enviado a ${r.ok}` : r.motivo)).catch(e => console.warn('[PendientesViernes]', e.message)); }, { timezone: 'Europe/Madrid' });
   // Cumpleaños del día: aviso a Álex a primera hora (fichaDatos.js).
   cron.schedule('0 8 * * *', () => require('./fichaDatos').cumpleHoy().catch(e => console.warn('[Cumples]', e.message)), { timezone: 'Europe/Madrid' });
   // Compras: las que están claras se revisan y suben solas (cada hora); a las 17:00 se pregunta la obra de las que no la tienen.

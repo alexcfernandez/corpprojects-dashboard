@@ -179,4 +179,40 @@ function enlace({ dias = 2 } = {}) {
 }
 const verificarEnlace = token => require('./enlaceDoc').verificar(token, { uso: 'pendfam' }) === ID_INFORME;
 
-module.exports = { agrupar, filtrar, generar, enlace, verificarEnlace, eur, SIN };
+// ── Aviso de los VIERNES (scheduler): resumen + enlace al PDF a Álex, Alfonso y la oficina ──
+// Destinatarios: PENDIENTES_FAMILIA_TO (lista con comas) o, por defecto, el dueño + Alfonso
+// (ADMIN_TELEFONO, el mismo de incorporaciones.js) + el móvil de la oficina (674 013 723).
+function destinatariosViernes() {
+  const lista = String(process.env.PENDIENTES_FAMILIA_TO || '').trim()
+    ? String(process.env.PENDIENTES_FAMILIA_TO).split(',')
+    : [require('./notifications').destinoDueno(), process.env.ADMIN_TELEFONO || '+34692270438', process.env.OFICINA_TELEFONO || '+34674013723'];
+  const vistos = new Set();
+  return lista.map(x => String(x || '').trim().replace(/^whatsapp:/i, '')).filter(Boolean).filter(x => {
+    const k = x.replace(/\D/g, '').replace(/^34(?=\d{9}$)/, '');
+    return !vistos.has(k) && vistos.add(k);
+  });
+}
+function textoViernes(g, url) {
+  const MAX = 15, lineas = g.bloques.slice(0, MAX).map(b => `• ${b.nombre} — *${eur(b.total)}* (${b.n})`);
+  if (g.bloques.length > MAX) lineas.push(`…y ${g.bloques.length - MAX} familias más (en el PDF)`);
+  return `💰 *Pendiente de cobro — viernes*\n*Total: ${eur(g.total)}* · ${g.n} facturas\n\n${lineas.join('\n')}` +
+    `\n\n🖨️ PDF para imprimir, con todas las facturas por familia:\n${url}\n_(El enlace vale 7 días y siempre saca los datos del momento.)_`;
+}
+async function avisoViernes({ dryRun = false, hoy = new Date().toISOString().slice(0, 10) } = {}) {
+  const avisos = require('./avisos');
+  if (!dryRun && await avisos.isGlobalPaused()) return { enviado: false, motivo: 'avisos pausados' };
+  const clave = 'pendientes-familia-viernes';
+  if (!dryRun && await avisos.wasAlertSentToday(clave, hoy)) return { enviado: false, motivo: 'ya enviado hoy' };
+  const pend = await require('./stelorder').getPendingInvoices();
+  if (!pend || !pend.length) return { enviado: false, motivo: 'no hay pendientes' };
+  const texto = textoViernes(agrupar(pend), enlace({ dias: 7 }));
+  const a = destinatariosViernes();
+  if (dryRun) return { enviado: false, texto, a };
+  const N = require('./notifications');
+  let ok = 0;
+  for (const to of a) { try { if (await N.sendWhatsAppTo(to, texto)) ok++; } catch (e) { console.error('[PendientesViernes] envío', to, e.message); } }
+  if (ok) await avisos.markAlertSent(clave, hoy);
+  return { enviado: ok > 0, a, ok };
+}
+
+module.exports = { agrupar, filtrar, generar, enlace, verificarEnlace, eur, SIN, destinatariosViernes, textoViernes, avisoViernes };

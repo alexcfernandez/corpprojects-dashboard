@@ -84,3 +84,30 @@ test('agrupar/eur: orden por deuda, "Sin familia" al final, miles con punto', ()
   assert.deepEqual(g.bloques.map(b => b.nombre), ['Y', 'X', 'Sin familia']);
   assert.equal(PF.eur(1234567.5), '1.234.567,50 €');
 });
+
+// ── Aviso de los viernes: resumen + PDF a Álex, Alfonso y la oficina ──
+test('viernes: destinatarios por defecto (dueño + Alfonso + oficina), sin duplicados', () => {
+  process.env.WHATSAPP_TO = '+34611223344';
+  delete process.env.PENDIENTES_FAMILIA_TO; delete process.env.ADMIN_TELEFONO; delete process.env.OFICINA_TELEFONO;
+  assert.deepEqual(PF.destinatariosViernes(), ['+34611223344', '+34692270438', '+34674013723']);
+  process.env.PENDIENTES_FAMILIA_TO = '+34611223344, 611223344,whatsapp:+34600111222';
+  assert.deepEqual(PF.destinatariosViernes(), ['+34611223344', '+34600111222']);
+  delete process.env.PENDIENTES_FAMILIA_TO;
+});
+
+test('viernes: manda a los 3 el total, las familias y el enlace al PDF', async () => {
+  const N = require(path.join(root, 'src/notifications.js'));
+  const enviados = [];
+  const orig = N.sendWhatsAppTo;
+  N.sendWhatsAppTo = async (to, txt) => { enviados.push({ to, txt }); return true; };
+  try {
+    const r = await PF.avisoViernes({ hoy: '2026-10-16' });
+    assert.equal(r.enviado, true);
+    assert.deepEqual(enviados.map(e => e.to), ['+34611223344', '+34692270438', '+34674013723']);
+    const t = enviados[0].txt;
+    assert.match(t, /Total: 3\.450,00 €/);
+    assert.ok(t.indexOf('BELLPUIG') < t.indexOf('FINQUES ROCA') && t.indexOf('FINQUES ROCA') < t.indexOf('Sin familia'));
+    const m = t.match(/\/informe\/pendientes\/(\S+)/);
+    assert.ok(m && PF.verificarEnlace(m[1]));
+  } finally { N.sendWhatsAppTo = orig; }
+});
