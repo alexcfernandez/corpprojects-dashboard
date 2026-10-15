@@ -3811,9 +3811,9 @@ app.get('/api/partes/workers', async (req, res) => {
     // pantalla de login de los trabajadores, sin sesión.
     const rol = await roleDeToken((req.headers.authorization || '').replace('Bearer ', '')).catch(() => null);
     const conDinero = rol && users.canSeeMoney(rol);
-    const fila = (id, name, color, role, coste) => ({ id, name, color: color || '#4d9cf8', ...(conDinero ? { role, costeHora: coste || 15 } : {}) });
+    const fila = (id, name, color, role, coste, u = {}) => ({ id, name, color: color || '#4d9cf8', ...(rol ? { nombreCompleto: u.nombreCompleto || '', fechaInicio: u.fechaInicio || '' } : {}), ...(conDinero ? { role, costeHora: coste || 15 } : {}) });
     if (techs.length > 0) {
-      res.json(techs.map(u => fila(String(u._id), u.name, u.color, u.role, u.costeHora)));
+      res.json(techs.map(u => fila(String(u._id), u.name, u.color, u.role, u.costeHora, u)));
     } else {
       res.json(partes.WORKERS.map(w => fila(w.id, w.name, null, null, w.costeHora)));
     }

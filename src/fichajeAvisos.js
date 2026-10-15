@@ -82,7 +82,7 @@ function textoEnlace(momento, nombre, url, estado) {
 // Quién lo recibiría ahora y con qué texto (base de la lista de la pantalla y de los envíos).
 async function destinatariosEnlaces(momento, { fecha } = {}) {
   const f = fecha || fm.fechaHoy();
-  const [cfg, plantilla, dia] = await Promise.all([getConfigEnlaces(), fm.trabajadoresQueFichan(), fm.getDia(f)]);
+  const [cfg, plantilla, dia] = await Promise.all([getConfigEnlaces(), fm.trabajadoresQueFichan(f), fm.getDia(f)]);
   const sf = await fm.sinFichar(f, { dia, plantilla });
   const ausente = {}; (sf.ausentes || []).forEach(a => { ausente[a.id] = a.estado; });
   const estadoDe = {}; dia.forEach(d => { estadoDe[String(d.userId)] = d.estado; });
@@ -177,7 +177,7 @@ function cronsEscalera() {
 async function avisarSalidasOlvidadas({ dryRun = false } = {}) {
   if (!dryRun && await avisos.isGlobalPaused()) return { pausado: true };
   const fecha = fm.fechaHoy();
-  const [dia, plantilla] = await Promise.all([fm.getDia(fecha), fm.trabajadoresQueFichan()]);
+  const [dia, plantilla] = await Promise.all([fm.getDia(fecha), fm.trabajadoresQueFichan(fecha)]);
   const tel = {}; plantilla.forEach(w => { tel[w.id] = w.whatsapp; });
   const out = [];
   for (const d of dia.filter(x => x.estado !== 'fuera')) {

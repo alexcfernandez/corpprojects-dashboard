@@ -222,7 +222,7 @@
       days.push({ d, date, dow, weekend: dow===0||dow===6, fest: festivos[date] || null });
     }
 
-    let html = `<div style="display:grid;grid-template-columns:100px repeat(${days.length},minmax(26px,1fr));gap:1px;font-size:10px">`;
+    let html = `<div style="display:grid;grid-template-columns:140px repeat(${days.length},minmax(26px,1fr));gap:1px;font-size:10px">`;
 
     html += `<div style="padding:4px 6px;color:var(--text3);font-size:9px;font-weight:600;border-bottom:1px solid var(--border)">Trabajador</div>`;
     days.forEach(({ d, date, dow, weekend, fest }) => {
@@ -235,11 +235,21 @@
     });
 
     WORKERS.forEach(w => {
-      html += `<div style="padding:4px 8px;color:var(--text2);font-size:10px;font-weight:500;border-right:1px solid var(--border);display:flex;align-items:center;gap:4px;white-space:nowrap">
+      // Nombre con apellidos (si está en su ficha): con mucha gente, solo el nombre de pila confunde.
+      const nc = String(w.nombreCompleto || '').trim(), nom = nc || w.name;
+      const pila = nom.split(' ')[0], resto = nom.split(' ').slice(1).join(' ');
+      const ini = w.fechaInicio || '';
+      html += `<div title="${(nom + (ini ? ' · empieza el ' + ini.split('-').reverse().join('/') : '')).replace(/"/g,'&quot;')}" style="padding:3px 8px;color:var(--text2);font-size:10px;font-weight:500;border-right:1px solid var(--border);display:flex;align-items:center;gap:5px;min-width:0">
         <div style="width:6px;height:6px;border-radius:50%;background:${w.color};flex-shrink:0"></div>
-        ${w.name.split(' ')[0]}
+        <div style="min-width:0;line-height:1.15"><div style="font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${pila}</div>${resto ? `<div style="font-size:8.5px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${resto}</div>` : ''}</div>
       </div>`;
       days.forEach(({ date, weekend, fest }) => {
+        // Antes de su primer día: bloqueado (aún no estaba con nosotros). El primer día lleva la marca «Empieza».
+        if (ini && date < ini) {
+          html += `<div title="Aún no había empezado (empieza el ${ini.split('-').reverse().join('/')})" style="min-height:36px;border-radius:3px;border:1px dashed var(--border);background:repeating-linear-gradient(135deg,transparent 0 5px,rgba(127,127,127,.12) 5px 7px);cursor:default"></div>`;
+          return;
+        }
+        const empieza = ini && date === ini;
         const entry       = calData[w.id + '_' + date];
         const est         = entry ? ESTADOS[entry.estado] : null;
         const tieneEquipo = entry?.equipo?.length > 0;
@@ -258,8 +268,9 @@
 
         html += `<div
           data-wid="${w.id}" data-wname="${w.name}" data-date="${date}" data-clickable="true"
-          style="min-height:36px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;background:${bg};border:1px solid ${border};border-radius:3px;cursor:pointer;padding:1px;transition:opacity .15s"
-          title="${tooltip}">
+          style="min-height:36px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;background:${bg};border:1px solid ${border};${empieza?'box-shadow:inset 3px 0 0 #22c487;':''}border-radius:3px;cursor:pointer;padding:1px;transition:opacity .15s"
+          title="${empieza ? '🚀 Empieza con nosotros hoy · ' : ''}${tooltip}">
+          ${empieza ? '<div style="font-size:6.5px;font-weight:700;color:#22c487;line-height:1">EMPIEZA</div>' : ''}
           <div style="font-size:11px;line-height:1">${est ? est.emoji : fest ? '🎉' : weekend ? '⭐' : ''}</div>
           <div style="font-size:7px;color:${numObras>1?'var(--blue)':'var(--text3)'};overflow:hidden;max-width:100%;white-space:nowrap;text-overflow:ellipsis;padding:0 2px">${clientLabel}</div>
           <div style="font-size:8px;line-height:1;display:flex;gap:1px">

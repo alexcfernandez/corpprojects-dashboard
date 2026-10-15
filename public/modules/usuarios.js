@@ -198,6 +198,18 @@
     </div>
     <div class="g2" style="margin-bottom:12px">
       <div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">🪪 Nombre completo (con apellidos)</div>
+        <input type="text" id="u-nombre-completo" value="${user.nombreCompleto||''}" placeholder="Ej: Juan Carlos García López" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px">
+        <div style="font-size:10px;color:var(--text3);margin-top:3px">Sale en la tabla de presencia para distinguir a cada uno</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">🚀 Empieza a trabajar el</div>
+        <input type="date" id="u-fecha-inicio" value="${user.fechaInicio||''}" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px">
+        <div style="font-size:10px;color:var(--text3);margin-top:3px">Antes de ese día no recibe el enlace de fichar ni sale como «sin fichar»</div>
+      </div>
+    </div>
+    <div class="g2" style="margin-bottom:12px">
+      <div>
         <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">📱 Teléfono</div>
         <input type="tel" id="u-telefono" value="${user.telefono||''}" placeholder="+34 6XX XXX XXX" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px">
         <div style="font-size:10px;color:var(--text3);margin-top:3px">Para enviarle el enlace de acceso por WhatsApp</div>
@@ -346,6 +358,8 @@
       set('u-pin',  u.pin&&u.pin!=='••••'?u.pin:'');
       set('u-coste-hora', u.costeHora||'');
       set('u-telefono', u.telefono||'');
+      set('u-nombre-completo', u.nombreCompleto||'');
+      set('u-fecha-inicio', u.fechaInicio||'');
       set('u-email', u.email||'');
       set('u-color', u.color||'#4d9cf8');
       set('u-notes', u.notes||'');
@@ -411,6 +425,8 @@
     pin:       document.getElementById('u-pin')?.value?.trim(),
     costeHora: parseFloat(document.getElementById('u-coste-hora')?.value || 0),
     telefono:  document.getElementById('u-telefono')?.value?.trim(),
+    nombreCompleto: document.getElementById('u-nombre-completo')?.value?.trim() || '',
+    fechaInicio: document.getElementById('u-fecha-inicio')?.value || '',
     email:     document.getElementById('u-email')?.value?.trim(),
     color:     document.getElementById('u-color')?.value,
     notes:     document.getElementById('u-notes')?.value?.trim(),
@@ -453,7 +469,7 @@
   }
 
   function resetForm() {
-    ['u-name','u-pass','u-pin','u-coste-hora','u-telefono','u-email','u-notes','u-dni','u-carnet','u-emergency','u-aut-tarifa','u-aut-nif','u-aut-nombre'].forEach(id => {
+    ['u-name','u-pass','u-pin','u-coste-hora','u-telefono','u-nombre-completo','u-fecha-inicio','u-email','u-notes','u-dni','u-carnet','u-emergency','u-aut-tarifa','u-aut-nif','u-aut-nombre'].forEach(id => {
       const e = document.getElementById(id); if(e) e.value='';
     });
     { const ck = document.getElementById('u-aut'); if (ck) ck.checked = false; onAutChange(); const cp = document.getElementById('u-partes'); if (cp) cp.checked = false; }

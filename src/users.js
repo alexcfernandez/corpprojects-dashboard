@@ -166,6 +166,9 @@ async function createUser(data) {
   };
   // Autónomo: no ficha; su coste/hora en las obras es su tarifa.
   user.porPartes = !!data.porPartes;
+  // Nombre con apellidos (para distinguir a la gente en presencia) y día que empieza: antes de esa fecha no ficha ni cuenta.
+  user.nombreCompleto = String(data.nombreCompleto || '').trim().slice(0, 120);
+  user.fechaInicio = /^\d{4}-\d{2}-\d{2}$/.test(String(data.fechaInicio || '')) ? data.fechaInicio : '';
   user.autonomo = require('./autonomos').limpiar(data.autonomo);
   if (user.autonomo && !(user.costeHora > 0)) user.costeHora = require('./autonomos').costeHora(user) || 0;
 
@@ -191,7 +194,7 @@ async function createUser(data) {
 
 async function updateUser(id, data) {
   const db      = await getDB();
-  const allowed = ['name','role','pin','color','costeHora','nota','active','notes','docs','telefono','email','username','porPartes'];
+  const allowed = ['name','role','pin','color','costeHora','nota','active','notes','docs','telefono','email','username','porPartes','nombreCompleto','fechaInicio'];
   const set     = { updatedAt: new Date() };
   allowed.forEach(k => { if (data[k] !== undefined) set[k] = data[k]; });
 

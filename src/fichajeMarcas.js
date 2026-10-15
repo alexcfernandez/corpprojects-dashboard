@@ -401,10 +401,12 @@ async function misCorrecciones(userId) {
 
 // ── ALERTAS (Fase 2) ──────────────────────────────────────────────
 // Quién debe fichar: plantilla activa (técnico / encargado / oficina). El dueño no.
-async function trabajadoresQueFichan() {
+// `fecha`: quien empieza más tarde (fechaInicio, p. ej. un alta nueva) no cuenta ni recibe enlaces antes de ese día.
+async function trabajadoresQueFichan(fecha = fechaHoy()) {
   const { getUsers, normalizeRole } = require('./users');
   const us = await getUsers(false);
   return (us || [])
+    .filter(u => !(u.fechaInicio && String(u.fechaInicio) > String(fecha)))
     .filter(u => u.role !== 'client' && ['tecnico', 'encargado', 'oficina'].includes(normalizeRole(u.role)))
     .filter(u => !(u.autonomo && u.autonomo.activo))   // los autónomos no fichan (solo presencia)
     .map(u => ({ id: String(u._id), name: u.name, whatsapp: _tel(u.whatsapp || u.telefono), porPartes: !!u.porPartes }));
@@ -432,7 +434,7 @@ async function sinFichar(fecha, pre = {}) {
   const festivo = await require('./festivos').esFestivo(f).catch(() => false);
   if (!_esLaborable(f) || festivo) return { fecha: f, laborable: false, faltan: [], fichados: 0, plantilla: 0, ausentes: [] };
   const db = await getDB();
-  const [dia, plantilla] = await Promise.all([pre.dia || getDia(f), pre.plantilla || trabajadoresQueFichan()]);
+  const [dia, plantilla] = await Promise.all([pre.dia || getDia(f), pre.plantilla || trabajadoresQueFichan(f)]);
   const conMarcas = new Set(dia.map(d => String(d.userId)));
   const pres = await db.collection('attendance').find({ date: f }).toArray();
   const ausente = {}; pres.forEach(p => { if (p.estado && !['obra', 'oficina'].includes(p.estado)) ausente[String(p.workerId)] = p.estado; });
@@ -454,7 +456,7 @@ async function alertas(fecha, { forzarHora } = {}) {
   const f = fecha || fechaHoy();
   const esHoy = f === fechaHoy();
   const ahora = forzarHora || _horaMadrid();
-  const [dia, plantilla] = await Promise.all([getDia(f), trabajadoresQueFichan()]);
+  const [dia, plantilla] = await Promise.all([getDia(f), trabajadoresQueFichan(f)]);
   const porId = {}; dia.forEach(d => { porId[String(d.userId)] = d; });
 
   let noFicho = [];

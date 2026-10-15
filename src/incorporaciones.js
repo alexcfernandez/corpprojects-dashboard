@@ -60,12 +60,12 @@ function condiciones(entrada = {}, previas = {}) {
 }
 
 // ── Ficha del trabajador: la que ya hay (por teléfono o DNI) o una nueva con un PIN libre ──
-async function _usuario(db, { nombre, telefono, dni }) {
+async function _usuario(db, { nombre, telefono, dni, fechaInicio }) {
   const d9 = String(telefono || '').replace(/\D/g, '').slice(-9);
-  const us = await db.collection('users').find({}, { projection: { name: 1, whatsapp: 1, telefono: 1, 'docs.dni': 1, active: 1 } }).toArray();
+  const us = await db.collection('users').find({}, { projection: { name: 1, whatsapp: 1, telefono: 1, 'docs.dni': 1, active: 1, nombreCompleto: 1 } }).toArray();
   const ya = us.find(u => (d9.length === 9 && [u.whatsapp, u.telefono].some(t => String(t || '').replace(/\D/g, '').slice(-9) === d9)) || (dni && limpiaDni(u.docs && u.docs.dni) === limpiaDni(dni)));
   if (ya) {
-    const set = {}; if (ya.active === false) set.active = true; if (d9 && !ya.whatsapp) set.whatsapp = '+34' + d9; if (dni && !(ya.docs && ya.docs.dni)) set['docs.dni'] = limpiaDni(dni);
+    const set = {}; if (ya.active === false) set.active = true; if (nombre && !ya.nombreCompleto) set.nombreCompleto = nombre; if (d9 && !ya.whatsapp) set.whatsapp = '+34' + d9; if (dni && !(ya.docs && ya.docs.dni)) set['docs.dni'] = limpiaDni(dni);
     if (Object.keys(set).length) await db.collection('users').updateOne({ _id: ya._id }, { $set: set });
     return String(ya._id);
   }
@@ -73,7 +73,7 @@ async function _usuario(db, { nombre, telefono, dni }) {
   let pin; do { pin = String(1000 + Math.floor(Math.random() * 9000)); } while (usados.has(pin));
   const U = require('./users');
   // Coste/hora de arranque (el de la mayoría de la plantilla); se ajusta en Usuarios.
-  const u = await U.createUser({ name: nombre, role: 'tecnico', pin, costeHora: Number(process.env.COSTE_HORA_NUEVO) || 15, telefono: d9 ? '+34' + d9 : '', docs: { dni: limpiaDni(dni) } });
+  const u = await U.createUser({ name: nombre, nombreCompleto: nombre, fechaInicio: fechaInicio || '', role: 'tecnico', pin, costeHora: Number(process.env.COSTE_HORA_NUEVO) || 15, telefono: d9 ? '+34' + d9 : '', docs: { dni: limpiaDni(dni) } });
   const id = String(u.id || u._id);
   if (d9) await db.collection('users').updateOne({ _id: new ObjectId(id) }, { $set: { whatsapp: '+34' + d9 } });
   return id;
