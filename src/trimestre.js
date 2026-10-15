@@ -91,22 +91,65 @@ async function pendientes(R) {
   return { porRevisar, sinContabilidad, albaranes, correosSinAdjunto, correosSinRevisar, totalCorreosFactura: correos.length, banco };
 }
 
+// Lo que la gestoría nos ha pedido que NO vuelva a pasar (Rubén, Som Assessors, al cerrar el 3T 2026 — 15/10/2026):
+//   · ninguna factura emitida sin NIF (lo necesitan para el 347), ni con nuestro propio CIF;
+//   · una comunidad de propietarios siempre con NIF H;
+//   · factura sin IVA → solo a empresas y con la mención de inversión del sujeto pasivo (ispFacturas.js la pone);
+//   · solo facturas: nada de albaranes, pedidos ni nóminas; de Palahí, la factura quincenal, no sus albaranes.
+const NUESTRO_CIF = 'B09899253';
+const ES_COMUNIDAD = /comunitat|comunidad|\bctat\b|\bcdad\b|propietari|\bc\.\s?p\.?\s/i;
+const NO_ES_FACTURA = /albar|pedido|comanda|n[oó]mina/i;
+const AGRUPAN = [{ re: /palah/i, nombre: 'Palahí', factura: /^\d{6}$/ }]; // facturan cada quincena con nº de 6 cifras; los albaranes van con 5
+async function reglasGestoria(R, _d = {}) {
+  const stel = _d.stel || require('./stelorder');
+  const db = _d.db || await getDB();
+  const out = [];
+  const [mapa, cl] = await Promise.all([stel.getAllOrdinaryInvoices(), stel.getClients()]);
+  const cli = Object.fromEntries(((cl && cl.clients) || []).map(c => [String(c.id), c]));
+  const em = Object.entries(mapa || {}).map(([id, o]) => ({ id, ...o })).filter(o => enRango(o.date, R) && Number(o.total) > 0);
+  const isp = Object.fromEntries((await db.collection('ispFacturas').find({ id: { $in: em.map(o => o.id) } }).toArray()).map(x => [x.id, x.que]));
+  for (const o of em) {
+    const c = cli[o.accountId] || {};
+    const nombre = c['legal-name'] || c.name || '¿?';
+    const nif = String(c['tax-identification-number'] || '').replace(/[\s.\-]/g, '').toUpperCase();
+    const f = { ref: o.number, fecha: String(o.date).slice(0, 10), quien: nombre, total: o.total };
+    if (!nif || /^X+$/.test(nif)) out.push({ ...f, que: 'Factura sin NIF del cliente (la gestoría lo necesita para el 347)' });
+    else if (nif === NUESTRO_CIF) out.push({ ...f, que: 'La ficha del cliente tiene NUESTRO CIF: falta el NIF del cliente' });
+    else if (ES_COMUNIDAD.test(nombre) && !/^H/.test(nif)) out.push({ ...f, que: `Comunidad con NIF ${nif}: el de una comunidad empieza por H` });
+    // Lo de sin IVA, desde que se revisa cada mañana (ispFacturas.DESDE); lo anterior ya se arregló a mano el 15/10/2026.
+    if (f.fecha >= require('./ispFacturas').DESDE && Math.abs(Number(o.iva) || 0) < 0.01 && !['anadir', 'ya_lleva', 'rectificada'].includes(isp[o.id])) {
+      out.push({ ...f, que: /^[ABCDEFGJNPQRSUVW]\d/.test(nif) ? 'Sin IVA: comprueba que lleve la mención de inversión del sujeto pasivo' : 'Sin IVA a quien no es empresa: le falta el IVA o hay que rectificarla' });
+    }
+  }
+  const cs = await db.collection('compras').find({ estado: { $in: ['revisada', 'archivo'] }, tipo: { $in: ['factura', 'ticket', 'devolucion'] }, fecha: { $gte: R.from, $lte: R.to }, duplicadoDe: null })
+    .project({ proveedor: 1, numero: 1, fecha: 1, total: 1, notas: 1 }).toArray();
+  for (const c of cs) {
+    const f = { ref: c.numero || '(sin nº)', fecha: c.fecha, quien: c.proveedor || '¿?', total: c.total };
+    const ag = AGRUPAN.find(a => a.re.test(c.proveedor || ''));
+    if (NO_ES_FACTURA.test(`${c.numero || ''} ${c.notas || ''}`)) out.push({ ...f, que: 'Parece un albarán, pedido o nómina: a la gestoría solo van facturas' });
+    else if (ag && c.numero && !ag.factura.test(String(c.numero).trim())) out.push({ ...f, que: `${ag.nombre}: esto es un albarán; a la gestoría va su factura quincenal` });
+  }
+  return out.sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
+}
+
 function sumar(lista, k) { return r2(lista.reduce((s, x) => s + (Number(x[k]) || 0), 0)); }
 function conocido(lista, k) { return lista.length ? lista.filter(x => x[k] != null).length / lista.length : 0; }
 
 async function estado(q) {
   const R = rango(q || trimestrePorDefecto());
-  const [em, rec, pen] = await Promise.all([
+  const [em, rec, pen, gest] = await Promise.all([
     emitidas(R).catch(e => ({ error: e.message })),
     recibidas(R).catch(e => ({ error: e.message })),
     pendientes(R),
+    reglasGestoria(R).catch(e => { console.warn('[Trimestre] reglas gestoría:', e.message); return []; }),
   ]);
+  pen.gestoria = gest;
   const emL = Array.isArray(em) ? em : [], recL = Array.isArray(rec) ? rec : [];
   const resumen = {
     emitidas: { n: emL.length, total: sumar(emL, 'total'), base: sumar(emL, 'base'), iva: sumar(emL, 'iva'), ivaConocido: conocido(emL, 'iva') },
     recibidas: { n: recL.length, total: sumar(recL, 'total'), base: sumar(recL, 'base'), iva: sumar(recL, 'iva'), ivaConocido: conocido(recL.filter(x => x.tipo === 'factura'), 'iva') },
   };
-  const nPend = pen.porRevisar.length + pen.sinContabilidad.length + pen.correosSinAdjunto.length + pen.correosSinRevisar.length + (pen.banco && !pen.banco.cubre ? 1 : 0);
+  const nPend = pen.porRevisar.length + pen.sinContabilidad.length + pen.correosSinAdjunto.length + pen.correosSinRevisar.length + (pen.banco && !pen.banco.cubre ? 1 : 0) + pen.gestoria.length;
   return {
     ...R, generado: new Date(), resumen, nPendientes: nPend,
     emitidas: emL.map(({ _pdfPath, ...x }) => x), recibidas: recL, pendientes: pen,
@@ -708,6 +751,7 @@ async function revisionDiaria({ forzarAviso = false } = {}) {
       p.correosSinAdjunto.length ? `• ${p.correosSinAdjunto.length} correos de factura sin PDF (pedirla)` : '',
       p.correosSinRevisar.length ? `• ${p.correosSinRevisar.length} facturas de correo por revisar` : '',
       p.banco && !p.banco.cubre ? '• falta subir el extracto del banco hasta el final del trimestre' : '',
+      p.gestoria && p.gestoria.length ? `• ${p.gestoria.length} cosa(s) que la gestoría nos pidió corregir (NIF, IVA, albaranes):\n${p.gestoria.slice(0, 8).map(x => `   – ${x.ref} ${x.quien}: ${x.que}`).join('\n')}` : '',
     ].filter(Boolean);
     const texto = `🗂️ *${e.label}* — para cerrar con la gestoría:\n${lineas.join('\n')}\n\nhttps://dashboard.corpprojects.es/trimestre`;
     try { await require('./push').sendToOficina({ title: `${e.label}: ${e.nPendientes} pendientes`, body: lineas.join(' · ').replace(/• /g, ''), url: '/trimestre', tag: 'trimestre' }); } catch (x) {}
@@ -817,4 +861,4 @@ async function buscar(texto) {
   };
 }
 
-module.exports = { olvidarMapaPagos, enlazarCompra, todasRecibidas, rango, trimestrePorDefecto, estado, excel, revisionDiaria, resumenEmitidasXlsx, zipEmitidas, zipRecibidasCompras, punteo, paqueteGestoria, borrador303, textoGestoria, justificar, deshacerJustificacion, comercio, confirmarDesdePunteo, buscar, recibidasPunteo, mapaPagos, todasEmitidas };
+module.exports = { reglasGestoria, olvidarMapaPagos, enlazarCompra, todasRecibidas, rango, trimestrePorDefecto, estado, excel, revisionDiaria, resumenEmitidasXlsx, zipEmitidas, zipRecibidasCompras, punteo, paqueteGestoria, borrador303, textoGestoria, justificar, deshacerJustificacion, comercio, confirmarDesdePunteo, buscar, recibidasPunteo, mapaPagos, todasEmitidas };
