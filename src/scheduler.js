@@ -398,6 +398,8 @@ function startScheduler() {
   // Cobros (8/10/2026): quién dijo que paga hoy, promesas incumplidas y recordatorios por revisar en /cobrar.
   cron.schedule('10 9 * * 1-5', () => { if (process.env.AVISO_COBROS !== 'off') require('./recordatoriosCobro').avisoManana().catch(e => console.warn('[Cobros]', e.message)); }, { timezone: 'Europe/Madrid' });
   // Altas de gente nueva: avanzar lo que se pueda y avisar de lo que va tarde (incorporaciones.js).
+  // Facturas emitidas sin IVA: mención de inversión del sujeto pasivo o aviso (ispFacturas.js).
+  cron.schedule('50 9 * * 1-5', () => require('./ispFacturas').revisar().then(r => { if (r.revisadas) console.log(`[ISP] ${r.revisadas} factura(s) sin IVA mirada(s)`); }).catch(e => console.warn('[ISP]', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('30 8 * * 1-6', () => require('./incorporaciones').revisarManana().catch(e => console.warn('[Incorporaciones] mañana:', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('0 9 * * *', () => require('./bancoSync').revisarCaducidad().catch(e => console.warn('[BancoSync] caducidad:', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('5 9 * * *', () => require('./vehiculos').revisarVencimientos().then(r => r.avisos.length && console.log('[Vehículos] avisos:', r.avisos.length)).catch(e => console.warn('[Vehículos] avisos:', e.message)), { timezone: 'Europe/Madrid' });
