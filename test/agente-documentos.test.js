@@ -6,7 +6,7 @@ const root = path.join(__dirname, '..');
 const stub = (rel, exports) => { const p = require.resolve(path.join(root, rel)); require.cache[p] = { id: p, filename: p, loaded: true, exports }; };
 const creados = [];
 stub('src/acceso.js', { esOwner: f => f === 'whatsapp:+34600000000' });
-stub('src/enlacesDoc.js', { HORAS: 24, crear: async (id, o) => { creados.push({ id, ...o }); return `https://x/d/tok${creados.length}`; } });
+stub('src/enlaceDoc.js', { url: (id, o) => { creados.push({ id, ...o }); return `https://x/d/tok${creados.length}`; } });
 stub('src/users.js', { getUsers: async () => [{ _id: 'u1', name: 'Javier Huaca' }, { _id: 'u2', name: 'Manolo Pérez' }] });
 const EMP = [{ id: 'e1', tipo: 'escrituras', nombre: 'CIF CORP PROJECTS.pdf', fecha: '2025-03-01' }, { id: 'e2', tipo: 'cert_hacienda', nombre: 'hacienda.pdf', fecha: '2026-09-01', caduca: '2027-09-01' }];
 const JAVI = [{ id: 'j1', tipo: 'dni', nombre: 'pasaporte.jpg', fecha: '2026-10-13' }, { id: 'j2', tipo: 'tarjeta_ss', nombre: 'nuss.jpg' }];

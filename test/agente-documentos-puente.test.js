@@ -6,7 +6,7 @@ const root = path.join(__dirname, '..');
 const stub = (rel, exports) => { const p = require.resolve(path.join(root, rel)); require.cache[p] = { id: p, filename: p, loaded: true, exports }; };
 const enviados = [];
 stub('src/acceso.js', { esOwner: f => f === 'whatsapp:+34600000000' });
-stub('src/enlacesDoc.js', { HORAS: 24, crear: async () => 'https://x/d/tok' });
+stub('src/enlaceDoc.js', { url: () => 'https://x/d/tok' });
 stub('src/users.js', { getUsers: async () => [] });
 stub('src/canalWhatsapp.js', { canalActivo: () => 'bridge', enviarArchivo: async (to, pie, a) => { enviados.push({ to, pie, a }); return true; } });
 stub('src/personalDocs.js', { TIPOS: {}, TIPOS_EMPRESA: { escrituras: { nombre: 'Escrituras / CIF' } },

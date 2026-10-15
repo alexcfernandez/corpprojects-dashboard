@@ -2712,16 +2712,6 @@ app.post('/api/bridge/grupos', requireAuthOficina, express.json(), async (req, r
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
-// Enlace de un documento que Corpy pasa al dueño por WhatsApp (enlacesDoc.js): sin sesión, vale 24 h.
-app.get('/d/:token', async (req, res) => {
-  try {
-    const d = await require('./enlacesDoc').abrir(req.params.token);
-    if (!d || !d.data) return res.status(404).send('Este enlace ha caducado o no existe. Pídeselo otra vez a Corpy.');
-    const nombre = String(d.nombre || 'documento').replace(/[^\w.\- ()áéíóúñÁÉÍÓÚÑ]/g, '_');
-    res.set({ 'Content-Type': d.mime || 'application/octet-stream', 'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(nombre)}`, 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' });
-    res.send(Buffer.from(d.data.buffer || d.data));
-  } catch (err) { res.status(500).send('No se ha podido abrir el documento.'); }
-});
 
 // Lo que Corpy ha leído en un grupo (texto, quién, qué fue a Compras y fotos de obra guardadas).
 app.get('/api/bridge/grupos/:jid/mensajes', requireAuthOficina, async (req, res) => {

@@ -295,7 +295,7 @@ async function pasarDocumento({ de, que } = {}, from) {
   // Uno solo (el que mejor encaja y, si empatan, el más reciente), salvo que pida varios («todos», «todas las nóminas»).
   const varios = /\btod[oa]s\b/.test(nq);
   const top = (varios ? cand.filter(x => x.p === cand[0].p).slice(0, 5) : cand.slice(0, 1)).map(x => x.d);
-  const E = require('./enlacesDoc'); const f = x => x ? String(x).slice(0, 10).split('-').reverse().join('/') : null;
+  const E = { HORAS: 24, crear: async (id) => require('./enlaceDoc').url(String(id), { dias: 1 }) }; const f = x => x ? String(x).slice(0, 10).split('-').reverse().join('/') : null;
   // Por el puente, el archivo va dentro del chat (con el enlace de pie por si no se abre); con Twilio, solo el enlace.
   const W = require('./canalWhatsapp'); let mandados = 0;
   if (W.canalActivo() === 'bridge') {
