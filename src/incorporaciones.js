@@ -131,7 +131,7 @@ function recibidasDe(docs = []) {
 async function pasos(inc, db) {
   const P = require('./personalDocs');
   const docs = inc.userId ? await P.carpeta({ userId: inc.userId }) : [];
-  const tiene = t => docs.some(d => d.tipo === t);
+  const tiene = t => docs.some(d => d.tipo === t), ya = recibidasDe(docs);
   let firmas = { empresa: false, trabajador: false, enviado: false };
   if (inc.loteFirmaId) {
     const l1 = await db.collection('firmasLotes').findOne({ _id: _oid(inc.loteFirmaId) });
@@ -142,9 +142,9 @@ async function pasos(inc, db) {
   const t = (u && u.tallas) || {};
   const consultar = CONSULTAR(inc.condiciones || {});
   const l = [
-    { k: 'datos', t: 'Condiciones del contrato', ok: !!(inc.nombre && inc.dni && inc.fechaInicio && inc.confirmadas), nota: consultar.length ? `Consultar antes con Som Assessors: ${consultar.join(', ')}.` : !inc.confirmadas ? 'Falta confirmar categoría, horario y demás condiciones' : !inc.dni ? 'Falta el DNI/NIE' : null, accion: inc.confirmadas ? null : 'confirmar', antes: true },
+    { k: 'datos', t: 'Condiciones del contrato', ok: !!(inc.nombre && inc.dni && inc.fechaInicio && inc.confirmadas) && !consultar.length, nota: consultar.length ? `Consultar antes con Som Assessors: ${consultar.join(', ')}.` : !inc.confirmadas ? 'Falta confirmar categoría, horario y demás condiciones' : !inc.dni ? 'Falta el DNI/NIE' : null, accion: inc.confirmadas ? null : 'confirmar', antes: true },
     { k: 'ficha', t: 'Ficha del trabajador y su WhatsApp', ok: !!(inc.userId && u && u.whatsapp), antes: true },
-    { k: 'papeles', t: 'DNI/NIE y número de la Seguridad Social', ok: tiene('dni') && tiene('tarjeta_ss'), nota: tiene('dni') ? (tiene('tarjeta_ss') ? null : 'Falta el nº de la Seguridad Social') : 'Falta el DNI/NIE', accion: 'pedir_papeles', antes: true },
+    { k: 'papeles', t: 'DNI/NIE y número de la Seguridad Social', ok: !!(ya.doc_delante && ya.doc_detras && ya.seguridad_social), nota: 'Falta ' + [!ya.doc_delante && 'el DNI/NIE por delante', !ya.doc_detras && 'el DNI/NIE por detrás', !ya.seguridad_social && 'el nº de la Seguridad Social'].filter(Boolean).join(', '), accion: 'pedir_papeles', antes: true },
     { k: 'formulario', t: 'Formulario de elementos esenciales', ok: !!inc.formularioId, accion: 'formulario', antes: true },
     { k: 'firma_empresa', t: `Firma de ${ADMIN.nombre.split(' ')[0]} con sello`, ok: firmas.empresa, nota: firmas.enviado && !firmas.empresa ? 'Enlace enviado, falta que firme' : null, accion: 'firmas', antes: true },
     { k: 'firma_trabajador', t: 'Firma del trabajador', ok: firmas.trabajador, nota: firmas.empresa && !firmas.trabajador ? 'Enlace enviado, falta que firme' : null, antes: true },
