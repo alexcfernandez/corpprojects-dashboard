@@ -395,4 +395,4 @@ async function respuestaCompra(origen, texto, nombre) {
   return obra ? { obra: obra.reference, subida: !!(auto && auto.revisada) } : {};
 }
 
-module.exports = { resumenRevision, sinObra, preguntarObras, altaHerramientas, duplicados, limpiarDuplicados, obrasDesdePistas, categoria, historial, repetidas, textoInforme, alSubir, respuestaCompra, obraDeTexto, DURABLES, VENTANA };
+module.exports = { _pagosTarjeta: pagosTarjeta, resumenRevision, sinObra, preguntarObras, altaHerramientas, duplicados, limpiarDuplicados, obrasDesdePistas, categoria, historial, repetidas, textoInforme, alSubir, respuestaCompra, obraDeTexto, DURABLES, VENTANA };
