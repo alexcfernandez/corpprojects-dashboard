@@ -422,6 +422,14 @@ async function bridgeOutboxHandler(req, res) {
   } catch (e) { console.error('[Bridge] outbox:', e.message); if (!closed) res.status(500).json({ error: e.message }); }
 }
 app.get(['/api/bridge/outbox', '/bridge/outbox'], bridgeOutboxHandler);
+// Archivo de un mensaje de salida (foto/PDF que Corpy manda): solo con el token del puente.
+app.get(['/api/bridge/archivo/:id', '/bridge/archivo/:id'], async (req, res) => {
+  const canalWa = require('./canalWhatsapp');
+  if (!canalWa.tokenBridgeValido(req.get('X-Bridge-Token'))) return res.sendStatus(401);
+  try { const a = await canalWa.archivoPuente(req.params.id); if (!a) return res.sendStatus(404);
+    res.set({ 'Content-Type': a.mime || 'application/octet-stream', 'X-Nombre': encodeURIComponent(a.nombre || 'documento') }).send(Buffer.from(a.data.buffer || a.data)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
 // Confirmación de entrega desde el puente: {id, ok, error} o {acks:[…]}. Pasa el mensaje de 'sent'
 // (recogido) a 'delivered' o 'failed' con su error, para que /diag diga si llegó de verdad.
 app.post(['/api/bridge/ack', '/bridge/ack'], express.json({ limit: '64kb' }), async (req, res) => {

@@ -292,6 +292,17 @@ async function pasarDocumento({ de, que } = {}, from) {
   if (!cand.length) return { handled: true, reply: `No tengo «${que}» de ${quien} en Personal.${extra}\nSi lo tienes, súbelo en https://dashboard.corpprojects.es/personal y te lo paso cuando quieras.` };
   const top = cand.filter(x => x.p === cand[0].p).slice(0, 3).map(x => x.d);
   const E = require('./enlacesDoc'); const f = x => x ? String(x).slice(0, 10).split('-').reverse().join('/') : null;
+  // Por el puente, el archivo va dentro del chat (con el enlace de pie por si no se abre); con Twilio, solo el enlace.
+  const W = require('./canalWhatsapp'); let mandados = 0;
+  if (W.canalActivo() === 'bridge') {
+    for (const d of top) {
+      try { const raw = await P.archivo(d.id || d._id);
+        const pie = `📎 ${nombreTipo(d)}${d.nombre ? ` (${d.nombre})` : ''}\nSi no se abre: ${await E.crear(d.id || d._id, { nombre: d.nombre || nombreTipo(d), para: from })}`;
+        if (raw && raw.data && await W.enviarArchivo(from, pie, { data: raw.data.buffer ? Buffer.from(raw.data.buffer) : raw.data, mime: raw.mime || d.mime, nombre: d.nombre || nombreTipo(d) })) mandados++;
+      } catch (e) { console.warn('[Agente] archivo:', e.message); }
+    }
+    if (mandados === top.length) return { handled: true, reply: `Te lo mando aquí mismo${mandados > 1 ? ` (${mandados} documentos)` : ''}.${extra}` };
+  }
   const lineas = [];
   for (const d of top) lineas.push(`📎 *${nombreTipo(d)}*${d.nombre ? ` (${d.nombre})` : ''}${d.fecha ? ` · ${f(d.fecha)}` : ''}${d.caduca ? ` · caduca ${f(d.caduca)}` : ''}\n${await E.crear(d.id || d._id, { nombre: d.nombre || nombreTipo(d), para: from })}`);
   return { handled: true, reply: `${lineas.join('\n\n')}${extra}\n\n_El enlace es solo para ti y caduca en ${E.HORAS} h._` };

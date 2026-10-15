@@ -39,10 +39,19 @@ async function _twilioUno(to, body) {
 }
 
 // Salida por el puente = ENCOLAR en Mongo. El puente lo recogerá por pull.
-async function encolarSalida(to, body) {
+async function encolarSalida(to, body, { archivo = null } = {}) {
   const db = await require('./db').getDB();
   const dest = String(to || '').replace(/^whatsapp:/i, ''); // el puente usa el número tal cual (+34…)
-  await db.collection(OUTBOX).insertOne({ to: dest, body: String(body || ''), ts: new Date(), status: 'pending' });
+  // Archivo (15/10/2026): se guarda aparte y el puente lo baja con su token (/api/bridge/archivo/:id) y lo manda como
+  // foto o documento con `body` de pie. Un puente antiguo solo ve `body` (manda el texto), así que no rompe nada.
+  let arch = null;
+  if (archivo && archivo.data) {
+    const col = db.collection('bridgeArchivos');
+    col.createIndex({ ts: 1 }, { expireAfterSeconds: 3 * 24 * 3600 }).catch(() => {});
+    const ins = await col.insertOne({ data: Buffer.from(archivo.data), mime: archivo.mime || 'application/octet-stream', nombre: String(archivo.nombre || 'documento').slice(0, 120), ts: new Date() });
+    arch = { id: String(ins.insertedId), mime: archivo.mime || 'application/octet-stream', nombre: String(archivo.nombre || 'documento').slice(0, 120) };
+  }
+  await db.collection(OUTBOX).insertOne({ to: dest, body: String(body || ''), ...(arch ? { archivo: arch } : {}), ts: new Date(), status: 'pending' });
   _aviso.emit('nuevo');
   console.log(`[Canal] respuesta encolada para el puente → to=${dest} | "${String(body || '').slice(0, 40)}"`);
   return true;
@@ -70,7 +79,7 @@ async function reclamarLoteOutbox(limit = 10) {
     );
     const doc = r ? (r.value !== undefined ? r.value : r) : null; // driver v6 devuelve el doc; compat con {value}
     if (!doc) break;
-    lote.push({ id: String(doc._id), to: doc.to, body: doc.body });
+    lote.push({ id: String(doc._id), to: doc.to, body: doc.body, ...(doc.archivo ? { archivo: doc.archivo } : {}) });
   }
   return lote;
 }
@@ -118,6 +127,18 @@ async function _dispatch(to, body, { canal, fallbackTwilio = true } = {}) {
 // Envía UN mensaje por el canal elegido. Choke point de TODOS los envíos:
 //  (1) descarta destinatarios inválidos (no más 'whatsapp:undefined'),
 //  (2) trocea si supera el límite de Twilio (cubre a quien no pasa por enviarWhatsApp).
+// Un archivo por WhatsApp (solo por el puente; con Twilio no hay forma de adjuntar desde aquí → false).
+async function enviarArchivo(to, pie, archivo) {
+  if (canalActivo() !== 'bridge' || !_destinoValido(to) || !archivo || !archivo.data) return false;
+  await encolarSalida(to, pie, { archivo });
+  return true;
+}
+async function archivoPuente(id) {
+  const { ObjectId } = require('mongodb');
+  if (!ObjectId.isValid(String(id))) return null;
+  return (await require('./db').getDB()).collection('bridgeArchivos').findOne({ _id: new ObjectId(String(id)) });
+}
+
 async function enviarUno(to, body, opts = {}) {
   if (!_destinoValido(to)) {
     console.warn('[Canal] destinatario inválido, no se envía:', JSON.stringify(to));
@@ -217,4 +238,4 @@ async function probar(to, canal) {
   } catch (e) { return { ok: false, error: e.message, code: e.code || null }; }
 }
 
-module.exports = { enviarUno, canalActivo, tokenBridgeValido, encolarSalida, reclamarLoteOutbox, diagnostico, probar, guardarEstadoPuente, confirmarEntregas, esperarNuevo, registrarSondeo, metricasPuente };
+module.exports = { enviarArchivo, archivoPuente, enviarUno, canalActivo, tokenBridgeValido, encolarSalida, reclamarLoteOutbox, diagnostico, probar, guardarEstadoPuente, confirmarEntregas, esperarNuevo, registrarSondeo, metricasPuente };

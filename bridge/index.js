@@ -181,7 +181,14 @@ async function bucleSalida() {
           // 13/10/2026: a los chats @lid, Baileys 6.7 cifra mal a veces y el otro ve «Esperando el mensaje» (Javier,
           // Alfonso, Mathias). Por el número de teléfono llega bien: el @lid solo si no hay número.
           const destino = String(m.to || '').endsWith('@g.us') ? String(m.to) : (soloDigitos(m.to).length >= 9 ? phoneToJid(m.to) : (chatPorTelefono.get(soloDigitos(m.to)) || phoneToJid(m.to)));
-          guardarEnviado(await sockActual.sendMessage(destino, { text: String(m.body || '') }));
+          // Con archivo (15/10/2026): se baja del dashboard con el token y va como foto o documento, con el texto de pie.
+          let contenido = { text: String(m.body || '') };
+          if (m.archivo && m.archivo.id) {
+            const r = await api.get('/api/bridge/archivo/' + encodeURIComponent(m.archivo.id), { responseType: 'arraybuffer', timeout: 60000 });
+            const buf = Buffer.from(r.data), mime = m.archivo.mime || 'application/octet-stream', pie = String(m.body || '') || undefined;
+            contenido = /^image\//i.test(mime) ? { image: buf, mimetype: mime, caption: pie } : { document: buf, mimetype: mime, fileName: m.archivo.nombre || 'documento', caption: pie };
+          }
+          guardarEnviado(await sockActual.sendMessage(destino, contenido));
           console.log('[Bridge] enviado a', m.to, '->', destino);
           acks.push({ id: m.id, ok: true });
         } catch (e) {
