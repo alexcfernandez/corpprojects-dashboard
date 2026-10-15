@@ -219,6 +219,18 @@ async function repararDuplicados() {
 // fotos: [{data: Buffer, mimetype}]. Devuelve lo que se le confirma al que la sube.
 // estadoInicial 'archivo': factura recuperada del correo solo para cuadrar el banco (no entra en la cola
 // «por revisar», ni en costes de obra ni precios; se puede confirmar después desde Compras).
+// ¿Es un papel personal del trabajador y no una compra? Organismos (Ministerio, Seguridad Social, extranjería, Hacienda)
+// o un banco, sin ser factura ni ticket.
+const ORGANISMO = /ministerio|seguridad social|tesorer[ií]a|migraci|extranjer|subdelegaci|polic[ií]a|agencia tributaria|hacienda|\bsepe\b|inss\b/i;
+const BANCO = /caixabank|la caixa|santander|bbva|sabadell|bankinter|\bing\b|revolut|unicaja|abanca|kutxa|ibercaja|openbank|imagin|\bbanco\b|\bbank\b/i;
+function papelPersonal(doc) {
+  if (!['otro', 'albaran'].includes(doc.tipo) && !(doc.tipo === 'ticket' && ORGANISMO.test(doc.proveedor || ''))) return null;
+  const p = String(doc.proveedor || '');
+  if (ORGANISMO.test(p)) return { tipo: /migraci|extranjer|subdelegaci|inclusi/i.test(p) ? 'extranjeria' : 'otro', nombre: `Documento de ${p}`.slice(0, 80) };
+  if (BANCO.test(p) && doc.tipo === 'otro') return { tipo: 'otro', nombre: `Certificado de cuenta bancaria (${p})`.slice(0, 80) };
+  return null;
+}
+
 async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaPor, origen, gmailId, email, soloSiDocumento = false, grupo = null, silencioso = false, estadoInicial = null, archivoHash = null }) {
   if (!fotos || !fotos.length) throw new Error('Haz al menos una foto del documento');
   const db = await getDB();
@@ -258,6 +270,18 @@ async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaP
     await db.collection(COL).deleteOne({ _id: doc._id });
     await db.collection(FOTOS).deleteMany({ compraId: String(doc._id) });
     return { ok: true, noEsDocumento: true };
+  }
+  // Papeles personales que un trabajador manda por WhatsApp (justificante de tasa de extranjería, certificado del banco
+  // para cobrar la nómina…) NO son compras: van a su carpeta de Personal (15/10/2026: el 790 de Javier y el CaixaBank de
+  // Melvin acabaron en Compras y Corpy les preguntó «¿para qué obra?»).
+  const pers = subidaPor && subidaPor.kind === 'worker' && subidaPor.userId && lec.ok ? papelPersonal(doc) : null;
+  if (pers) {
+    try {
+      const g = await require('./personalDocs').subir({ ambito: 'trabajador', userId: subidaPor.userId, tipo: pers.tipo, archivo: { buffer: Buffer.from(fotos[0].data.buffer || fotos[0].data), mimetype: fotos[0].mimetype || 'image/jpeg', originalname: `${pers.nombre}.${/pdf/.test(fotos[0].mimetype || '') ? 'pdf' : 'jpg'}` }, fecha: doc.fecha || new Date().toISOString().slice(0, 10), notas: `Mandado por WhatsApp (${doc.proveedor || 'documento'})` }, `${subidaPor.name} (WhatsApp)`);
+      await db.collection(COL).deleteOne({ _id: doc._id });
+      await db.collection(FOTOS).deleteMany({ compraId: String(doc._id) });
+      return { ok: true, personal: true, docId: g.id, nombre: pers.nombre };
+    } catch (e) { console.warn('[Compras] papel personal:', e.message); }
   }
   doc.duplicadoDe = await buscarDuplicado(db, doc);
   doc.updatedAt = new Date();
@@ -752,6 +776,28 @@ async function resolverDuplicado(mantener, quitar, por) {
 }
 
 // avisar:false = sin WhatsApp ni push al trabajador (limpieza de duplicados: no tiene que hacer nada).
+// «Esto no es una compra»: el papel pasa a la carpeta de Personal de quien lo mandó, la compra se descarta sin avisarle
+// y se cierran las preguntas de «¿para qué obra?» que colgaban de ella.
+async function aPersonal(id, por, { tipo = 'otro', nombre = null } = {}) {
+  const db = await getDB();
+  const c = await db.collection(COL).findOne({ _id: oid(id), empresaId: EMPRESA });
+  if (!c) throw new Error('Compra no encontrada');
+  const userId = c.subidaPor && c.subidaPor.kind === 'worker' ? String(c.subidaPor.userId) : null;
+  if (!userId || !/^[a-f0-9]{24}$/.test(userId)) throw new Error('No sé de qué trabajador es: súbelo a mano en Personal');
+  const fotos = await fotosDe(c._id);
+  if (!fotos.length) throw new Error('La compra no tiene archivo');
+  const docs = [];
+  for (const [i, f] of fotos.entries()) {
+    const mime = f.mimetype || 'image/jpeg';
+    const n = (nombre || `Documento de ${c.proveedor || 'trabajador'}`).slice(0, 80) + (fotos.length > 1 ? ` (${i + 1})` : '');
+    const g = await require('./personalDocs').subir({ ambito: 'trabajador', userId, tipo, archivo: { buffer: Buffer.from(f.data.buffer || f.data), mimetype: mime, originalname: `${n}.${/pdf/.test(mime) ? 'pdf' : 'jpg'}` }, fecha: c.fecha || new Date().toISOString().slice(0, 10), notas: `Venía de Compras (${c.proveedor || 'documento'}); no era una compra` }, por || 'Oficina');
+    docs.push(g.id);
+  }
+  await descartar(id, por, 'No es una compra: pasado a la carpeta de Personal', { avisar: false });
+  await db.collection('encargos').updateMany({ 'origen.compraId': String(c._id), estado: 'abierto' }, { $set: { estado: 'cancelado', cerradoAt: new Date(), cerradoPor: por || 'Oficina' } });
+  return { ok: true, userId, docs };
+}
+
 async function descartar(id, por, motivo, { avisar = true } = {}) {
   const db = await getDB();
   const c = await db.collection(COL).findOne({ _id: oid(id), empresaId: EMPRESA });
@@ -1077,4 +1123,4 @@ async function resumenPendientes({ dryRun = false } = {}) {
   return { pendientes: pend.length, enviado: ok > 0 };
 }
 
-module.exports = { autoRevisar, autoRevisarPendientes, claridad, resolverDuplicado, repararDuplicados, subidaMasiva, estadoMasiva, _unaMasiva, _gemelaTicket, _partirPdf, propuestaLineas, _repartoDeLineas, separarFoto, n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, albaranesDelCorreo, repartoPorAlbaran, obraDeTexto, _aprenderAliasObras: aprenderAliasObras, clasificacionesParaStel, reglaProveedorDe, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };
+module.exports = { papelPersonal, aPersonal, autoRevisar, autoRevisarPendientes, claridad, resolverDuplicado, repararDuplicados, subidaMasiva, estadoMasiva, _unaMasiva, _gemelaTicket, _partirPdf, propuestaLineas, _repartoDeLineas, separarFoto, n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, albaranesDelCorreo, repartoPorAlbaran, obraDeTexto, _aprenderAliasObras: aprenderAliasObras, clasificacionesParaStel, reglaProveedorDe, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };

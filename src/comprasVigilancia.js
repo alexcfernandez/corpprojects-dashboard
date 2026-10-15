@@ -232,6 +232,15 @@ async function obrasDesdePistas({ aplicar = false, soloId = null } = {}) {
 }
 
 // Al entrar una compra (ya leída por la IA).
+const _dig = x => String(x || '').replace(/\D/g, '').slice(-9);
+async function esDelDueno(userId) {
+  try {
+    if (!/^[a-f0-9]{24}$/.test(String(userId))) return false;
+    const u = await (await getDB()).collection('users').findOne({ _id: new ObjectId(String(userId)) }, { projection: { whatsapp: 1, telefono: 1, esDueno: 1 } });
+    const d = _dig(require('./notifications').destinoDueno());
+    return !!(u && (u.esDueno || (d && [u.whatsapp, u.telefono].some(t => _dig(t) === d))));
+  } catch (e) { return false; }
+}
 async function alSubir(compra, { _avisar = null, _crearEncargo = null, _hist = null } = {}) {
   if (!compra) return {};
   // Si el papel dice la obra, se pone sola (y no se le pregunta al trabajador).
@@ -249,7 +258,9 @@ async function alSubir(compra, { _avisar = null, _crearEncargo = null, _hist = n
       if (antes.length) out.repetidas.push({ ...x, antes });
     }
   }
-  const quien = compra.subidaPor && compra.subidaPor.kind === 'worker' ? compra.subidaPor : null;
+  let quien = compra.subidaPor && compra.subidaPor.kind === 'worker' ? compra.subidaPor : null;
+  // Álex también tiene ficha de trabajador (con su móvil): a él no se le pregunta «¿para qué obra?» (14/10/2026: BAUHAUS).
+  if (quien && await esDelDueno(quien.userId)) quien = null;
   const sinObra = !compra.obraId && (!compra.destino || compra.destino === 'obra') && !compra.varias;
   if (out.repetidas.length) {
     const t = out.repetidas.map(r => `⚠️ *Otra compra de ${r.cat.nombre}*: ${eur(r.imp)} en ${compra.proveedor || '¿?'} (${fmtF(compra.fecha)})${quien ? ` · la sube *${quien.name}*` : ''}${compra.obraRef ? ' · ' + compra.obraRef : ''}.\nEn los últimos ${VENTANA} días ya se compró:\n` +
@@ -290,13 +301,17 @@ async function preguntarObras({ dryRun = false, porPersona = 4, _crear = null, _
   const db = await getDB();
   const U = require('./users');
   const FD = require('./fichaDatos');   // solo el equipo (no Álex, ni autónomos)
-  const users = (await U.getUsers(false)).filter(u => u.active !== false && ['tecnico', 'encargado'].includes(U.normalizeRole(u.role)) && FD.delEquipo(u));
+  const dueno = _dig(require('./notifications').destinoDueno());
+  const users = (await U.getUsers(false)).filter(u => u.active !== false && ['tecnico', 'encargado'].includes(U.normalizeRole(u.role)) && FD.delEquipo(u) && !(dueno && [u.whatsapp, u.telefono].some(t => _dig(t) === dueno)));
   const desde = new Date(Date.now() - 45 * 864e5);
+  // De lo comprado hace más de 90 días ya nadie se acuerda (15/10: a Jose se le preguntó por una de noviembre de 2025).
+  const fechaMin = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10);
   const cs = await db.collection('compras').find({ estado: 'por_revisar', obraId: { $in: [null, ''] }, varias: { $ne: true }, tipo: { $in: ['factura', 'ticket', 'albaran'] }, createdAt: { $gte: desde }, preguntaObra: { $exists: false } })
     .project({ proveedor: 1, fecha: 1, total: 1, destino: 1, subidaPor: 1, 'lineas.descripcion': 1, numero: 1 }).sort({ fecha: 1 }).toArray();
   const porU = {}, hechas = [], sinQuien = [];
   for (const c of cs) {
     if (c.destino && c.destino !== 'obra') continue;
+    if (!c.fecha || c.fecha < fechaMin) continue;
     const q = await compradorDe(c, users);
     if (!q || !users.some(u => String(u._id) === q.userId)) { sinQuien.push(c); continue; }
     if ((porU[q.userId] = (porU[q.userId] || 0) + 1) > porPersona) continue;

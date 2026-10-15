@@ -694,7 +694,9 @@ async function procesarTrabajador(from, body, media, trab, responder) {
     // ¿Le hemos pedido sus documentos para el alta? Entonces esto va a su carpeta de Personal (docsAlta.js).
     let petAlta = null; try { petAlta = await require('./docsAlta').abiertaDe(trab.userId); } catch (e) {}
     // ¿Le hemos encargado algo (encargos.js)? Lo que mande (foto, papel) es la respuesta: a su carpeta y a Álex.
-    let encAb = []; if (!petAlta && trab.userId) { try { encAb = await require('./encargos').abiertosDe(trab.userId); } catch (e) {} }
+    // Las preguntas de «¿para qué obra?» se contestan con texto: una foto no es su respuesta (15/10: el albarán de Javier
+    // se cerró como respuesta a la pregunta del Ministerio). La foto sigue el camino normal de Compras.
+    let encAb = []; if (!petAlta && trab.userId) { try { encAb = (await require('./encargos').abiertosDe(trab.userId)).filter(e => !(e.origen && e.origen.tipo === 'compra')); } catch (e) {} }
     if (encAb.length) {
       const subidos = [];
       for (const m of docs) {
@@ -719,7 +721,7 @@ async function procesarTrabajador(from, body, media, trab, responder) {
           nota: texto ? texto.slice(0, 300) : 'Enviada por WhatsApp', soloSiDocumento: true,
           subidaPor: { kind: 'worker', userId: trab.userId || String(from), name: trab.name || String(from) },
         });
-        if (r && r.noEsDocumento) noDoc++; else if (r && r.id) guardadas.push(r);
+        if (r && r.noEsDocumento) noDoc++; else if (r && r.personal) respAlta.push(`📁 Guardado en tu carpeta de Personal: ${r.nombre}. No es una compra, así que no hace falta decir obra. ¡Gracias!`); else if (r && r.id) guardadas.push(r);
       } catch (e) { fallos++; console.error('[WhatsApp] compra de trabajador:', e.message); }
     }
     const partes = [...respAlta.slice(-2)];
@@ -1983,6 +1985,10 @@ app.post('/api/compras/:id/revisar', async (req, res) => {
     const r = await require('./compras').revisar(req.params.id, q.name, { enviarStel: (req.body || {}).enviarStel !== false, herramientas: (req.body || {}).herramientas || null, almacen: (req.body || {}).almacen || null });
     activity.registrar({ actor: q.name, actorRole: q.role, kind: 'modificado', entidad: 'Compra', ref: [r.proveedor, r.numero].filter(Boolean).join(' '), detalle: `Revisada (${r.tipo}) → ${r.obraRef || r.destino || 'gasto general'}${(r.activosCreados || []).length ? ' · ' + r.activosCreados.length + ' herramienta(s) dadas de alta' : ''}` });
     res.json(r); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/compras/:id/a-personal', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); const b = req.body || {}; res.json(await require('./compras').aPersonal(req.params.id, q.name, { tipo: b.tipo, nombre: b.nombre })); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.post('/api/compras/:id/descartar', async (req, res) => {
