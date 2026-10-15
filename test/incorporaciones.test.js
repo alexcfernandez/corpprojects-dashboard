@@ -31,3 +31,9 @@ test('lo que ya está en Personal no se vuelve a pedir', () => {
   assert.deepEqual(I.recibidasDe([{ tipo: 'dni', nombre: 'DNI Norman (delante).jpg' }]), { doc_delante: true });
   assert.deepEqual(I.recibidasDe([{ tipo: 'dni', nombre: 'DNI.pdf' }, { tipo: 'tarjeta_ss', nombre: 'SS.jpg' }]), { doc_delante: true, doc_detras: true, seguridad_social: true });
 });
+
+test('oficial 2ª y sueldo en neto: hay que consultarlo con Som Assessors antes del formulario', () => {
+  const c = I.condiciones({ categoria: 'oficial_2', salario: 'superior', salarioNota: '1.600 € netos/mes + 2 pagas' });
+  const q = I._consultar(c).join(' | ');
+  assert.match(q, /oficial 2ª/); assert.match(q, /bruto anual \(pactado: 1\.600/);
+});
