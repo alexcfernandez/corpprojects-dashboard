@@ -487,7 +487,10 @@ function similitud(a, b) {
 
 // Resuelve a qué cliente/familia se refiere (alias -> código -> IA).
 // Devuelve { scope:'cliente'|'familia'|null, target:string|null }
-async function resolver(texto, rawTarget) {
+// Con opts.preguntarSiAmbiguo (handlers de lectura): si la palabra casa con VARIOS
+// nombres ("rutlla" → RUTLLA 70-72, CTAT PROP RUTLLA 200-202…) no deja elegir a la
+// IA: devuelve { target:null, candidatos:[{nombre,scope}] } para preguntar cuál.
+async function resolver(texto, rawTarget, opts = {}) {
   const raw = norm(rawTarget || '');
   if (raw) { const a = await buscarAlias(raw); if (a) return { scope: a.scope, target: a.target }; }
 
@@ -501,6 +504,16 @@ async function resolver(texto, rawTarget) {
   mc = clientes.filter(c => norm(c).includes(r) || r.includes(norm(c)));
   if (mf.length === 1 && mc.length === 0) return { scope: 'familia', target: mf[0] };
   if (mc.length === 1 && mf.length === 0) return { scope: 'cliente', target: mc[0] };
+
+  if (opts.preguntarSiAmbiguo && raw) {
+    let amb = [...mf.map(n => ({ nombre: n, scope: 'familia' })), ...mc.map(n => ({ nombre: n, scope: 'cliente' }))]
+      .filter(c => norm(c.nombre).includes(r));
+    // Si la frase trae números ("rutlla 202"), quedarnos con los que los contienen.
+    const nums = norm(texto).match(/\d+/g) || [];
+    const conNums = nums.length ? amb.filter(c => nums.every(d => palabrasNombre(c.nombre).includes(d))) : [];
+    if (conNums.length === 1) return { scope: conNums[0].scope, target: conNums[0].nombre };
+    if (amb.length > 1) return { scope: null, target: null, candidatos: amb };
+  }
 
   const union = [...new Set([...mf, ...mc])];
   // Si no hubo match por substring, no mandamos la lista entera (que la IA trunca
@@ -567,6 +580,49 @@ function noEncontrado(from, rawTarget, intent) {
   return '🤔 No tengo claro de qué cliente me hablas. Prueba con el nombre, p. ej.: *"¿qué debe Illa Verda?"*';
 }
 
+// ── Varios clientes con la misma palabra / correcciones ("era X") ──
+function palabrasNombre(s) { return norm(s).replace(/[^a-z0-9ñ]+/g, ' ').trim().split(' ').filter(Boolean); }
+
+// Varios candidatos: preguntar cuál (y recordar qué se estaba consultando).
+function preguntarCual(from, candidatos, intent) {
+  pendiente.set(from, { accion: 'elegirCliente', candidatos, intent, ts: Date.now() });
+  recordarConsulta(from, intent);
+  const vis = candidatos.slice(0, 8);
+  let msg = `🤔 Hay ${candidatos.length} que encajan. ¿Cuál?\n` + vis.map((c, i) => `${i + 1}. ${c.nombre}`).join('\n');
+  if (candidatos.length > vis.length) msg += `\n…y ${candidatos.length - vis.length} más.`;
+  return msg + '\n\nResponde con el número o con algo que lo distinga (p. ej. el número de la calle).';
+}
+
+// Respuesta a "¿Cuál?": número de la lista, o palabras/números que casen con UNO solo.
+const _VACIAS = new Set(['era', 'es', 'no', 'la', 'el', 'los', 'las', 'de', 'del', 'a', 'al', 'me', 'referia', 'refiero', 'quise', 'queria', 'decir', 'digo', 'esa', 'ese', 'una', 'uno', 'calle', 'numero', 'comunidad', 'ctat', 'prop']);
+function elegirDeLista(texto, candidatos) {
+  const toks = palabrasNombre(texto).filter(t => !_VACIAS.has(t));
+  if (!toks.length) return null;
+  if (toks.length === 1 && /^\d{1,2}$/.test(toks[0]) && +toks[0] >= 1 && +toks[0] <= Math.min(candidatos.length, 8)) return candidatos[+toks[0] - 1];
+  const casan = candidatos.filter(c => {
+    const pal = palabrasNombre(c.nombre), plano = pal.join(' ');
+    return toks.every(t => /^\d+$/.test(t) ? pal.includes(t) : plano.includes(t));
+  });
+  return casan.length === 1 ? casan[0] : null;
+}
+
+// Última consulta de cliente (qué se preguntaba), para que "era X" repita esa misma consulta.
+function recordarConsulta(from, intent) { contexto.set(from, { tipo: 'cliente', intent, ts: Date.now() }); }
+
+// "era rutlla 202" / "no, la 202" / "me refería a X" / "la de X" → "X" (o null si no es una corrección).
+function correccionDeTarget(texto) {
+  const n = norm(texto).replace(/[¿?¡!.]/g, ' ').replace(/\s+/g, ' ').trim();
+  const m = n.match(/^(?:no[, ]+|perdona?[, ]+)?(era|me referia a|me refiero a|quise decir|queria decir|digo|(?:la|el) de)\b[, ]*(.*)$/) ||
+            n.match(/^(no)[, ]+(.*)$/);
+  if (!m) return null;
+  const t = m[2].replace(/^(?:a |la de |el de |de |del |la |el )+/, '').trim();
+  if (!t || t.split(' ').length > 6) return null;
+  // Si nombra otra consulta ("no, los pedidos de X") o es una negativa normal, que siga el router.
+  if (/factura|presupuest|pedido|debe|deben|deuda|cobr|resumen|ficha|gast|proveedor|compr/.test(t)) return null;
+  if (/^(dejalo|nada|gracias|importa|hace falta|pasa|olvida|vale|ok|eso|esto|hay|tengo|se|lo|le|te|me|puedo|quiero|necesito|hace|esta|estan|hemos|he|ha)\b/.test(t)) return null;
+  return t;
+}
+
 // ── Paginado genérico ─────────────────────────────────────────────
 function pintar(from, estado, desde) {
   const { items, titulo, encabezado, fmt } = estado;
@@ -599,8 +655,10 @@ async function handlerFacturas(texto, from, scope, rawTarget) {
     return msg;
   }
 
-  const { scope: sc, target } = await resolver(texto, rawTarget);
+  const { scope: sc, target, candidatos } = await resolver(texto, rawTarget, { preguntarSiAmbiguo: true });
+  if (candidatos) return preguntarCual(from, candidatos, 'facturas');
   if (!target) return noEncontrado(from, rawTarget, 'facturas');
+  recordarConsulta(from, 'facturas');
   const sel = pend.filter(i => norm(i[sc === 'familia' ? 'family' : 'client']) === norm(target))
                   .sort((a, b) => (b.daysOverdue || 0) - (a.daysOverdue || 0));
   if (!sel.length) return `✅ ${target} no tiene facturas pendientes.`;
@@ -654,8 +712,10 @@ async function handlerPresupuestos(texto, from, scope, rawTarget) {
   }
 
   // Cliente/familia concreto (opcionalmente filtrado por estado)
-  const { scope: sc, target } = await resolver(texto, rawTarget);
+  const { scope: sc, target, candidatos } = await resolver(texto, rawTarget, { preguntarSiAmbiguo: true });
+  if (candidatos) return preguntarCual(from, candidatos, 'presupuestos');
   if (!target) return noEncontrado(from, rawTarget, 'presupuestos');
+  recordarConsulta(from, 'presupuestos');
   let sel = (s.all || []).filter(i => norm(i[sc === 'familia' ? 'family' : 'client']) === norm(target));
   if (estado) sel = sel.filter(i => i.stateKey === estado);
   sel.sort((a, b) => (b.daysOld || 0) - (a.daysOld || 0));
@@ -683,8 +743,10 @@ async function handlerPedidos(texto, from, scope, rawTarget) {
     }, 0);
   }
 
-  const { scope: sc, target } = await resolver(texto, rawTarget);
+  const { scope: sc, target, candidatos } = await resolver(texto, rawTarget, { preguntarSiAmbiguo: true });
+  if (candidatos) return preguntarCual(from, candidatos, 'pedidos');
   if (!target) return noEncontrado(from, rawTarget, 'pedidos');
+  recordarConsulta(from, 'pedidos');
   const sel = live.filter(i => norm(i[sc === 'familia' ? 'family' : 'client']) === norm(target))
                   .sort((a, b) => (b.days || 0) - (a.days || 0));
   if (!sel.length) return `✅ ${target} no tiene pedidos de trabajo abiertos.`;
@@ -856,7 +918,8 @@ function detectarFicha(texto) {
   return objetivo;
 }
 async function handlerFicha(texto, from, rawTarget) {
-  const { scope, target } = await resolver(rawTarget || texto, rawTarget || texto);
+  const { scope, target, candidatos } = await resolver(rawTarget || texto, rawTarget || texto, { preguntarSiAmbiguo: true });
+  if (candidatos) return preguntarCual(from, candidatos, 'ficha');
   if (!target) {
     if (rawTarget) {
       pendiente.set(from, { accion: 'aprender', aliasRaw: rawTarget, intent: 'ficha', ts: Date.now() });
@@ -864,6 +927,7 @@ async function handlerFicha(texto, from, rawTarget) {
     }
     return '🤔 ¿De qué cliente quieres la ficha? Prueba: *"resumen de Illa Verda"*.';
   }
+  recordarConsulta(from, 'ficha');
   return fichaDe(scope, target, from);
 }
 async function fichaDe(scope, target, from) {
@@ -2058,6 +2122,23 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
     const prev = ultima.get(from);
     if (prev && prev.mostradas < prev.items.length) return pintar(from, prev, prev.mostradas);
     return 'No tengo nada más que mostrar 🙂 Pregúntame por un cliente, p. ej.: *"¿qué debe Illa Verda?"*';
+  }
+
+  // B2) Respuesta a "¿Cuál?" (varios clientes con la misma palabra) → misma consulta con el elegido.
+  if (pend && pend.accion === 'elegirCliente') {
+    const fresco = (Date.now() - pend.ts) < 10 * 60 * 1000;
+    const c = fresco ? elegirDeLista(texto, pend.candidatos || []) : null;
+    pendiente.delete(from);
+    if (c) return despachar(pend.intent, from, c.scope, c.nombre);
+  }
+
+  // B3) Corrección solo del cliente ("era rutlla 202", "no, la de X", "me refería a X"):
+  // repetir la ÚLTIMA consulta (facturas/presupuestos/pedidos/ficha) con el nuevo cliente,
+  // en vez de dejar que el clasificador adivine otra intención.
+  {
+    const ctxC = contexto.get(from);
+    const nuevo = ctxC && ctxC.tipo === 'cliente' && (Date.now() - ctxC.ts) < 10 * 60 * 1000 ? correccionDeTarget(texto) : null;
+    if (nuevo) return despachar(ctxC.intent, from, 'cliente', nuevo);
   }
 
   // C0.presu) PIEZA B — generar presupuesto técnico: "hazme/prepara/redacta un presupuesto de ..."
