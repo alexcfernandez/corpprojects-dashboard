@@ -110,8 +110,10 @@ async function rellenarFormulario(inc) {
 
 // Dónde va cada firma (puntos PDF, origen abajo a la izquierda): la del final de la página 3 y una rúbrica pequeña en
 // las páginas 1 y 2 (Som Assessors recomienda firmar todas las páginas).
-const FIRMA_EMPRESA = [{ pag: 3, x: 42, y: 172, w: 190, h: 62, sello: 'mini' }, { pag: 1, x: 445, y: 38, w: 60, h: 24, sello: false }, { pag: 2, x: 445, y: 38, w: 60, h: 24, sello: false }];
-const FIRMA_TRABAJADOR = [{ pag: 3, x: 274, y: 172, w: 190, h: 62, sello: false }, { pag: 1, x: 512, y: 38, w: 60, h: 24, sello: false }, { pag: 2, x: 512, y: 38, w: 60, h: 24, sello: false }];
+// Rúbricas de las págs. 1 y 2: empresa abajo a la izquierda y trabajador abajo a la derecha, a los lados del pie de
+// página (con 60×24 se veían muy pequeñas, 15/10/2026).
+const FIRMA_EMPRESA = [{ pag: 3, x: 42, y: 158, w: 220, h: 76, sello: 'mini' }, { pag: 1, x: 38, y: 32, w: 125, h: 44, sello: false }, { pag: 2, x: 38, y: 32, w: 125, h: 44, sello: false }];
+const FIRMA_TRABAJADOR = [{ pag: 3, x: 300, y: 158, w: 220, h: 76, sello: false }, { pag: 1, x: 435, y: 32, w: 125, h: 44, sello: false }, { pag: 2, x: 435, y: 32, w: 125, h: 44, sello: false }];
 
 // Qué piezas del alta ya están en su carpeta de Personal (para no pedírselas otra vez): el DNI cuenta como las dos
 // caras salvo que el nombre diga que es solo una («delante»/«detrás»).
@@ -309,4 +311,4 @@ async function revisarManana({ _avisar = null } = {}) {
   return { revisadas: l.length, avisos: avisos.length };
 }
 
-module.exports = { recibidasDe, lista, ver, crear, editar, avanzar, accion, generarFormulario, pedirFirmas, enviarGestoria, config, setConfig, revisarManana, rellenarFormulario, condiciones, CATEGORIAS, TIPOS, POR_DEFECTO, _consultar: CONSULTAR };
+module.exports = { FIRMA_EMPRESA, FIRMA_TRABAJADOR, recibidasDe, lista, ver, crear, editar, avanzar, accion, generarFormulario, pedirFirmas, enviarGestoria, config, setConfig, revisarManana, rellenarFormulario, condiciones, CATEGORIAS, TIPOS, POR_DEFECTO, _consultar: CONSULTAR };
