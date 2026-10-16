@@ -80,6 +80,8 @@ async function resumen(nuevos, { hoy = new Date() } = {}) {
     const con = tarjeta.filter(m => { const pm = mapa.porMov.get(m.id); return pm && (pm.estado === 'punteado' || pm.estado === 'no_requiere'); }).length;
     out.push(`${out.length ? '\n' : ''}💳 Compras con tarjeta: ${tarjeta.length} (${eur(tarjeta.reduce((a, m) => a + m.importe, 0))}), ${con} ya con factura; el resto se le pide a cada uno.`);
   }
+  // Nada que contar (movimientos internos, ya avisados…): no se manda un «Banco · lectura» vacío (15/10/2026, 15:15).
+  if (!out.length) return null;
   const hora = hoy.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' });
   return `🏦 *Banco* · lectura de las ${hora}\n\n${out.join('\n')}${sinCuadre ? '\n\n_(Sin cruzar con las facturas: StelOrder no responde ahora. Se cuadra en la siguiente lectura.)_' : ''}`;
 }

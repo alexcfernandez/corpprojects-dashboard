@@ -45,7 +45,7 @@ process.env.TWILIO_WHATSAPP_FROM = 'whatsapp:+14155238886';
 
 const canal = require(path.join(root, 'src/canalWhatsapp.js'));
 
-function reset() { outbox = []; bridgeStatus = []; twilioSent = []; insertShouldFail = false; }
+function reset() { outbox = []; bridgeStatus = []; twilioSent = []; insertShouldFail = false; canal._olvidarRepetidos(); }
 
 test('default = twilio (sin CANAL_WHATSAPP) → NO encola', async () => {
   reset(); delete process.env.CANAL_WHATSAPP;
@@ -53,6 +53,15 @@ test('default = twilio (sin CANAL_WHATSAPP) → NO encola', async () => {
   assert.equal(ok, true);
   assert.equal(twilioSent.length, 1);
   assert.equal(outbox.length, 0);
+});
+
+test('el mismo texto al mismo número en menos de 10 min no se repite; vacío no se manda', async () => {
+  reset(); delete process.env.CANAL_WHATSAPP;
+  assert.equal(await canal.enviarUno('+34611223399', 'aviso igual'), true);
+  assert.equal(await canal.enviarUno('+34611223399', 'aviso igual'), true);
+  assert.equal(twilioSent.length, 1);
+  assert.equal(await canal.enviarUno('+34611223399', '   '), false);
+  assert.equal(twilioSent.length, 1);
 });
 
 test('canal = bridge → ENCOLA en whatsappOutbox (pending, sin prefijo whatsapp:)', async () => {

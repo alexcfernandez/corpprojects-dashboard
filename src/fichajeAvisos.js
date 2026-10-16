@@ -203,6 +203,16 @@ async function avisarSalidasOlvidadas({ dryRun = false } = {}) {
 async function resumenOficina({ dryRun = false, forzarHora } = {}) {
   if (!dryRun && await avisos.isGlobalPaused()) return { pausado: true };
   const a = await fm.alertas(fm.fechaHoy(), { forzarHora });
+  // Quien ya está apuntado a mano en Presencia como «oficina» (Judit, Álex) no sale como «sin fichar», ni el dueño
+  // nunca (Álex, 15/10/2026: «yo y Judit lo hemos anotado en la presencia, pongo la oficina»).
+  try {
+    const db = await require('./db').getDB();
+    const ofi = new Set((await db.collection('attendance').find({ date: a.fecha, estado: 'oficina' }).project({ workerId: 1 }).toArray()).map(x => String(x.workerId)));
+    const dd = String(require('./notifications').destinoDueno() || '').replace(/\D/g, '').slice(-9);
+    const us = await require('./users').getUsers(false).catch(() => []);
+    const dueno = new Set(us.filter(u => u.esDueno || (dd && [u.whatsapp, u.telefono].some(t => String(t || '').replace(/\D/g, '').slice(-9) === dd))).map(u => String(u._id)));
+    a.noFicho = a.noFicho.filter(x => !ofi.has(String(x.userId)) && !dueno.has(String(x.userId)));
+  } catch (e) { console.warn('[FichajeAvisos] filtro oficina:', e.message); }
   const lineas = [];
   if (a.noFicho.length) lineas.push(`🔴 *Sin fichar hoy (${a.noFicho.length}):* ${a.noFicho.map(x => _nombre(x.userName)).join(', ')}`);
   if (a.sinCerrarPrevios.length) lineas.push(`🟠 *Jornadas sin cerrar:* ${a.sinCerrarPrevios.slice(0, 8).map(x => `${_nombre(x.userName)} (${x.fecha.slice(8, 10)}/${x.fecha.slice(5, 7)})`).join(', ')}`);

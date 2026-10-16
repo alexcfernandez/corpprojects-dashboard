@@ -139,10 +139,32 @@ async function archivoPuente(id) {
   return (await require('./db').getDB()).collection('bridgeArchivos').findOne({ _id: new ObjectId(String(id)) });
 }
 
+// Freno de repetidos (15/10/2026: a Álex le llegó dos veces lo de Clepsa y a Alfonso dos veces el papel de Manolo):
+// el MISMO texto al MISMO número en menos de 10 minutos no se vuelve a mandar. No aplica a archivos.
+const _recientes = new Map();
+const VENTANA_REPETIDO = 10 * 60 * 1000;
+async function _esRepetido(to, body) {
+  const k = String(to).replace(/\D/g, '').slice(-9) + '|' + require('crypto').createHash('sha1').update(String(body)).digest('hex');
+  const ahora = Date.now();
+  for (const [kk, t] of _recientes) if (ahora - t > VENTANA_REPETIDO) _recientes.delete(kk);
+  if (_recientes.has(k)) return true;
+  _recientes.set(k, ahora);
+  try {
+    const d = await require('./db').getDB();
+    const ya = await d.collection('whatsappLog').findOne({ dir: 'out', ok: { $ne: false }, numero: { $regex: String(to).replace(/\D/g, '').slice(-9) + '$' }, texto: String(body).slice(0, 4000), ts: { $gte: new Date(ahora - VENTANA_REPETIDO) } }, { projection: { _id: 1 } });
+    return !!ya;
+  } catch (e) { return false; }
+}
+
 async function enviarUno(to, body, opts = {}) {
   if (!_destinoValido(to)) {
     console.warn('[Canal] destinatario inválido, no se envía:', JSON.stringify(to));
     return false;
+  }
+  if (!String(body || '').trim() && !opts.archivo) return false;   // nunca un mensaje vacío
+  if (!opts.archivo && !opts.permitirRepetido && await _esRepetido(to, body)) {
+    console.log('[Canal] repetido en menos de 10 min, no se vuelve a mandar a', String(to).slice(-4));
+    return true;
   }
   const partes = _trocear(body, 1500);
   let ok = true;
@@ -238,4 +260,4 @@ async function probar(to, canal) {
   } catch (e) { return { ok: false, error: e.message, code: e.code || null }; }
 }
 
-module.exports = { enviarArchivo, archivoPuente, enviarUno, canalActivo, tokenBridgeValido, encolarSalida, reclamarLoteOutbox, diagnostico, probar, guardarEstadoPuente, confirmarEntregas, esperarNuevo, registrarSondeo, metricasPuente };
+module.exports = { _olvidarRepetidos: () => _recientes.clear(), enviarArchivo, archivoPuente, enviarUno, canalActivo, tokenBridgeValido, encolarSalida, reclamarLoteOutbox, diagnostico, probar, guardarEstadoPuente, confirmarEntregas, esperarNuevo, registrarSondeo, metricasPuente };
