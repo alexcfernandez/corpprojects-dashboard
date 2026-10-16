@@ -63,6 +63,8 @@ function limpiar(d = {}) {
   if ('cuotaMensual' in d) o.cuotaMensual = num(d.cuotaMensual);
   if ('finContrato' in d) o.finContrato = fechaOk(d.finContrato);
   if ('km' in d) o.km = num(d.km) != null ? Math.round(num(d.km)) : null;
+  // Parada (sin usar, esperando reparación…): no salen sus avisos de ITV/seguro hasta que vuelva a usarse (16/10/2026, Ford Transit).
+  if ('parada' in d) o.parada = d.parada ? { desde: fechaOk(d.parada.desde) || new Date().toISOString().slice(0, 10), motivo: txt(d.parada.motivo, 200) } : null;
   if (d.itv && typeof d.itv === 'object') o.itv = { proxima: fechaOk(d.itv.proxima), ultima: fechaOk(d.itv.ultima), notas: txt(d.itv.notas, 300) };
   if (d.seguro && typeof d.seguro === 'object') {
     const s = d.seguro;
@@ -380,6 +382,7 @@ async function revisarVencimientos({ dryRun = false, hoy = new Date() } = {}) {
   const enviar = async (to, texto) => { try { return await require('./notifications').sendWhatsAppTo(to, texto); } catch (e) { console.error('[Vehículos] envío:', e.message); return false; } };
   const hechos = [];
   for (const v of vs) {
+    if (v.parada) continue;
     for (const a of avisosPendientes(v, hoy)) {
       const dest = [];
       if (a.conductor && v.conductor && telDe[v.conductor.userId]) {

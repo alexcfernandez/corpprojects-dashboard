@@ -162,7 +162,7 @@ function pintarFicha(){
   const baja=v.estado==='baja';
   const tieneDoc=t=>docs.some(d=>d.tipo===t);
   document.getElementById('v-ficha').innerHTML=`
-  <div class="bar"><button class="btn peq" onclick="verTab('flota')">← Flota</button><b style="font-size:18px">🚐 ${esc(v.nombre)}</b><span class="tag">${esc(v.codigo||'')}</span>${baja?'<span class="chip ro">Dado de baja</span>':''}</div>
+  <div class="bar"><button class="btn peq" onclick="verTab('flota')">← Flota</button><b style="font-size:18px">🚐 ${esc(v.nombre)}</b><span class="tag">${esc(v.codigo||'')}</span>${baja?'<span class="chip ro">Dado de baja</span>':''}${!baja?(v.parada?`<span class="chip am">⏸ Parada${v.parada.motivo?': '+esc(v.parada.motivo):''} · sin avisos</span><button class="btn peq" onclick="ponerParada(false)">Vuelve a usarse</button>`:`<button class="btn peq" onclick="ponerParada(true)" title="No se usa (esperando reparación…): deja de avisar de ITV y seguro">⏸ Parada</button>`):''}</div>
   <div class="card"><div class="chips" style="margin-top:0">${chip('ITV',v.dias.itv,it.proxima)}${chip('Seguro',v.dias.seguro,se.vencimiento)}${rv.proximaFecha?chip('Revisión',v.dias.revision,rv.proximaFecha):''}<span class="chip">${v.conductor?'👤 '+esc(v.conductor.name):'Sin conductor'}</span>${g?`<span class="chip">Gasto ${anioAct}: ${eur(g.total)}</span>`:''}</div></div>
 
   <h3>Quién lo lleva</h3>
@@ -240,6 +240,11 @@ async function borrarDoc(id){if(!(await CPDialog.confirmar('¿Borrar este docume
 async function darBaja(){
   if(!(await CPDialog.confirmar('¿Dar de baja '+cur.vehiculo.nombre+'?',{ok:'Dar de baja',peligro:true})))return;
   try{await api('POST','/api/vehiculos/'+cur.vehiculo.id+'/baja',{motivo:V('b-motivo'),fecha:V('b-fecha'),precioVenta:V('b-precio'),nota:V('b-nota')});toast('Dado de baja');abrir(cur.vehiculo.id);}catch(e){toast(e.message);}
+}
+async function ponerParada(si){
+  let motivo='';
+  if(si){ motivo=prompt('¿Por qué está parada? (p. ej. «esperando reparación»)','')||''; }
+  try{await api('PUT','/api/vehiculos/'+cur.vehiculo.id,{parada:si?{motivo}:null});toast(si?'Parada: no avisará de ITV ni seguro':'Vuelve a usarse');abrir(cur.vehiculo.id);}catch(e){toast(e.message);}
 }
 async function reactivar(){try{await api('POST','/api/vehiculos/'+cur.vehiculo.id+'/reactivar');abrir(cur.vehiculo.id);}catch(e){toast(e.message);}}
 
