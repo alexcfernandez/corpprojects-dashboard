@@ -78,12 +78,51 @@ function elegir(abiertos, texto = '', docs = []) {
   return mejor;
 }
 
+// Respuesta a una lista numerada de compras («1 Rahola, 2 almacén, 3 y 4 Rahola»): qué texto va a cada número.
+// Si no hay números de la lista, todas se llevan el texto entero («todas de Rahola» / «Rahola»). PURO.
+function repartir(texto, n) {
+  const out = {}; let pend = [];
+  const segs = String(texto || '').split(/[,;\n]+|\s+(?=\d{1,2}\s*[-:.)]?\s*[a-záéíóúñ])/i).map(x => x.trim()).filter(Boolean);
+  let alguno = false;
+  for (const sg of segs) {
+    const m = /^((?:\d{1,2}\s*(?:y|e|i|-|\/|&|,)?\s*)+?)\s*[-:.)]?\s*([^\d].*)?$/i.exec(sg);
+    const nums = m ? (m[1].match(/\d{1,2}/g) || []).map(Number).filter(x => x >= 1 && x <= n) : [];
+    if (m && nums.length && nums.length === (m[1].match(/\d{1,2}/g) || []).length) {
+      alguno = true;
+      const resto = String(m[2] || '').replace(/^(la|el|de|del|para|es|son|todo|todas?)\s+/i, '').trim();
+      if (resto) { [...pend, ...nums].forEach(k => { out[k] = resto; }); pend = []; } else pend.push(...nums);
+    } else if (pend.length) { pend.forEach(k => { out[k] = sg; }); pend = []; }
+  }
+  if (!alguno) for (let k = 1; k <= n; k++) out[k] = String(texto || '').trim();
+  return out;
+}
+
 // El trabajador contesta (texto o archivo). Devuelve la respuesta para él, o null si no tenía encargos abiertos.
 async function respuesta(userId, nombreTrab, { texto = '', docs = [] } = {}, { _avisar = null } = {}) {
   const abiertos = await abiertosDe(userId);
   if (!abiertos.length) return null;
-  let e = elegir(abiertos, texto, docs);
   const db = await getDB();
+  // ¿Contesta a una lista numerada de compras sin obra? Cada número a su compra.
+  const lista = abiertos.filter(x => x.origen && x.origen.tipo === 'compra' && x.origen.grupo);
+  const grupo = lista.length ? lista[lista.length - 1].origen.grupo : null;
+  const delGrupo = grupo ? lista.filter(x => x.origen.grupo === grupo) : [];
+  if (texto && !docs.length && delGrupo.length >= 2 && !RE_TALLAS.test(texto)) {
+    const n = Math.max(...delGrupo.map(x => x.origen.n || 0));
+    const rep = repartir(texto, n);
+    const hechos = [];
+    for (const x of delGrupo) {
+      const t = rep[x.origen.n]; if (!t) continue;
+      let obra = null; try { const r = await require('./comprasVigilancia').respuestaCompra(x.origen, t, nombreTrab || x.nombre); obra = r && r.obra; } catch (err) {}
+      await db.collection(COL).updateOne({ _id: x._id }, { $push: { respuestas: { at: new Date(), texto: t.slice(0, 1000), docs: [] } }, $set: { estado: 'hecho', cerradoAt: new Date(), cerradoPor: 'respuesta del trabajador' } });
+      hechos.push(`${x.origen.n}. ${x.que.replace(/^obra de la compra \(|\)$/g, '')} → ${obra || t}`);
+    }
+    if (hechos.length) {
+      const faltan = delGrupo.filter(x => !rep[x.origen.n]).map(x => x.origen.n);
+      try { await (_avisar || require('./notifications').sendWhatsApp)(`💬 *${nombreTrab}* contesta a la lista de compras sin obra:\n"${String(texto).slice(0, 300)}"\n\n${hechos.join('\n')}`); } catch (err) {}
+      return `✅ ¡Gracias, ${primer(nombreTrab)}! Apuntado:\n${hechos.join('\n')}${faltan.length ? `\n\nMe falta${faltan.length > 1 ? 'n' : ''} la ${faltan.join(', ')}.` : ''}`;
+    }
+  }
+  let e = elegir(abiertos, texto, docs);
   if (e.tipo === 'tallas' && texto) {
     const r = await require('./fichaDatos').respuesta(e, userId, nombreTrab, texto, { _avisar, soloSiEntiende: true });
     if (r) return r;
@@ -176,4 +215,4 @@ async function resumenInicio() {
   return { n: l.length, personas: [...new Set(l.map(e => e.nombre))], viejos: l.filter(e => e.dias >= 3).length };
 }
 
-module.exports = { _elegir: elegir, apuntarDeTrabajador, detectarPendiente, crear, abiertosDe, lista, cerrar, respuesta, recordar, resumenInicio, _APLAZA: APLAZA };
+module.exports = { _repartir: repartir, _elegir: elegir, apuntarDeTrabajador, detectarPendiente, crear, abiertosDe, lista, cerrar, respuesta, recordar, resumenInicio, _APLAZA: APLAZA };

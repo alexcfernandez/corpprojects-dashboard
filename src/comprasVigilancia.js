@@ -308,7 +308,7 @@ async function preguntarObras({ dryRun = false, porPersona = 4, _crear = null, _
   const fechaMin = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10);
   const cs = await db.collection('compras').find({ estado: 'por_revisar', obraId: { $in: [null, ''] }, varias: { $ne: true }, tipo: { $in: ['factura', 'ticket', 'albaran'] }, createdAt: { $gte: desde }, preguntaObra: { $exists: false } })
     .project({ proveedor: 1, fecha: 1, total: 1, destino: 1, subidaPor: 1, 'lineas.descripcion': 1, numero: 1 }).sort({ fecha: 1 }).toArray();
-  const porU = {}, hechas = [], sinQuien = [];
+  const porU = {}, hechas = [], sinQuien = [], porLista = {};
   for (const c of cs) {
     if (c.destino && c.destino !== 'obra') continue;
     if (!c.fecha || c.fecha < fechaMin) continue;
@@ -320,13 +320,27 @@ async function preguntarObras({ dryRun = false, porPersona = 4, _crear = null, _
     let suya = null;
     try { const a = await db.collection('attendance').findOne({ workerId: q.userId, date: c.fecha, estado: 'obra' }, { projection: { clientName: 1, obras: 1 } }); suya = a && (((a.obras || [])[0] || {}).clientName || a.clientName) || null; } catch (e) {}
     const mensaje = `¿Para qué obra fue la compra de *${c.proveedor || 'la tienda'}* del ${fmtF(c.fecha)} (${eur(c.total)})${art ? `: ${art}${(c.lineas || []).length > 2 ? '…' : ''}` : ''}?${suya ? ` ¿Era para *${suya}*, donde estabas ese día?` : ''} Dime la obra, o si era para el almacén, herramienta o la furgoneta.`;
-    if (!dryRun) {
-      try {
-        await (_crear || (o => require('./encargos').crear(o)))({ userId: q.userId, que: `obra de la compra (${String(c.proveedor || '').slice(0, 30)} ${fmtF(c.fecha)})`, mensaje, origen: { tipo: 'compra', compraId: String(c._id), sinObra: true }, por: 'Corpy' });
-        await db.collection('compras').updateOne({ _id: c._id }, { $set: { preguntaObra: { at: new Date(), a: q.name } } });
-      } catch (e) { console.warn('[Compras] pregunta obra:', e.message); continue; }
-    }
+    const linea = `*${c.proveedor || 'la tienda'}* del ${fmtF(c.fecha)} (${eur(c.total)})${art ? `: ${art}${(c.lineas || []).length > 2 ? '…' : ''}` : ''}${suya ? ` — ¿*${suya}*?` : ''}`;
+    (porLista[q.userId] = porLista[q.userId] || { q, items: [] }).items.push({ c, mensaje, linea });
     hechas.push({ a: q.name, proveedor: c.proveedor, fecha: c.fecha, total: c.total });
+  }
+  // Una sola lista numerada por persona (16/10/2026: a Manolo y a David les llegaban 4 mensajes seguidos).
+  if (!dryRun) {
+    for (const { q, items } of Object.values(porLista)) {
+      const grupo = `${q.userId}:${Date.now()}`;
+      const uno = items.length === 1;
+      for (const [i, it] of items.entries()) {
+        try {
+          await (_crear || ((o, d) => require('./encargos').crear(o, d)))({ userId: q.userId, que: `obra de la compra (${String(it.c.proveedor || '').slice(0, 30)} ${fmtF(it.c.fecha)})`, mensaje: it.mensaje, origen: { tipo: 'compra', compraId: String(it.c._id), sinObra: true, ...(uno ? {} : { grupo, n: i + 1 }) }, por: 'Corpy' }, uno ? {} : { _enviar: async () => true });
+          await db.collection('compras').updateOne({ _id: it.c._id }, { $set: { preguntaObra: { at: new Date(), a: q.name } } });
+        } catch (e) { console.warn('[Compras] pregunta obra:', e.message); }
+      }
+      if (!uno) {
+        const nom = String(q.name || '').split(/\s+/)[0];
+        const txt = `Hola ${nom} 👋 Soy Corpy, de la oficina de Corp Projects. Tengo ${items.length} compras sin obra. ¿Para qué obra fue cada una?\n\n${items.map((it, i) => `${i + 1}. ${it.linea}`).join('\n')}\n\nContéstame en un mensaje con el número y la obra, por ejemplo: «1 Rahola, 2 almacén, 3 y 4 Rahola». Si son todas de la misma obra, dime solo la obra. También vale «herramienta» o «furgoneta».`;
+        try { await (_avisar ? (async () => true) : (async () => { const U = require('./users'); const u = (await U.getUsers(false)).find(x => String(x._id) === q.userId); const tel = require('./recordatoriosCobro')._movil(u && (u.whatsapp || u.telefono)); if (tel) await require('./notifications').sendWhatsAppTo(tel, txt); }))(); } catch (e) { console.warn('[Compras] lista de obra:', e.message); }
+      }
+    }
   }
   if (!dryRun && hechas.length) {
     const g = {}; hechas.forEach(h => (g[h.a] = g[h.a] || []).push(h));
