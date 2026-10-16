@@ -723,6 +723,14 @@ async function procesarTrabajador(from, body, media, trab, responder) {
     } catch (e) { return responder('🎙️ No he conseguido entender el audio. ¿Me lo escribes?'); }
   }
 
+  // Escribe en su idioma (ficha → Idioma): se pasa al español antes de interpretarlo (idiomas.js, 16/10/2026).
+  if (texto) {
+    try {
+      const I = require('./idiomas'); const id = await I.idiomaDe(from);
+      if (id && id !== 'es') { const es = await I.traducir(texto, 'es', { de: id }); if (es && es !== texto) { require('./waLog').registrar({ dir: 'in', canal: media.canal || null, numero: from, texto: `🌐 (traducido) ${es}`, media: [] }).catch(() => {}); texto = es; } }
+    } catch (e) { console.warn('[WhatsApp] traducir entrada:', e.message); }
+  }
+
   // «No me deja abrir los mensajes» / «esperando el mensaje»: no es una respuesta a un encargo (el 13/10 a Javier se le
   // contestó «👍 Apuntado»). Se avisa a Álex para reenviárselo y se le dice que lo estamos mirando.
   if (texto && /no (se )?(me )?(dejan?|puedo|puede) (abrir|leer|ver)|no se (abren?|pueden abrir|ven)|esperando (el|este) mensaje|no (me )?(llegan?|entiendo) (los|tus) mensajes/i.test(texto)) {

@@ -207,6 +207,13 @@
         <input type="date" id="u-fecha-inicio" value="${user.fechaInicio||''}" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px">
         <div style="font-size:10px;color:var(--text3);margin-top:3px">Antes de ese día no recibe el enlace de fichar ni sale como «sin fichar»</div>
       </div>
+      <div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">🌐 Idioma de Corpy</div>
+        <select id="u-idioma" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px">
+          ${[['es','Español'],['ar','Árabe (dariya marroquí)'],['fr','Francés'],['ro','Rumano'],['pt','Portugués'],['en','Inglés'],['uk','Ucraniano'],['ca','Catalán']].map(([k,n])=>`<option value="${k}" ${(user.idioma||'es')===k?'selected':''}>${n}</option>`).join('')}
+        </select>
+        <div style="font-size:10px;color:var(--text3);margin-top:3px">Corpy le escribe en este idioma (con el español debajo) y entiende lo que conteste en él</div>
+      </div>
     </div>
     <div class="g2" style="margin-bottom:12px">
       <div>
@@ -360,6 +367,7 @@
       set('u-telefono', u.telefono||'');
       set('u-nombre-completo', u.nombreCompleto||'');
       set('u-fecha-inicio', u.fechaInicio||'');
+      set('u-idioma', u.idioma||'es');
       set('u-email', u.email||'');
       set('u-color', u.color||'#4d9cf8');
       set('u-notes', u.notes||'');
@@ -427,6 +435,7 @@
     telefono:  document.getElementById('u-telefono')?.value?.trim(),
     nombreCompleto: document.getElementById('u-nombre-completo')?.value?.trim() || '',
     fechaInicio: document.getElementById('u-fecha-inicio')?.value || '',
+    idioma: document.getElementById('u-idioma')?.value || 'es',
     email:     document.getElementById('u-email')?.value?.trim(),
     color:     document.getElementById('u-color')?.value,
     notes:     document.getElementById('u-notes')?.value?.trim(),

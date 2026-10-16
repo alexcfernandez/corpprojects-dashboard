@@ -194,9 +194,10 @@ async function createUser(data) {
 
 async function updateUser(id, data) {
   const db      = await getDB();
-  const allowed = ['name','role','pin','color','costeHora','nota','active','notes','docs','telefono','email','username','porPartes','nombreCompleto','fechaInicio'];
+  const allowed = ['name','role','pin','color','costeHora','nota','active','notes','docs','telefono','email','username','porPartes','nombreCompleto','fechaInicio','idioma'];
   const set     = { updatedAt: new Date() };
   allowed.forEach(k => { if (data[k] !== undefined) set[k] = data[k]; });
+  if ('idioma' in set) { set.idioma = require('./idiomas').IDIOMAS[set.idioma] ? set.idioma : 'es'; require('./idiomas').olvidar(); }
 
   // Parsear costeHora como número
   if (set.costeHora !== undefined) set.costeHora = parseFloat(set.costeHora || 0);

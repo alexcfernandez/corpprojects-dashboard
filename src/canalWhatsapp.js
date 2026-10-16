@@ -166,6 +166,8 @@ async function enviarUno(to, body, opts = {}) {
     console.log('[Canal] repetido en menos de 10 min, no se vuelve a mandar a', String(to).slice(-4));
     return true;
   }
+  // Trabajadores con otro idioma en su ficha: el mensaje sale traducido, con el español debajo (idiomas.js).
+  if (!opts.sinTraducir) { try { body = await require('./idiomas').paraEnviar(to, body); } catch (e) { console.warn('[Canal] traducción:', e.message); } }
   const partes = _trocear(body, 1500);
   let ok = true;
   for (let i = 0; i < partes.length; i++) {
