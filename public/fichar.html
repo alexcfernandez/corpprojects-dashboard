@@ -817,7 +817,7 @@ function mostrarBienvenida(nombre){const ov=document.createElement('div');ov.sty
   const MAP=new Map(), pend=new Set(), orig=new WeakMap();
   const BOTON='button,.btn,[role=button]';
   const vale=s=>/[A-Za-zÀ-ÿ]{2}/.test(s||'')&&!/^\s*https?:\/\//.test(s||'')&&String(s).trim().length<=400;
-  const fmt=(n,o)=>{const t=MAP.get(o);if(!t)return null;return n.parentElement&&n.parentElement.closest(BOTON)?`${t} · ${o}`:t;};
+  const fmt=(n,o)=>{const t=MAP.get(o);if(!t)return null;return n.parentElement&&n.parentElement.closest(BOTON)?`${t} · ${o.replace(/^[^\p{L}\d¿¡]+/u,'')}`:t;};
   function guardar(){try{localStorage.setItem('cpTr_'+IDI,JSON.stringify([...MAP]));}catch(e){}}
   function nodos(root){const out=[];const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode:n=>{const p=n.parentElement;if(!p||/^(SCRIPT|STYLE|TEXTAREA|CODE)$/.test(p.tagName)||p.closest('[data-notr]'))return NodeFilter.FILTER_REJECT;return vale(n.nodeValue)?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_REJECT;}});let n;while((n=w.nextNode()))out.push(n);return out;}
   function uno(n){
