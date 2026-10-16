@@ -1550,6 +1550,16 @@ async function _worker(req, res) {
   if (!w) { res.status(401).json({ error: 'Token expirado' }); return null; }
   return w;
 }
+// Página de fichar en el idioma del trabajador (idiomas.js): cuál es y la traducción de sus textos.
+app.get('/api/fichaje/idioma', async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return; res.json({ idioma: await require('./idiomas').idiomaDeUsuario(w.workerId) }); }
+  catch (err) { res.json({ idioma: 'es' }); }
+});
+app.post('/api/fichaje/traducir', express.json({ limit: '64kb' }), async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return; const I = require('./idiomas'); const id = await I.idiomaDeUsuario(w.workerId);
+    res.json({ idioma: id, t: await I.traducirLote((req.body || {}).textos || [], id) }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
 app.get('/api/fichaje/estado', async (req, res) => {
   try { const w = await _worker(req, res); if (!w) return;
     res.json(await require('./fichajeMarcas').estadoActual(w.workerId)); }

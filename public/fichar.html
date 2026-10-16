@@ -808,6 +808,48 @@ function mostrarBienvenida(nombre){const ov=document.createElement('div');ov.sty
   if(ok)loadWorkers();else{await loadWorkers();showPage('login');}
   sincronizar();})();
 </script>
+<script>
+// ── Página en el idioma del trabajador (ficha → «Idioma de Corpy»). 16/10/2026 ──
+// Traduce los textos que se ven (y los que aparecen después) con /api/fichaje/traducir; las traducciones se
+// guardan en el móvil. En los botones va «traducción · Español», igual que en los WhatsApp de Corpy.
+(function(){
+  let IDI=null, cargando=false, tmr=null, obs=null;
+  const MAP=new Map(), pend=new Set(), orig=new WeakMap();
+  const BOTON='button,.btn,[role=button]';
+  const vale=s=>/[A-Za-zÀ-ÿ]{2}/.test(s||'')&&!/^\s*https?:\/\//.test(s||'')&&String(s).trim().length<=400;
+  const fmt=(n,o)=>{const t=MAP.get(o);if(!t)return null;return n.parentElement&&n.parentElement.closest(BOTON)?`${t} · ${o}`:t;};
+  function guardar(){try{localStorage.setItem('cpTr_'+IDI,JSON.stringify([...MAP]));}catch(e){}}
+  function nodos(root){const out=[];const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode:n=>{const p=n.parentElement;if(!p||/^(SCRIPT|STYLE|TEXTAREA|CODE)$/.test(p.tagName)||p.closest('[data-notr]'))return NodeFilter.FILTER_REJECT;return vale(n.nodeValue)?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_REJECT;}});let n;while((n=w.nextNode()))out.push(n);return out;}
+  function uno(n){
+    const cur=n.nodeValue.trim();
+    if(orig.has(n)&&fmt(n,orig.get(n))===cur)return;   // ya traducido por nosotros
+    const nuevo=fmt(n,cur);
+    if(!nuevo){pend.add(cur);return;}
+    orig.set(n,cur);n.nodeValue=n.nodeValue.replace(cur,nuevo);
+  }
+  function attrs(root){(root.querySelectorAll?root.querySelectorAll('[placeholder],[title]'):[]).forEach(el=>{['placeholder','title'].forEach(a=>{const v=el.getAttribute(a);if(!vale(v))return;const o=el.dataset['o'+a]||v;if(el.dataset['o'+a]&&MAP.get(o)===v)return;const t=MAP.get(o);if(t){el.dataset['o'+a]=o;el.setAttribute(a,t);}else pend.add(o);});});}
+  function barrer(root){if(!IDI||IDI==='es')return;root=root||document.body;nodos(root).forEach(uno);attrs(root);pedir();}
+  async function pedir(){
+    if(cargando||!pend.size)return;
+    clearTimeout(tmr);tmr=setTimeout(async()=>{
+      const lote=[...pend].slice(0,120);lote.forEach(x=>pend.delete(x));cargando=true;
+      try{const r=await fetch('/api/fichaje/traducir',{method:'POST',headers:authH({'Content-Type':'application/json'}),body:JSON.stringify({textos:lote})});const d=await r.json();Object.entries(d.t||{}).forEach(([k,v])=>{if(v&&v!==k)MAP.set(k,v);});guardar();}catch(e){}
+      cargando=false;obs&&obs.disconnect();nodos(document.body).forEach(uno);attrs(document.body);obs&&obs.observe(document.body,{subtree:true,childList:true,characterData:true});if(pend.size)pedir();
+    },250);
+  }
+  async function arrancar(){
+    if(IDI!==null||!workerToken)return;
+    try{const r=await fetch('/api/fichaje/idioma',{headers:authH()});IDI=((await r.json())||{}).idioma||'es';}catch(e){IDI=null;return;}
+    if(IDI==='es')return;
+    document.documentElement.lang=IDI;
+    try{(JSON.parse(localStorage.getItem('cpTr_'+IDI))||[]).forEach(([k,v])=>MAP.set(k,v));}catch(e){}
+    obs=new MutationObserver(ms=>{obs.disconnect();ms.forEach(m=>{if(m.type==='characterData'&&m.target.nodeType===3){if(vale(m.target.nodeValue))uno(m.target);}else m.addedNodes.forEach(x=>{if(x.nodeType===3){if(vale(x.nodeValue))uno(x);}else if(x.nodeType===1)barrer(x);});});obs.observe(document.body,{subtree:true,childList:true,characterData:true});pedir();});
+    barrer();obs.observe(document.body,{subtree:true,childList:true,characterData:true});
+  }
+  const _c=cargar; cargar=async function(){const r=await _c.apply(this,arguments);arrancar();return r;};
+  if(workerToken)arrancar();
+})();
+</script>
 <script src="/dialogo.js"></script>
 </body>
 </html>

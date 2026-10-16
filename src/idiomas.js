@@ -87,4 +87,43 @@ async function paraEnviar(numero, texto, { _idioma = undefined, _llamar = null }
   return `${tr}\n\n— ${IDIOMAS.es} —\n${texto}`;
 }
 
-module.exports = { IDIOMAS, traducir, idiomaDe, paraEnviar, olvidar };
+// Muchas frases cortas a la vez (la página de fichar): las que ya están guardadas salen al momento; el resto, en una
+// sola llamada que devuelve una lista JSON en el mismo orden.
+async function traducirLote(textos, a, { _llamar = null } = {}) {
+  const lista = [...new Set((textos || []).map(t => String(t || '').trim()).filter(t => t && t.length <= 400))].slice(0, 150);
+  const out = {};
+  if (!a || a === 'es' || !COMO[a]) { lista.forEach(t => { out[t] = t; }); return out; }
+  let db = null; try { if (!_llamar) db = await getDB(); } catch (e) {}
+  const faltan = [];
+  const ks = lista.map(t => [t, clave(t, a, 'es')]);
+  const enDb = db ? await db.collection('traducciones').find({ _id: { $in: ks.filter(([t, k]) => !_mem.has(k)).map(([, k]) => k) } }).toArray().catch(() => []) : [];
+  const porK = new Map(enDb.map(x => [x._id, x.t]));
+  for (const [t, k] of ks) { const v = _mem.get(k) || porK.get(k); if (v) { _mem.set(k, v); out[t] = v; } else faltan.push(t); }
+  if (!faltan.length) return out;
+  const prompt = `Traduce cada frase de la app de fichar de una empresa de reformas, del español a ${COMO[a]}. Son textos de pantalla (botones, avisos, títulos). NO toques números, horas, fechas, nombres propios de personas, obras o calles, ni emojis. Devuelve SOLO una lista JSON de cadenas, en el mismo orden y con el mismo número de elementos (${faltan.length}).
+
+${JSON.stringify(faltan)}`;
+  try {
+    let txt;
+    if (_llamar) txt = await _llamar(prompt);
+    else {
+      const key = process.env.ANTHROPIC_API_KEY; if (!key) return out;
+      const c = new AbortController(); const tm = setTimeout(() => c.abort(), 60000);
+      const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', signal: c.signal, headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: require('./config').ia.clasificador, max_tokens: 8000, messages: [{ role: 'user', content: prompt }] }) }).finally(() => clearTimeout(tm));
+      const d = await r.json(); if (!r.ok) throw new Error(`API ${r.status}`);
+      txt = (d.content || []).map(b => b.text || '').join('');
+    }
+    const m = /\[[\s\S]*\]/.exec(txt || '');
+    const arr = m ? JSON.parse(m[0]) : [];
+    if (Array.isArray(arr) && arr.length === faltan.length) {
+      faltan.forEach((t, i) => { const v = String(arr[i] || '').trim(); if (!v) return; out[t] = v; const k = clave(t, a, 'es'); _mem.set(k, v); if (db) db.collection('traducciones').updateOne({ _id: k }, { $set: { t: v, a, de: 'es', at: new Date() } }, { upsert: true }).catch(() => {}); });
+    }
+  } catch (e) { console.warn('[Idiomas] lote:', e.message); }
+  return out;
+}
+
+async function idiomaDeUsuario(userId) {
+  try { const u = await require('./users').getUser(String(userId)); return (u && IDIOMAS[u.idioma] && u.idioma) || 'es'; } catch (e) { return 'es'; }
+}
+
+module.exports = { IDIOMAS, traducir, traducirLote, idiomaDe, idiomaDeUsuario, paraEnviar, olvidar };
