@@ -2784,8 +2784,9 @@ async function handlerPendienteAdd(texto, from, ctx = {}) {
 
 async function handlerPendienteList(from, ctx = {}) {
   if (ctx.rol && ctx.rol !== 'owner') return '🔒 Esta acción la gestiona la oficina de Corp.';
-  const abiertos = await pendientes.listPendientes({ soloAbiertos: true });
+  const abiertos = pendientes.ordenar(await pendientes.listPendientes({ soloAbiertos: true }));
   if (!abiertos.length) return '✅ No tienes pendientes abiertos.';
+  await pendientes.recordarOrden(abiertos);
   return `📌 *Tus pendientes* (${abiertos.length}):\n` +
     abiertos.map((p, i) => `${i + 1}. ${p.texto}`).join('\n') +
     `\n\n_Para cerrar uno: "hecho el pendiente 1"._`;

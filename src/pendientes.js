@@ -55,8 +55,14 @@ async function cerrarPendiente({ idx = null, id = null } = {}) {
   if (id) {
     try { const { ObjectId } = require('mongodb'); doc = await db.collection(COL).findOne({ _id: new ObjectId(id) }); } catch (e) {}
   } else if (idx != null) {
-    const abiertos = await listPendientes({ soloAbiertos: true });
-    doc = abiertos[idx - 1] || null;
+    // El número es el de la ÚLTIMA lista que vio Álex (resumen de la mañana o «pendientes»): al cerrar el 1, el 2 sigue
+    // siendo el 2 (15/10/2026: «hecho el pendiente 2» decía que no existía porque la lista se había renumerado).
+    const snap = await db.collection('appSettings').findOne({ key: 'pendientesOrden' }).catch(() => null);
+    const ids = snap && snap.valor && Array.isArray(snap.valor.ids) ? snap.valor.ids : null;
+    if (ids && ids[idx - 1]) {
+      try { const { ObjectId } = require('mongodb'); doc = await db.collection(COL).findOne({ _id: new ObjectId(ids[idx - 1]), estado: 'abierto' }); } catch (e) {}
+    }
+    if (!doc && !ids) { const abiertos = ordenar(await listPendientes({ soloAbiertos: true })); doc = abiertos[idx - 1] || null; }
   }
   if (!doc) return null;
   await db.collection(COL).updateOne({ _id: doc._id }, { $set: { estado: 'hecho', doneAt: new Date() } });
@@ -81,13 +87,22 @@ function lineaPendiente(p, i, hoyISO) {
   return `${i + 1}. ${p.texto}${pi ? ` — ${marca}` : ''}`;
 }
 
-async function seccionResumen(hoyISO = hoyMadridISO()) {
-  const abiertos = await listPendientes({ soloAbiertos: true }).catch(() => []);
-  if (!abiertos.length) return null;
-  const orden = abiertos.slice().sort((a, b) => {
+// Mismo orden en el resumen, en «pendientes» y al cerrar: por fecha, y los que no tienen fecha al final.
+function ordenar(l) {
+  return l.slice().sort((a, b) => {
     const pa = a.paraISO || '9999', pb = b.paraISO || '9999';
     return pa < pb ? -1 : pa > pb ? 1 : 0;
   });
+}
+async function recordarOrden(lista) {
+  try { const db = await getDB(); await db.collection('appSettings').updateOne({ key: 'pendientesOrden' }, { $set: { key: 'pendientesOrden', valor: { ids: lista.map(p => String(p._id)), at: new Date() } } }, { upsert: true }); } catch (e) {}
+}
+
+async function seccionResumen(hoyISO = hoyMadridISO()) {
+  const abiertos = await listPendientes({ soloAbiertos: true }).catch(() => []);
+  if (!abiertos.length) return null;
+  const orden = ordenar(abiertos);
+  await recordarOrden(orden);
   const lineas = orden.map((p, i) => lineaPendiente(p, i, hoyISO)).join('\n');
   return `📌 *Pendientes* (${abiertos.length}):\n${lineas}\n_Para cerrar uno: "hecho el pendiente 1"._`;
 }
@@ -172,7 +187,7 @@ function limpiarVerbo(texto) {
 // Formato de la fecha para la confirmación: "el martes 28".
 function fechaConfirm(iso) { return 'el ' + fechaCorta(iso); }
 
-module.exports = {
+module.exports = { ordenar, recordarOrden,
   addPendiente, listPendientes, cerrarPendiente, seccionResumen,
   detectarIntent, limpiarVerbo, parseFecha, fechaConfirm, hoyMadridISO,
 };
