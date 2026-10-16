@@ -185,7 +185,11 @@ async function avisarSalidasOlvidadas({ dryRun = false } = {}) {
     const clave = 'fichaje-abierto-' + d.userId;
     if (!dryRun && await avisos.wasAlertSentToday(clave, fecha)) continue;
     const inicio = (d.tramos[0] && d.tramos[0].entrada) || d.desde;
+    // Pulsó «Pausa» y no volvió (16/10/2026: Abdellah acababa así cada día): se le explica la diferencia.
+    const enPausa = d.estado === 'pausa' || d.enPausa;
+    const ultTramo = d.tramos[d.tramos.length - 1];
     const texto = `Hola ${_nombre(d.userName)} 👋 Tu jornada de hoy sigue abierta (empezaste a las ${_hhmm(inicio)}).\n\n` +
+      (enPausa ? `Has pulsado *Pausa*${ultTramo && ultTramo.salida ? ` a las ${_hhmm(ultTramo.salida)}` : ''}, no *Termino la jornada*. La pausa es para el bocadillo o la comida; al acabar el día hay que pulsar *Termino la jornada*.\n\n` : '') +
       `Si ya has terminado, entra en la app y pulsa *Termino la jornada*. Si se te pasó la hora, usa *Me olvidé de fichar* y pon a qué hora acabaste.` +
       (to ? `\n${await enlacePersonal(d.userId).catch(() => BASE_URL + '/fichar')}` : '');
     if (dryRun) { out.push({ name: d.userName, to: to || '(sin teléfono: solo push)', enviado: false }); continue; }
