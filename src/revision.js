@@ -80,6 +80,7 @@ async function datos(fecha = hoyMadrid()) {
 // Botones permitidos en los puntos de la revisión
 const ACCIONES = {
   a_personal: async (p, por) => require('./compras').aPersonal(p.compraId, por, { tipo: p.tipo || 'otro', nombre: p.nombre || null }),
+  a_obra: async (p, por) => require('./compras').aObra(p.compraId, por, { tipo: p.tipo || 'partes_trabajo', nombre: p.nombre || null }),
   descartar_compra: async (p, por) => require('./compras').descartar(p.compraId, por, p.motivo || 'Descartada desde la revisión del día', { avisar: !!p.avisar }),
   cerrar_encargo: async (p, por) => require('./encargos').cerrar(p.encargoId, { como: p.como === 'hecho' ? 'hecho' : 'cancelado', por }),
   // «Todo firmado y recibido»: mandar el alta a la gestoría (Eduard). Solo con el botón, nunca sola.

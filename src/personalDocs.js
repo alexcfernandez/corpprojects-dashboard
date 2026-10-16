@@ -61,6 +61,8 @@ const TIPOS_OBRA = {
   aut_libro: { nombre: 'Autorización de firma del Libro de Subcontratación' },
   recibi_doc: { nombre: 'Recibí de la relación de documentación (firmado)' },
   cert_hacienda_contratista: { nombre: 'Certificado de Hacienda específico para el contratista (art. 43.1.f)', caducaMeses: 12 },
+  partes_trabajo: { nombre: 'Partes de trabajo / hojas de horas' },
+  fotos_obra: { nombre: 'Fotos de la obra' },
   otro_obra: { nombre: 'Otro de la obra' },
 };
 const tipoDe = (ambito, t) => (ambito === 'empresa' ? TIPOS_EMPRESA : ambito === 'obra' ? TIPOS_OBRA : TIPOS)[t];

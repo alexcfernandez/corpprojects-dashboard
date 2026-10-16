@@ -660,6 +660,49 @@ function registrarEntradaWa(from, body, media = {}) {
 // fotos que no son documentos (el portal, la calle…) → se le explica que no hacen falta y
 // se le da su enlace de fichar; texto o voz → acuse y se pasa a la oficina. Sin menús del dueño.
 const PALABRAS_FICHAJE = /\b(fich\w*|entrada|empie\w*|empez\w*|llegad\w*|llegu[eé]|estoy (en|aqu[ií])|ubicaci[oó]n|enlace|link|no (me )?(funciona|va|abre|deja)|no puedo|salida|termin\w*|pausa|jornada)\b/i;
+async function fotosDeTrabajador(trab, fotos, texto) {
+  const db = await getDB();
+  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
+  const nombre = String(trab.name || '').split(/\s+/)[0];
+  const trafico = fotos.filter(f => f.queEs === 'trafico'), resto = fotos.filter(f => f.queEs !== 'trafico');
+  const out = [];
+  if (trafico.length) {
+    // Un aviso a la oficina por persona y día, aunque mande varias fotos del atasco.
+    const clave = `trafico:${trab.userId || trab.name}:${hoy}`;
+    const ya = await db.collection('avisosUnaVez').findOne({ _id: clave }).catch(() => null);
+    if (!ya) {
+      await db.collection('avisosUnaVez').updateOne({ _id: clave }, { $set: { at: new Date() } }, { upsert: true }).catch(() => {});
+      const hora = new Date().toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' });
+      try { const N = require('./notifications'); for (const to of [...new Set([N.destinoDueno(), process.env.OFICINA_TELEFONO || '+34674013723'])]) await N.sendWhatsAppTo(to, `🚗 *${trab.name}* avisa de tráfico (foto de las ${hora}${trafico[0].descripcion ? ': ' + trafico[0].descripcion : ''}). Llegará más tarde.`); } catch (e) {}
+    }
+    out.push(`🚗 Visto, ${nombre}: hay tráfico. Aviso a la oficina de que llegas un poco más tarde. ¡Con cuidado!`);
+  }
+  if (resto.length) {
+    let obra = null;
+    try {
+      const a = trab.userId ? await db.collection('attendance').findOne({ workerId: String(trab.userId), date: hoy }) : null;
+      obra = require('./obraDelDia')._obraDe(a);
+      if (!(obra && obra.obraId) && trab.userId) {
+        const m = await db.collection('fichajeMarcas').find({ userId: String(trab.userId), fecha: hoy, obraId: { $ne: null } }).sort({ ts: -1 }).limit(1).next();
+        if (m && m.obraId) { const o = await db.collection('obras').findOne({ _id: new ObjectId(String(m.obraId)) }); obra = { obraId: String(m.obraId), nombre: o ? (o.reference || o.clientName) : '' }; }
+      }
+    } catch (e) {}
+    let guardadas = 0;
+    for (const f of resto) {
+      try {
+        if (obra && /^[a-f0-9]{24}$/.test(String(obra.obraId || ''))) {
+          await require('./personalDocs').subir({ ambito: 'obra', obraId: String(obra.obraId), tipo: 'fotos_obra', archivo: { buffer: f.buf, mimetype: f.mime, originalname: `Foto de ${nombre} ${hoy}.jpg` }, fecha: hoy, notas: [f.descripcion, texto].filter(Boolean).join(' · ').slice(0, 300) || `Mandada por ${trab.name} por WhatsApp` }, `${trab.name} (WhatsApp)`);
+        } else {
+          await db.collection('grupoFotos').insertOne({ jid: 'directo:' + String(trab.userId || trab.name), grupo: `WhatsApp de ${trab.name}`, quien: trab.name, texto: [f.descripcion, texto].filter(Boolean).join(' · ') || null, obraId: null, obraRef: null, mimetype: f.mime, bytes: f.buf.length, data: f.buf, ts: new Date() });
+        }
+        guardadas++;
+      } catch (e) { console.warn('[WhatsApp] guardar foto:', e.message); }
+    }
+    if (guardadas) out.push(obra && obra.obraId ? `📸 Guardada${guardadas > 1 ? 's' : ''} en las fotos de la obra *${obra.nombre || 'de hoy'}*. ¡Gracias, ${nombre}!` : `📸 Guardada${guardadas > 1 ? 's' : ''}, ${nombre}. Como hoy no consta en qué obra estás, la oficina la${guardadas > 1 ? 's' : ''} pondrá en su carpeta. (Si fichas eligiendo la obra, van solas.)`);
+  }
+  return out.join('\n\n');
+}
+
 async function procesarTrabajador(from, body, media, trab, responder) {
   const nombre = String(trab.name || '').trim().split(/\s+/)[0] || '';
   const nombreCap = nombre ? nombre.charAt(0).toUpperCase() + nombre.slice(1) : '';
@@ -690,7 +733,7 @@ async function procesarTrabajador(from, body, media, trab, responder) {
   // Fotos / PDF → Compras si son documentos de compra
   const docs = [...(media.fotos || []), ...(media.pdf ? [media.pdf] : [])];
   if (docs.length) {
-    const guardadas = []; let noDoc = 0, fallos = 0;
+    const guardadas = [], fotosNoDoc = []; let noDoc = 0, fallos = 0;
     // ¿Le hemos pedido sus documentos para el alta? Entonces esto va a su carpeta de Personal (docsAlta.js).
     let petAlta = null; try { petAlta = await require('./docsAlta').abiertaDe(trab.userId); } catch (e) {}
     // ¿Le hemos encargado algo (encargos.js)? Lo que mande (foto, papel) es la respuesta: a su carpeta y a Álex.
@@ -721,13 +764,17 @@ async function procesarTrabajador(from, body, media, trab, responder) {
           nota: texto ? texto.slice(0, 300) : 'Enviada por WhatsApp', soloSiDocumento: true,
           subidaPor: { kind: 'worker', userId: trab.userId || String(from), name: trab.name || String(from) },
         });
-        if (r && r.noEsDocumento) noDoc++; else if (r && r.personal) respAlta.push(`📁 Guardado en tu carpeta de Personal: ${r.nombre}. No es una compra, así que no hace falta decir obra. ¡Gracias!`); else if (r && r.id) guardadas.push(r);
+        if (r && r.noEsDocumento) { noDoc++; fotosNoDoc.push({ buf, mime: String(m.type || 'image/jpeg').split(';')[0], queEs: r.queEs, descripcion: r.descripcion }); }
+        else if (r && r.parteObra) respAlta.push(`📋 Guardado en los papeles de la obra${r.obraRef ? ' ' + r.obraRef : ''} como parte de trabajo. ¡Gracias!`);
+        else if (r && r.personal) respAlta.push(`📁 Guardado en tu carpeta de Personal: ${r.nombre}. No es una compra, así que no hace falta decir obra. ¡Gracias!`); else if (r && r.id) guardadas.push(r);
       } catch (e) { fallos++; console.error('[WhatsApp] compra de trabajador:', e.message); }
     }
     const partes = [...respAlta.slice(-2)];
     const preguntas = guardadas.map(g => g.pregunta).filter(Boolean);   // «¿para qué obra es?» / «¿qué pasó con el anterior?»
     if (guardadas.length) partes.push(`🧾 Recibido${guardadas.length > 1 ? ' (' + guardadas.length + ')' : ''}: ${guardadas.map(g => [g.tipoTxt || 'documento', g.proveedor].filter(Boolean).join(' de ')).join(', ')}. Lo revisa la oficina.${preguntas.length ? '\n\n' + preguntas.join('\n\n') : (texto ? '' : ' Si es de una obra concreta, dime cuál (p. ej. «es de Rutlla»).')}`);
-    if (noDoc) partes.push(`📸 Gracias${nombreCap ? ', ' + nombreCap : ''}. Para fichar no hace falta mandar fotos del sitio: basta con tu enlace.` + lineaFichar);
+    // Fotos que no son documentos (16/10/2026: a Jose se le contestaba siempre «para fichar no hace falta» y se tiraban):
+    // las de la obra se guardan en la obra donde ha fichado hoy; las de tráfico avisan a la oficina de que llega tarde.
+    if (noDoc) { try { partes.push(await fotosDeTrabajador(trab, fotosNoDoc, texto)); } catch (e) { console.warn('[WhatsApp] fotos trabajador:', e.message); partes.push(`📸 Recibido${nombreCap ? ', ' + nombreCap : ''}, gracias.`); } }
     if (fallos && !partes.length) partes.push('📎 He recibido tu archivo pero no lo he podido abrir. ¿Me lo mandas otra vez?');
     return responder(partes.join('\n\n') || '📎 Recibido.');
   }
@@ -1985,6 +2032,10 @@ app.post('/api/compras/:id/revisar', async (req, res) => {
     const r = await require('./compras').revisar(req.params.id, q.name, { enviarStel: (req.body || {}).enviarStel !== false, herramientas: (req.body || {}).herramientas || null, almacen: (req.body || {}).almacen || null });
     activity.registrar({ actor: q.name, actorRole: q.role, kind: 'modificado', entidad: 'Compra', ref: [r.proveedor, r.numero].filter(Boolean).join(' '), detalle: `Revisada (${r.tipo}) → ${r.obraRef || r.destino || 'gasto general'}${(r.activosCreados || []).length ? ' · ' + r.activosCreados.length + ' herramienta(s) dadas de alta' : ''}` });
     res.json(r); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/compras/:id/a-obra', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); const b = req.body || {}; res.json(await require('./compras').aObra(req.params.id, q.name, { tipo: b.tipo, nombre: b.nombre })); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.post('/api/compras/:id/a-personal', async (req, res) => {
