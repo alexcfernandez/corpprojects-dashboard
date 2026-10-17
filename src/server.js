@@ -2333,6 +2333,14 @@ app.get('/api/revision/datos', requireAuthOficina, async (req, res) => {
 app.get('/api/revision', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./revision').paraInicio()); } catch (err) { res.status(500).json({ error: err.message }); }
 });
+// Probar a Corpy del dueño sin WhatsApp (solo dueño): qué contestaría a un texto. Para revisar respuestas (17/10/2026).
+app.post('/api/asistente/probar', requireAuthOficina, express.json(), async (req, res) => {
+  try { if (!_soloDueno(req)) return res.status(403).json({ error: 'Solo el dueño' });
+    const t = String((req.body || {}).texto || '').trim().slice(0, 500); if (!t) throw new Error('Falta el texto');
+    const from = 'whatsapp:' + require('./notifications').destinoDueno();
+    res.json({ texto: t, respuesta: await require('./asistente').responderConsulta(t, from, []) }); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.post('/api/revision', requireAuthOficina, express.json({ limit: '200kb' }), async (req, res) => {
   try { if (!_soloDueno(req)) return res.status(403).json({ error: 'Solo el dueño' }); res.json(await require('./revision').guardar(req.body || {}, req.user?.name || 'Claude')); } catch (err) { res.status(400).json({ error: err.message }); }
 });
