@@ -532,7 +532,8 @@ async function procesarWhatsApp(from, body, media = {}) {
     // ¿Es un cliente contestando a un recordatorio de cobro? Se apunta en su factura y se pasa a Álex.
     try { const rc = await require('./recordatoriosCobro').respuestaCliente(from, body || (media.fotos && media.fotos.length ? '(foto)' : '')); if (rc) return responder(rc); } catch (e) {}
     // Alguien a quien Corpy ya escribió (Mathias el corredor, Alfonso, Kate…): no es «privado», se le pasa a Álex.
-    try { const r = await contactoConocido(from, body, media); if (r) return responder(r); } catch (e) { console.error('[Contacto] respuesta:', e.message); }
+    try { const r = await contactoConocido(from, body, media); if (r === '__callar__') return; if (r) return responder(r); } catch (e) { console.error('[Contacto] respuesta:', e.message); }
+    if (await _yaContestado(from, 12)) return;   // no entrar en bucle con otro bot (17/10/2026: el asistente de JustFly)
     return responder('🔒 Este asistente es privado.');
   }
 
@@ -626,6 +627,17 @@ async function respuestaFirmante(from, body, media = {}) {
 // Contacto externo que contesta a Corpy (le escribimos en los últimos 30 días): el texto va a Álex por WhatsApp y los
 // archivos (PDF, Excel, fotos…) a hola@ por correo, para que no se pierda nada (13/10: a Mathias se le dijo «privado»
 // cuando mandó un PDF y un Excel de los seguros).
+// ¿Ya le hemos contestado a este número en las últimas `horas`? A un contacto externo (o a otro bot) se le contesta UNA
+// vez; lo que siga escribiendo se le pasa a Álex igualmente, pero sin responder (17/10/2026: Corpy y el asistente de
+// JustFly se estuvieron contestando entre ellos).
+async function _yaContestado(from, horas = 6) {
+  try {
+    const d9 = String(from || '').replace(/\D/g, '').slice(-9);
+    const db = await require('./db').getDB();
+    return !!(await db.collection('whatsappLog').findOne({ dir: 'out', numero: { $regex: d9 + '$' }, texto: { $regex: 'Se lo paso a Álex|asistente es privado' }, ts: { $gte: new Date(Date.now() - horas * 3600 * 1000) } }, { projection: { _id: 1 } }));
+  } catch (e) { return false; }
+}
+
 async function contactoConocido(from, body, media = {}) {
   const d9 = String(from || '').replace(/\D/g, '').slice(-9);
   if (d9.length !== 9) return null;
@@ -644,6 +656,7 @@ async function contactoConocido(from, body, media = {}) {
     try { await require('./notifications').sendEmail({ to: process.env.EMAIL_OFICINA || 'hola@corpprojects.es', subject: `WhatsApp de ${nombre} (${from}) a Corpy${texto ? ': ' + texto.slice(0, 60) : ''}`, text: `${nombre} (${from}) ha escrito a Corpy por WhatsApp:\n\n${texto || '(sin texto)'}\n\nAdjuntos: ${adjuntos.map(x => x.filename).join(', ')}`, attachments: adjuntos }); } catch (e) { console.error('[Contacto] correo:', e.message); }
   }
   try { await require('./notifications').sendWhatsApp(`📩 *${nombre}* (${from}) escribe a Corpy:${texto ? `\n"${texto.slice(0, 400)}"` : ''}${adjuntos.length ? `\n📎 ${adjuntos.length} archivo${adjuntos.length > 1 ? 's' : ''} (${adjuntos.map(x => x.filename).join(', ')}): te los he mandado a hola@corpprojects.es` : (archivos.length || media.numMedia ? '\n📎 Mandó un archivo que no he podido descargar: pídeselo por correo.' : '')}`); } catch (e) {}
+  if (await _yaContestado(from, 6)) return '__callar__';   // ya se le dijo; lo nuevo le llega a Álex igualmente
   return `Gracias, ${nombre} 🙏. Se lo paso a Álex${adjuntos.length ? ' (con los archivos)' : ''} y te contesta él.`;
 }
 
@@ -814,6 +827,15 @@ async function procesarTrabajador(from, body, media, trab, responder) {
     if (noDoc) { try { partes.push(await fotosDeTrabajador(trab, fotosNoDoc, texto)); } catch (e) { console.warn('[WhatsApp] fotos trabajador:', e.message); partes.push(`📸 Recibido${nombreCap ? ', ' + nombreCap : ''}, gracias.`); } }
     if (fallos && !partes.length) partes.push('📎 He recibido tu archivo pero no lo he podido abrir. ¿Me lo mandas otra vez?');
     return responder(partes.join('\n\n') || '📎 Recibido.');
+  }
+
+  // Habla de FIRMAR («no he podido firmar con el dedo, reenvíamelo»): se le reenvía su enlace de firma, no es la respuesta a
+  // una pregunta de compras (16/10/2026: Manolo, y se cerraron dos preguntas de obra con eso).
+  if (texto && /\bfirm|\bcontrato|reenv[ií]a|vu[eé]lvemelo|no (me )?(deja|puedo|funciona).{0,20}(firm|enlace|link)/i.test(texto)) {
+    try {
+      const r = await require('./firmaExterna').recordarPendientes({ soloMovil: from });
+      if (r.enviados) return responder(`✍️ Te lo acabo de mandar otra vez${nombreCap ? ', ' + nombreCap : ''}: abre el enlace del mensaje anterior y firma con el dedo en el recuadro. Si no te deja, dime qué te sale y aviso a la oficina.`);
+    } catch (e) { console.warn('[WhatsApp] reenviar firma:', e.message); }
   }
 
   // ¿Contesta a «¿dónde habéis estado hoy?» (trabaja por partes)? Su respuesta rellena la Presencia.

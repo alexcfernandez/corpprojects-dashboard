@@ -178,9 +178,10 @@ async function firmar(token, { firmaDataUrl, n = null, notas = {}, ip = '', ua =
 
 // Recordatorio a todos los que tienen algo pendiente de firmar (Álex, 15/10/2026: «que Corpy mande otra vez el
 // recordatorio de firma a todos»): enlace nuevo de 7 días al mismo lote, sin crear otro.
-async function recordarPendientes({ dias = 30, dryRun = false, _enviar = null } = {}, por = 'Oficina') {
+async function recordarPendientes({ dias = 30, dryRun = false, soloMovil = null, _enviar = null } = {}, por = 'Oficina') {
   const db = await getDB();
-  const ls = await db.collection(COL).find({ estado: 'pendiente', at: { $gte: new Date(Date.now() - dias * 864e5) } }).toArray();
+  let ls = await db.collection(COL).find({ estado: 'pendiente', at: { $gte: new Date(Date.now() - dias * 864e5) } }).toArray();
+  if (soloMovil) { const d9 = String(soloMovil).replace(/\D/g, '').slice(-9); ls = ls.filter(l => String(l.movil || '').replace(/\D/g, '').slice(-9) === d9); }
   const out = [];
   for (const l of ls) {
     const faltan = (l.items || []).filter(i => i.estado !== 'firmado');
