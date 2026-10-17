@@ -235,7 +235,8 @@ async function desdeCorreo({ gmailId, importe, establecimiento, fecha, hora }, {
   const r = await db.collection('repostajes').findOne({ _id: id });
   if (avisar && !r.vehiculoId) {
     const url = `${URL_BASE()}/vehiculos#repostaje=${id}`;
-    const txt = `⛽ Repostaje de ${String(importe.toFixed(2)).replace('.', ',')} € en ${establecimiento || 'Esclat'} (${fecha.split('-').reverse().slice(0, 2).join('/')} a las ${hora}). ¿De qué vehículo es?\n${url}`;
+    // Se contesta AQUÍ MISMO (17/10/2026: «lo abro y me dice que vaya al dashboard y se me pierde»): Corpy lo apunta.
+    const txt = `⛽ Repostaje de ${String(importe.toFixed(2)).replace('.', ',')} € en ${establecimiento || 'Esclat'} (${fecha.split('-').reverse().slice(0, 2).join('/')} a las ${hora}). ¿De qué vehículo es?\n\nContéstame aquí mismo, p. ej. «la Berlingo» o «lo puso Javi en la moto». Si es un vehículo que no está en Flota, te lo digo y lo creamos.\n\n(ref. repostaje ${id})`;
     try { await require('./notifications').sendWhatsApp(txt); } catch (e) { console.warn('[Repostajes] WhatsApp:', e.message); }
     try { await require('./push').sendToOficina({ title: '⛽ ¿De qué vehículo es este repostaje?', body: txt.split('\n')[0], url: `/vehiculos#repostaje=${id}`, tag: 'repostaje-' + id }); } catch (e) {}
   }
@@ -261,14 +262,14 @@ async function recuperarCorreos({ desde = '2026-09-01' } = {}) {
   return { correos: n, nuevos };
 }
 // Oficina dice de qué vehículo es; se le piden los km a quien lo lleva (push con enlace a su app).
-async function asignar(id, vehiculoId, por) {
+async function asignar(id, vehiculoId, por, { quien = null } = {}) {
   const db = await getDB();
   let rid; try { rid = new ObjectId(String(id)); } catch (e) { throw new Error('Repostaje no válido'); }
   const r = await db.collection('repostajes').findOne({ _id: rid });
   if (!r) throw new Error('Repostaje no encontrado');
   const v = await db.collection('vehiculos').findOne({ _id: _oid(vehiculoId) }, { projection: { nombre: 1, conductor: 1 } });
   if (!v) throw new Error('Elige el vehículo');
-  await db.collection('repostajes').updateOne({ _id: rid }, { $set: { vehiculoId: String(v._id), asignadoPor: por || '', asignadoAt: new Date() } });
+  await db.collection('repostajes').updateOne({ _id: rid }, { $set: { vehiculoId: String(v._id), asignadoPor: por || '', asignadoAt: new Date(), ...(quien ? { quienReposto: String(quien).slice(0, 60) } : {}) } });
   let pedidoKm = false;
   if (v.conductor && v.conductor.userId && r.km == null) {
     try { pedidoKm = (await require('./push').sendToWorker(v.conductor.userId, { title: `⛽ ¿Cuántos km marca la ${v.nombre}?`, body: 'Apúntalo en tu app al repostar: así sabemos lo que gasta.', url: '/fichar#km', tag: 'km-' + v._id })) > 0; } catch (e) {}
