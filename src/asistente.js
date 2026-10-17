@@ -1892,6 +1892,18 @@ function _pidePresupuesto(np) {
     /\bpresupuesto (a|para|de)\b[\s\S]{0,80}:\s*\S/.test(np);
 }
 // Órdenes que tienen su propio circuito y nunca son "la respuesta" a una aclaración del agente.
+// Órdenes que van directas a su regla (no a la IA): crear presupuestos/pedidos/incidencias/facturas, apuntar pendientes,
+// cambios de importe y saludos/menús.
+function _ordenExacta(texto) {
+  const np = norm(texto);
+  if (_pidePresupuesto(np)) return true;
+  if (/^(resumen|pendientes|ayuda|menu|men\u00fa|hola|buenas|ver mas)\s*$/.test(np)) return true;
+  if (/\b(haz|hazme|genera(r)?|crea(r)?|saca)\b[\s\S]*\b(pedido|incidencia|factura|presupuesto)\b/.test(np)) return true;
+  if (/^(apunta|anota|recuerdame|recuérdame)\b[\s\S]*\b(pendiente|recordatorio)\b/.test(np)) return true;
+  if (/\b(sube|baja|cambia|pon)\b[\s\S]*\b(importe|precio|partida)\b/.test(np)) return true;
+  return false;
+}
+
 function esOrdenDirecta(texto) {
   const np = norm(texto);
   if (_pidePresupuesto(np)) return true;
@@ -1937,6 +1949,21 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
         const res = await require('./agente').intentar({ texto, from, imagenes, puerta: 'aclara' });
         if (res && res.handled) return res.reply;
       } catch (e) { console.error('[Agente] aclara:', e.message); }
+    }
+  }
+
+  // A0.5) EL AGENTE PRIMERO para el dueño (17/10/2026: «las cosas que le pregunto no se entera de nada»). La IA, con la
+  // conversación reciente y herramientas que leen datos reales, entiende lo que se pide; las reglas de palabras quedan
+  // para las órdenes exactas (crear presupuestos, cambios de dinero con PIN, confirmaciones en curso) y de respaldo.
+  if (!ctx.desdeAgente && !imagenes.length && acceso.esOwner(from) && !_ordenExacta(texto)) {
+    const pa = pendiente.get(from);
+    const enCurso = pa && pa.accion && pa.accion !== 'agente_aclara' && (Date.now() - (pa.ts || 0)) < 45 * 60 * 1000;
+    if (!enCurso) {
+      try {
+        const contexto = await require('./agenteExtra').contextoReciente(from);
+        const res = await require('./agente').intentar({ texto, from, imagenes, puerta: 'primero', contexto });
+        if (res && res.handled) return res.reply;
+      } catch (e) { console.error('[Agente] primero:', e.message); }
     }
   }
 
@@ -3585,4 +3612,4 @@ Responde SOLO JSON: {"nombre":"..."}`,
   return (r && r.nombre) ? String(r.nombre).trim() : null;
 }
 
-module.exports = { responderConsulta, vocabularioVoz, estructurarAmidamentPdf, estructurarAmidamentTexto, estructurarPresupuestoPdf, reescribirPartidas, importarDocumento, sugerirNombreObra, parseModPresupuesto, mensajeFacturaNoEditable, resolverConConfianza, _resolverConConfianza: resolverConConfianza, _ejecutarNotaComunidad, pingIA, clasificar, handlerBuscarCompras, extraerMaterialProveedor };
+module.exports = { _interna: responderConsultaInterna, responderConsulta, vocabularioVoz, estructurarAmidamentPdf, estructurarAmidamentTexto, estructurarPresupuestoPdf, reescribirPartidas, importarDocumento, sugerirNombreObra, parseModPresupuesto, mensajeFacturaNoEditable, resolverConConfianza, _resolverConConfianza: resolverConConfianza, _ejecutarNotaComunidad, pingIA, clasificar, handlerBuscarCompras, extraerMaterialProveedor };

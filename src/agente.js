@@ -148,7 +148,11 @@ const TOOLS = [
   },
 ];
 
-function systemPrompt(hoy) {
+const EXTRA = require('./agenteExtra');
+TOOLS.push(...EXTRA.TOOLS);
+for (const t of EXTRA.LECTURA) LECTURA.add(t);
+
+function systemPrompt(hoy, contexto = '') {
   return `Eres el asistente del jefe de una empresa de mantenimiento de fincas, por WhatsApp. Hoy es ${hoy} (Europe/Madrid).
 REGLAS DURAS:
 - Si NO puedes resolver con confianza a qué/quién se refiere (comunidad, cliente, trabajador), haz una PREGUNTA corta de aclaración; NUNCA elijas "el más parecido".
@@ -160,18 +164,29 @@ REGLAS DURAS:
 - Presencia, horas, quién trabajó/vino/faltó, vacaciones, bajas → consultar_presencia. Para «cuántos días faltó/trabajó/lleva X» usa resumenPorPersona: «faltó» = faltaInjustificada + faltaJustificada + sinApuntar (días laborables sin nada apuntado); dilo desglosado y con las fechas si son pocas. Si preguntan «cuántos días lleva» sin decir de qué, da días trabajados (y vacaciones/baja si hay). Horas o coste de una obra → horas_obra. Contesta SOLO con lo que devuelvan (si no hay datos, dilo). «Esta semana» = desde el lunes.
 - «Empieza / entra a trabajar X el día…», «da de alta a…» → nueva_incorporacion.
 - Datos o documentos de NUESTRA empresa (CIF, razón social, domicilio, certificados) → datos_empresa. «Pásame / mándame / necesito / envíame <documento>» de la empresa o de un trabajador → pasar_documento (NO digas que no tienes acceso: búscalo).
+- Lo que nos DEBE un cliente o comunidad → facturas_cliente. Si vuelve más de un cliente igual de parecido, di cuáles y PREGUNTA; si uno encaja claramente, contesta con ese. «No tiene pendientes» solo si su lista está vacía.
+- Qué material se compró, dónde o para qué obra → buscar_compras. Cuánto gastamos en un proveedor → gasto_proveedor (Obramat = Bricoman = Bricomart; Bauhaus = Werkhaus).
+- Papeles de un vehículo (ficha técnica, permiso, seguro, ITV) → pasar_documento_vehiculo (o documentos_vehiculo para solo mirar). Los vehículos NO son clientes ni comunidades.
+- Si Corpy acaba de preguntar «¿de qué vehículo es?» un repostaje y Álex contesta con un vehículo o con quién lo lleva → asignar_repostaje.
+- «Hecho el pendiente 1, 2 y 3» → cerrar_pendientes con todos los números.
+- Documentos por número, presupuestos, pedidos, resumen, cobros, PDF de pendientes, notas de comunidad → consulta_clasica con la consulta reescrita clara (con el nombre exacto que hayas sacado de la conversación). Pasa su respuesta casi tal cual.
+- Respuestas cortas («era Rutlla 202», «el de Alfonso», «no, la otra»): entiéndelas con la CONVERSACIÓN RECIENTE de abajo y sigue con lo que se estaba hablando.
+- Si Álex pide CREAR o CAMBIAR algo que no está en tus herramientas (hacer o modificar un presupuesto, una factura, un pedido o una incidencia, cambiar importes, apuntar un pendiente…) contesta solo: NO_ES_MIO
 - Al contestar con datos: breve, para WhatsApp (*negritas* para nombres y totales, una línea por persona u obra).
-- Responde en español y breve.`;
+- Responde en español y breve.${contexto ? `
+
+CONVERSACIÓN RECIENTE (lo último que se han dicho; el mensaje a contestar es el siguiente):
+${contexto}` : ''}`;
 }
 
 // Llama al modelo con tools. Devuelve {tipo:'tool',name,input} | {tipo:'texto',texto} | {tipo:'nada'}.
-async function llamarModelo(messages, hoy, { maxTokens = 500 } = {}) {
+async function llamarModelo(messages, hoy, { maxTokens = 500, contexto = '' } = {}) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return { tipo: 'nada' };
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: MODELO(), max_tokens: maxTokens, system: systemPrompt(hoy), tools: TOOLS, messages }),
+    body: JSON.stringify({ model: MODELO(), max_tokens: maxTokens, system: systemPrompt(hoy, contexto), tools: TOOLS, messages }),
   });
   if (!r.ok) { console.error('[Agente] IA HTTP', r.status); return { tipo: 'nada' }; }
   const data = await r.json();
@@ -280,7 +295,7 @@ async function datosEmpresa() {
   try { docs = (await P.carpeta({ ambito: 'empresa' })).map(d => ({ tipo: (P.TIPOS_EMPRESA[d.tipo] || {}).nombre || d.tipo, fecha: d.fecha || null, caduca: d.caduca || null, mes: d.mes || null, nombre: d.nombre || null })); } catch (e) {}
   return { ...EMPRESA(), documentos: docs.slice(0, 40), nota: 'Para mandar un documento usa pasar_documento.' };
 }
-const LECTORES = { consultar_presencia: consultarPresencia, horas_obra: horasObra, datos_empresa: datosEmpresa };
+const LECTORES = { consultar_presencia: consultarPresencia, horas_obra: horasObra, datos_empresa: datosEmpresa, ...EXTRA.LECTORES };
 
 // Busca en Personal el documento que pide el jefe y le manda un enlace que caduca (solo al dueño).
 const _palabras = s => _n(s).split(' ').filter(w => w.length >= 3 && !['del', 'las', 'los', 'una', 'uno', 'de', 'la', 'el', 'que', 'por', 'para', 'ultimo', 'ultima', 'empresa'].includes(w));
@@ -399,11 +414,12 @@ async function ejecutarTool(name, input, from) {
     if (res && res.ok) return { handled: true, reply: `📝 Anotado en *${res.target}*: ${nota}` };
     return { handled: true, reply: 'No he podido guardar la nota ahora mismo.' };
   }
-  return { handled: false };
+  return EXTRA.ejecutar(name, input || {}, from);
 }
 
-async function intentar({ texto, from, imagenes = [], puerta = null } = {}) {
+async function intentar({ texto, from, imagenes = [], puerta = null, contexto = '' } = {}) {
   if (!process.env.ANTHROPIC_API_KEY) return { handled: false };
+  if ((EXTRA.DENTRO.getStore() || {}).desdeAgente) return { handled: false };   // ya estamos dentro del agente
   if (!(await dentroDeCupo())) { console.warn('[Agente] cupo diario agotado'); return { handled: false }; }
 
   const hoy = hoyMadridISO();
@@ -419,17 +435,17 @@ async function intentar({ texto, from, imagenes = [], puerta = null } = {}) {
     : [{ role: 'user', content: String(texto || '') }];
 
   let resp;
-  try { resp = await _impl.llamarModelo(messages, hoy); }
+  try { resp = await _impl.llamarModelo(messages, hoy, { contexto }); }
   catch (e) { console.error('[Agente] modelo:', e.message); return { handled: false }; }
 
   // Consultas: se leen los datos y el modelo redacta la respuesta con ellos (hasta 3 consultas encadenadas).
   for (let vuelta = 0; resp.tipo === 'tool' && LECTURA.has(resp.name) && vuelta < 3; vuelta++) {
     let datos;
-    try { datos = await LECTORES[resp.name](resp.input || {}); } catch (e) { console.error('[Agente] lectura', resp.name, e.message); datos = { error: 'No he podido leer los datos ahora mismo.' }; }
+    try { datos = await LECTORES[resp.name](resp.input || {}, from); } catch (e) { console.error('[Agente] lectura', resp.name, e.message); datos = { error: 'No he podido leer los datos ahora mismo.' }; }
     messages.push({ role: 'assistant', content: resp.blocks }, { role: 'user', content: [{ type: 'tool_result', tool_use_id: resp.id, content: JSON.stringify(datos).slice(0, 20000) }] });
     console.log(`[Agente] lectura=${resp.name} puerta=${puerta || '?'}`);
-    try { resp = await _impl.llamarModelo(messages, hoy, { maxTokens: 900 }); } catch (e) { console.error('[Agente] modelo:', e.message); return { handled: false }; }
-    if (resp.tipo === 'texto') { estado.delete(from); return { handled: true, reply: resp.texto }; }
+    try { resp = await _impl.llamarModelo(messages, hoy, { maxTokens: 900, contexto }); } catch (e) { console.error('[Agente] modelo:', e.message); return { handled: false }; }
+    if (resp.tipo === 'texto') { estado.delete(from); if (/^\s*NO_ES_MIO\b/.test(resp.texto)) return { handled: false }; return { handled: true, reply: resp.texto }; }
   }
 
   if (resp.tipo === 'tool') {
@@ -439,6 +455,7 @@ async function intentar({ texto, from, imagenes = [], puerta = null } = {}) {
     console.log(`[Agente] tool=${resp.name} puerta=${puerta || '?'}`);
     return { handled: out.handled !== false, reply: out.reply };
   }
+  if (resp.tipo === 'texto' && /^\s*NO_ES_MIO\b/.test(resp.texto)) return { handled: false };
   if (resp.tipo === 'texto') {
     // Solo UNA ronda de aclaración: si tras aclarar sigue sin entenderlo, se suelta el
     // hilo (antes encadenaba respuestas inventando contexto: "me he inventado contexto").
