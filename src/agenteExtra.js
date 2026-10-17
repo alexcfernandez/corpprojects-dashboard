@@ -47,7 +47,7 @@ const casaProveedor = (nombre, q) => { const t = _n(nombre); return nombresProve
 
 // Sinónimos para buscar material en las líneas de las compras.
 const SIN_MATERIAL = [
-  [/\bsuelo|pavimento|baldosa/, ['suelo', 'pavimento', 'porcelan', 'gres', 'parquet', 'laminad', 'tarima', 'baldosa', 'vinilo', 'spc', 'rodapie']],
+  [/\bsuelo|pavimento|baldosa|porcelan|azulejo|ceramic/, ['suelo', 'pavimento', 'pav ', 'porcelan', 'porc ', 'porc', 'gres', 'ceramic', 'azulejo', 'parquet', 'laminad', 'tarima', 'baldosa', 'vinilo', 'spc', 'rodapie', 'peldano']],
   [/pintura|pintar/, ['pintura', 'plastica', 'esmalte', 'imprimacion', 'revestimiento']],
   [/pladur|yeso laminado/, ['placa', 'pladur', 'yeso laminado', 'montante', 'canal']],
   [/cable|electric/, ['cable', 'manguera', 'h07', 'rz1', 'utp', 'cat6', 'cat 6']],

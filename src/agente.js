@@ -173,6 +173,7 @@ REGLAS DURAS:
 - Respuestas cortas («era Rutlla 202», «el de Alfonso», «no, la otra»): entiéndelas con la CONVERSACIÓN RECIENTE de abajo y sigue con lo que se estaba hablando.
 - Si Álex pide CREAR o CAMBIAR algo que no está en tus herramientas (hacer o modificar un presupuesto, una factura, un pedido o una incidencia, cambiar importes, apuntar un pendiente…) contesta solo: NO_ES_MIO
 - Al contestar con datos: breve, para WhatsApp (*negritas* para nombres y totales, una línea por persona u obra).
+- Formato de WhatsApp: negrita con UN asterisco a cada lado (*así*), NUNCA con dos (**así**), sin títulos con # ni líneas ---.
 - Responde en español y breve.${contexto ? `
 
 CONVERSACIÓN RECIENTE (lo último que se han dicho; el mensaje a contestar es el siguiente):
@@ -417,7 +418,13 @@ async function ejecutarTool(name, input, from) {
   return EXTRA.ejecutar(name, input || {}, from);
 }
 
-async function intentar({ texto, from, imagenes = [], puerta = null, contexto = '' } = {}) {
+const _wa = t => String(t || '').replace(/\*\*([^*\n]+)\*\*/g, '*$1*').replace(/^#{1,6}\s*/gm, '').replace(/^\s*-{3,}\s*$/gm, '');
+async function intentar(args = {}) {
+  const r = await _intentar(args);
+  if (r && r.handled && typeof r.reply === 'string') r.reply = _wa(r.reply);
+  return r;
+}
+async function _intentar({ texto, from, imagenes = [], puerta = null, contexto = '' } = {}) {
   if (!process.env.ANTHROPIC_API_KEY) return { handled: false };
   if ((EXTRA.DENTRO.getStore() || {}).desdeAgente) return { handled: false };   // ya estamos dentro del agente
   if (!(await dentroDeCupo())) { console.warn('[Agente] cupo diario agotado'); return { handled: false }; }
