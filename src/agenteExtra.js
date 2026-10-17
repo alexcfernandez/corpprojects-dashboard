@@ -176,6 +176,11 @@ async function ejecutar(name, input, from) {
       id = (c[0] || p[0]).id;
     }
     const rep = p.find(x => x.id === id);
+    // Gasolina para máquinas (cortacésped, desbrozadora, garrafa, generador…): no es de un vehículo.
+    if (/cortac[eé]sped|desbrozador|motosierra|generador|garrafa|bid[oó]n|herramient|maquin|soplador|hormigonera|compresor/i.test(input.vehiculo || '')) {
+      await require('./repostajes').aMaquinaria(id, String(input.vehiculo), 'Álex (Corpy)', { quien: input.quien || null });
+      return { handled: true, reply: `⛽ Apuntado: el repostaje${rep ? ` de ${eur(rep.importe)} del ${dm(rep.fecha)}` : ''} es gasolina para *${input.vehiculo}*${input.quien ? `, lo puso *${input.quien}*` : ''}. Va como gasto de maquinaria, no de un vehículo.` };
+    }
     const r = await _vehiculo(input.vehiculo || '');
     if (r.ninguno) return { handled: true, reply: `No tengo «${input.vehiculo}» en Flota. Los que hay: ${r.todos.join(', ')}.\n\n¿Es uno de esos? Si es nuevo, dime «créala como ${input.vehiculo}» (y si quieres la matrícula) y la doy de alta con este repostaje.`, aclara: true };
     if (r.varios) return { handled: true, reply: `¿Cuál? ${r.varios.join(' · ')}`, aclara: true };
@@ -200,6 +205,19 @@ async function ejecutar(name, input, from) {
     }
     return { handled: true, reply: `🚐 Creada en Flota: *${v.nombre}*${v.matricula ? ' (' + v.matricula + ')' : ''}, ${(V.TIPOS[tipo] || tipo).toLowerCase()}.${extra}\nCompleta los datos (matrícula, ITV, seguro…) cuando puedas en https://dashboard.corpprojects.es/vehiculos` };
   }
+  if (name === 'pedir_documento_vehiculo') {
+    const r = await _vehiculo(input.vehiculo || '');
+    if (r.ninguno || r.varios) return { handled: true, reply: r.varios ? `¿De cuál? ${r.varios.join(' · ')}` : `No encuentro el vehículo «${input.vehiculo}».`, aclara: true };
+    let u = null;
+    if (input.trabajador) { const us = (await require('./users').getUsers(false)).filter(x => x.active !== false && puntos(x.name, input.trabajador) > 0); u = us[0] || null; }
+    else if (r.v.conductor && r.v.conductor.userId) u = { _id: r.v.conductor.userId, name: r.v.conductor.name };
+    if (!u) return { handled: true, reply: `¿A quién se lo pido? La *${r.v.nombre}* no tiene conductor asignado.`, aclara: true };
+    const que = String(input.que || 'ficha técnica').trim();
+    const nombreV = `${r.v.nombre}${r.v.matricula ? ' (' + r.v.matricula + ')' : ''}`;
+    const tipoDoc = /ficha|tecnic/i.test(que) ? 'ficha_tecnica' : /permiso|circul/i.test(que) ? 'permiso' : /seguro|poliza|póliza/i.test(que) ? 'seguro' : /itv/i.test(que) ? 'itv' : 'otro';
+    await require('./encargos').crear({ userId: String(u._id), que: `${que} de la ${r.v.nombre}`.slice(0, 120), mensaje: `Necesito una foto de la *${que}* de la ${nombreV} que llevas (suele estar en la guantera). Mándamela por aquí, que se ve bien entera y con luz.`, origen: { tipo: 'vehiculo_doc', vehiculoId: String(r.v._id), docTipo: tipoDoc }, por: 'Álex (Corpy)' });
+    return { handled: true, reply: `📨 Se lo he pedido a *${u.name}*: la ${que} de la ${nombreV}. Cuando la mande, la guardo en la ficha del vehículo y te aviso.` };
+  }
   if (name === 'repostajes_sin_vehiculo') {
     const p = await require('./repostajes').pendientes();
     const eur = n => (Number(n) || 0).toFixed(2).replace('.', ',') + ' €';
@@ -216,7 +234,7 @@ async function ejecutar(name, input, from) {
     const tipoDe = /ficha|tecnic/.test(nq) ? /ficha|tecnic/ : /permiso|circulacion/.test(nq) ? /permiso|circul/ : /seguro|poliza/.test(nq) ? /seguro|poliza/ : /itv/.test(nq) ? /itv/ : null;
     const cand = docs.filter(d => !tipoDe || tipoDe.test(_n(`${d.tipo} ${d.nombre}`)));
     const nombreV = `${r.v.nombre}${r.v.matricula ? ' (' + r.v.matricula + ')' : ''}`;
-    if (!cand.length) return { handled: true, reply: `No tengo ${input.que ? '«' + input.que + '»' : 'documentos'} de la *${nombreV}*.${docs.length ? ` Tengo: ${docs.map(d => d.nombre || d.tipo).join(', ')}.` : ''}\nSi lo tienes, súbelo en su ficha: https://dashboard.corpprojects.es/vehiculos` };
+    if (!cand.length) return { handled: true, reply: `No tengo ${input.que ? '«' + input.que + '»' : 'documentos'} de la *${nombreV}*.${docs.length ? ` Tengo: ${docs.map(d => d.nombre || d.tipo).join(', ')}.` : ''}${r.v.conductor ? `\n\n¿Se lo pido a *${r.v.conductor.name}*, que es quien la lleva? Cuando me mande la foto, la guardo en la ficha de la furgoneta.` : '\nSi lo tienes, súbelo en su ficha: https://dashboard.corpprojects.es/vehiculos'}` };
     const d = cand[0];
     const raw = await V.documento(d.id);
     const W = require('./canalWhatsapp');
@@ -244,8 +262,9 @@ const TOOLS = [
   { name: 'gasto_proveedor', description: 'Cuánto GASTAMOS en un proveedor (facturas de proveedor de StelOrder), total y por meses: «cuánto gastamos en Obramat» (Obramat = Bricoman en StelOrder), «gasto en Saltoki este año».', input_schema: { type: 'object', properties: { proveedor: { type: 'string' }, desde: { type: ['string', 'null'] }, hasta: { type: ['string', 'null'] } }, required: ['proveedor'] } },
   { name: 'documentos_vehiculo', description: 'Qué papeles tenemos de un vehículo (ficha técnica, permiso de circulación, seguro, ITV) — solo mirar. Para MANDARLO usa pasar_documento_vehiculo.', input_schema: { type: 'object', properties: { vehiculo: { type: 'string', description: 'Nombre, marca/modelo, matrícula o quién lo lleva («el coche de Alfonso»).' } }, required: ['vehiculo'] } },
   { name: 'pasar_documento_vehiculo', description: 'MANDA a Álex un papel de un vehículo: «necesito la ficha técnica de la Nissan Primastar», «pásame el seguro de la Berlingo».', input_schema: { type: 'object', properties: { vehiculo: { type: 'string' }, que: { type: 'string', description: 'ficha técnica, permiso de circulación, seguro, ITV…' } }, required: ['vehiculo'] } },
-  { name: 'asignar_repostaje', description: 'Dice de qué vehículo es un repostaje y, si lo dice, quién repostó. Úsalo cuando Corpy ha preguntado «¿de qué vehículo es?» y Álex contesta («la Berlingo», «es del coche de Alfonso», «lo puso Javi en la moto», «el 2 es de la Partner»). El id va en el mensaje de Corpy («ref. repostaje ID» o «#repostaje=ID»); si no lo ves, pon importe/fecha/número si los dice, o déjalo vacío.', input_schema: { type: 'object', properties: { vehiculo: { type: 'string' }, quien: { type: ['string', 'null'], description: 'Quién repostó, si lo dice («lo puso Javi»).' }, repostajeId: { type: ['string', 'null'] }, importe: { type: ['number', 'null'] }, fecha: { type: ['string', 'null'] }, numero: { type: ['integer', 'null'], description: 'Número de la lista que dio Corpy.' } }, required: ['vehiculo'] } },
+  { name: 'asignar_repostaje', description: 'Dice de qué vehículo es un repostaje (o si es gasolina para una máquina: cortacésped, desbrozadora, garrafa, generador… → pon eso en «vehiculo») y, si lo dice, quién repostó. Úsalo cuando Corpy ha preguntado «¿de qué vehículo es?» y Álex contesta («la Berlingo», «es del coche de Alfonso», «lo puso Javi en la moto», «el 2 es de la Partner»). El id va en el mensaje de Corpy («ref. repostaje ID» o «#repostaje=ID»); si no lo ves, pon importe/fecha/número si los dice, o déjalo vacío.', input_schema: { type: 'object', properties: { vehiculo: { type: 'string' }, quien: { type: ['string', 'null'], description: 'Quién repostó, si lo dice («lo puso Javi»).' }, repostajeId: { type: ['string', 'null'] }, importe: { type: ['number', 'null'] }, fecha: { type: ['string', 'null'] }, numero: { type: ['integer', 'null'], description: 'Número de la lista que dio Corpy.' } }, required: ['vehiculo'] } },
   { name: 'crear_vehiculo', description: 'Da de alta un vehículo NUEVO en Flota cuando Álex lo pide («créala como la Peugeot Partner», «es una moto nueva, créala») — normalmente tras decirle Corpy que no existe. Si viene de un repostaje, se le asigna.', input_schema: { type: 'object', properties: { nombre: { type: 'string', description: 'Cómo la llamáis (Peugeot Partner, Moto de Javi…).' }, marca: { type: ['string', 'null'] }, modelo: { type: ['string', 'null'] }, matricula: { type: ['string', 'null'] }, tipo: { type: ['string', 'null'], enum: ['furgoneta', 'coche', 'camion', 'moto', 'remolque', 'otro', null] }, quien: { type: ['string', 'null'] }, repostajeId: { type: ['string', 'null'] } }, required: ['nombre'] } },
+  { name: 'pedir_documento_vehiculo', description: 'Pide a quien lleva un vehículo (o a quien diga Álex) una foto de un papel de ese vehículo (ficha técnica, permiso, seguro, ITV). Úsalo cuando Corpy ha dicho que no tiene el papel y Álex dice «sí, pídeselo» o «pídele a Jose la ficha técnica de la Nissan».', input_schema: { type: 'object', properties: { vehiculo: { type: 'string' }, que: { type: 'string' }, trabajador: { type: ['string', 'null'] } }, required: ['vehiculo'] } },
   { name: 'repostajes_sin_vehiculo', description: 'Lista de repostajes que aún no tienen vehículo («qué repostajes faltan», «repostajes sin vehículo»).', input_schema: { type: 'object', properties: {} } },
   { name: 'apuntar_pendiente', description: 'Apunta un PENDIENTE o recordatorio para Álex («apúntame para el lunes repasar el PRT00852», «recuérdame llamar a Caterina»). Si dice un día, resuélvelo a YYYY-MM-DD. El texto es lo que hay que hacer, tal cual (con números de documento si los dice).', input_schema: { type: 'object', properties: { texto: { type: 'string' }, fecha: { type: ['string', 'null'] } }, required: ['texto'] } },
   { name: 'cerrar_pendientes', description: 'Cierra uno o VARIOS pendientes de Álex por su número: «hecho el pendiente 1, 2 y 3».', input_schema: { type: 'object', properties: { numeros: { type: 'array', items: { type: 'integer' } } }, required: ['numeros'] } },

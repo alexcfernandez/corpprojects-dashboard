@@ -750,7 +750,7 @@ async function procesarTrabajador(from, body, media, trab, responder) {
     let encAb = []; if (!petAlta && trab.userId) { try { encAb = (await require('./encargos').abiertosDe(trab.userId)).filter(e => !(e.origen && e.origen.tipo === 'compra')); } catch (e) {} }
     // Si es una factura, ticket o albarán, va a Compras aunque haya un encargo abierto (16/10/2026: la factura de
     // Obramat y el ticket de gasoil de Jose se guardaron como «respuesta» a otro encargo, en Personal).
-    if (encAb.length) {
+    if (encAb.length && !encAb.some(e => e.origen && e.origen.tipo === 'vehiculo_doc')) {   // un papel de vehículo pedido no pasa por Compras
       const deCompra = [];
       for (const m of docs) {
         try {
@@ -776,6 +776,11 @@ async function procesarTrabajador(from, body, media, trab, responder) {
       for (const m of docs.filter(x => !x._yaEnCompras)) {
         try {
           const buf = m._buf || await _bajarMedia(m.url, 30000); const mime = String(m.type || 'image/jpeg').split(';')[0];
+          const encV = encAb.find(e => e.origen && e.origen.tipo === 'vehiculo_doc' && e.origen.vehiculoId);
+          if (encV) {   // papel de un vehículo que se le pidió (ficha técnica, permiso…) → a la ficha del vehículo
+            const g = await require('./vehiculos').subirDocumento(encV.origen.vehiculoId, { tipo: encV.origen.docTipo || 'otro', archivo: { buffer: buf, mimetype: mime, originalname: `${encV.que}.${/pdf/.test(mime) ? 'pdf' : 'jpg'}`, size: buf.length }, nombre: encV.que }, `${trab.name} (WhatsApp)`);
+            subidos.push({ id: g.id }); continue;
+          }
           const g = await require('./personalDocs').subir({ ambito: 'trabajador', userId: trab.userId, tipo: 'otro', archivo: { buffer: buf, mimetype: mime, originalname: `${encAb[encAb.length - 1].que}.${/pdf/.test(mime) ? 'pdf' : 'jpg'}` }, fecha: new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' }), notas: `Respuesta al encargo «${encAb[encAb.length - 1].que}»` }, `${trab.name} (WhatsApp)`);
           subidos.push({ id: g.id });
         } catch (e) { console.error('[Encargos] archivo:', e.message); }

@@ -276,10 +276,17 @@ async function asignar(id, vehiculoId, por, { quien = null } = {}) {
   }
   return { ok: true, vehiculo: v.nombre, conductor: v.conductor ? v.conductor.name : null, pedidoKm };
 }
+// Gasolina para máquinas (cortacésped, desbrozadora, garrafa…): sale de «sin vehículo» y queda como maquinaria.
+async function aMaquinaria(id, que, por, { quien = null } = {}) {
+  const db = await getDB();
+  let rid; try { rid = new ObjectId(String(id)); } catch (e) { throw new Error('Repostaje no válido'); }
+  await db.collection('repostajes').updateOne({ _id: rid }, { $set: { destino: 'maquinaria', destinoNota: String(que || '').slice(0, 80), asignadoPor: por || '', asignadoAt: new Date(), ...(quien ? { quienReposto: String(quien).slice(0, 60) } : {}) } });
+  return { ok: true };
+}
 async function pendientes() {
   const db = await getDB();
   const desde = addDias(hoy(), -60);
-  const rs = await db.collection('repostajes').find({ vehiculoId: null, fecha: { $gte: desde } }).sort({ fecha: -1, hora: -1 }).limit(100).toArray();
+  const rs = await db.collection('repostajes').find({ vehiculoId: null, destino: { $ne: 'maquinaria' }, fecha: { $gte: desde } }).sort({ fecha: -1, hora: -1 }).limit(100).toArray();
   return rs.map(r => ({ id: String(r._id), fecha: r.fecha, hora: r.hora || null, importe: r.importe, establecimiento: r.establecimiento || null, alias: r.alias || null, ticket: r.ticket || null, origen: r.origen }));
 }
 
@@ -307,4 +314,4 @@ async function resumenKm(vehiculoId) {
   return out;
 }
 
-module.exports = { leerCorreoEsclat, desdeCorreo, recuperarCorreos, asignar, pendientes, partesTicket, leerLinea, esCombustible, vehiculoPorAlias, guardarCapturas, apuntarKm, registrar, paraTrabajador, propuestaLineas, alConfirmar, resumenKm };
+module.exports = { aMaquinaria, leerCorreoEsclat, desdeCorreo, recuperarCorreos, asignar, pendientes, partesTicket, leerLinea, esCombustible, vehiculoPorAlias, guardarCapturas, apuntarKm, registrar, paraTrabajador, propuestaLineas, alConfirmar, resumenKm };
