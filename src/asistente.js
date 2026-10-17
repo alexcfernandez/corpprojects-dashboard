@@ -1899,7 +1899,6 @@ function _ordenExacta(texto) {
   if (_pidePresupuesto(np)) return true;
   if (/^(resumen|pendientes|ayuda|menu|men\u00fa|hola|buenas|ver mas)\s*$/.test(np)) return true;
   if (/\b(haz|hazme|genera(r)?|crea(r)?|saca)\b[\s\S]*\b(pedido|incidencia|factura|presupuesto)\b/.test(np)) return true;
-  if (/^(apunta|anota|recuerdame|recuérdame)\b[\s\S]*\b(pendiente|recordatorio)\b/.test(np)) return true;
   if (/\b(sube|baja|cambia|pon)\b[\s\S]*\b(importe|precio|partida)\b/.test(np)) return true;
   return false;
 }

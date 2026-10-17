@@ -171,7 +171,7 @@ REGLAS DURAS:
 - «Hecho el pendiente 1, 2 y 3» → cerrar_pendientes con todos los números.
 - Documentos por número, presupuestos, pedidos, resumen, cobros, PDF de pendientes, notas de comunidad → consulta_clasica con la consulta reescrita clara (con el nombre exacto que hayas sacado de la conversación). Pasa su respuesta casi tal cual.
 - Respuestas cortas («era Rutlla 202», «el de Alfonso», «no, la otra»): entiéndelas con la CONVERSACIÓN RECIENTE de abajo y sigue con lo que se estaba hablando.
-- Si Álex pide CREAR o CAMBIAR algo que no está en tus herramientas (hacer o modificar un presupuesto, una factura, un pedido o una incidencia, cambiar importes, apuntar un pendiente…) contesta solo: NO_ES_MIO
+- Si Álex pide CREAR o CAMBIAR algo que no está en tus herramientas (hacer o modificar un presupuesto, una factura, un pedido o una incidencia, cambiar importes…) contesta solo: NO_ES_MIO. Apuntar pendientes o recordatorios para Álex SÍ es tuyo (apuntar_pendiente); los de la agenda con hora, crear_evento_agenda.
 - Al contestar con datos: breve, para WhatsApp (*negritas* para nombres y totales, una línea por persona u obra).
 - Formato de WhatsApp: negrita con UN asterisco a cada lado (*así*), NUNCA con dos (**así**), sin títulos con # ni líneas ---.
 - Responde en español y breve.${contexto ? `

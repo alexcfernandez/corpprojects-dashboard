@@ -153,6 +153,13 @@ async function ejecutar(name, input, from) {
     for (const n of nums) { const d = await P.cerrarPendiente({ idx: n }); if (d) hechos.unshift(`${n}. ${d.texto}`); else no.push(n); }
     return { handled: true, reply: `${hechos.length ? `✅ Hecho:\n${hechos.join('\n')}` : ''}${no.length ? `${hechos.length ? '\n\n' : ''}No encuentro el ${no.sort().join(', ')}. Mira la lista con *"pendientes"*.` : ''}` };
   }
+  if (name === 'apuntar_pendiente') {
+    const P = require('./pendientes');
+    const para = /^\d{4}-\d{2}-\d{2}$/.test(String(input.fecha || '')) ? input.fecha : null;
+    const p = await P.addPendiente(String(input.texto || '').trim(), from, { para });
+    if (!p) return { handled: true, reply: '¿Qué te apunto?' };
+    return { handled: true, reply: para ? `📌 Apuntado: *${p.texto}* — te lo recuerdo ${P.fechaConfirm(para)}.` : `📌 Apuntado: *${p.texto}*. Te lo recuerdo en el resumen de la mañana hasta que me digas que está hecho.` };
+  }
   if (name === 'asignar_repostaje') {
     const R = require('./repostajes');
     let id = input.repostajeId;
@@ -203,6 +210,7 @@ const TOOLS = [
   { name: 'documentos_vehiculo', description: 'Qué papeles tenemos de un vehículo (ficha técnica, permiso de circulación, seguro, ITV) — solo mirar. Para MANDARLO usa pasar_documento_vehiculo.', input_schema: { type: 'object', properties: { vehiculo: { type: 'string', description: 'Nombre, marca/modelo, matrícula o quién lo lleva («el coche de Alfonso»).' } }, required: ['vehiculo'] } },
   { name: 'pasar_documento_vehiculo', description: 'MANDA a Álex un papel de un vehículo: «necesito la ficha técnica de la Nissan Primastar», «pásame el seguro de la Berlingo».', input_schema: { type: 'object', properties: { vehiculo: { type: 'string' }, que: { type: 'string', description: 'ficha técnica, permiso de circulación, seguro, ITV…' } }, required: ['vehiculo'] } },
   { name: 'asignar_repostaje', description: 'Dice de qué vehículo es un repostaje. Úsalo cuando Corpy ha preguntado «¿de qué vehículo es?» por un repostaje y Álex contesta con un vehículo o con quién lo lleva («es del coche de Alfonso», «la Berlingo»). El id del repostaje va en el enlace del mensaje de Corpy (…#repostaje=ID); si no lo ves, déjalo vacío (se coge el último sin vehículo).', input_schema: { type: 'object', properties: { vehiculo: { type: 'string' }, repostajeId: { type: ['string', 'null'] } }, required: ['vehiculo'] } },
+  { name: 'apuntar_pendiente', description: 'Apunta un PENDIENTE o recordatorio para Álex («apúntame para el lunes repasar el PRT00852», «recuérdame llamar a Caterina»). Si dice un día, resuélvelo a YYYY-MM-DD. El texto es lo que hay que hacer, tal cual (con números de documento si los dice).', input_schema: { type: 'object', properties: { texto: { type: 'string' }, fecha: { type: ['string', 'null'] } }, required: ['texto'] } },
   { name: 'cerrar_pendientes', description: 'Cierra uno o VARIOS pendientes de Álex por su número: «hecho el pendiente 1, 2 y 3».', input_schema: { type: 'object', properties: { numeros: { type: 'array', items: { type: 'integer' } } }, required: ['numeros'] } },
   { name: 'consulta_clasica', description: 'El asistente de siempre, SOLO PARA CONSULTAR: un documento por número («dime el 309», «conceptos del 509»), presupuestos por estado o cliente, pedidos de trabajo, el resumen del negocio, cobros y a quién reclamar, el PDF de lo pendiente de cobro, notas de una comunidad. Escribe la consulta clara y completa con el nombre exacto (p. ej. «pedidos de CTAT PROP RUTLLA, 200-202»). Nunca para crear, cambiar, enviar o borrar.', input_schema: { type: 'object', properties: { consulta: { type: 'string' } }, required: ['consulta'] } },
 ];
