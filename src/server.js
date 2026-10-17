@@ -748,11 +748,34 @@ async function procesarTrabajador(from, body, media, trab, responder) {
     // Las preguntas de «¿para qué obra?» se contestan con texto: una foto no es su respuesta (15/10: el albarán de Javier
     // se cerró como respuesta a la pregunta del Ministerio). La foto sigue el camino normal de Compras.
     let encAb = []; if (!petAlta && trab.userId) { try { encAb = (await require('./encargos').abiertosDe(trab.userId)).filter(e => !(e.origen && e.origen.tipo === 'compra')); } catch (e) {} }
+    // Si es una factura, ticket o albarán, va a Compras aunque haya un encargo abierto (16/10/2026: la factura de
+    // Obramat y el ticket de gasoil de Jose se guardaron como «respuesta» a otro encargo, en Personal).
     if (encAb.length) {
-      const subidos = [];
+      const deCompra = [];
       for (const m of docs) {
         try {
           const buf = await _bajarMedia(m.url, 30000); const mime = String(m.type || 'image/jpeg').split(';')[0];
+          const r = await require('./compras').crear({ fotos: [{ data: buf, mimetype: mime }], destino: 'obra', origen: 'whatsapp-trabajador', nota: texto ? texto.slice(0, 300) : 'Enviada por WhatsApp', soloSiDocumento: true, subidaPor: { kind: 'worker', userId: trab.userId || String(from), name: trab.name || String(from) } });
+          if (r && r.id && !r.noEsDocumento && !r.personal && !r.parteObra) { deCompra.push({ m, r }); m._yaEnCompras = r; }
+          else if (r && (r.personal || r.parteObra)) m._yaEnCompras = r;
+          else m._buf = buf;
+        } catch (e) { console.error('[WhatsApp] ¿compra con encargo abierto?:', e.message); }
+      }
+      if (deCompra.length) {
+        // Un encargo que pedía facturas («buscar las otras facturas») queda contestado con ellas.
+        const pideFact = encAb.find(e => /factur|ticket|tiquet|albar/i.test(e.que || ''));
+        if (pideFact) { try { await require('./encargos').respuesta(trab.userId, trab.name, { texto: `Mandó ${deCompra.length} documento(s) de compra: ${deCompra.map(x => [x.r.tipoTxt, x.r.proveedor].filter(Boolean).join(' de ')).join(', ')}`, docs: [] }); } catch (e) {} }
+        const pregs = deCompra.map(x => x.r.pregunta).filter(Boolean);
+        const resto = docs.filter(m => !m._yaEnCompras);
+        if (!resto.length) return responder(`🧾 Recibido${deCompra.length > 1 ? ' (' + deCompra.length + ')' : ''}: ${deCompra.map(x => [x.r.tipoTxt || 'documento', x.r.proveedor].filter(Boolean).join(' de ')).join(', ')}. Lo revisa la oficina.${pregs.length ? '\n\n' + pregs.join('\n\n') : ''}`);
+      }
+      encAb = encAb.filter(e => !/factur|ticket|tiquet|albar/i.test(e.que || '') || !deCompra.length);
+    }
+    if (encAb.length && docs.some(m => !m._yaEnCompras)) {
+      const subidos = [];
+      for (const m of docs.filter(x => !x._yaEnCompras)) {
+        try {
+          const buf = m._buf || await _bajarMedia(m.url, 30000); const mime = String(m.type || 'image/jpeg').split(';')[0];
           const g = await require('./personalDocs').subir({ ambito: 'trabajador', userId: trab.userId, tipo: 'otro', archivo: { buffer: buf, mimetype: mime, originalname: `${encAb[encAb.length - 1].que}.${/pdf/.test(mime) ? 'pdf' : 'jpg'}` }, fecha: new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' }), notas: `Respuesta al encargo «${encAb[encAb.length - 1].que}»` }, `${trab.name} (WhatsApp)`);
           subidos.push({ id: g.id });
         } catch (e) { console.error('[Encargos] archivo:', e.message); }
@@ -761,8 +784,9 @@ async function procesarTrabajador(from, body, media, trab, responder) {
     }
     const respAlta = [];
     for (const m of docs) {
+      if (m._yaEnCompras) { const r = m._yaEnCompras; if (r.personal) respAlta.push(`📁 Guardado en tu carpeta de Personal: ${r.nombre}.`); else if (r.parteObra) respAlta.push('📋 Guardado en los papeles de la obra como parte de trabajo.'); else guardadas.push(r); continue; }
       try {
-        const buf = await _bajarMedia(m.url, 30000);
+        const buf = m._buf || await _bajarMedia(m.url, 30000);
         if (petAlta) {
           const ra = await require('./docsAlta').recibir(petAlta, { buf, mime: String(m.type || 'image/jpeg').split(';')[0] });
           if (!ra.aCompras) { respAlta.push(ra.respuesta); continue; }
@@ -912,7 +936,7 @@ async function enviarWhatsApp(to, body, canal) {
   const partes = trocearMensaje(body, 1450);
   for (let i = 0; i < partes.length; i++) {
     const prefijo = partes.length > 1 ? `(${i + 1}/${partes.length}) ` : '';
-    await canalWa.enviarUno(to, prefijo + partes[i], { canal });
+    await canalWa.enviarUno(to, prefijo + partes[i], { canal, permitirRepetido: true });   // respuesta a lo que nos escriben: nunca se frena
   }
 }
 
