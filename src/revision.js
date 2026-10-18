@@ -149,7 +149,8 @@ Qué buscar:
 - Lo estancado: encargos de 3 días o más o con 2 recordatorios sin respuesta; compras sin obra; altas con todo firmado que solo esperan «Enviado a la gestoría».
 - Compras: quién ha ido a comprar 3 veces o más hoy (viajes), y si la cola por revisar crece.
 - Correos que piden una acción (Administración/notificaciones oficiales con plazo, gestoría, clientes que reclaman o piden explicaciones, proveedores, médicos/prevención). Las notificaciones oficiales con plazo, lo primero.
-- Lo de días anteriores sin resolver (pendientesDeAntes), solo si sigue igual; no dupliques.
+- pendientesDeAntes son puntos de revisiones anteriores que Álex aún no ha marcado: NO los repitas salvo que en los datos de HOY se vea claramente que siguen sin resolver (y entonces dilo una vez). Nunca repitas mejoras del programa de días anteriores.
+- No pongas cosas sin importancia (saludos, mensajes de prueba, avisos automáticos que ya se ven solos).
 - Si un tema es una mejora del programa, ponlo como «aviso» empezando por «Mejora para Corpy/dashboard:».
 
 Devuelve la revisión llamando a la herramienta guardar_revision: un resumen de 3-6 líneas con lo importante y como mucho 20 puntos, lo más urgente primero. Tipos: «decidir» (Álex tiene que hacer o decidir algo; con botones si encajan) o «aviso» (informativo). No inventes nada: solo lo que salga en los datos.
