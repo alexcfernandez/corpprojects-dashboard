@@ -2371,6 +2371,10 @@ app.post('/api/asistente/probar', requireAuthOficina, express.json(), async (req
 app.post('/api/revision', requireAuthOficina, express.json({ limit: '200kb' }), async (req, res) => {
   try { if (!_soloDueno(req)) return res.status(403).json({ error: 'Solo el dueño' }); res.json(await require('./revision').guardar(req.body || {}, req.user?.name || 'Claude')); } catch (err) { res.status(400).json({ error: err.message }); }
 });
+app.post('/api/revision/automatica', requireAuthOficina, express.json(), async (req, res) => {
+  req.setTimeout && req.setTimeout(300000);
+  try { if (!_soloDueno(req)) return res.status(403).json({ error: 'Solo el dueño' }); const b = req.body || {}; res.json(await require('./revision').automatica({ fecha: b.fecha || undefined, avisar: b.avisar !== false })); } catch (err) { res.status(500).json({ error: err.message }); }
+});
 app.post('/api/revision/:id/item/:item', requireAuthOficina, express.json(), async (req, res) => {
   try { res.json(await require('./revision').marcar(req.params.id, req.params.item, (req.body || {}).estado, req.user?.name || 'Oficina')); } catch (err) { res.status(400).json({ error: err.message }); }
 });

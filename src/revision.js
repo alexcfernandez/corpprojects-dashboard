@@ -137,4 +137,72 @@ async function ejecutar(revId, itemId, n, por) {
   return { ok: true, res };
 }
 
-module.exports = { datos, guardar, paraInicio, marcar, ejecutar, limpiarItem, limites, ACCIONES };
+// ── REVISIÓN AUTOMÁTICA en el servidor (19/10/2026) ──
+// La tarea programada en el Mac de Álex dependía de que el Mac estuviera encendido y se quedó parada esperando un
+// permiso. Ahora la hace el propio dashboard cada noche: junta los datos del día, se los da a la IA con las mismas
+// instrucciones y guarda la revisión (sale en el inicio y le llega a Álex por WhatsApp). La IA no toca nada: lo que
+// haya que arreglar lo propone con botones.
+const INSTRUCCIONES = `Eres el revisor nocturno de Corp Projects Holding SL (empresa de reformas de Álex Castro, Girona). Te paso TODO lo del día en JSON: conversaciones de Corpy (el bot de WhatsApp) con la gente, grupos, encargos abiertos, compras, pagos en tiendas por persona, papeles subidos, correos, altas de gente nueva y lo que el dashboard escribió en StelOrder. Escribe SIEMPRE en castellano llano, frases cortas, sin tecnicismos ni nombres de código.
+
+Qué buscar:
+- Corpy: malentendidos (una foto o una respuesta apuntada donde no era, preguntas repetidas, cosas que el trabajador no entendió o que dijo y nadie recogió), papeles personales que acabaron en Compras, mensajes raros o vacíos, conversaciones con otros bots.
+- Lo estancado: encargos de 3 días o más o con 2 recordatorios sin respuesta; compras sin obra; altas con todo firmado que solo esperan «Enviado a la gestoría».
+- Compras: quién ha ido a comprar 3 veces o más hoy (viajes), y si la cola por revisar crece.
+- Correos que piden una acción (Administración/notificaciones oficiales con plazo, gestoría, clientes que reclaman o piden explicaciones, proveedores, médicos/prevención). Las notificaciones oficiales con plazo, lo primero.
+- Lo de días anteriores sin resolver (pendientesDeAntes), solo si sigue igual; no dupliques.
+- Si un tema es una mejora del programa, ponlo como «aviso» empezando por «Mejora para Corpy/dashboard:».
+
+Devuelve la revisión llamando a la herramienta guardar_revision: un resumen de 3-6 líneas con lo importante y como mucho 20 puntos, lo más urgente primero. Tipos: «decidir» (Álex tiene que hacer o decidir algo; con botones si encajan) o «aviso» (informativo). No inventes nada: solo lo que salga en los datos.
+Botones posibles (máximo 3 por punto, SOLO estos):
+- {"label":"Pasar a Personal","accion":"a_personal","params":{"compraId":"…","tipo":"extranjeria|dni|tarjeta_ss|otro","nombre":"…"}} para un papel personal metido en Compras
+- {"label":"A la obra","accion":"a_obra","params":{"compraId":"…"}} para partes de horas nuestros metidos en Compras
+- {"label":"Descartar compra","accion":"descartar_compra","params":{"compraId":"…","motivo":"…"}}
+- {"label":"Cerrar encargo","accion":"cerrar_encargo","params":{"encargoId":"…","como":"cancelado|hecho"}}
+- {"label":"Mandar a Eduard","accion":"enviar_gestoria","params":{"incorporacionId":"…"}} solo si el alta tiene ya las dos firmas
+- {"label":"Ver","accion":"enlace","url":"/compras|/conversaciones|/incorporaciones|/trimestre|/personal|/fichajes|/vehiculos|/"}`;
+
+const HERRAMIENTA = {
+  name: 'guardar_revision',
+  description: 'Guarda la revisión del día.',
+  input_schema: { type: 'object', required: ['resumen', 'items'], properties: {
+    resumen: { type: 'string' },
+    items: { type: 'array', items: { type: 'object', required: ['tipo', 'titulo'], properties: {
+      tipo: { type: 'string', enum: ['decidir', 'aviso'] }, area: { type: 'string' }, titulo: { type: 'string' }, detalle: { type: 'string' },
+      acciones: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, accion: { type: 'string' }, url: { type: 'string' }, params: { type: 'object' } }, required: ['label', 'accion'] } },
+    } } },
+  } },
+};
+
+// Recorta los datos para que quepan (las conversaciones largas son lo que más ocupa).
+function _compacto(d) {
+  const c = JSON.parse(JSON.stringify(d));
+  for (const w of (Array.isArray(c.whatsapp) ? c.whatsapp : [])) w.mensajes = (w.mensajes || []).slice(-40).map(m => ({ ...m, texto: corto(m.texto, m.dir === 'in' ? 400 : 160) }));
+  if (Array.isArray(c.correos)) c.correos = c.correos.filter(e => !/PUBLICIDAD|SPAM/.test(e.categoria || ''));
+  let s = JSON.stringify(c);
+  if (s.length > 150000 && Array.isArray(c.whatsapp)) { c.whatsapp = c.whatsapp.filter(w => w.entrantes > 0).concat(c.whatsapp.filter(w => !w.entrantes).map(w => ({ nombre: w.nombre, salientes: w.salientes }))); s = JSON.stringify(c); }
+  return s.slice(0, 180000);
+}
+
+async function automatica({ fecha = hoyMadrid(), avisar = true, _llamar = null } = {}) {
+  const db = await getDB();
+  const ya = await db.collection(COL).findOne({ fecha }, { projection: { por: 1 } });
+  if (ya && !/automática/.test(ya.por || '')) return { saltada: 'ya hay una revisión de hoy hecha a mano' };
+  const d = await datos(fecha);
+  const prompt = `${INSTRUCCIONES}\n\nDATOS DEL ${fecha}:\n${_compacto(d)}`;
+  let out;
+  if (_llamar) out = await _llamar(prompt);
+  else {
+    const key = process.env.ANTHROPIC_API_KEY; if (!key) throw new Error('Falta ANTHROPIC_API_KEY');
+    const c = new AbortController(); const tm = setTimeout(() => c.abort(), 240000);
+    const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', signal: c.signal,
+      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: process.env.REVISION_IA_MODEL || require('./config').ia.agente, max_tokens: 8000, tools: [HERRAMIENTA], tool_choice: { type: 'tool', name: HERRAMIENTA.name }, messages: [{ role: 'user', content: prompt }] }) }).finally(() => clearTimeout(tm));
+    const data = await r.json(); if (!r.ok) throw new Error(`IA ${r.status}: ${JSON.stringify(data).slice(0, 200)}`);
+    const tu = (data.content || []).find(b => b.type === 'tool_use');
+    out = tu && tu.input;
+  }
+  if (!out || !Array.isArray(out.items)) throw new Error('La IA no devolvió la revisión');
+  return guardar({ fecha, avisar, resumen: out.resumen, items: out.items }, 'Corpy (revisión automática)');
+}
+
+module.exports = { datos, guardar, automatica, paraInicio, marcar, ejecutar, limpiarItem, limites, ACCIONES, _compacto };

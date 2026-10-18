@@ -398,6 +398,8 @@ function startScheduler() {
   // Cobros (8/10/2026): quién dijo que paga hoy, promesas incumplidas y recordatorios por revisar en /cobrar.
   cron.schedule('10 9 * * 1-5', () => { if (process.env.AVISO_COBROS !== 'off') require('./recordatoriosCobro').avisoManana().catch(e => console.warn('[Cobros]', e.message)); }, { timezone: 'Europe/Madrid' });
   // Altas de gente nueva: avanzar lo que se pueda y avisar de lo que va tarde (incorporaciones.js).
+  // 21:05 cada día: la revisión del día la hace el propio dashboard con la IA (revision.automatica, 19/10/2026).
+  cron.schedule('5 21 * * *', () => { if (process.env.REVISION_AUTO !== 'off') require('./revision').automatica().then(r => console.log('[Revisión] automática:', JSON.stringify(r))).catch(e => console.warn('[Revisión] automática:', e.message)); }, { timezone: 'Europe/Madrid' });
   // Viernes 9:30: cuánto apartar esta semana en la cuenta de reserva y qué pagos vienen (reservas.avisoViernes).
   cron.schedule('30 9 * * 5', () => { if (process.env.AVISO_RESERVA !== 'off') require('./reservas').avisoViernes().catch(e => console.warn('[Reservas] viernes:', e.message)); }, { timezone: 'Europe/Madrid' });
   // Facturas del año sin NIF bueno: aviso a Álex y a oficina cada mañana hasta que se arreglen (trimestre.avisoNif).

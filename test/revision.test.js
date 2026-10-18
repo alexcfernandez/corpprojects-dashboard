@@ -19,3 +19,11 @@ test('revisión: el día de Madrid empieza a las 22:00 UTC en verano y a las 23:
   assert.strictEqual(R.limites('2026-10-15').ini.toISOString(), '2026-10-14T22:00:00.000Z');
   assert.strictEqual(R.limites('2026-12-15').ini.toISOString(), '2026-12-14T23:00:00.000Z');
 });
+
+test('revisión automática: recorta los datos y quita publicidad', () => {
+  const d = { whatsapp: [{ nombre: 'Jose', entrantes: 1, mensajes: Array.from({ length: 80 }, (_, i) => ({ dir: i % 2 ? 'out' : 'in', texto: 'x'.repeat(900) })) }], correos: [{ categoria: 'PUBLICIDAD' }, { categoria: 'GESTORIA', asunto: 'a' }] };
+  const c = JSON.parse(R._compacto(d));
+  assert.strictEqual(c.whatsapp[0].mensajes.length, 40);
+  assert.ok(c.whatsapp[0].mensajes.every(m => m.texto.length <= 400));
+  assert.deepStrictEqual(c.correos.map(e => e.categoria), ['GESTORIA']);
+});
