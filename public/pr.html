@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Presupuesto · Corp Projects</title>
+<style>
+  :root { --bg:#f3f5f6; --card:#fff; --fg:#1d2422; --muted:#5b6670; --line:#e1e5e8; --brand:#1f4e79; --ok:#2f7d4f; --bad:#b4442f; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif }
+  .wrap { max-width:860px; margin:0 auto; padding:20px max(16px,env(safe-area-inset-left)) 60px }
+  header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px }
+  .marca { font-weight:800; letter-spacing:.02em; color:var(--brand) }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:14px }
+  h1 { font-size:22px; margin:0 0 4px; text-wrap:balance }
+  .muted { color:var(--muted); font-size:14px }
+  .totales { display:flex; gap:22px; flex-wrap:wrap; margin-top:12px }
+  .totales b { display:block; font-size:22px; font-variant-numeric:tabular-nums }
+  .estado { display:inline-block; font-size:13px; font-weight:700; padding:3px 10px; border-radius:999px; background:#e8eef5; color:var(--brand) }
+  .estado.ok { background:#e1f1e7; color:var(--ok) } .estado.bad { background:#f7e3de; color:var(--bad) }
+  .pdf { width:100%; height:78vh; border:1px solid var(--line); border-radius:8px; background:#fff }
+  .btns { display:flex; gap:10px; flex-wrap:wrap }
+  button, .boton { font:600 16px inherit; font-family:inherit; border-radius:10px; padding:12px 18px; border:1px solid var(--line); background:#fff; color:var(--fg); cursor:pointer; text-decoration:none; display:inline-block }
+  button.si { background:var(--ok); border-color:var(--ok); color:#fff } button.no { color:var(--bad); border-color:#e9c3ba }
+  button:disabled { opacity:.6; cursor:default }
+  button:focus-visible, .boton:focus-visible, input:focus-visible, textarea:focus-visible { outline:3px solid #9cc0e6; outline-offset:2px }
+  label { display:block; font-size:14px; color:var(--muted); margin:10px 0 4px }
+  input, textarea { width:100%; font:16px inherit; font-family:inherit; padding:10px 12px; border:1px solid var(--line); border-radius:8px }
+  table { width:100%; border-collapse:collapse; font-size:14px }
+  td { padding:8px 6px; border-top:1px solid var(--line); vertical-align:top }
+  td.n { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums }
+  .sec td { font-weight:700; background:#f7f9fa } .desc { color:var(--muted); font-size:13px; white-space:pre-line }
+  details summary { cursor:pointer; font-weight:600 }
+  .aviso { padding:14px; border-radius:10px; background:#e1f1e7; color:#1f5a37; font-weight:600 }
+  .aviso.bad { background:#f7e3de; color:#8a2f1f }
+  [hidden] { display:none !important }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><span class="marca">CORP PROJECTS HOLDING</span><span class="muted">Tel. 674 013 723</span></header>
+  <div id="cont"><div class="card">Cargando el presupuesto…</div></div>
+</div>
+<script>
+if (navigator.serviceWorker) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
+const tok = location.pathname.split('/').pop();
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+const eur = n => (Number(n) || 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+const fd = d => d ? d.split('-').reverse().join('/') : '';
+let D = null;
+async function cargar() {
+  const r = await fetch('/api/pr/' + encodeURIComponent(tok));
+  const d = await r.json().catch(() => ({ error: 'Error' }));
+  if (!r.ok || d.error) { document.getElementById('cont').innerHTML = `<div class="card"><h1>No se ha podido abrir</h1><p class="muted">${esc(d.error || 'Enlace no válido')}. Si lo necesitáis, llamadnos al 674 013 723.</p></div>`; return; }
+  D = d; pintar();
+}
+function pintar(msg) {
+  const d = D;
+  const cls = d.estado === 'Aceptado' ? 'ok' : d.estado === 'Rechazado' ? 'bad' : '';
+  const filas = d.lineas.map(l => l.seccion !== undefined
+    ? `<tr class="sec"><td colspan="2">${esc(l.seccion || '')}${l.texto ? `<div class="desc" style="font-weight:400">${esc(l.texto)}</div>` : ''}</td></tr>`
+    : `<tr><td>${esc(l.nombre)}${l.descripcion ? `<div class="desc">${esc(l.descripcion)}</div>` : ''}${l.unidades !== 1 ? `<div class="desc">${l.unidades.toLocaleString('es-ES')} × ${eur(l.precio)}</div>` : ''}</td><td class="n">${eur(l.importe)}</td></tr>`).join('');
+  const respondido = !d.pendiente || d.respuesta;
+  document.getElementById('cont').innerHTML = `
+  <div class="card">
+    <span class="estado ${cls}">${esc(d.estado)}</span>
+    <h1 style="margin-top:8px">${esc(d.titulo || 'Presupuesto ' + d.ref)}</h1>
+    <div class="muted">${esc(d.ref)} · ${fd(d.fecha)} · ${esc(d.cliente)}</div>
+    <div class="totales"><div><span class="muted">Base</span><b>${eur(d.base)}</b></div><div><span class="muted">Total con IVA</span><b>${eur(d.total)}</b></div></div>
+  </div>
+  ${msg ? `<div class="card"><div class="aviso ${msg.bad ? 'bad' : ''}">${esc(msg.t)}</div></div>` : ''}
+  ${respondido ? (d.respuesta ? `<div class="card"><div class="aviso ${d.respuesta.accion === 'rechazar' ? 'bad' : ''}">${d.respuesta.accion === 'aceptar' ? 'Presupuesto aceptado' : 'Presupuesto rechazado'}${d.respuesta.nombre ? ' por ' + esc(d.respuesta.nombre) : ''}. Gracias.</div></div>` : '') : `
+  <div class="card" id="decidir">
+    <div style="font-weight:700;margin-bottom:10px">¿Qué hacemos con este presupuesto?</div>
+    <div class="btns"><button class="si" onclick="paso('aceptar')">Aceptar presupuesto</button><button class="no" onclick="paso('rechazar')">Rechazar</button></div>
+    <div id="confirmar" hidden>
+      <label for="nombre">Vuestro nombre</label><input id="nombre" autocomplete="name" placeholder="Nombre de quien responde">
+      <div id="motivoBox" hidden><label for="motivo">Motivo (opcional)</label><textarea id="motivo" rows="2" placeholder="Por ejemplo: la comunidad no lo aprueba, ya se ha hecho…"></textarea></div>
+      <div class="btns" style="margin-top:12px"><button id="ok" class="si" onclick="enviar()">Confirmar</button><button onclick="cancelar()">Cancelar</button></div>
+    </div>
+  </div>`}
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px"><strong>Presupuesto completo</strong>${d.tienePdf ? `<a class="boton" href="/api/pr/${encodeURIComponent(tok)}/pdf" target="_blank" rel="noopener">Abrir el PDF</a>` : ''}</div>
+    ${d.tienePdf ? `<iframe class="pdf" src="/api/pr/${encodeURIComponent(tok)}/pdf" title="Presupuesto ${esc(d.ref)} en PDF"></iframe>` : ''}
+    <details ${d.tienePdf ? '' : 'open'} style="margin-top:12px"><summary>Ver las partidas</summary><table>${filas}<tr><td><strong>Base</strong></td><td class="n"><strong>${eur(d.base)}</strong></td></tr><tr><td><strong>Total con IVA</strong></td><td class="n"><strong>${eur(d.total)}</strong></td></tr></table></details>
+  </div>`;
+}
+let accion = null;
+function paso(a) { accion = a; document.getElementById('confirmar').hidden = false; document.getElementById('motivoBox').hidden = a !== 'rechazar'; const b = document.getElementById('ok'); b.textContent = a === 'aceptar' ? 'Confirmar: aceptar' : 'Confirmar: rechazar'; b.className = a === 'aceptar' ? 'si' : 'no'; document.getElementById('nombre').focus(); }
+function cancelar() { accion = null; document.getElementById('confirmar').hidden = true; }
+async function enviar() {
+  const b = document.getElementById('ok'); b.disabled = true; b.textContent = 'Enviando…';
+  try {
+    const r = await fetch('/api/pr/' + encodeURIComponent(tok) + '/responder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accion, nombre: document.getElementById('nombre').value, motivo: (document.getElementById('motivo') || {}).value || '' }) });
+    const d = await r.json();
+    if (!r.ok || d.error) throw new Error(d.error || 'No se ha podido guardar');
+    D.pendiente = false; D.estado = d.estado; D.respuesta = d.yaRespondido ? null : { accion, nombre: document.getElementById('nombre').value };
+    pintar({ t: d.yaRespondido ? `Este presupuesto ya estaba ${String(d.estado || '').toLowerCase()}.` : accion === 'aceptar' ? 'Gracias. Hemos recibido la aceptación y os llamaremos para organizar el trabajo.' : 'Gracias. Lo hemos marcado como rechazado.', bad: accion === 'rechazar' });
+  } catch (e) { b.disabled = false; b.textContent = 'Confirmar'; alert(e.message + '. Probad de nuevo o llamadnos al 674 013 723.'); }
+}
+cargar();
+</script>
+</body>
+</html>

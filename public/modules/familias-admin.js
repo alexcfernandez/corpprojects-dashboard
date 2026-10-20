@@ -65,6 +65,9 @@
           <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text2)">
             <input type="checkbox" id="fc-paused-${i}" ${c.paused?'checked':''} style="width:16px;height:16px;cursor:pointer;accent-color:var(--amber)"> Pausada
           </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text2);margin-top:6px" title="Cada lunes a las 9:15 se le mandan sus presupuestos pendientes para aceptar o rechazar">
+            <input type="checkbox" id="fc-presu-${i}" ${c.presuLunes?'checked':''} style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)"> Presupuestos los lunes
+          </label>
         </td>
         <td style="text-align:right;white-space:nowrap">
           <button class="btn bp" style="padding:6px 14px;font-size:12px" onclick="CP.FamiliasAdmin.save(${i})">Guardar</button>
@@ -193,12 +196,13 @@
     const freq   = document.getElementById('fc-freq-'+i)?.value || 'manual';
     const format = document.getElementById('fc-format-'+i)?.value || 'grouped';
     const modo   = document.getElementById('fc-modo-'+i)?.value || 'familia';
+    const presuLunes = document.getElementById('fc-presu-'+i)?.checked || false;
     const msg = document.getElementById('fc-msg-'+i);
     if (msg) { msg.textContent='Guardando...'; msg.style.color='var(--text3)'; }
     try {
-      const r = await api('/api/family-contacts', { method:'PUT', body: JSON.stringify({ family: c.family, email, paused, freq, format, modo }) });
+      const r = await api('/api/family-contacts', { method:'PUT', body: JSON.stringify({ family: c.family, email, paused, freq, format, modo, presuLunes }) });
       if (r && r.error) throw new Error(r.error);
-      c.email = email; c.paused = paused; c.freq = freq; c.format = format; c.modo = modo;
+      c.email = email; c.paused = paused; c.freq = freq; c.format = format; c.modo = modo; c.presuLunes = presuLunes;
       if (msg) { msg.textContent='✓ Guardado'; msg.style.color='var(--green)'; setTimeout(()=>{ if(msg && msg.textContent==='✓ Guardado') msg.textContent=''; }, 2500); }
     } catch(err) {
       if (msg) { msg.textContent='✗ '+err.message; msg.style.color='var(--red)'; }

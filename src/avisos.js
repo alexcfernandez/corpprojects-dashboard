@@ -43,7 +43,7 @@ const FORMATS = ['grouped', 'individual'];
 const MODOS   = ['familia', 'cliente'];
 
 // upsert de un responsable. email, paused, freq, format y/o modo.
-async function setFamilyContact(family, { email, paused, freq, format, modo } = {}) {
+async function setFamilyContact(family, { email, paused, freq, format, modo, presuLunes } = {}) {
   if (!family) throw new Error('Falta la familia');
   const db = await getDB();
   const set = { family, updatedAt: new Date() };
@@ -52,6 +52,8 @@ async function setFamilyContact(family, { email, paused, freq, format, modo } = 
   if (freq   !== undefined) set.freq   = FREQS.includes(freq)     ? freq   : 'manual';
   if (format !== undefined) set.format = FORMATS.includes(format) ? format : 'grouped';
   if (modo   !== undefined) set.modo   = MODOS.includes(modo)     ? modo   : 'familia';
+  // Presupuestos pendientes cada lunes (presupuestosCliente.js)
+  if (presuLunes !== undefined) set.presuLunes = !!presuLunes;
   await db.collection('familyContacts').updateOne({ family }, { $set: set }, { upsert: true });
   return db.collection('familyContacts').findOne({ family });
 }
@@ -66,7 +68,8 @@ async function getFamilyConfig(family) {
     paused: !!doc.paused,
     freq:   FREQS.includes(doc.freq)     ? doc.freq   : 'manual',
     format: FORMATS.includes(doc.format) ? doc.format : 'grouped',
-    modo:   MODOS.includes(doc.modo)     ? doc.modo   : 'familia'
+    modo:   MODOS.includes(doc.modo)     ? doc.modo   : 'familia',
+    presuLunes: !!doc.presuLunes
   };
 }
 

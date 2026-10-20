@@ -406,6 +406,8 @@ function startScheduler() {
   cron.schedule('30 20 * * *', () => { if (process.env.RESUMEN_GRUPOS !== 'off') require('./peticionesGrupo').resumenDiario().then(r => { if (r.enviado) console.log('[Peticiones] resumen:', r.subject); }).catch(e => console.warn('[Peticiones] resumen:', e.message)); }, { timezone: 'Europe/Madrid' });
   // 9:40 L-V: facturas de proveedor mal pasadas a StelOrder (descuento que suma, total que no cuadra con la foto) → aviso (facturasProveedorCheck.js).
   cron.schedule('40 9 * * 1-5', () => require('./facturasProveedorCheck').revisar().then(r => { if (r.nuevas.length) console.log(`[FPR] ${r.nuevas.length} factura(s) de proveedor con problemas`); }).catch(e => console.warn('[FPR]', e.message)), { timezone: 'Europe/Madrid' });
+  // Lunes 9:15: a cada familia con «Presupuestos los lunes», sus presupuestos pendientes para aceptar o rechazar (presupuestosCliente.js).
+  cron.schedule('15 9 * * 1', () => { if (process.env.PRESUPUESTOS_LUNES !== 'off') require('./presupuestosCliente').envio().then(r => console.log('[PresuCliente] lunes:', JSON.stringify(r.enviados || r))).catch(e => console.warn('[PresuCliente]', e.message)); }, { timezone: 'Europe/Madrid' });
   // Viernes 9:30: cuánto apartar esta semana en la cuenta de reserva y qué pagos vienen (reservas.avisoViernes).
   cron.schedule('30 9 * * 5', () => { if (process.env.AVISO_RESERVA !== 'off') require('./reservas').avisoViernes().catch(e => console.warn('[Reservas] viernes:', e.message)); }, { timezone: 'Europe/Madrid' });
   // Facturas del año sin NIF bueno: aviso a Álex y a oficina cada mañana hasta que se arreglen (trimestre.avisoNif).

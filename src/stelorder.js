@@ -2041,7 +2041,42 @@ async function modificarImportePresupuesto({ id = null, modo, valor = null, part
 }
 
 
-module.exports = { _client: client, enPausa, marcarBloqueo, estadoPausa, cupoAgotado, fetchAllPages, invalidate,
+// ── PRESUPUESTOS QUE RESPONDE EL CLIENTE (presupuestosCliente.js, 20/10/2026) ──
+// Detalle de un presupuesto (con líneas y pdf-path fresco: el enlace público de StelOrder trae un token que cambia).
+async function leerPresupuesto(estId) {
+  const id = String(estId || '').replace(/\D/g, '');
+  if (!id) throw new Error('Falta el presupuesto');
+  return cached(`prtDetalle:${id}`, 15 * MIN, async () => {
+    const r = await client.get(`/workEstimates/${id}`, { timeout: 20000 });
+    return Array.isArray(r.data) ? r.data[0] : r.data;
+  });
+}
+// Cambia el estado de un presupuesto (Aceptado 1120656 / Rechazado 1120642…). Lectura-modificación-escritura del documento
+// completo (un PUT parcial puede dejar el presupuesto sin líneas), con copia previa en stelWriteLog y relectura.
+async function setWorkEstimateState(estId, stateId, { requestedBy = null } = {}) {
+  const id = String(estId || '').replace(/\D/g, '');
+  if (!id || !stateId) throw new Error('Faltan datos (presupuesto o estado)');
+  const db = await require('./db').getDB();
+  const r = await client.get(`/workEstimates/${id}`, { timeout: 20000 });
+  const before = Array.isArray(r.data) ? r.data[0] : r.data;
+  if (!before || !before.id) throw new Error('No encuentro ese presupuesto en StelOrder');
+  const ins = await db.collection('stelWriteLog').insertOne({ tipo: 'estado-presupuesto', workEstimateId: id, reference: before['full-reference'] || null, requestedState: Number(stateId), requestedBy, before: { 'document-state-id': before['document-state-id'], nLineas: (before.lines || []).length, total: before['total-amount'] }, at: new Date(), result: 'pending' });
+  try {
+    await client.put(`/workEstimates/${id}`, { ...before, 'document-state-id': Number(stateId) }, { headers: { 'Content-Type': 'application/json; charset=utf-8' }, timeout: 25000 });
+    const r2 = await client.get(`/workEstimates/${id}`, { timeout: 20000 });
+    const after = Array.isArray(r2.data) ? r2.data[0] : r2.data;
+    const ok = Number(after['document-state-id']) === Number(stateId) && (after.lines || []).length === (before.lines || []).length;
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: ok ? 'ok' : 'no_cuajo', after: { 'document-state-id': after['document-state-id'], nLineas: (after.lines || []).length } } });
+    try { invalidate('workEstimates'); invalidate(`prtDetalle:${id}`); } catch (e) {}
+    if (!ok) throw new Error('StelOrder no guardó el cambio de estado');
+    return { ok: true, ref: after['full-reference'], estado: Number(stateId) };
+  } catch (err) {
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: 'error', error: `${err.response?.status || ''} ${err.message}` } });
+    throw err;
+  }
+}
+
+module.exports = { leerPresupuesto, setWorkEstimateState, WORK_ESTIMATE_STATES, _client: client, enPausa, marcarBloqueo, estadoPausa, cupoAgotado, fetchAllPages, invalidate,
   listaPresupuestos, lineasPresupuesto,
   getInvoices, getAllReceipts, getAllOrdinaryInvoices, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary, diagProveedores,

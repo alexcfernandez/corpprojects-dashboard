@@ -1400,7 +1400,9 @@ app.get('/api/family-contacts', requireAuth, async (req, res) => {
         email:  c.email || '',
         paused: !!c.paused,
         freq:   c.freq   || 'manual',
-        format: c.format || 'grouped'
+        format: c.format || 'grouped',
+        modo:   c.modo   || 'familia',
+        presuLunes: !!c.presuLunes
       };
     }));
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1408,9 +1410,9 @@ app.get('/api/family-contacts', requireAuth, async (req, res) => {
 
 app.put('/api/family-contacts', requireAuth, async (req, res) => {
   try {
-    const { family, email, paused, freq, format, modo } = req.body;
+    const { family, email, paused, freq, format, modo, presuLunes } = req.body;
     if (!family) return res.status(400).json({ error: 'Falta la familia' });
-    const saved = await avisos.setFamilyContact(family, { email, paused, freq, format, modo });
+    const saved = await avisos.setFamilyContact(family, { email, paused, freq, format, modo, presuLunes });
     res.json(saved);
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
@@ -4851,6 +4853,27 @@ app.get('/medir', (req, res) => res.sendFile(path.join(__dirname, '../public/med
 app.get('/catalogo', (req, res) => res.sendFile(path.join(__dirname, '../public/catalogo.html')));
 app.get('/presupuestos', (req, res) => res.sendFile(path.join(__dirname, '../public/presupuestos.html')));
 app.get('/p/:token', (req, res) => res.sendFile(path.join(__dirname, '../public/p.html')));
+// Presupuesto de StelOrder que acepta o rechaza el cliente (presupuestosCliente.js)
+app.get('/pr/:token', (req, res) => res.sendFile(path.join(__dirname, '../public/pr.html')));
+app.get('/api/pr/:token', async (req, res) => {
+  try { res.json(await require('./presupuestosCliente').publico(req.params.token, { ip: req.ip })); } catch (err) { res.status(404).json({ error: err.message }); }
+});
+app.get('/api/pr/:token/pdf', async (req, res) => {
+  try { const r = await require('./presupuestosCliente').pdf(req.params.token); res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `inline; filename="${r.nombre}"`); res.setHeader('Cache-Control', 'private, max-age=300'); res.send(r.buffer); }
+  catch (err) { res.status(404).send('No se ha podido abrir el PDF'); }
+});
+app.post('/api/pr/:token/responder', express.json({ limit: '8kb' }), async (req, res) => {
+  try { const b = req.body || {}; res.json(await require('./presupuestosCliente').responder(req.params.token, { accion: b.accion, nombre: b.nombre, motivo: b.motivo, ip: req.ip })); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/presupuestos-cliente', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./presupuestosCliente').resumen()); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/presupuestos-cliente/enviar', requireAuthOficina, express.json(), async (req, res) => {
+  try { const b = req.body || {}; res.json(await require('./presupuestosCliente').envio({ family: b.family || null, dryRun: !!b.dryRun, soloA: b.soloA || null, forzar: !!b.forzar })); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/presupuestos-cliente/:id/no-enviar', requireAuthOficina, express.json(), async (req, res) => {
+  try { const b = req.body || {}; res.json(await require('./presupuestosCliente').marcarNoEnviar(req.params.id, b.noEnviar !== false, { motivo: b.motivo, ref: b.ref, por: req.user?.name || 'Oficina' })); } catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/amidaments', (req, res) => res.sendFile(path.join(__dirname, '../public/amidaments.html')));
 app.get('/competencia', (req, res) => res.sendFile(path.join(__dirname, '../public/competencia.html')));
 
