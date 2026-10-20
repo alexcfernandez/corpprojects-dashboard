@@ -76,7 +76,7 @@ function _ventana(cat, desde, hasta) {
 async function _llamarIA(prompt, maxTokens = 8000) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error('Falta ANTHROPIC_API_KEY');
-  const c = new AbortController(); const tm = setTimeout(() => c.abort(), 180000);
+  const c = new AbortController(); const tm = setTimeout(() => c.abort(), maxTokens > 8000 ? 480000 : 180000);
   const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', signal: c.signal,
     headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
     body: JSON.stringify({ model: require('./config').ia.agente, max_tokens: maxTokens, tools: [HERRAMIENTA], tool_choice: { type: 'tool', name: HERRAMIENTA.name }, messages: [{ role: 'user', content: prompt }] }) }).finally(() => clearTimeout(tm));
@@ -266,4 +266,58 @@ async function marcarGrupo(jid, peticiones) {
   return { ok: true };
 }
 
-module.exports = { _ventana, analizar, importarChat, analizarHistorial, parsearChat, lista, marcar, marcarGrupo, _tanda, _textoAviso, TIPOS };
+// ── Incidencia en StelOrder desde una petición (botón «Crear incidencia» de la tarjeta). Presupuesto → tipo Presupuesto;
+// lo demás → Actuación. Necesita el cliente de StelOrder; la descripción lleva el resumen, el contacto y los mensajes.
+const TIPO_INC = { presupuesto: 3145, otro: 3146 };
+async function crearIncidencia(id, por = '') {
+  if (!ObjectId.isValid(String(id))) throw new Error('Petición no encontrada');
+  const db = await getDB();
+  const p = await db.collection(COL).findOne({ _id: new ObjectId(String(id)) });
+  if (!p) throw new Error('Petición no encontrada');
+  if (p.incidencia) throw new Error(`Ya tiene la incidencia ${p.incidencia}`);
+  if (!p.clienteId) throw new Error('No sé de qué cliente de StelOrder es: ponle el cliente a mano en StelOrder');
+  const msgs = (p.mensajes || []).slice(-6).map(m => `${fmt(m.fecha)} ${m.quien}: ${corto(m.texto, 300)}`).join('\n');
+  const descripcion = [`${p.resumen}${p.direccion ? ' (' + p.direccion + ')' : ''}`, p.contacto ? `Contacto: ${p.contacto}` : '', `Grupo «${p.grupo || 'WhatsApp'}»:`, msgs].filter(Boolean).join('\n').slice(0, 3800);
+  const r = await require('./stelorder').crearIncidencia({ accId: p.clienteId, descripcion, tipoId: p.tipo === 'presupuesto' ? TIPO_INC.presupuesto : TIPO_INC.otro, requestedBy: por || 'Peticiones del grupo' });
+  await db.collection(COL).updateOne({ _id: p._id }, { $set: { incidencia: r.ref, situacion: 'ya_hay_incidencia', incidenciaCreadaPor: por, incidenciaCreadaAt: new Date() } });
+  return { ok: true, ref: r.ref };
+}
+
+// ── Resumen diario por correo (20:30): lo que ha pasado hoy en los grupos y lo que sigue abierto ──
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+async function resumenDiario({ hoy = new Date(), enviar = true, _enviar = null } = {}) {
+  const db = await getDB();
+  const ymd = new Date(hoy).toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
+  const ini = new Date(new Date(ymd + 'T00:00:00Z').getTime() - _offsetMadrid(ymd + 'T00:00:00') * 60000);   // medianoche en Madrid
+  const grupos = await db.collection('bridgeGrupos').find({ activo: true, peticiones: true }).toArray();
+  if (!grupos.length) return { enviado: false, motivo: 'sin grupos' };
+  const jids = grupos.map(g => g._id);
+  const [nMsgs, nuevas, pend] = await Promise.all([
+    db.collection('grupoMensajes').countDocuments({ jid: { $in: jids }, ts: { $gte: ini } }),
+    db.collection(COL).find({ jid: { $in: jids }, creado: { $gte: ini }, fuente: { $ne: 'historial' } }).sort({ urgente: -1, fecha: 1 }).toArray(),
+    db.collection(COL).find({ jid: { $in: jids }, estado: 'pendiente' }).sort({ urgente: -1, fecha: 1 }).toArray(),
+  ]);
+  if (!nMsgs && !nuevas.length && !pend.length) return { enviado: false, motivo: 'nada' };
+  const et = { presupuesto: 'Presupuesto', trabajo: 'Trabajo', queja: 'Queja', consulta: 'Consulta', aviso: 'Aviso' };
+  const sit = p => p.situacion === 'ya_hay_incidencia' ? `está en ${p.incidencia || 'una incidencia'}` : p.situacion === 'ya_hay_presupuesto' ? `hay ${p.presupuesto || 'presupuesto'}` : p.situacion === 'seguimiento' ? 'insisten' : 'nuevo, no está en StelOrder';
+  const dias = p => Math.floor((Date.now() - new Date(p.fecha).getTime()) / 86400000);
+  const fila = p => `<tr><td style="padding:6px 8px;border-top:1px solid #ddd;white-space:nowrap">${p.urgente ? '🚨 ' : ''}${et[p.tipo] || p.tipo}</td><td style="padding:6px 8px;border-top:1px solid #ddd"><b>${esc(p.cliente)}</b>${p.direccion ? ' · ' + esc(p.direccion) : ''}<br>${esc(p.resumen)}<br><span style="color:#666">→ ${esc(p.queHacer)} (${esc(sit(p))}${dias(p) > 0 ? ` · ${dias(p)} días` : ''})</span></td></tr>`;
+  const tabla = l => `<table style="border-collapse:collapse;font:14px system-ui,sans-serif;width:100%">${l.map(fila).join('')}</table>`;
+  const viejas = pend.filter(p => dias(p) >= 7);
+  const fecha = new Date(hoy).toLocaleDateString('es-ES', { timeZone: 'Europe/Madrid', weekday: 'long', day: 'numeric', month: 'long' });
+  const html = `<div style="font:14px system-ui,sans-serif;max-width:720px">
+<h2 style="margin:0 0 4px">Grupos de clientes · ${esc(fecha)}</h2>
+<p style="color:#555;margin:0 0 14px">${nMsgs} mensaje${nMsgs === 1 ? '' : 's'} hoy · ${nuevas.length} petición${nuevas.length === 1 ? '' : 'es'} nueva${nuevas.length === 1 ? '' : 's'} · ${pend.length} abierta${pend.length === 1 ? '' : 's'}${viejas.length ? ` (${viejas.length} con más de una semana)` : ''}</p>
+${nuevas.length ? `<h3 style="margin:16px 0 4px">Nuevo hoy</h3>${tabla(nuevas)}` : ''}
+${pend.length ? `<h3 style="margin:16px 0 4px">Sigue abierto</h3>${tabla(pend.filter(p => !nuevas.some(n => String(n._id) === String(p._id))).slice(0, 40))}` : ''}
+<p style="color:#888;margin-top:16px">Lo marcáis como hecho o descartado en el inicio del dashboard (Peticiones de los grupos).</p></div>`;
+  const text = `Grupos de clientes · ${fecha}\n${nMsgs} mensajes hoy · ${nuevas.length} nuevas · ${pend.length} abiertas\n\n` + [...nuevas, ...pend.filter(p => !nuevas.some(n => String(n._id) === String(p._id)))].slice(0, 50).map(p => `- ${et[p.tipo] || p.tipo} · ${p.cliente}: ${p.resumen} → ${p.queHacer} (${sit(p)})`).join('\n');
+  const subject = `Grupos de clientes · ${nuevas.length} nueva${nuevas.length === 1 ? '' : 's'}, ${pend.length} abierta${pend.length === 1 ? '' : 's'}`;
+  if (!enviar) return { enviado: false, subject, html, text };
+  const to = process.env.RESUMEN_GRUPOS_EMAIL || process.env.EMAIL_ADMIN || 'hola@corpprojects.es';
+  const bcc = process.env.EMAIL_OFICINA || 'hola@corpprojects.es';
+  const ok = await (_enviar || require('./notifications').sendEmail)({ to, bcc: bcc !== to ? bcc : undefined, subject, html, text });
+  return { enviado: !!ok, to, subject, nuevas: nuevas.length, abiertas: pend.length };
+}
+
+module.exports = { crearIncidencia, resumenDiario, _ventana, analizar, importarChat, analizarHistorial, parsearChat, lista, marcar, marcarGrupo, _tanda, _textoAviso, TIPOS };

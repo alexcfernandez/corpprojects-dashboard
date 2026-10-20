@@ -54,3 +54,24 @@ test('_tanda: guarda peticiones nuevas y une la misma cosa a una abierta', async
   assert.match(txt, /💶 Presupuesto · \*Sant Narcís 98\*/);
   assert.match(txt, /🚨 ⚠️ Queja · \*Montjovi 20\*.*\(insisten\)/);
 });
+
+test('resumenDiario: correo con lo nuevo y lo abierto', async () => {
+  const P2 = require('../src/peticionesGrupo');
+  const db = require('../src/db');
+  const real = db.getDB;
+  const hoy = new Date();
+  const docs = { bridgeGrupos: [{ _id: 'g@g.us', activo: true, peticiones: true }], grupoMensajes: 3,
+    peticionesGrupo: [{ _id: 'a', tipo: 'presupuesto', cliente: 'Pare Coll 13', resumen: 'Terraza', queHacer: 'Ir a medir', situacion: 'nuevo', fecha: new Date(hoy - 9 * 864e5), urgente: false, creado: new Date(hoy - 9 * 864e5) }] };
+  db.getDB = async () => ({ collection: n => ({
+    find: () => ({ toArray: async () => docs[n], sort: () => ({ toArray: async () => docs[n] }) }),
+    countDocuments: async () => docs[n],
+  }) });
+  try {
+    let enviado = null;
+    const r = await P2.resumenDiario({ hoy, _enviar: async m => { enviado = m; return true; } });
+    assert.strictEqual(r.enviado, true);
+    assert.match(enviado.subject, /abierta/);
+    assert.match(enviado.html, /Pare Coll 13/);
+    assert.match(enviado.html, /9 días/);
+  } finally { db.getDB = real; }
+});

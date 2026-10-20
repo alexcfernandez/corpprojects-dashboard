@@ -2379,6 +2379,12 @@ app.post('/api/peticiones/importar', requireAuthOficina, express.text({ limit: '
     res.json({ ...imp, analisis: an });
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
+app.post('/api/peticiones/resumen', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./peticionesGrupo').resumenDiario({ enviar: req.query.enviar === '1' })); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/peticiones/:id/incidencia', requireAuthOficina, async (req, res) => {
+  try { const q = (await _quienPush(req)) || {}; res.json(await require('./peticionesGrupo').crearIncidencia(req.params.id, q.name || req.user?.name || 'Oficina')); } catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.post('/api/peticiones/:id', requireAuthOficina, express.json(), async (req, res) => {
   try { const q = (await _quienPush(req)) || {}; res.json(await require('./peticionesGrupo').marcar(req.params.id, req.body || {}, q.name || req.user?.name || 'Oficina')); } catch (err) { res.status(400).json({ error: err.message }); }
 });
