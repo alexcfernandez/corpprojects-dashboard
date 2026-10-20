@@ -770,7 +770,7 @@ async function procesarTrabajador(from, body, media, trab, responder) {
           const buf = await _bajarMedia(m.url, 30000); const mime = String(m.type || 'image/jpeg').split(';')[0];
           const r = await require('./compras').crear({ fotos: [{ data: buf, mimetype: mime }], destino: 'obra', origen: 'whatsapp-trabajador', nota: texto ? texto.slice(0, 300) : 'Enviada por WhatsApp', soloSiDocumento: true, subidaPor: { kind: 'worker', userId: trab.userId || String(from), name: trab.name || String(from) } });
           if (r && r.id && !r.noEsDocumento && !r.personal && !r.parteObra) { deCompra.push({ m, r }); m._yaEnCompras = r; }
-          else if (r && (r.personal || r.parteObra)) m._yaEnCompras = r;
+          else if (r && (r.personal || r.parteObra || r.vehiculoDoc)) m._yaEnCompras = r;
           else m._buf = buf;
         } catch (e) { console.error('[WhatsApp] ¿compra con encargo abierto?:', e.message); }
       }
@@ -802,7 +802,7 @@ async function procesarTrabajador(from, body, media, trab, responder) {
     }
     const respAlta = [];
     for (const m of docs) {
-      if (m._yaEnCompras) { const r = m._yaEnCompras; if (r.personal) respAlta.push(`📁 Guardado en tu carpeta de Personal: ${r.nombre}.`); else if (r.parteObra) respAlta.push('📋 Guardado en los papeles de la obra como parte de trabajo.'); else guardadas.push(r); continue; }
+      if (m._yaEnCompras) { const r = m._yaEnCompras; if (r.vehiculoDoc) respAlta.push(`🚐 Guardado en la ficha de la *${r.vehiculo}*: ${r.docTipo.toLowerCase()}.`); else if (r.personal) respAlta.push(`📁 Guardado en tu carpeta de Personal: ${r.nombre}.`); else if (r.parteObra) respAlta.push('📋 Guardado en los papeles de la obra como parte de trabajo.'); else guardadas.push(r); continue; }
       try {
         const buf = m._buf || await _bajarMedia(m.url, 30000);
         if (petAlta) {
@@ -815,6 +815,7 @@ async function procesarTrabajador(from, body, media, trab, responder) {
           subidaPor: { kind: 'worker', userId: trab.userId || String(from), name: trab.name || String(from) },
         });
         if (r && r.noEsDocumento) { noDoc++; fotosNoDoc.push({ buf, mime: String(m.type || 'image/jpeg').split(';')[0], queEs: r.queEs, descripcion: r.descripcion }); }
+        else if (r && r.vehiculoDoc) respAlta.push(`🚐 Guardado en la ficha de la *${r.vehiculo}*: ${r.docTipo.toLowerCase()}. ¡Gracias!`);
         else if (r && r.parteObra) respAlta.push(`📋 Guardado en los papeles de la obra${r.obraRef ? ' ' + r.obraRef : ''} como parte de trabajo. ¡Gracias!`);
         else if (r && r.personal) respAlta.push(`📁 Guardado en tu carpeta de Personal: ${r.nombre}. No es una compra, así que no hace falta decir obra. ¡Gracias!`); else if (r && r.id) guardadas.push(r);
       } catch (e) { fallos++; console.error('[WhatsApp] compra de trabajador:', e.message); }
@@ -2101,6 +2102,10 @@ app.post('/api/compras/:id/revisar', async (req, res) => {
     const r = await require('./compras').revisar(req.params.id, q.name, { enviarStel: (req.body || {}).enviarStel !== false, herramientas: (req.body || {}).herramientas || null, almacen: (req.body || {}).almacen || null });
     activity.registrar({ actor: q.name, actorRole: q.role, kind: 'modificado', entidad: 'Compra', ref: [r.proveedor, r.numero].filter(Boolean).join(' '), detalle: `Revisada (${r.tipo}) → ${r.obraRef || r.destino || 'gasto general'}${(r.activosCreados || []).length ? ' · ' + r.activosCreados.length + ' herramienta(s) dadas de alta' : ''}` });
     res.json(r); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/compras/:id/a-vehiculo', async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); const b = req.body || {}; res.json(await require('./compras').aVehiculo(req.params.id, q.name, { vehiculoId: b.vehiculoId, tipo: b.tipo, nombre: b.nombre })); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.post('/api/compras/:id/a-obra', async (req, res) => {

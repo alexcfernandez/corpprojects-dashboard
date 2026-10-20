@@ -83,7 +83,7 @@ const PROMPT = `Eres el administrativo de una empresa de reformas en Girona. Te 
  "confianza": 0-1,
  "aviso": "una frase corta en español si hay algo que oficina deba mirar (importe ilegible, falta una página, es un presupuesto y no una compra…), o null"
 }
-Si el documento tiene más de 60 líneas, incluye las 60 primeras y resume el resto en una línea "… y N líneas más". En facturas que agrupan varios albaranes (cada albarán empieza con su cabecera, p. ej. «SC/286689 17/09/2026 PEDIDO:», y la obra o dirección va en una línea sin importe al principio o AL FINAL del bloque, p. ej. «OBRA CARLES RAHOLA, 13 ATIC (ALEX RINCON)»), pon en CADA línea su "albaran" y el "obraTexto" de su bloque (la cabecera y la línea de la obra no son líneas). En facturas de gasolinera que listan repostajes, una línea por tiquet con la descripción "PRODUCTO - Tiquet NÚMERO (DD-MM-AAAA)" (el nº de tiquet tal cual), litros como cantidad con unidad "L" e importe de la línea. Reglas: "albaran" = entrega de material SIN importes totales o con la palabra albarán/entrega; "factura" = lleva la palabra factura y desglose de IVA; "ticket" = ticket de caja/TPV; "devolucion" = abono, devolución o importes negativos (pon los importes en NEGATIVO). Descuentos por línea: pon el % en "dto" y el precio de tarifa en "precio"; "importe" es lo que vale la línea con el descuento (cantidad × precio × (1 − dto/100)). Si la foto corta la columna de importes pero se leen cantidad, precio y dto, calcula el importe así y comprueba que la suma de líneas da la base; si cuadra, no avises de descuentos. Números con formato español (1.234,56) → 1234.56. Si no es un documento de compra, calidad="no_es_documento" y di qué se ve en "queEs": "obra" (trabajos, fachada, materiales, andamio, la calle o el acceso de una obra), "trafico" (carretera o atasco visto desde el coche), "vehiculo" (avería, golpe o rueda de un vehículo), "parte" (parte u hoja de horas de trabajo nuestra), "persona" (DNI, tarjeta sanitaria u otro papel personal) u "otro", con una frase corta en "descripcionFoto". No inventes: lo que no se lea, null.`;
+Si el documento tiene más de 60 líneas, incluye las 60 primeras y resume el resto en una línea "… y N líneas más". En facturas que agrupan varios albaranes (cada albarán empieza con su cabecera, p. ej. «SC/286689 17/09/2026 PEDIDO:», y la obra o dirección va en una línea sin importe al principio o AL FINAL del bloque, p. ej. «OBRA CARLES RAHOLA, 13 ATIC (ALEX RINCON)»), pon en CADA línea su "albaran" y el "obraTexto" de su bloque (la cabecera y la línea de la obra no son líneas). En facturas de gasolinera que listan repostajes, una línea por tiquet con la descripción "PRODUCTO - Tiquet NÚMERO (DD-MM-AAAA)" (el nº de tiquet tal cual), litros como cantidad con unidad "L" e importe de la línea. Reglas: "albaran" = entrega de material SIN importes totales o con la palabra albarán/entrega; "factura" = lleva la palabra factura y desglose de IVA; "ticket" = ticket de caja/TPV; "devolucion" = abono, devolución o importes negativos (pon los importes en NEGATIVO). Descuentos por línea: pon el % en "dto" y el precio de tarifa en "precio"; "importe" es lo que vale la línea con el descuento (cantidad × precio × (1 − dto/100)). Si la foto corta la columna de importes pero se leen cantidad, precio y dto, calcula el importe así y comprueba que la suma de líneas da la base; si cuadra, no avises de descuentos. Números con formato español (1.234,56) → 1234.56. Si es un papel de un vehículo (ficha técnica, permiso de circulación, tarjeta o informe de ITV, póliza o recibo del seguro), NO es una compra: rellena "documentoVehiculo" con su tipo y la matrícula. Si no es un documento de compra, calidad="no_es_documento" y di qué se ve en "queEs": "obra" (trabajos, fachada, materiales, andamio, la calle o el acceso de una obra), "trafico" (carretera o atasco visto desde el coche), "vehiculo" (avería, golpe o rueda de un vehículo), "parte" (parte u hoja de horas de trabajo nuestra), "persona" (DNI, tarjeta sanitaria u otro papel personal) u "otro", con una frase corta en "descripcionFoto". No inventes: lo que no se lea, null.`;
 
 // Esquema de la salida estructurada (mismo contenido que pide PROMPT).
 const _n = { type: ['number', 'null'] }, _s = { type: ['string', 'null'] };
@@ -105,6 +105,7 @@ const HERRAMIENTA = {
       confianza: _n,
       aviso: _s,
       queEs: { type: ['string', 'null'], enum: ['obra', 'trafico', 'vehiculo', 'parte', 'persona', 'otro', null] },
+      documentoVehiculo: { type: ['object', 'null'], description: 'Si es un PAPEL DE UN VEHÍCULO (ficha técnica, permiso de circulación, tarjeta o informe de ITV, póliza o recibo del seguro), su tipo y la matrícula que se lea; si no, null.', properties: { tipo: { type: 'string', enum: ['ficha_tecnica', 'permiso', 'itv', 'seguro', 'otro'] }, matricula: { type: ['string', 'null'] } } },
       descripcionFoto: _s,
     },
     required: ['calidad', 'tipo', 'lineas'],
@@ -225,6 +226,23 @@ async function repararDuplicados() {
 // o un banco, sin ser factura ni ticket.
 const ORGANISMO = /ministerio|seguridad social|tesorer[ií]a|migraci|extranjer|subdelegaci|polic[ií]a|agencia tributaria|hacienda|\bsepe\b|inss\b/i;
 const BANCO = /caixabank|la caixa|santander|bbva|sabadell|bankinter|\bing\b|revolut|unicaja|abanca|kutxa|ibercaja|openbank|imagin|\bbanco\b|\bbank\b/i;
+// ¿Es un papel de vehículo? Por lo que dice la IA (campo documentoVehiculo o su aviso) y sin importe.
+function papelVehiculo(doc, datos = {}) {
+  if (Number(doc.total) > 0) return null;
+  const d = datos.documentoVehiculo;
+  const av = String((datos.aviso || '') + ' ' + (doc.proveedor || '')).toLowerCase();
+  const tipoAv = /ficha t[eé]cnica|homologaci/.test(av) ? 'ficha_tecnica' : /permiso de circulaci/.test(av) ? 'permiso' : /\bitv\b|inspecci[oó]n t[eé]cnica/.test(av) ? 'itv' : /p[oó]liza|seguro/.test(av) && /veh[ií]culo|matr[ií]cula/.test(av) ? 'seguro' : null;
+  if (!(d && d.tipo) && !tipoAv) return null;
+  const mat = (d && d.matricula) || ((/\b(\d{4}\s?[B-DF-HJ-NP-TV-Z]{3})\b/i.exec(String(datos.aviso || '')) || [])[1]) || null;
+  return { tipo: (d && d.tipo) || tipoAv, matricula: mat ? String(mat).replace(/\s/g, '').toUpperCase() : null };
+}
+async function _vehiculoDe(db, matricula, subidaPor) {
+  const vs = await db.collection('vehiculos').find({ estado: 'activo' }).project({ nombre: 1, matricula: 1, conductor: 1 }).toArray();
+  let v = matricula ? vs.find(x => String(x.matricula || '').replace(/\W/g, '').toUpperCase() === matricula) : null;
+  if (!v && subidaPor && subidaPor.userId) { const suyos = vs.filter(x => x.conductor && String(x.conductor.userId) === String(subidaPor.userId)); if (suyos.length === 1) v = suyos[0]; }
+  return v ? { id: String(v._id), nombre: `${v.nombre}${v.matricula ? ' (' + v.matricula + ')' : ''}` } : null;
+}
+
 // Albarán/parte de trabajo hecho por nosotros (proveedor = Corp Projects) o que la IA ve como hoja de horas.
 function esParteNuestro(doc) {
   const nuestro = /corp\.?\s*projects/i.test(`${doc.proveedor || ''} ${doc.razonSocial || ''}`) || String(doc.nif || '').replace(/\W/g, '').toUpperCase().endsWith('09899253');
@@ -281,6 +299,25 @@ async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaP
   // Papeles personales que un trabajador manda por WhatsApp (justificante de tasa de extranjería, certificado del banco
   // para cobrar la nómina…) NO son compras: van a su carpeta de Personal (15/10/2026: el 790 de Javier y el CaixaBank de
   // Melvin acabaron en Compras y Corpy les preguntó «¿para qué obra?»).
+  // Papeles de un VEHÍCULO (ficha técnica, permiso, ITV, seguro): a la ficha del vehículo, no a Compras (19/10/2026: la
+  // ficha técnica de la Nissan que mandó Jose acabó en Compras y Corpy le preguntó «¿para qué obra?»).
+  const dv = lec.ok ? papelVehiculo(doc, lec.datos) : null;
+  if (dv) {
+    try {
+      const vid = await _vehiculoDe(db, dv.matricula, subidaPor);
+      if (vid) {
+        const V = require('./vehiculos'); const nombres = { ficha_tecnica: 'Ficha técnica', permiso: 'Permiso de circulación', itv: 'ITV', seguro: 'Seguro', otro: 'Documento' };
+        for (const [i, f] of (fotos || []).entries()) {
+          const mime = f.mimetype || 'image/jpeg', buf = Buffer.from(f.data.buffer || f.data);
+          await V.subirDocumento(vid.id, { tipo: dv.tipo, archivo: { buffer: buf, mimetype: mime, size: buf.length, originalname: `${nombres[dv.tipo] || 'Documento'}${fotos.length > 1 ? ' ' + (i + 1) : ''}.${/pdf/.test(mime) ? 'pdf' : 'jpg'}` }, nombre: `${nombres[dv.tipo] || 'Documento'} ${vid.nombre}`.slice(0, 100) }, (subidaPor && subidaPor.name) || 'Corpy');
+        }
+        await db.collection(COL).deleteOne({ _id: doc._id });
+        await db.collection(FOTOS).deleteMany({ compraId: String(doc._id) });
+        return { ok: true, vehiculoDoc: true, vehiculo: vid.nombre, docTipo: nombres[dv.tipo] || 'Documento' };
+      }
+      doc.destino = 'vehiculo'; doc.noPreguntarObra = true;   // no sé de qué vehículo: que lo mire la oficina, sin preguntar obra
+    } catch (e) { console.warn('[Compras] papel de vehículo:', e.message); }
+  }
   // Partes u hojas de horas NUESTROS (Corp Projects) de una obra: no son compras, van a los papeles de la obra como
   // «Partes de trabajo» (Seranco los exige; 15/10/2026: Jose los subió como compra).
   const oidObra = /^[a-f0-9]{24}$/.test(String(doc.obraId || obraId || '')) ? String(doc.obraId || obraId) : null;
@@ -821,6 +858,24 @@ async function aPersonal(id, por, { tipo = 'otro', nombre = null } = {}) {
   return { ok: true, userId, docs };
 }
 
+// «Esto es un papel de un vehículo»: a la ficha del vehículo y la compra se descarta (con sus preguntas).
+async function aVehiculo(id, por, { vehiculoId, tipo = 'otro', nombre = null } = {}) {
+  const db = await getDB();
+  const c = await db.collection(COL).findOne({ _id: oid(id), empresaId: EMPRESA });
+  if (!c) throw new Error('Compra no encontrada');
+  const fotos = await fotosDe(c._id);
+  if (!fotos.length) throw new Error('La compra no tiene archivo');
+  const V = require('./vehiculos'); const docs = [];
+  for (const [i, f] of fotos.entries()) {
+    const mime = f.mimetype || 'image/jpeg', buf = Buffer.from(f.data.buffer || f.data);
+    const g = await V.subirDocumento(String(vehiculoId), { tipo, archivo: { buffer: buf, mimetype: mime, size: buf.length, originalname: `${nombre || 'Documento'}${fotos.length > 1 ? ' ' + (i + 1) : ''}.${/pdf/.test(mime) ? 'pdf' : 'jpg'}` }, nombre: nombre || null }, por || 'Oficina');
+    docs.push(g.id);
+  }
+  await descartar(id, por, 'No es una compra: es un papel del vehículo (pasado a su ficha)', { avisar: false });
+  await db.collection('encargos').updateMany({ 'origen.compraId': String(c._id), estado: 'abierto' }, { $set: { estado: 'cancelado', cerradoAt: new Date(), cerradoPor: por || 'Oficina' } });
+  return { ok: true, docs };
+}
+
 // «Esto es un papel de la obra» (p. ej. partes de horas): a los documentos de la obra, y la compra se descarta.
 async function aObra(id, por, { tipo = 'partes_trabajo', nombre = null } = {}) {
   const db = await getDB();
@@ -1166,4 +1221,4 @@ async function resumenPendientes({ dryRun = false } = {}) {
   return { pendientes: pend.length, enviado: ok > 0 };
 }
 
-module.exports = { papelPersonal, aPersonal, aObra, esParteNuestro, autoRevisar, autoRevisarPendientes, claridad, resolverDuplicado, repararDuplicados, subidaMasiva, estadoMasiva, _unaMasiva, _gemelaTicket, _partirPdf, propuestaLineas, _repartoDeLineas, separarFoto, n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, albaranesDelCorreo, repartoPorAlbaran, obraDeTexto, _aprenderAliasObras: aprenderAliasObras, clasificacionesParaStel, reglaProveedorDe, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };
+module.exports = { papelPersonal, papelVehiculo, aPersonal, aObra, aVehiculo, esParteNuestro, autoRevisar, autoRevisarPendientes, claridad, resolverDuplicado, repararDuplicados, subidaMasiva, estadoMasiva, _unaMasiva, _gemelaTicket, _partirPdf, propuestaLineas, _repartoDeLineas, separarFoto, n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, albaranesDelCorreo, repartoPorAlbaran, obraDeTexto, _aprenderAliasObras: aprenderAliasObras, clasificacionesParaStel, reglaProveedorDe, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };
