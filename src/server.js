@@ -2358,6 +2358,30 @@ app.post('/api/backup/ahora', requireAuthOficina, async (req, res) => {
   res.json({ ok: true, enCurso: true });
 });
 // ── RESERVAS: lo que hay que ir apartando (IVA, IRPF, Seguridad Social, nóminas) y lo que ya está guardado ──
+// ── Peticiones de los grupos de clientes (peticionesGrupo.js): lo que piden en el grupo de SYNC, cruzado con StelOrder ──
+app.get('/api/peticiones', requireAuthOficina, async (req, res) => {
+  try { res.json({ lista: await require('./peticionesGrupo').lista({ estado: req.query.estado || 'pendiente', jid: req.query.jid || null }) }); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/peticiones/analizar', requireAuthOficina, async (req, res) => {
+  req.setTimeout && req.setTimeout(600000);
+  try { res.json(await require('./peticionesGrupo').analizar({ avisar: req.query.avisar !== '0' })); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/peticiones/grupo', requireAuthOficina, express.json(), async (req, res) => {
+  try { const b = req.body || {}; res.json(await require('./peticionesGrupo').marcarGrupo(b.jid, b.peticiones)); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+// Historial: el .txt de «Exportar chat» (sin archivos) del grupo, como texto. Se importa y se analiza por tandas.
+app.post('/api/peticiones/importar', requireAuthOficina, express.text({ limit: '8mb', type: '*/*' }), async (req, res) => {
+  req.setTimeout && req.setTimeout(900000);
+  try {
+    const P = require('./peticionesGrupo');
+    const imp = await P.importarChat({ jid: req.query.jid, texto: req.body, desde: req.query.desde || null });
+    const an = req.query.analizar === '0' ? null : await P.analizarHistorial({ jid: req.query.jid });
+    res.json({ ...imp, analisis: an });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/peticiones/:id', requireAuthOficina, express.json(), async (req, res) => {
+  try { const q = (await _quienPush(req)) || {}; res.json(await require('./peticionesGrupo').marcar(req.params.id, req.body || {}, q.name || req.user?.name || 'Oficina')); } catch (err) { res.status(400).json({ error: err.message }); }
+});
 // ── Revisión del día (revision.js): los datos del día, la revisión escrita y sus botones en el inicio ──
 app.get('/api/revision/datos', requireAuthOficina, async (req, res) => {
   try { if (!_soloDueno(req)) return res.status(403).json({ error: 'Solo el dueño' }); res.json(await require('./revision').datos(req.query.fecha || undefined)); } catch (err) { res.status(500).json({ error: err.message }); }

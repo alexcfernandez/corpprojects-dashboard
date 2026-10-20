@@ -1499,6 +1499,31 @@ async function cargarRevision(){
     ${hechos.length?`<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;color:var(--text3)">✔ ${hechos.length} cosa${hechos.length>1?'s':''} arreglada${hechos.length>1?'s':''} sola${hechos.length>1?'s':''}</summary>${hechos.map(fila).join('')}</details>`:''}
   </div>`;
 }
+// Peticiones de los grupos de clientes (grupo de SYNC): lo que piden, cruzado con StelOrder (peticionesGrupo.js). 20/10/2026.
+async function cargarPeticiones(){
+  const el=document.getElementById('ini-peticiones'); if(!el) return;
+  let r; try{ r=await apiCall('/api/peticiones'); }catch(e){ el.innerHTML=''; return; }
+  const l=(r&&r.lista)||[]; if(!l.length){ el.innerHTML=''; return; }
+  const e=s=>String(s==null?'':s).replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+  const et={presupuesto:'💶 Presupuesto',trabajo:'🔧 Trabajo',queja:'⚠️ Queja',consulta:'❓ Consulta',aviso:'ℹ️ Aviso'};
+  const sit=p=>p.situacion==='ya_hay_incidencia'?`ya está en ${p.incidencia||'una incidencia'}`:p.situacion==='ya_hay_presupuesto'?`ya hay ${p.presupuesto||'presupuesto'}`:p.situacion==='seguimiento'?'insisten':'nuevo, no está en StelOrder';
+  const orden=['queja','trabajo','presupuesto','consulta','aviso'];
+  l.sort((a,b)=>(b.urgente-a.urgente)||(orden.indexOf(a.tipo)-orden.indexOf(b.tipo))||String(b.fecha).localeCompare(String(a.fecha)));
+  const fila=p=>`<div style="padding:9px 0;border-top:1px solid var(--border)">
+      <div style="font-weight:600;font-size:13.5px">${p.urgente?'🚨 ':''}${et[p.tipo]||e(p.tipo)} · ${e(p.cliente)}${p.direccion?' · '+e(p.direccion):''} <span style="color:var(--text3);font-weight:400;font-size:12px">· ${e(new Date(p.fecha).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'2-digit'}))}${p.fuente==='historial'?' · historial':''}</span></div>
+      <div style="font-size:12.5px;color:var(--text2);margin-top:2px;line-height:1.5">${e(p.resumen)}${p.contacto?' · '+e(p.contacto):''}</div>
+      <div style="font-size:12.5px;margin-top:2px"><span style="color:${p.situacion==='nuevo'?'var(--danger,#d33)':'var(--text3)'}">${e(sit(p))}</span> → ${e(p.queHacer)}</div>
+      <details style="margin-top:4px"><summary style="cursor:pointer;font-size:12px;color:var(--text3)">Mensajes (${(p.mensajes||[]).length})</summary>${(p.mensajes||[]).map(m=>`<div style="font-size:12px;color:var(--text2);margin:3px 0;white-space:pre-line"><b>${e(m.quien)}</b> ${e(new Date(m.fecha).toLocaleString('es-ES',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}))}: ${e(m.texto)}</div>`).join('')}</details>
+      <div style="display:flex;gap:6px;margin-top:6px"><button class="btn btn-sm" onclick="petMarcar('${p.id}','hecho',this)">Hecho</button><button class="btn btn-sm" onclick="petMarcar('${p.id}','descartado',this)">Descartar</button></div>
+    </div>`;
+  const nuevos=l.filter(p=>p.situacion==='nuevo').length;
+  el.innerHTML=`<div class="card" style="margin:0 0 14px">
+    <div style="display:flex;align-items:center;gap:8px"><div class="card-title" style="margin:0">📋 Peticiones de los grupos</div><span style="margin-left:auto;font-size:12px;color:var(--text3)">${l.length} abiertas · ${nuevos} sin incidencia ni presupuesto</span></div>
+    ${l.slice(0,8).map(fila).join('')}
+    ${l.length>8?`<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;color:var(--text3)">Ver las otras ${l.length-8}</summary>${l.slice(8).map(fila).join('')}</details>`:''}
+  </div>`;
+}
+async function petMarcar(id,estado,b){ b.disabled=true; try{ const r=await apiCall(`/api/peticiones/${id}`,'POST',{estado}); if(r&&r.error) throw new Error(r.error); cargarPeticiones(); }catch(e){ alert(e.message); b.disabled=false; } }
 async function revMarcar(rev,item,estado,b){ b.disabled=true; try{ const r=await apiCall(`/api/revision/${rev}/item/${item}`,'POST',{estado}); if(r&&r.error) throw new Error(r.error); cargarRevision(); }catch(e){ alert(e.message); b.disabled=false; } }
 async function revAccion(rev,item,n,b){ b.disabled=true; const t=b.textContent; b.textContent='…'; try{ const r=await apiCall(`/api/revision/${rev}/item/${item}/accion/${n}`,'POST'); if(r&&r.error) throw new Error(r.error); cargarRevision(); }catch(e){ alert(e.message); b.disabled=false; b.textContent=t; } }
 async function renderInicio(){
@@ -1618,6 +1643,7 @@ async function renderInicio(){
     ${urg.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"><span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:700;align-self:center;margin-right:4px">Hoy toca</span>${urg.join('')}</div>`:`<div style="font-size:13px;color:var(--green);margin-bottom:14px">✔ Nada urgente pendiente</div>`}
     ${enc.length?`<div id="enc-det" style="display:none;margin:-6px 0 14px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--bg2);font-size:13px;line-height:1.6">${enc.map(e=>`<div>📨 <b>${String(e.nombre||'').replace(/[<>&"]/g,'')}</b>: ${String(e.que||'').replace(/[<>&"]/g,'')} <span style="color:var(--text3)">· hace ${e.dias} día${e.dias===1?'':'s'}${e.recordatorios?` · recordado ${e.recordatorios}×`:''}${e.ultimaRespuesta&&e.ultimaRespuesta.texto?` · dijo «${String(e.ultimaRespuesta.texto).slice(0,60).replace(/[<>&"]/g,'')}»`:''}</span></div>`).join('')}<div style="color:var(--text3);font-size:12px;margin-top:4px">Para pedir algo: díselo a Corpy («pídele a Javi la talla de botas»). Para cerrar uno: «Javi ya lo ha hecho».</div></div>`:''}
     <div id="ini-revision"></div>
+    <div id="ini-peticiones"></div>
     <div id="ini-precios"></div>
     <div class="ini-kpis">
       ${kpi2('Facturado este mes',eur(f.mes),`${f.mesCount||0} facturas`,'var(--green)',"irA('dinero','facturas')")}
@@ -1645,6 +1671,7 @@ async function renderInicio(){
   const tq=document.querySelector('#tab-inicio .tools-quick');const sa=document.getElementById('ini-slot-accesos');
   try{cargarSubidasPrecio();}catch(e){}
   try{cargarRevision();}catch(e){}
+  try{cargarPeticiones();}catch(e){}
   if(tq&&sa){if(tq.parentElement!==sa){sa.innerHTML='<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin:8px 2px">Accesos rápidos</div>';sa.appendChild(tq);}tq.classList.add('compacto');}
 }
 function showGrupo(grp, btn){

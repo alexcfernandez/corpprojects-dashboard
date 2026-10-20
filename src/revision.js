@@ -43,6 +43,8 @@ async function datos(fecha = hoyMadrid()) {
   // Grupos de WhatsApp que escucha Corpy
   await w('grupos', async () => (await db.collection('grupoMensajes').find({ ts: { $gte: ini, $lt: fin } }).project({ grupo: 1, quien: 1, texto: 1, media: 1, compraId: 1, ts: 1 }).sort({ ts: 1 }).limit(300).toArray())
     .map(m => ({ grupo: m.grupo, quien: m.quien, hora: new Date(m.ts).toLocaleTimeString('es-ES', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }), texto: corto(m.texto, 300), media: (m.media || []).map(x => x.type), compraId: m.compraId || null })));
+  // Peticiones de los grupos de clientes que siguen sin hacer (peticionesGrupo.js).
+  await w('peticiones', async () => (await require('./peticionesGrupo').lista({ estado: 'pendiente', limite: 60 })).map(p => ({ id: p.id, grupo: p.grupo, tipo: p.tipo, cliente: p.cliente, resumen: corto(p.resumen, 200), queHacer: corto(p.queHacer, 150), urgente: p.urgente, situacion: p.situacion, incidencia: p.incidencia, presupuesto: p.presupuesto, fecha: p.fecha })));
   // Encargos (lo que Corpy pide a la gente): abiertos, con días y recordatorios — lo que se queda «estancado».
   await w('encargos', async () => (await require('./encargos').lista({ abiertos: true })).map(e => ({ id: e.id, nombre: e.nombre, que: e.que, dias: e.dias, recordatorios: e.recordatorios, origen: e.origen && e.origen.tipo, compraId: e.origen && e.origen.compraId, ultima: e.ultimaRespuesta && corto(e.ultimaRespuesta.texto, 120) })));
   // Compras: las de hoy y cómo está la cola
