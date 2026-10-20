@@ -41,6 +41,8 @@ const HERRAMIENTA = {
       incidencia: { type: ['string', 'null'], description: 'INCxxxxx de StelOrder que lo cubre, si la hay' },
       presupuesto: { type: ['string', 'null'], description: 'PRTxxxxx de StelOrder que lo cubre, si lo hay' },
       actualiza: { type: ['string', 'null'], description: 'id de una petición anterior (lista PETICIONES ABIERTAS) si esto es la misma cosa' },
+      respondimos: { type: 'boolean', description: 'Alguien de Corp contestó en el chat a esta petición' },
+      hecho_en_chat: { type: 'boolean', description: 'En el chat se ve que se hizo, se mandó el presupuesto o se cerró (fotos de acabado, «ya está», «enviado»…)' },
     }, required: ['msgs', 'tipo', 'cliente', 'resumen', 'que_hacer', 'urgente', 'situacion'] } },
   }, required: ['peticiones'] },
 };
@@ -57,20 +59,27 @@ async function _catalogo({ desde = null, historial = false } = {}) {
   const nombre = id => { const c = clientMap[String(id)]; return c ? (c['legal-name'] || c.name || '') : ''; };
   const clientes = Object.entries(clientMap).map(([id, c]) => `${id} · ${corto(c['legal-name'] || c.name, 60)}`);
   const lim = desde ? new Date(new Date(desde).getTime() - 30 * 86400000) : new Date(Date.now() - 120 * 86400000);
-  const incidencias = (inc || []).filter(i => !i.deleted && (historial ? new Date(i.date) >= lim : (ESTADOS_INC_ABIERTA.test(st[i['incident-state-id']] || '') || new Date(i.date) >= lim)))
+  const incidencias = (inc || []).filter(i => !i.deleted && (historial ? true : (ESTADOS_INC_ABIERTA.test(st[i['incident-state-id']] || '') || new Date(i.date) >= lim)))
     .map(i => `${i['full-reference']} · ${String(i.date).slice(0, 10)} · ${st[i['incident-state-id']] || '?'} · ${corto(tipos[i['incident-type-id']], 14)} · ${corto(nombre(i['account-id']), 40)} · ${corto(i.description, 140)}`);
-  const presupuestos = (est || []).filter(e => !e.deleted && new Date(e.date) >= lim)
-    .map(e => `${e['full-reference']} · ${String(e.date).slice(0, 10)} · ${corto(nombre(e['account-id']), 40)} · ${corto(e.title, 80) || 's/t'} · ${e['total-amount']} €`);
+  const EST = { 1120641: 'Pendiente', 1120642: 'Rechazado', 1120656: 'Aceptado', 1120650: 'Cerrado' };
+  const presupuestos = (est || []).filter(e => !e.deleted && (historial || new Date(e.date) >= lim))
+    .map(e => `${e['full-reference']} · ${String(e.date).slice(0, 10)} · ${EST[e['document-state-id']] || '?'} · ${corto(nombre(e['account-id']), 40)} · ${corto(e.title, 80) || 's/t'} · ${e['total-amount']} €`);
   return { clientes, incidencias, presupuestos, nombre };
 }
 
-async function _llamarIA(prompt) {
+function _ventana(cat, desde, hasta) {
+  const a = new Date(desde.getTime() - 45 * 86400000).toISOString().slice(0, 10), b = new Date(hasta.getTime() + 150 * 86400000).toISOString().slice(0, 10);
+  const dentro = l => { const f = (l.split(' · ')[1] || ''); return f >= a && f <= b; };
+  return { ...cat, incidencias: cat.incidencias.filter(dentro), presupuestos: cat.presupuestos.filter(dentro) };
+}
+
+async function _llamarIA(prompt, maxTokens = 8000) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error('Falta ANTHROPIC_API_KEY');
   const c = new AbortController(); const tm = setTimeout(() => c.abort(), 180000);
   const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', signal: c.signal,
     headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: require('./config').ia.agente, max_tokens: 8000, tools: [HERRAMIENTA], tool_choice: { type: 'tool', name: HERRAMIENTA.name }, messages: [{ role: 'user', content: prompt }] }) }).finally(() => clearTimeout(tm));
+    body: JSON.stringify({ model: require('./config').ia.agente, max_tokens: maxTokens, tools: [HERRAMIENTA], tool_choice: { type: 'tool', name: HERRAMIENTA.name }, messages: [{ role: 'user', content: prompt }] }) }).finally(() => clearTimeout(tm));
   const d = await r.json();
   if (!r.ok) throw new Error(`API ${r.status}: ${d.error?.message || ''}`);
   const tu = (d.content || []).find(b => b.type === 'tool_use');
@@ -78,12 +87,14 @@ async function _llamarIA(prompt) {
 }
 
 // Analiza una tanda de mensajes [{ _id, fecha, quien, texto, fotoIds, nMedia }] de UN grupo.
-async function _tanda(db, { jid, grupo, msgs, fuente, cat, _llamar }) {
-  const abiertas = await db.collection(COL).find({ jid, estado: 'pendiente' }).sort({ creado: -1 }).limit(40).toArray();
+const NUESTROS = /alfonso|alex|álex|oficina corp|corpy|judit|paula/i;
+async function _tanda(db, { jid, grupo, msgs, fuente, cat, _llamar, extra = '', maxTokens = 8000 }) {
+  const abiertas = await db.collection(COL).find({ jid, estado: { $in: ['pendiente', 'archivo'] } }).sort({ fecha: -1 }).limit(fuente === 'historial' ? 80 : 40).toArray();
+  const nuestros = [...new Set(msgs.map(m => m.quien).filter(q => NUESTROS.test(q || '')))];
   const lineas = msgs.map((m, n) => `[${n}] ${fmt(m.fecha)} ${m.quien}: ${corto(m.texto, 900) || '(sin texto)'}${m.nMedia ? ` (📷 ${m.nMedia} foto${m.nMedia > 1 ? 's' : ''})` : ''}`);
-  const prompt = `${INSTRUCCIONES}
+  const prompt = `${INSTRUCCIONES}${extra ? '\n' + extra : ''}
 
-GRUPO: ${grupo || jid}
+GRUPO: ${grupo || jid}${nuestros.length ? `\nSON DE CORP (los demás son el administrador o vecinos): ${nuestros.join(', ')}` : ''}
 
 MENSAJES:
 ${lineas.join('\n')}
@@ -94,12 +105,12 @@ ${abiertas.map(p => `${p._id} · ${p.cliente} · ${corto(p.resumen, 120)}`).join
 INCIDENCIAS DE STELORDER (ref · fecha · estado · tipo · cliente · descripción):
 ${cat.incidencias.join('\n')}
 
-PRESUPUESTOS RECIENTES (ref · fecha · cliente · título · total):
+PRESUPUESTOS (ref · fecha · estado · cliente · título · total):
 ${cat.presupuestos.join('\n')}
 
 CLIENTES (id · nombre):
 ${cat.clientes.join('\n')}`;
-  const out = _llamar ? await _llamar(prompt) : await _llamarIA(prompt);
+  const out = _llamar ? await _llamar(prompt) : await _llamarIA(prompt, maxTokens);
   const nuevas = [], actualizadas = [];
   for (const p of (out.peticiones || [])) {
     const ms = (p.msgs || []).map(n => msgs[n]).filter(Boolean);
@@ -108,14 +119,19 @@ ${cat.clientes.join('\n')}`;
     const fotoIds = ms.flatMap(m => m.fotoIds || []);
     const set = { tipo: TIPOS.includes(p.tipo) ? p.tipo : 'consulta', clienteId: p.cliente_id && /^\d+$/.test(String(p.cliente_id)) ? String(p.cliente_id) : null,
       cliente: corto(p.cliente, 120), direccion: corto(p.direccion, 120) || null, contacto: corto(p.contacto, 120) || null, resumen: corto(p.resumen, 400), queHacer: corto(p.que_hacer, 300),
-      urgente: !!p.urgente, situacion: SITUACIONES.includes(p.situacion) ? p.situacion : 'nuevo', incidencia: corto(p.incidencia, 12) || null, presupuesto: corto(p.presupuesto, 12) || null, actualizado: new Date() };
+      urgente: !!p.urgente, respondimos: p.respondimos == null ? null : !!p.respondimos, hechoEnChat: p.hecho_en_chat == null ? null : !!p.hecho_en_chat, situacion: SITUACIONES.includes(p.situacion) ? p.situacion : 'nuevo', incidencia: corto(p.incidencia, 12) || null, presupuesto: corto(p.presupuesto, 12) || null, actualizado: new Date() };
     if (set.clienteId) set.clienteStel = cat.nombre(set.clienteId) || null;
     const prev = p.actualiza && ObjectId.isValid(String(p.actualiza)) ? abiertas.find(a => String(a._id) === String(p.actualiza)) : null;
     if (prev) {
-      await db.collection(COL).updateOne({ _id: prev._id }, { $set: set, $push: { mensajes: { $each: mensajes } }, $addToSet: { fotoIds: { $each: fotoIds } } });
+      await db.collection(COL).updateOne({ _id: prev._id }, { $set: set, $push: { mensajes: { $each: mensajes } }, $addToSet: { fotoIds: { $each: fotoIds }, archivos: { $each: ms.flatMap(m => m.archivos || []) } } });
       actualizadas.push({ ...prev, ...set });
     } else {
-      const doc = { jid, grupo: grupo || null, ...set, quien: ms[0].quien, mensajes, fotoIds, fuente, fecha: ms[0].fecha, estado: 'pendiente', creado: new Date() };
+      // Del historial solo quedan a la vista (pendiente) las de los últimos 90 días que no se ven hechas; el resto, al archivo
+      // para el informe de lo que se nos escapó.
+      const reciente = Date.now() - new Date(ms[0].fecha).getTime() < 90 * 86400000;
+      const estado = fuente !== 'historial' ? 'pendiente' : (reciente && !set.hechoEnChat && set.situacion !== 'ya_hay_presupuesto' ? 'pendiente' : 'archivo');
+      const archivos = ms.flatMap(m => m.archivos || []);
+      const doc = { jid, grupo: grupo || null, ...set, quien: ms[0].quien, mensajes, fotoIds, archivos, fuente, fecha: ms[0].fecha, estado, creado: new Date() };
       const r = await db.collection(COL).insertOne(doc);
       nuevas.push({ ...doc, _id: r.insertedId });
     }
@@ -172,11 +188,13 @@ function parsearChat(txt) {
       if (ampm && /p/i.test(ampm) && h < 12) h += 12; if (ampm && /a/i.test(ampm) && h === 12) h = 0;
       const iso = `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}T${String(h).padStart(2, '0')}:${mi}:${s || '00'}`;
       const fecha = new Date(new Date(iso + 'Z').getTime() - _offsetMadrid(iso) * 60000);
-      const media = /multimedia omitido|omitid[oa]|image omitted|imagen omitida|video omitted|<adjunto|archivo adjunto|\.jpg|\.pdf \(/i.test(texto);
-      out.push({ fecha, quien: quien.replace(/^‎/, '').trim(), texto: media ? texto.replace(/<?[^<>]*omitid[oa]>?|‎?image omitted/ig, '').trim() : texto.trim(), media });
-    } else if (out.length && linea.trim()) out[out.length - 1].texto += '\n' + linea.trim();
+      const archivos = [...texto.matchAll(/<adjunto:\s*([^>]+)>/gi)].map(x => x[1].trim());
+      const media = archivos.length > 0 || /multimedia omitido|omitid[oa]|image omitted|imagen omitida|video omitted|archivo adjunto/i.test(texto);
+      const limpio = texto.replace(/\u200e?<adjunto:[^>]*>/gi, '').replace(/<?[^<>]*omitid[oa]>?|\u200e?image omitted/ig, '').replace(/\u200e/g, '').trim();
+      out.push({ fecha, quien: quien.replace(/\u200e/g, '').trim(), texto: limpio, media, archivos });
+    } else if (out.length && linea.trim()) out[out.length - 1].texto = (out[out.length - 1].texto + '\n' + linea.replace(/\u200e/g, '').trim()).trim();
   }
-  return out.filter(m => !/cifrados de extremo a extremo|end-to-end encrypted|creó el grupo|te añadió|añadió a|salió del grupo|cambió el (asunto|icono)/i.test(m.texto));
+  return out.filter(m => (m.texto || m.media) && !/cifrados de extremo a extremo|end-to-end encrypted|creó el grupo|te añadió|añadió a|salió del grupo|cambió el (asunto|icono)/i.test(m.texto));
 }
 // Minutos de diferencia de Madrid con UTC en esa fecha (60 en invierno, 120 en verano).
 function _offsetMadrid(iso) {
@@ -200,7 +218,8 @@ async function importarChat({ jid, texto, desde = null }) {
 }
 
 // Analiza el historial importado por tandas (sin avisos: se repasa en la lista).
-async function analizarHistorial({ jid, tanda = 120, maxTandas = 30, _llamar = null } = {}) {
+const EXTRA_HISTORIAL = `Esto es el HISTORIAL antiguo del grupo (repaso para ver qué se nos escapó). Para cada petición di también si alguien de Corp contestó (respondimos) y si en el chat se ve que se hizo o se mandó el presupuesto (hecho_en_chat). En situacion usa «nuevo» cuando NO hay ni incidencia ni presupuesto en StelOrder que lo cubra. Para los presupuestos fíjate bien en el PRT que corresponde (mismo cliente y misma cosa, fecha poco después). Junta lo que es la misma cosa aunque se repita días después (eso es que insistieron).`;
+async function analizarHistorial({ jid, tanda = 220, maxTandas = 200, _llamar = null, log = null } = {}) {
   const db = await getDB();
   const g = await db.collection('bridgeGrupos').findOne({ _id: String(jid) });
   if (!g) throw new Error('Grupo no encontrado');
@@ -211,10 +230,14 @@ async function analizarHistorial({ jid, tanda = 120, maxTandas = 30, _llamar = n
   while (tandas < maxTandas) {
     const raw = await db.collection(HIST).find({ jid: g._id, analizado: false }).sort({ fecha: 1 }).limit(tanda).toArray();
     if (!raw.length) break;
-    const msgs = raw.map(m => ({ _id: m._id, fecha: m.fecha, quien: m.quien, texto: m.texto, nMedia: m.media ? 1 : 0 }));
-    const r = await _tanda(db, { jid: g._id, grupo: g.nombre, msgs, fuente: 'historial', cat, _llamar });
+    const msgs = raw.map(m => ({ _id: m._id, fecha: m.fecha, quien: m.quien, texto: m.texto, nMedia: (m.archivos || []).length || (m.media ? 1 : 0), archivos: m.archivos || [] }));
+    const arg = { jid: g._id, grupo: g.nombre, msgs, fuente: 'historial', cat: _ventana(cat, raw[0].fecha, raw[raw.length - 1].fecha), _llamar, extra: EXTRA_HISTORIAL, maxTokens: 16000 };
+    let r;
+    try { r = await _tanda(db, arg); }
+    catch (e) { if (log) log(`tanda ${tandas + 1}: ${e.message} — reintento`); await new Promise(ok => setTimeout(ok, 20000)); r = await _tanda(db, arg); }
     await db.collection(HIST).updateMany({ _id: { $in: raw.map(m => m._id) } }, { $set: { analizado: true } });
     tandas++; nuevas += r.nuevas.length; actualizadas += r.actualizadas.length;
+    if (log) log(`tanda ${tandas}: ${raw[0].fecha.toISOString().slice(0, 10)} → ${raw[raw.length - 1].fecha.toISOString().slice(0, 10)} · ${raw.length} mensajes · ${r.nuevas.length} nuevas, ${r.actualizadas.length} unidas`);
   }
   const quedan = await db.collection(HIST).countDocuments({ jid: g._id, analizado: false });
   return { tandas, nuevas, actualizadas, quedan };
@@ -243,4 +266,4 @@ async function marcarGrupo(jid, peticiones) {
   return { ok: true };
 }
 
-module.exports = { analizar, importarChat, analizarHistorial, parsearChat, lista, marcar, marcarGrupo, _tanda, _textoAviso, TIPOS };
+module.exports = { _ventana, analizar, importarChat, analizarHistorial, parsearChat, lista, marcar, marcarGrupo, _tanda, _textoAviso, TIPOS };
