@@ -45,6 +45,57 @@ async function _saldoReserva(db) {
   return { saldo: null, saldoAt: null, cuenta: null };
 }
 
+// ── Aplazamientos (Hacienda y Seguridad Social) y pago a cuenta del Impuesto de Sociedades (202). 20/10/2026 ──
+// Los aplazamientos están en appSettings 'aplazamientos' (lista). Cada uno: con su calendario real (cuotas: [{fecha,
+// importe}]) o, si aún no lo tenemos, con el importe del mes y el día de cargo (importeMes, dia | 'fin').
+const _laborable = (f, haciaAtras = false) => { let d = new Date(f + 'T12:00:00Z'); while ([0, 6].includes(d.getUTCDay())) d = new Date(d.getTime() + (haciaAtras ? -1 : 1) * DIA); return iso(d); };
+function _siguienteFecha(dia, hoyIso) {
+  const [y, m] = hoyIso.split('-').map(Number);
+  for (let k = 0; k < 3; k++) {
+    const yy = y + Math.floor((m - 1 + k) / 12), mm = ((m - 1 + k) % 12) + 1;
+    const f = dia === 'fin' ? _laborable(finDeMes(yy, mm), true) : _laborable(`${yy}-${String(mm).padStart(2, '0')}-${String(dia).padStart(2, '0')}`);
+    if (f >= hoyIso) return f;
+  }
+  return null;
+}
+async function _aplazamientos(db, hoyIso) {
+  const doc = await db.collection('appSettings').findOne({ key: 'aplazamientos' });
+  const out = [];
+  for (const a of ((doc && doc.valor) || [])) {
+    if (a.terminado) continue;
+    if (Array.isArray(a.cuotas) && a.cuotas.length) {
+      const i = a.cuotas.findIndex(c => c.fecha >= hoyIso);
+      if (i < 0) continue;
+      const c = a.cuotas[i];
+      out.push({ clave: `apl:${a.expediente}:${c.fecha}`, concepto: `Aplazamiento ${a.organismo} · ${a.concepto} (cuota ${i + 1} de ${a.cuotas.length})`, importe: r2(c.importe), vence: c.fecha,
+        detalle: `expediente ${a.expediente} · última cuota el ${a.cuotas[a.cuotas.length - 1].fecha.split('-').reverse().join('/')}` });
+    } else if (a.importeMes) {
+      const f = _siguienteFecha(a.dia || 20, hoyIso);
+      if (f && (!a.hasta || f <= a.hasta)) out.push({ clave: `apl:${a.expediente}:${f}`, concepto: `Aplazamiento ${a.organismo} · ${a.concepto}`, importe: r2(a.importeMes), vence: f, detalle: `cuota de cada mes (importe estimado)${a.nota ? ' · ' + a.nota : ''}` });
+    }
+  }
+  return out;
+}
+// 202: se paga del 1 al 20 de abril, octubre y diciembre. Importe estimado = el último pagado.
+async function _pago202(db, hoyIso) {
+  const ms = await db.collection('bancoMovimientos').find({ importe: { $lt: 0 }, concepto: { $regex: 'sociedades pago a cta', $options: 'i' } }).sort({ fechaOperacion: -1 }).limit(3).toArray();
+  if (!ms.length) return null;
+  const y = Number(hoyIso.slice(0, 4));
+  const fechas = [`${y}-04-20`, `${y}-10-20`, `${y}-12-20`, `${y + 1}-04-20`].map(f => _laborable(f));
+  const ya = new Set(ms.map(m => String(m.fechaOperacion).slice(0, 7)));
+  const f = fechas.find(x => x >= hoyIso && !ya.has(x.slice(0, 7)));
+  if (!f) return null;
+  const imp = Math.abs(ms[0].importe);
+  return { clave: `is202:${f}`, concepto: 'Impuesto de Sociedades · pago a cuenta (202)', importe: r2(imp), vence: f, detalle: `estimado con el último pagado (${imp.toFixed(2)} € el ${String(ms[0].fechaOperacion).slice(0, 10).split('-').reverse().join('/')})` };
+}
+
+async function ponerAplazamientos(lista) {
+  const db = await getDB();
+  await db.collection('appSettings').updateOne({ key: 'aplazamientos' }, { $set: { key: 'aplazamientos', valor: (Array.isArray(lista) ? lista : []).slice(0, 20), at: new Date() } }, { upsert: true });
+  _cache = null;
+  return { ok: true, n: (lista || []).length };
+}
+
 let _cache = null, _cacheAt = 0;
 async function panel({ hoy = new Date(), fresco = false } = {}) {
   if (!fresco && _cache && Date.now() - _cacheAt < 15 * 60 * 1000) return _cache;
@@ -82,6 +133,10 @@ async function panel({ hoy = new Date(), fresco = false } = {}) {
     const e = await NP.estado(mesAnt, { hoy });
     if (e.totales.nominas) items.push({ clave: 'nom:' + mesAnt, concepto: `Nóminas de ${mesAnt}`, importe: e.totales.falta, vence: `${hoyIso.slice(0, 7)}-05`, detalle: `${e.totales.pagadas} de ${e.totales.nominas} pagadas${e.totales.sinImporte ? `, ${e.totales.sinImporte} sin importe leído` : ''}` });
   } catch (e) {}
+
+  // Aplazamientos (próxima cuota de cada uno) y el 202 del Impuesto de Sociedades.
+  try { (await _aplazamientos(db, hoyIso)).forEach(i => items.push(i)); } catch (e) { console.warn('[Reservas] aplazamientos:', e.message); }
+  try { const p = await _pago202(db, hoyIso); if (p) items.push(p); } catch (e) { console.warn('[Reservas] 202:', e.message); }
 
   // Embargos de sueldo: lo retenido en las nóminas que falta ingresar al juzgado / Hacienda (embargos.js).
   try { (await require('./embargos').paraReservas({ hoy })).forEach(i => items.push(i)); } catch (e) { console.warn('[Reservas] embargos:', e.message); }
@@ -153,4 +208,4 @@ async function ponerReal(clave, importe, nota) {
   return { ok: true };
 }
 
-module.exports = { panel, avisoViernes, ponerReal, venceTrimestre, trimestreDe };
+module.exports = { panel, avisoViernes, ponerReal, ponerAplazamientos, _siguienteFecha, _laborable, venceTrimestre, trimestreDe };

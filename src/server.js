@@ -2381,6 +2381,10 @@ app.post('/api/revision/:id/item/:item', requireAuthOficina, express.json(), asy
 app.post('/api/revision/:id/item/:item/accion/:n', requireAuthOficina, async (req, res) => {
   try { const q = (await _quienPush(req)) || {}; res.json(await require('./revision').ejecutar(req.params.id, req.params.item, req.params.n, q.name || req.user?.name || 'Oficina')); } catch (err) { res.status(400).json({ error: err.message }); }
 });
+app.post('/api/reservas/aplazamientos', requireAuthOficina, express.json({ limit: '64kb' }), async (req, res) => {
+  try { if (!_soloDueno(req)) return res.status(403).json({ error: 'Solo el dueño' }); res.json(await require('./reservas').ponerAplazamientos((req.body || {}).lista)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.post('/api/reservas/real', requireAuthOficina, async (req, res) => {
   try { if (!_soloDueno(req)) return res.status(403).json({ error: 'Solo el dueño' }); const b = req.body || {}; if (!/^[a-z]+:[\w-]+$/.test(String(b.clave || ''))) throw new Error('clave no válida'); res.json(await require('./reservas').ponerReal(b.clave, b.importe, b.nota)); }
   catch (err) { res.status(400).json({ error: err.message }); }
