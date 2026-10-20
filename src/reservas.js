@@ -58,19 +58,28 @@ function _siguienteFecha(dia, hoyIso) {
   }
   return null;
 }
+// ¿Ya está cobrado en el banco? (un cargo parecido entre 5 días antes y 3 después de la fecha)
+async function _cobrado(db, fecha, importe, re, tol = 30) {
+  const d0 = iso(new Date(fecha + 'T12:00:00Z').getTime() - 5 * DIA), d1 = iso(new Date(fecha + 'T12:00:00Z').getTime() + 3 * DIA);
+  const ms = await db.collection('bancoMovimientos').find({ fechaOperacion: { $gte: d0, $lte: d1 }, importe: { $lt: 0 }, concepto: { $regex: re, $options: 'i' } }).project({ importe: 1, fechaOperacion: 1 }).toArray();
+  return ms.find(m => Math.abs(Math.abs(m.importe) - Number(importe)) <= tol) || null;
+}
 async function _aplazamientos(db, hoyIso) {
   const doc = await db.collection('appSettings').findOne({ key: 'aplazamientos' });
   const out = [];
+  const ayer = iso(new Date(hoyIso + 'T12:00:00Z').getTime() - 3 * DIA);
   for (const a of ((doc && doc.valor) || [])) {
     if (a.terminado) continue;
     if (Array.isArray(a.cuotas) && a.cuotas.length) {
-      const i = a.cuotas.findIndex(c => c.fecha >= hoyIso);
-      if (i < 0) continue;
+      let i = a.cuotas.findIndex(c => c.fecha >= ayer);
+      while (i >= 0 && i < a.cuotas.length && await _cobrado(db, a.cuotas[i].fecha, a.cuotas[i].importe, a.organismo === 'Hacienda' ? 'abonare|a\\.?e\\.?a\\.?t' : 'aplazam|tgss')) i++;
+      if (i < 0 || i >= a.cuotas.length) continue;
       const c = a.cuotas[i];
       out.push({ clave: `apl:${a.expediente}:${c.fecha}`, concepto: `Aplazamiento ${a.organismo} · ${a.concepto} (cuota ${i + 1} de ${a.cuotas.length})`, importe: r2(c.importe), vence: c.fecha,
         detalle: `expediente ${a.expediente} · última cuota el ${a.cuotas[a.cuotas.length - 1].fecha.split('-').reverse().join('/')}` });
     } else if (a.importeMes) {
-      const f = _siguienteFecha(a.dia || 20, hoyIso);
+      let f = _siguienteFecha(a.dia || 20, ayer);
+      if (f && await _cobrado(db, f, a.importeMes, a.organismo === 'Hacienda' ? 'abonare|a\\.?e\\.?a\\.?t' : 'aplazam|tgss', Math.max(30, a.importeMes * 0.05))) f = _siguienteFecha(a.dia || 20, iso(new Date(f + 'T12:00:00Z').getTime() + 4 * DIA));
       if (f && (!a.hasta || f <= a.hasta)) out.push({ clave: `apl:${a.expediente}:${f}`, concepto: `Aplazamiento ${a.organismo} · ${a.concepto}`, importe: r2(a.importeMes), vence: f, detalle: `cuota de cada mes (importe estimado)${a.nota ? ' · ' + a.nota : ''}` });
     }
   }
@@ -134,6 +143,11 @@ async function panel({ hoy = new Date(), fresco = false } = {}) {
     if (e.totales.nominas) items.push({ clave: 'nom:' + mesAnt, concepto: `Nóminas de ${mesAnt}`, importe: e.totales.falta, vence: `${hoyIso.slice(0, 7)}-05`, detalle: `${e.totales.pagadas} de ${e.totales.nominas} pagadas${e.totales.sinImporte ? `, ${e.totales.sinImporte} sin importe leído` : ''}` });
   } catch (e) {}
 
+  // El 111 que ya ha cobrado Hacienda deja de contar (20/10/2026: salía como pendiente el mismo día del cargo).
+  for (const it of items) {
+    if (!/^irpf:/.test(it.clave || '') || !(it.importe > 0)) continue;
+    try { const m = await _cobrado(db, it.vence, it.importe, 'retenciones e ing', Math.max(50, it.importe * 0.4)); if (m) { it.estimado = it.importe; it.importe = 0; it.detalle = `pagado el ${String(m.fechaOperacion).slice(0, 10).split('-').reverse().join('/')}: ${Math.abs(m.importe).toFixed(2)} €`; } } catch (e) {}
+  }
   // Aplazamientos (próxima cuota de cada uno) y el 202 del Impuesto de Sociedades.
   try { (await _aplazamientos(db, hoyIso)).forEach(i => items.push(i)); } catch (e) { console.warn('[Reservas] aplazamientos:', e.message); }
   try { const p = await _pago202(db, hoyIso); if (p) items.push(p); } catch (e) { console.warn('[Reservas] 202:', e.message); }
