@@ -134,6 +134,8 @@ async function reglasGestoria(R, _d = {}) {
     if (NO_ES_FACTURA.test(`${c.numero || ''} ${c.notas || ''}`)) out.push({ ...f, que: 'Parece un albarán, pedido o nómina: a la gestoría solo van facturas' });
     else if (ag && c.numero && !ag.factura.test(String(c.numero).trim())) out.push({ ...f, que: `${ag.nombre}: esto es un albarán; a la gestoría va su factura quincenal` });
   }
+  // Facturas de proveedor mal pasadas a StelOrder (descuento que suma, total que no cuadra con la foto): facturasProveedorCheck.js
+  try { out.push(...await require('./facturasProveedorCheck').pendientes(R, _d.db || null)); } catch (e) { console.warn('[Trimestre] facturas proveedor:', e.message); }
   return out.sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
 }
 
