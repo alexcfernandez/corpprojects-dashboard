@@ -96,11 +96,12 @@ async function envio({ hoy = new Date(), family = null, dryRun = false, soloA = 
     if (fam === 'Sin familia' && !soloA) continue;
     const cfg = await avisos.getFamilyConfig(fam);
     const destino = soloA || cfg.email;
-    if (!soloA && (!cfg.presuLunes || cfg.paused || !destino)) { res.push({ family: fam, n: ps.length, omitido: !cfg.presuLunes ? 'no activado' : cfg.paused ? 'familia en pausa' : 'sin email' }); continue; }
+    // En la vista previa (dryRun) se enseña igual aunque la familia no lo tenga activado.
+    if (!soloA && !dryRun && (!cfg.presuLunes || cfg.paused || !destino)) { res.push({ family: fam, n: ps.length, omitido: !cfg.presuLunes ? 'no activado' : cfg.paused ? 'familia en pausa' : 'sin email' }); continue; }
     const clave = `PRES:${fam}:${semana(hoy)}`;
     if (!soloA && !dryRun && !forzar && await avisos.wasAlertSentToday(clave, 'semana', 'fija')) { res.push({ family: fam, n: ps.length, omitido: 'ya enviado esta semana' }); continue; }
     const m = construirEmail(fam, ps);
-    if (dryRun) { res.push({ family: fam, a: destino, n: ps.length, total: ps.reduce((a, p) => a + p.total, 0), ...m }); continue; }
+    if (dryRun) { res.push({ family: fam, a: destino || '(sin email)', activado: !!cfg.presuLunes, n: ps.length, total: ps.reduce((a, p) => a + p.total, 0), ...m }); continue; }
     const bcc = soloA ? undefined : (process.env.EMAIL_AVISOS || process.env.EMAIL_OFICINA || 'hola@corpprojects.es');
     const ok = await (_enviar || require('./notifications').sendEmail)({ to: destino, bcc: bcc !== destino ? bcc : undefined, subject: soloA ? `[PRUEBA] ${m.subject}` : m.subject, html: m.html, text: m.text });
     if (ok && !soloA) {
