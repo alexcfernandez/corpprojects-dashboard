@@ -28,7 +28,8 @@ function problemas(f, compras = []) {
   // En un abono (total negativo) el signo va al revés: no se mira.
   for (const l of Number(f.total) < 0 ? [] : (f.lines || [])) {
     if (l.deleted || l['line-type'] === 'SECTION') continue;
-    const txt = `${l['item-name'] || ''} ${l['item-description'] || ''}`;
+    // El nombre de la línea (la descripción trae coletillas como «NO SE ADMITEN DEVOLUCIONES»).
+    const txt = String(l['item-name'] || l['item-description'] || '').replace(/no se admiten devoluciones|sin devoluci[oó]n/ig, '');
     const imp = Number(l['total-amount'] != null ? l['total-amount'] : (Number(l.units) || 0) * (Number(l['item-base-price']) || 0));
     if (RESTA.test(txt) && imp > 1) out.push({ tipo: 'signo', que: `La línea «${txt.trim().slice(0, 60)}» suma ${eur(imp)}: un descuento, señal o anticipo debería RESTAR` });
   }

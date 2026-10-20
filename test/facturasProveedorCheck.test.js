@@ -20,5 +20,6 @@ test('no avisa de lo que está bien', () => {
   assert.deepStrictEqual(P.problemas({ supplier: 'OBRAMAT', total: 1939, lines: [{ 'item-name': 'COSTE PALET RETORNABLE', 'total-amount': 10 }] }), []);
   assert.deepStrictEqual(P.problemas({ supplier: 'Weber', total: -2000, lines: [{ 'item-name': 'DESCUENTO', 'total-amount': 10 }] }), []);
   assert.deepStrictEqual(P.problemas({ supplier: 'X-PALAHÍ, SL', total: 575.52, extraReference: '261525', lines: [] }, [{ proveedor: 'Yattabare Makan', numero: '26-15', total: 493 }]), []);
+  assert.deepStrictEqual(P.problemas({ supplier: 'METALCO', total: 35.82, lines: [{ 'item-name': 'ALAMBRE HIERRO GALV.', 'item-description': 'ALAMBRE\n* NO SE ADMITEN DEVOLUCIONES *', 'total-amount': 29.6 }] }), []);
   assert.strictEqual(P.provKey('BRICOLAJE BRICOMAN, S.L.U.'), P.provKey('Obramat'));
 });
