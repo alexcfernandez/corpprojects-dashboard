@@ -46,7 +46,8 @@ function _quien(tarjetas, users, last4) {
   if (!t) return null;
   let u = t.userId ? users.find(x => String(x._id) === String(t.userId)) : null;
   if (!u && t.persona) { const p = nrm(t.persona); const c = users.filter(x => nrm(x.name) === p); if (c.length === 1) u = c[0]; }
-  return { persona: t.persona || null, user: u || null, tel: u ? _tel(u.whatsapp || u.telefono) : null };
+  // Quien está de baja (ficha desactivada) ya no recibe avisos; sus pagos siguen saliendo para la oficina (20/10/2026: Manolo).
+  return { persona: t.persona || null, user: u || null, tel: u && u.active !== false ? _tel(u.whatsapp || u.telefono) : null, deBaja: !!(u && u.active === false) };
 }
 
 // Lo que falta: pagos con tarjeta sin documento, con su persona. `porUsuario` para la página del trabajador.
