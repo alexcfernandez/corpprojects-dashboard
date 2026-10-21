@@ -779,10 +779,16 @@ async function getRentabilidad(obraId) {
   }
 
   const costePresupuestado = Number(obra.costePresupuestado) || 0;
+  // Precio de la jornada (Álex, 21/10/2026): un presupuesto cerrado tiene que salir a ~450 € por persona y día de 9 h
+  // (≈ 50 €/h; cubre la nómina, la SS y los gastos fijos). Jornada = una persona un día en la obra.
+  const jornadas = Object.values(byDate).reduce((s, l) => s + l.length, 0);
+  const precioJornada = Number(process.env.PRECIO_JORNADA) || 450;
   return {
     obra,
     partes: partes.length,
     totalHoras,
+    jornadas, precioJornada,
+    porJornada: jornadas && facturado ? Math.round(facturado / jornadas * 100) / 100 : null,   // lo que se cobra por jornada
     totalCostePersonal,
     totalMateriales,
     totalProveedores,
