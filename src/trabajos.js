@@ -101,6 +101,14 @@ async function crear(peticionId, { userId, fecha, hora = '09:00', urgente = null
   const cliente = p.clienteStel || p.cliente;
   // 1) Incidencia
   let incidencia = p.incidencia ? { ref: p.incidencia, id: p.incidenciaId || null } : null;
+  // Si la incidencia que relacionó la IA es antigua (más de 30 días antes de la petición) o ya está cerrada o
+  // facturada, es otro aviso: se crea una nueva (21/10/2026, Major 75: INC00478 de marzo era de otra filtración).
+  if (incidencia && !p.incidenciaCreadaAt) {
+    const [inc, st] = await Promise.all([S.getAllIncidents().then(l => l.find(i => i['full-reference'] === p.incidencia)), S.getIncidentStateMap()]);
+    const vieja = !inc || new Date(inc.date) < new Date(new Date(p.fecha).getTime() - 30 * 86400000) || /cerrad|factur|rechaz/i.test(st[inc['incident-state-id']] || '');
+    if (vieja) { await db.collection('peticionesGrupo').updateOne({ _id: p._id }, { $set: { incidenciaAnterior: p.incidencia }, $unset: { incidencia: '', incidenciaId: '' } }); p.incidencia = null; incidencia = null; }
+    else incidencia = { ref: p.incidencia, id: String(inc.id) };
+  }
   if (!incidencia || !incidencia.id) {
     if (p.incidencia) {   // ya la había (ref): buscar su id
       const inc = (await S.getAllIncidents()).find(i => i['full-reference'] === p.incidencia);
