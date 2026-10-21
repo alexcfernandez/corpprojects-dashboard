@@ -8,7 +8,8 @@
 //     rechaza, el motivo). Nada se hace con solo abrir el enlace (los antivirus del correo abren los enlaces).
 //   · Al responder: cambia el estado en StelOrder (si la escritura está activada), la obra «En estudio» que tenga ese
 //     presupuesto pasa a activa, y a Álex y a la oficina les llega un WhatsApp.
-//   · No se mandan: los de menos de 3 días (para revisarlos), ni los marcados «No enviar» (colección
+//   · No se mandan: los de menos de 15 días (21/10/2026, Álex: «tiene que ser para los que llevan más tiempo, que
+//     los nuevos no se envíen»; PRESU_LUNES_MIN_DIAS), ni los marcados «No enviar» (colección
 //     presupuestosClienteCfg) — los de medidas estimadas por revisar, los anulados por el cliente…
 //
 //   presupuestosClienteCfg   { _id: estId, ref, noEnviar, motivo, por, at }
@@ -19,7 +20,7 @@ async function getDB() { return require('./db').getDB(); }
 const CFG = 'presupuestosClienteCfg', LOG = 'presupuestosClienteLog';
 const PENDIENTE = 1120641, ACEPTADO = 1120656, RECHAZADO = 1120642;
 const ESTADO_TXT = { 1120641: 'Pendiente', 1120642: 'Rechazado', 1120656: 'Aceptado', 1120650: 'Cerrado' };
-const DIAS_MAX = 180, DIAS_MARGEN = 3;
+const DIAS_MAX = 180, DIAS_MARGEN = Number(process.env.PRESU_LUNES_MIN_DIAS) || 15;
 const eur = n => (Number(n) || 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: 'always' }) + ' €';
 const fd = d => (d ? String(d).slice(0, 10).split('-').reverse().join('/') : '');
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -52,7 +53,7 @@ async function pendientes({ hoy = new Date(), family = null, todos = false, _ste
     const fam = String(c.family || '').trim() || 'Sin familia';
     if (family && fam !== family) continue;
     const x = cfg.get(String(e.id));
-    const motivoFuera = dias > DIAS_MAX ? `más de ${DIAS_MAX} días` : dias < DIAS_MARGEN ? 'recién hecho (margen para revisarlo)' : x && x.noEnviar ? (x.motivo || 'marcado «No enviar»') : null;
+    const motivoFuera = x && x.noEnviar ? (x.motivo || 'marcado «No enviar»') : dias > DIAS_MAX ? `más de ${DIAS_MAX} días` : dias < DIAS_MARGEN ? `nuevo (menos de ${DIAS_MARGEN} días)` : null;
     if (motivoFuera && !todos) continue;
     out.push({ id: String(e.id), ref: e['full-reference'], fecha: String(e.date).slice(0, 10), dias, titulo: (e.title && e.title !== 'null') ? e.title : '', total: Number(e['total-amount']) || 0,
       cliente: c['legal-name'] || c.name || '—', accountId: String(e['account-id']), clientEmail: (c.email || '').trim(), family: fam, noEnviar: !!(x && x.noEnviar), fuera: motivoFuera, emailLeido: Number(e['email-read-count']) || 0 });

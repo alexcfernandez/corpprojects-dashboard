@@ -13,7 +13,7 @@ test('enlace firmado: vale para su presupuesto y no se puede falsificar', () => 
   assert.match(P.url('61518851'), /\/pr\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
 });
 
-test('pendientes: solo Pendiente, entre 3 y 180 días, sin los marcados «No enviar»', async () => {
+test('pendientes: solo Pendiente, entre 15 y 180 días, sin los marcados «No enviar»', async () => {
   const hoy = new Date('2026-10-26T09:15:00Z');
   const est = [
     { id: 1, 'full-reference': 'PRT00800', 'document-state-id': 1120641, date: '2026-07-03', 'account-id': 10, 'total-amount': 1549 },
