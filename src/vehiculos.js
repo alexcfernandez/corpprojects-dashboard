@@ -257,13 +257,15 @@ function _gastosCompra(c) {
   const g0 = { vehiculoId: c.vehiculoId, fecha: c.fecha || (c.createdAt && c.createdAt.toISOString().slice(0, 10)), concepto: [c.proveedor, c.numero].filter(Boolean).join(' nº '), categoria: c.categoria && CATEGORIAS[c.categoria] ? c.categoria : sugerirCategoria(c.proveedor), importe: r2(c.base != null ? c.base : c.total), conFactura: true, compraId: String(c._id), porRevisar: c.estado !== 'revisada' };
   const ls = (c.lineas || []).filter(l => l.vehiculoId);
   const litrosDe = arr => r2(arr.filter(_esLitro).reduce((a, l) => a + (Number(l.cantidad) || 0), 0)) || null;
-  if (!ls.length) return c.vehiculoId ? [{ ...g0, litros: litrosDe(c.lineas || []) }] : [];
+  // Líneas del coche particular de un trabajador: no son de la flota (repostajes.gastosPersonales).
+  const pers = (c.lineas || []).filter(l => !l.vehiculoId && l.personalDe && l.personalDe.userId);
+  if (!ls.length && !pers.length) return c.vehiculoId ? [{ ...g0, litros: litrosDe(c.lineas || []) }] : [];
   const porV = {};
   for (const l of ls) (porV[l.vehiculoId] = porV[l.vehiculoId] || []).push(l);
   const out = Object.entries(porV).map(([vid, arr]) => ({ ...g0, vehiculoId: vid, importe: r2(arr.reduce((a, l) => a + (Number(l.importe) || 0), 0)), litros: litrosDe(arr), concepto: g0.concepto + ` (${arr.length} línea${arr.length > 1 ? 's' : ''})` }));
-  const resto = (c.lineas || []).filter(l => !l.vehiculoId);
+  const resto = (c.lineas || []).filter(l => !l.vehiculoId && !pers.includes(l));
   if (c.vehiculoId && resto.length) {
-    const asignado = out.reduce((a, g) => a + g.importe, 0);
+    const asignado = out.reduce((a, g) => a + g.importe, 0) + pers.reduce((a, l) => a + (Number(l.importe) || 0), 0);
     const imp = r2(g0.importe - asignado);
     if (imp > 0.005) { const ya = out.find(g => g.vehiculoId === c.vehiculoId); if (ya) { ya.importe = r2(ya.importe + imp); ya.litros = r2((ya.litros || 0) + (litrosDe(resto) || 0)) || null; } else out.push({ ...g0, importe: imp, litros: litrosDe(resto), concepto: g0.concepto + ' (resto)' }); }
   }
@@ -403,4 +405,4 @@ async function revisarVencimientos({ dryRun = false, hoy = new Date() } = {}) {
   return { avisos: hechos, dryRun };
 }
 
-module.exports = { costeTotal, CATEGORIAS, TIPOS, FORMAS, MOTIVOS_BAJA, DOCS, sugerirCategoria, limpiar, crear, editar, asignarConductor, darDeBaja, reactivar, subirDocumento, documentos, documento, borrarDocumento, lista, flota, ficha, gastos, resumen, diasHasta, claveAviso, avisosPendientes, revisarVencimientos, matNorm, proximaItv, registrarItv };
+module.exports = { _gastosCompra, costeTotal, CATEGORIAS, TIPOS, FORMAS, MOTIVOS_BAJA, DOCS, sugerirCategoria, limpiar, crear, editar, asignarConductor, darDeBaja, reactivar, subirDocumento, documentos, documento, borrarDocumento, lista, flota, ficha, gastos, resumen, diasHasta, claveAviso, avisosPendientes, revisarVencimientos, matNorm, proximaItv, registrarItv };

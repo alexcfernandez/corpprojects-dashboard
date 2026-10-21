@@ -2676,6 +2676,12 @@ app.post('/api/vehiculos/repostajes/recuperar-correo', requireAuthOficina, async
   req.setTimeout && req.setTimeout(180000);
   try { res.json(await require('./repostajes').recuperarCorreos({ desde: (req.body || {}).desde || '2026-09-01' })); } catch (err) { res.status(400).json({ error: err.message }); }
 });
+app.post('/api/vehiculos/repostajes/:rid/personal', requireAuthOficina, express.json(), async (req, res) => {
+  try { const b = req.body || {}; res.json(await require('./repostajes').aPersonal(req.params.rid, { userId: b.userId }, await _porVeh(req))); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/vehiculos/gastos-personales', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./repostajes').gastosPersonales({ desde: req.query.desde || null })); } catch (err) { res.status(500).json({ error: err.message }); }
+});
 app.post('/api/vehiculos/repostajes/:rid/asignar', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./repostajes').asignar(req.params.rid, (req.body || {}).vehiculoId, await _porVeh(req))); } catch (err) { res.status(400).json({ error: err.message }); }
 });

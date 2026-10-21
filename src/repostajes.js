@@ -189,13 +189,13 @@ async function alConfirmar(compra) {
   const prop = await propuestaLineas(compra);
   let aprendidos = 0;
   for (const p of prop) {
-    const l = (compra.lineas || [])[p.idx]; if (!l || !l.vehiculoId || !p.ticket) continue;
+    const l = (compra.lineas || [])[p.idx]; if (!l || !(l.vehiculoId || (l.personalDe && l.personalDe.userId)) || !p.ticket) continue;
     const t = partesTicket(p.ticket);
     const r = await db.collection('repostajes').findOne({ numTicket: t.num, ...(p.fecha ? { fecha: { $gte: addDias(p.fecha, -2), $lte: addDias(p.fecha, 2) } } : {}) });
-    const set = { compraId: String(compra._id), lineaIdx: p.idx, vehiculoId: l.vehiculoId, importeFactura: l.importe != null ? r2(l.importe) : null, ...(p.litros != null ? { litros: p.litros } : {}) };
+    const set = { compraId: String(compra._id), lineaIdx: p.idx, vehiculoId: l.vehiculoId || null, ...(l.personalDe && l.personalDe.userId ? { destino: 'personal', personalDe: l.personalDe } : {}), importeFactura: l.importe != null ? r2(l.importe) : null, ...(p.litros != null ? { litros: p.litros } : {}) };
     if (r) {
       await db.collection('repostajes').updateOne({ _id: r._id }, { $set: set });
-      if (r.alias) { const u = await db.collection('vehiculos').updateOne({ _id: _oid(l.vehiculoId), aliasEsclat: { $ne: r.alias } }, { $addToSet: { aliasEsclat: r.alias } }); aprendidos += u.modifiedCount; }
+      if (r.alias && l.vehiculoId) { const u = await db.collection('vehiculos').updateOne({ _id: _oid(l.vehiculoId), aliasEsclat: { $ne: r.alias } }, { $addToSet: { aliasEsclat: r.alias } }); aprendidos += u.modifiedCount; }
     } else {
       await db.collection('repostajes').insertOne({ ...set, ticket: t.ticket, planta: t.planta, numTicket: t.num, fecha: p.fecha || compra.fecha, origen: 'factura', creado: new Date() });
     }
@@ -283,10 +283,38 @@ async function aMaquinaria(id, que, por, { quien = null } = {}) {
   await db.collection('repostajes').updateOne({ _id: rid }, { $set: { destino: 'maquinaria', destinoNota: String(que || '').slice(0, 80), asignadoPor: por || '', asignadoAt: new Date(), ...(quien ? { quienReposto: String(quien).slice(0, 60) } : {}) } });
   return { ok: true };
 }
+// Gasolina del coche PARTICULAR de un trabajador (21/10/2026, Álex: «me da que es Jose en su coche personal»): la paga
+// la empresa pero no es de ningún vehículo de la flota; queda apuntada como gasto personal de esa persona.
+async function aPersonal(id, { userId, name } = {}, por) {
+  const db = await getDB();
+  let rid; try { rid = new ObjectId(String(id)); } catch (e) { throw new Error('Repostaje no válido'); }
+  if (!/^[a-f0-9]{24}$/.test(String(userId || ''))) throw new Error('Elige de quién es el coche');
+  const u = await require('./users').getUser(String(userId)).catch(() => null);
+  if (!u) throw new Error('Trabajador no encontrado');
+  await db.collection('repostajes').updateOne({ _id: rid }, { $set: { destino: 'personal', personalDe: { userId: String(u._id), name: u.name }, vehiculoId: null, asignadoPor: por || '', asignadoAt: new Date() } });
+  return { ok: true, de: u.name };
+}
+// Lo pagado por la empresa de coches particulares, por persona (repostajes y compras marcadas «particular de…»).
+async function gastosPersonales({ desde = null } = {}) {
+  const db = await getDB();
+  const d = desde || addDias(hoy(), -365);
+  const [reps, comps] = await Promise.all([
+    db.collection('repostajes').find({ destino: 'personal', fecha: { $gte: d } }).toArray(),
+    db.collection('compras').find({ fecha: { $gte: d }, duplicadoDe: null, $or: [{ 'personalDe.userId': { $exists: true } }, { 'lineas.personalDe.userId': { $exists: true } }] }).project({ proveedor: 1, fecha: 1, total: 1, base: 1, personalDe: 1, lineas: 1, categoria: 1, numero: 1 }).toArray(),
+  ]);
+  const por = {};
+  const add = (p, it) => { if (!p || !p.userId) return; const k = p.userId; (por[k] = por[k] || { userId: k, name: p.name, total: 0, items: [] }); por[k].total = r2(por[k].total + (Number(it.importe) || 0)); por[k].items.push(it); };
+  for (const r of reps) if (!r.compraId) add(r.personalDe, { tipo: 'repostaje', fecha: r.fecha, importe: r.importeFactura != null ? r.importeFactura : r.importe, que: r.establecimiento || 'Repostaje' });
+  for (const c of comps) {
+    if (c.personalDe && c.personalDe.userId) add(c.personalDe, { tipo: 'compra', fecha: c.fecha, importe: c.total, que: `${c.proveedor || ''} ${c.numero || ''}`.trim() });
+    else for (const l of c.lineas || []) if (l.personalDe && l.personalDe.userId) add(l.personalDe, { tipo: 'compra', fecha: c.fecha, importe: Number(l.importe) * 1.21, que: `${c.proveedor || ''} · ${String(l.descripcion || '').slice(0, 50)}` });
+  }
+  return Object.values(por).map(x => ({ ...x, items: x.items.sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))) })).sort((a, b) => b.total - a.total);
+}
 async function pendientes() {
   const db = await getDB();
   const desde = addDias(hoy(), -60);
-  const rs = await db.collection('repostajes').find({ vehiculoId: null, destino: { $ne: 'maquinaria' }, fecha: { $gte: desde } }).sort({ fecha: -1, hora: -1 }).limit(100).toArray();
+  const rs = await db.collection('repostajes').find({ vehiculoId: null, destino: { $nin: ['maquinaria', 'personal'] }, fecha: { $gte: desde } }).sort({ fecha: -1, hora: -1 }).limit(100).toArray();
   return rs.map(r => ({ id: String(r._id), fecha: r.fecha, hora: r.hora || null, importe: r.importe, establecimiento: r.establecimiento || null, alias: r.alias || null, ticket: r.ticket || null, origen: r.origen }));
 }
 
@@ -314,4 +342,4 @@ async function resumenKm(vehiculoId) {
   return out;
 }
 
-module.exports = { aMaquinaria, leerCorreoEsclat, desdeCorreo, recuperarCorreos, asignar, pendientes, partesTicket, leerLinea, esCombustible, vehiculoPorAlias, guardarCapturas, apuntarKm, registrar, paraTrabajador, propuestaLineas, alConfirmar, resumenKm };
+module.exports = { aPersonal, gastosPersonales, aMaquinaria, leerCorreoEsclat, desdeCorreo, recuperarCorreos, asignar, pendientes, partesTicket, leerLinea, esCombustible, vehiculoPorAlias, guardarCapturas, apuntarKm, registrar, paraTrabajador, propuestaLineas, alConfirmar, resumenKm };

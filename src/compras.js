@@ -40,6 +40,8 @@ function limpiarPara(p) {
   if ((p.t === 'herramientas' || p.t === 'ropa') && p.workerId) { o.workerId = String(p.workerId).slice(0, 40); o.workerName = String(p.workerName || '').trim().slice(0, 80); }
   return o;
 }
+// Coche particular de un trabajador (gasolina, ITV…): lo paga la empresa pero es personal suyo.
+function limpiarPersonal(p) { if (!p || !/^[a-f0-9]{24}$/.test(String(p.userId || ''))) return null; return { userId: String(p.userId), name: String(p.name || '').trim().slice(0, 80) }; }
 function limpiarWorker(w) { if (!w || !w.id) return null; return { id: String(w.id), name: String(w.name || '').trim().slice(0, 80) }; }
 
 async function getDB() { return require('./db').getDB(); }
@@ -182,7 +184,7 @@ function aplicarLectura(doc, d) {
   const lineas = (Array.isArray(d.lineas) ? d.lineas : []).slice(0, 80).map(l => ({
     descripcion: String(l.descripcion || '').trim().slice(0, 200), cantidad: num(l.cantidad), unidad: String(l.unidad || '').trim().slice(0, 12) || null,
     precio: numN(l.precio), dto: numN(l.dto) || null, importe: neg(numN(l.importe != null ? l.importe : _calcImporte(l))), talla: String(l.talla || '').trim().slice(0, 12) || null,
-    albaran: String(l.albaran || '').trim().slice(0, 30) || null, obraTexto: String(l.obraTexto || '').trim().slice(0, 120) || null,
+    albaran: String(l.albaran || '').trim().slice(0, 30) || null, personalDe: limpiarPersonal(l.personalDe), obraTexto: String(l.obraTexto || '').trim().slice(0, 120) || null,
   })).filter(l => l.descripcion);
   Object.assign(doc, {
     tipo, proveedor: String(d.proveedor || '').trim().slice(0, 120) || null, proveedorNorm: norm(d.proveedor) || null,
@@ -513,6 +515,7 @@ async function editar(id, data, por) {
   if ('clienteNombre' in data) set.clienteNombre = String(data.clienteNombre || '').trim().slice(0, 160) || null;
   if ('destino' in data) { if (!DESTINOS.includes(data.destino)) throw new Error('Destino no válido'); set.destino = data.destino; }
   if ('paraWorker' in data) set.paraWorker = limpiarWorker(data.paraWorker);
+  if ('personalDe' in data) set.personalDe = limpiarPersonal(data.personalDe);
   // Vehículo de la flota (/vehiculos): sus gastos se ven en su ficha.
   if ('vehiculoId' in data) {
     set.vehiculoId = null; set.vehiculoNombre = null;
@@ -693,7 +696,7 @@ async function revisar(id, por, { enviarStel = true, herramientas = null, almace
   if (dest === 'lineas' && !(c.lineas || []).length) throw new Error('No tiene líneas: pon las líneas o elige otro destino');
   if (dest === 'general' && !c.categoria) throw new Error('Pon la categoría del gasto general');
   if (dest === 'cliente' && !c.clienteNombre) throw new Error('Elige el cliente');
-  if (dest === 'vehiculo' && !c.vehiculoId && !(c.lineas || []).some(l => l.vehiculoId)) throw new Error('Elige el vehículo (o el de cada línea)');
+  if (dest === 'vehiculo' && !c.vehiculoId && !(c.personalDe && c.personalDe.userId) && !(c.lineas || []).some(l => l.vehiculoId || (l.personalDe && l.personalDe.userId))) throw new Error('Elige el vehículo (o el de cada línea)');
   if (dest === 'almacen' && !(Array.isArray(almacen) && almacen.length) && !(c.almacenCreado || []).length) throw new Error('Marca qué líneas entran en el almacén');
   const set = { estado: 'revisada', revisadaPor: por || '', revisadaAt: new Date(), updatedAt: new Date() };
   // Factura por líneas: lo de herramientas/EPIs se da de alta (a quien diga cada línea) y lo de almacén entra al almacén.
@@ -741,7 +744,7 @@ async function revisar(id, por, { enviarStel = true, herramientas = null, almace
   // CINC: sus comisiones mal cobradas quedan apuntadas en Reclamaciones (en segundo plano: tarda unos segundos).
   if (/\bcinc\b/i.test(c.proveedor || '') && c.tipo !== 'devolucion') require('./reclamaciones').desdeCinc(String(c._id), por).catch(e => console.warn('[Compras] reclamación CINC:', e.message));
   // Gasolinera: cada tiquet queda unido a su línea y vehículo (y se aprende el nombre que tenía en la app Esclat).
-  if (dest === 'vehiculo' && (c.lineas || []).some(l => l.vehiculoId)) { try { await require('./repostajes').alConfirmar(c); } catch (e) { console.warn('[Compras] repostajes:', e.message); } }
+  if (dest === 'vehiculo' && (c.lineas || []).some(l => l.vehiculoId || (l.personalDe && l.personalDe.userId))) { try { await require('./repostajes').alConfirmar(c); } catch (e) { console.warn('[Compras] repostajes:', e.message); } }
   // Cierra el aviso al trabajador con lo que ha pasado (push, sin importes)
   try {
     if (avisar && c.subidaPor && c.subidaPor.kind === 'worker') await require('./push').sendToWorker(c.subidaPor.userId, { title: '✅ Compra revisada', body: `${TIPO_TXT[c.tipo]}${c.proveedor ? ' de ' + c.proveedor : ''} — ${c.obraRef || DESTINO_TXT[dest]}${(set.activosCreados || []).length ? ' · ' + set.activosCreados.length + (dest === 'ropa' ? ' prenda(s)' : ' herramienta(s)') + ' a tu nombre' : ''}.`, url: '/compra', tag: 'compra-revisada' });
