@@ -803,7 +803,8 @@ function mostrarBienvenida(nombre){const ov=document.createElement('div');ov.sty
 // la lista de nombres del login solo se pinta si de verdad hace falta (antes se veía un salto).
 (async function(){
   const t=new URLSearchParams(location.search).get('t');
-  if(t){const ok=await magicLogin(t);if(ok){loadWorkers();return;}}
+  const ir=new URLSearchParams(location.search).get('ir');
+  if(t){const ok=await magicLogin(t);if(ok){if(ir==='parte'){location.replace('/parte');return;}loadWorkers();return;}}
   const ok=await tryRestore();
   if(ok)loadWorkers();else{await loadWorkers();showPage('login');}
   sincronizar();})();

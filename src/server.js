@@ -2381,6 +2381,33 @@ app.post('/api/peticiones/importar', requireAuthOficina, express.text({ limit: '
     res.json({ ...imp, analisis: an });
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
+// ── Trabajos: de la petición al operario (trabajos.js) ──
+app.get('/api/trabajos/propuesta/:id', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./trabajos').propuesta(req.params.id)); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/trabajos', requireAuthOficina, express.json(), async (req, res) => {
+  try { const b = req.body || {}; const q = (await _quienPush(req)) || {}; res.json(await require('./trabajos').crear(b.peticionId, { userId: b.userId, fecha: b.fecha, hora: b.hora, urgente: b.urgente, nota: b.nota, clienteId: b.clienteId }, q.name || req.user?.name || 'Oficina')); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/trabajos/clientes', requireAuthOficina, async (req, res) => {
+  try {
+    const q = String(req.query.q || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    const { clientMap } = await getClients();
+    const l = Object.entries(clientMap).map(([id, c]) => ({ id, nombre: c.name, familia: c.family })).filter(c => !q || c.nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(q)).slice(0, 20);
+    res.json({ lista: l });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+// Foto que mandaron al grupo, para el operario que tiene el trabajo (el token va en ?t= porque es un <img>).
+app.get('/api/trabajos/foto/:fotoId', async (req, res) => {
+  try {
+    const w = await require('./partes').verifyWorkerToken(String(req.query.t || ''));
+    if (!w) return res.status(401).send('Sesión caducada');
+    const f = await require('./trabajos').fotoParaOperario(req.params.fotoId, w.workerId);
+    if (!f || !f.data) return res.status(404).send('No encontrada');
+    res.setHeader('Content-Type', f.mimetype || 'image/jpeg'); res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.send(Buffer.from(f.data.buffer || f.data));
+  } catch (err) { res.status(500).send('Error'); }
+});
 app.post('/api/peticiones/resumen', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./peticionesGrupo').resumenDiario({ enviar: req.query.enviar === '1' })); } catch (err) { res.status(500).json({ error: err.message }); }
 });

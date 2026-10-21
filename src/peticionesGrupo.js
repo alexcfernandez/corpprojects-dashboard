@@ -279,8 +279,8 @@ async function crearIncidencia(id, por = '') {
   const msgs = (p.mensajes || []).slice(-6).map(m => `${fmt(m.fecha)} ${m.quien}: ${corto(m.texto, 300)}`).join('\n');
   const descripcion = [`${p.resumen}${p.direccion ? ' (' + p.direccion + ')' : ''}`, p.contacto ? `Contacto: ${p.contacto}` : '', `Grupo «${p.grupo || 'WhatsApp'}»:`, msgs].filter(Boolean).join('\n').slice(0, 3800);
   const r = await require('./stelorder').crearIncidencia({ accId: p.clienteId, descripcion, tipoId: p.tipo === 'presupuesto' ? TIPO_INC.presupuesto : TIPO_INC.otro, requestedBy: por || 'Peticiones del grupo' });
-  await db.collection(COL).updateOne({ _id: p._id }, { $set: { incidencia: r.ref, situacion: 'ya_hay_incidencia', incidenciaCreadaPor: por, incidenciaCreadaAt: new Date() } });
-  return { ok: true, ref: r.ref };
+  await db.collection(COL).updateOne({ _id: p._id }, { $set: { incidencia: r.ref, incidenciaId: r.id || null, situacion: 'ya_hay_incidencia', incidenciaCreadaPor: por, incidenciaCreadaAt: new Date() } });
+  return { ok: true, ref: r.ref, id: r.id || null };
 }
 
 // ── Resumen diario por correo (20:30): lo que ha pasado hoy en los grupos y lo que sigue abierto ──

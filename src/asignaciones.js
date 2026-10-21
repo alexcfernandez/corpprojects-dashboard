@@ -84,6 +84,8 @@ async function attachAssignments(list) {
     p.doneAt           = a ? (a.doneAt || null) : null;
     p.parteId          = a ? (a.parteId || null) : null;
     p.lastWorkerStatus = a ? (a.lastWorkerStatus || null) : null; // 'continua'|'parcial'|'material'
+    // Cita y datos del trabajo creado desde una petición (trabajos.js)
+    p.cita = a && a.fecha ? { fecha: a.fecha, hora: a.hora || '', nota: a.nota || '', direccion: a.direccion || '', contacto: a.contacto || '', resumen: a.resumen || '', fotoIds: a.fotoIds || [] } : null;
   });
   return list;
 }

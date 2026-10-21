@@ -1517,7 +1517,9 @@ async function cargarPeticiones(){
       <div style="font-size:12.5px;color:var(--text2);margin-top:2px;line-height:1.5">${e(p.resumen)}${p.contacto?' · '+e(p.contacto):''}</div>
       <div style="font-size:12.5px;margin-top:2px"><span style="color:${p.situacion==='nuevo'?'var(--danger,#d33)':'var(--text3)'}">${e(sit(p))}</span> → ${e(p.queHacer)}</div>
       <details style="margin-top:4px"><summary style="cursor:pointer;font-size:12px;color:var(--text3)">Mensajes (${(p.mensajes||[]).length})</summary>${(p.mensajes||[]).map(m=>`<div style="font-size:12px;color:var(--text2);margin:3px 0;white-space:pre-line"><b>${e(m.quien)}</b> ${e(new Date(m.fecha).toLocaleString('es-ES',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}))}: ${e(m.texto)}</div>`).join('')}</details>
-      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">${!p.incidencia&&p.clienteId&&(p.tipo==='presupuesto'||p.tipo==='trabajo'||p.tipo==='queja')?`<button class="btn btn-sm btn-primary" onclick="petIncidencia('${p.id}',this)">Crear incidencia</button>`:''}<button class="btn btn-sm" onclick="petMarcar('${p.id}','hecho',this)">Hecho</button><button class="btn btn-sm" onclick="petMarcar('${p.id}','descartado',this)">Descartar</button></div>
+      ${p.pedido?`<div style="font-size:12.5px;margin-top:4px;color:var(--green,#2f7d4f)">🔧 ${e(p.pedido.ref)}${p.asignado?` · ${e(p.asignado.nombre)} · ${e(new Date(p.asignado.fecha+'T12:00:00').toLocaleDateString('es-ES',{weekday:'short',day:'2-digit',month:'2-digit'}))} ${e(p.asignado.hora||'')}`:''}${p.incidencia?` · ${e(p.incidencia)}`:''}</div>`:''}
+      <div id="trab-${p.id}"></div>
+      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">${!p.pedido&&(p.tipo==='presupuesto'||p.tipo==='trabajo'||p.tipo==='queja')?`<button class="btn btn-sm btn-primary" onclick="trabAbrir('${p.id}',this)">Crear trabajo</button>`:''}${!p.incidencia&&!p.pedido&&p.clienteId&&(p.tipo==='presupuesto'||p.tipo==='trabajo'||p.tipo==='queja')?`<button class="btn btn-sm" onclick="petIncidencia('${p.id}',this)">Solo incidencia</button>`:''}<button class="btn btn-sm" onclick="petMarcar('${p.id}','hecho',this)">Hecho</button><button class="btn btn-sm" onclick="petMarcar('${p.id}','descartado',this)">Descartar</button></div>
     </div>`;
   const nuevos=l.filter(p=>p.situacion==='nuevo').length;
   el.innerHTML=`<div class="card" style="margin:0 0 14px">
@@ -1525,6 +1527,44 @@ async function cargarPeticiones(){
     ${l.slice(0,8).map(fila).join('')}
     ${l.length>8?`<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;color:var(--text3)">Ver las otras ${l.length-8}</summary>${l.slice(8).map(fila).join('')}</details>`:''}
   </div>`;
+}
+// «Crear trabajo»: Corpy propone operario y día; la oficina confirma o cambia (trabajos.js). 21/10/2026.
+async function trabAbrir(id,b){
+  const el=document.getElementById('trab-'+id); if(!el) return;
+  if(el.innerHTML){ el.innerHTML=''; return; }
+  b.disabled=true; let r;
+  try{ r=await apiCall(`/api/trabajos/propuesta/${id}`); if(r&&r.error) throw new Error(r.error); }catch(e){ alert(e.message); b.disabled=false; return; }
+  b.disabled=false;
+  const e2=s=>String(s==null?'':s).replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+  const pr=r.propuesta||{};
+  const opts=(r.operarios||[]).map(o=>`<option value="${o.id}" ${o.id===pr.userId?'selected':''} ${o.ausente?'disabled':''}>${e2(o.nombre)}${o.ausente?' — '+e2(o.ausente):''}${o.conoce?` · ha ido ${o.conoce} d`:''}${o.abiertos?` · ${o.abiertos} abiertos`:''}</option>`).join('');
+  el.innerHTML=`<div style="margin-top:8px;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--bg3,rgba(0,0,0,.03))">
+    <div style="font-size:12.5px;margin-bottom:8px">${pr.nombre?`🤖 Corpy propone <b>${e2(pr.nombre)}</b> el <b>${e2(pr.fechaTxt)} a las ${e2(pr.hora)}</b> <span style="color:var(--text3)">(${e2(pr.motivo)})</span>`:'🤖 No encuentro a nadie libre: elige a mano.'}</div>
+    ${r.peticion.clienteId?'':`<label style="font-size:12px;color:var(--text3)">Cliente de StelOrder (la comunidad)</label><input id="trab-cq-${id}" list="trab-cl-${id}" placeholder="Escribe la calle o el nombre…" oninput="trabClientes('${id}',this.value)" style="width:100%;margin:2px 0 8px;padding:7px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text)"><datalist id="trab-cl-${id}"></datalist>`}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+      <label style="font-size:12px;color:var(--text3)">Operario<br><select id="trab-u-${id}" style="padding:7px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text)">${opts}</select></label>
+      <label style="font-size:12px;color:var(--text3)">Día<br><input type="date" id="trab-f-${id}" value="${e2(pr.fecha||'')}" style="padding:6px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text)"></label>
+      <label style="font-size:12px;color:var(--text3)">Hora<br><input type="time" id="trab-h-${id}" value="${e2(pr.hora||'09:00')}" style="padding:6px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text)"></label>
+      <label style="font-size:12px;color:var(--text3);display:flex;gap:5px;align-items:center"><input type="checkbox" id="trab-urg-${id}" ${r.peticion.urgente?'checked':''}> Urgente</label>
+    </div>
+    <input id="trab-n-${id}" placeholder="Nota para el operario (opcional): llaves, a quién llamar antes…" style="width:100%;margin-top:8px;padding:7px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text)">
+    <div style="display:flex;gap:6px;margin-top:8px"><button class="btn btn-sm btn-primary" onclick="trabCrear('${id}',this)">Crear y avisar</button><button class="btn btn-sm" onclick="document.getElementById('trab-${id}').innerHTML=''">Cancelar</button></div>
+    <div style="font-size:11.5px;color:var(--text3);margin-top:6px">Se crea la incidencia y el pedido en StelOrder, se apunta en la Planificación y al operario le llega un WhatsApp con el trabajo.</div>
+  </div>`;
+}
+let _trabCl={};
+async function trabClientes(id,q){ if(String(q).length<3) return; try{ const r=await apiCall(`/api/trabajos/clientes?q=${encodeURIComponent(q)}`); const dl=document.getElementById('trab-cl-'+id); _trabCl={}; (r.lista||[]).forEach(c=>_trabCl[c.nombre]=c.id); if(dl) dl.innerHTML=(r.lista||[]).map(c=>`<option value="${String(c.nombre).replace(/"/g,'&quot;')}">${c.familia||''}</option>`).join(''); }catch(e){} }
+async function trabCrear(id,b){
+  const v=k=>(document.getElementById(`trab-${k}-${id}`)||{}).value;
+  const cq=v('cq'); const clienteId=cq?_trabCl[cq]:null;
+  if(cq&&!clienteId){ alert('Elige el cliente de la lista'); return; }
+  b.disabled=true; b.textContent='Creando…';
+  try{
+    const r=await apiCall('/api/trabajos','POST',{peticionId:id,userId:v('u'),fecha:v('f'),hora:v('h'),urgente:!!(document.getElementById('trab-urg-'+id)||{}).checked,nota:v('n'),clienteId});
+    if(r&&r.error) throw new Error(r.error);
+    alert(`Hecho: ${r.pedido} para ${r.operario}, ${r.fechaTxt} a las ${r.hora}.${r.avisado?' Ya le ha llegado el WhatsApp.':' Ojo: no se pudo avisar por WhatsApp.'}`);
+    cargarPeticiones();
+  }catch(e){ alert(e.message); b.disabled=false; b.textContent='Crear y avisar'; }
 }
 async function petIncidencia(id,b){ b.disabled=true; const t=b.textContent; b.textContent='Creando…'; try{ const r=await apiCall(`/api/peticiones/${id}/incidencia`,'POST'); if(r&&r.error) throw new Error(r.error); b.textContent=r.ref||'Creada'; setTimeout(cargarPeticiones,800); }catch(e){ alert(e.message); b.disabled=false; b.textContent=t; } }
 async function petMarcar(id,estado,b){ b.disabled=true; try{ const r=await apiCall(`/api/peticiones/${id}`,'POST',{estado}); if(r&&r.error) throw new Error(r.error); cargarPeticiones(); }catch(e){ alert(e.message); b.disabled=false; } }
