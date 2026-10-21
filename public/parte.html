@@ -314,6 +314,19 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <input type="text" id="f-notas" placeholder="Cualquier observación...">
       </div>
 
+      <!-- Firma opcional de quien abrió (fase 2, 21/10/2026): plegada; si no hay nadie, se deja cerrada. -->
+      <details class="field" id="firma-box" style="border:1.5px solid var(--border2);border-radius:var(--rs,10px);padding:10px 12px">
+        <summary style="cursor:pointer;font-weight:600;font-size:14px">✍️ Firma del cliente <span style="color:var(--text3);font-weight:400">(si hay alguien — opcional)</span></summary>
+        <div style="margin-top:10px">
+          <input type="text" id="f-firma-nombre" placeholder="Nombre de quien firma (vecino, presidente…)" style="margin-bottom:8px">
+          <canvas id="f-firma" width="700" height="260" style="width:100%;height:170px;background:#fff;border:1px solid var(--border2);border-radius:8px;touch-action:none;display:block"></canvas>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+            <span style="font-size:12px;color:var(--text3)">Firma con el dedo dentro del recuadro</span>
+            <button type="button" onclick="borrarFirma()" style="background:none;border:1px solid var(--border2);border-radius:8px;padding:6px 12px;color:var(--text2);font-size:13px;cursor:pointer">Borrar</button>
+          </div>
+        </div>
+      </details>
+
       <div id="gps-status" style="font-size:12px;color:var(--text3);margin-bottom:14px;display:flex;align-items:center;gap:6px">
         <span id="gps-icon">📍</span> <span id="gps-text">Obteniendo ubicación...</span>
       </div>
@@ -423,13 +436,14 @@ async function enterApp(token, info) {
 }
 
 // ── OBRAS (elegir la obra a la que va el parte) ──
-let obraSel = null, obraPick = null; // obraSel = {id, ref, clientName}
+let obraSel = null, obraPick = null, obrasCampo = []; // obraSel = {id, ref, clientName}
 async function loadObras(){
   try{
     const r = await fetch('/api/campo/obras', { headers:{'Authorization':`Bearer ${workerToken}`} });
     if(!r.ok) return;
     const obras = await r.json();
     if(!Array.isArray(obras) || !obras.length) return;
+    obrasCampo = obras;
     // Selector único de obra: se busca por nombre, calle o mote.
     obraPick = CPObra.crear(document.getElementById('f-obra-pick'), { obras, vacio:'— Sin obra / escribir cliente —', placeholder:'Elegir obra…', titulo:'¿De qué obra es el parte?', onChange:onObraChange });
     document.getElementById('f-obra-field').style.display='';
@@ -655,6 +669,8 @@ async function finalizarPedido(i) {
     const fh = document.getElementById('f-horas');
     if (fc) fc.value = p.client || '';
     if (fh) fh.value = horasReales;
+    // La obra del trabajo, si se sabe (trabajos.js → p.cita.obraId)
+    if (p.cita && p.cita.obraId && obraPick) { const o = obrasCampo.find(x => String(x.id) === String(p.cita.obraId)); if (o) { obraPick.set(o.id); onObraChange(o); } }
     try { buscarExpediente(); } catch(e) {}
 
     await loadMisPedidos();   // repinta la lista
@@ -964,6 +980,7 @@ async function submitParte() {
       workOrderId:      pedidoVinculado ? String(pedidoVinculado.id) : null,
       workOrderNumber:  pedidoVinculado ? pedidoVinculado.number : null,
       gpsLat: gpsData.lat, gpsLng: gpsData.lng, gpsAccuracy: gpsData.accuracy,
+      firma: firmaHecha ? { nombre: (document.getElementById('f-firma-nombre')||{}).value || '', png: document.getElementById('f-firma').toDataURL('image/png') } : null,
     };
     formData.append('data', JSON.stringify(parteData));
     photoStore.work.forEach((f,i)    => formData.append(`foto_trabajo_${i}`, f, `trabajo_${i}.jpg`));
@@ -1033,6 +1050,19 @@ async function sincronizarPresencia(date, clientName, horas) {
   }
 }
 
+// ── FIRMA OPCIONAL (canvas, con el dedo o el ratón) ──────────────
+let firmaHecha = false;
+(function(){
+  const c = document.getElementById('f-firma'); if (!c) return;
+  const ctx = c.getContext('2d'); ctx.lineWidth = 3.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111';
+  let dib = false;
+  const pos = e => { const r = c.getBoundingClientRect(); return { x: (e.clientX - r.left) * c.width / r.width, y: (e.clientY - r.top) * c.height / r.height }; };
+  c.addEventListener('pointerdown', e => { dib = true; c.setPointerCapture(e.pointerId); const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); e.preventDefault(); });
+  c.addEventListener('pointermove', e => { if (!dib) return; const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); firmaHecha = true; e.preventDefault(); });
+  ['pointerup','pointercancel','pointerleave'].forEach(t => c.addEventListener(t, () => { dib = false; }));
+})();
+function borrarFirma() { const c = document.getElementById('f-firma'); if (c) c.getContext('2d').clearRect(0, 0, c.width, c.height); firmaHecha = false; }
+
 // ── HELPERS ───────────────────────────────────────────────────────
 function resetForm() {
   document.getElementById('f-date').value = new Date().toISOString().slice(0,10);
@@ -1047,6 +1077,7 @@ function resetForm() {
   ['work-count','albaran-count'].forEach(id => { const e=document.getElementById(id); if(e) e.textContent=`(0/${id==='work-count'?10:5})`; });
   equipoSeleccionado=[]; externosLibres=[];
   pedidoVinculado = null;
+  borrarFirma(); const fn = document.getElementById('f-firma-nombre'); if (fn) fn.value = ''; const fb = document.getElementById('firma-box'); if (fb) fb.open = false;
   const vb = document.getElementById('vinculo-pedido'); if (vb) { vb.style.display='none'; vb.innerHTML=''; }
   estadoTrabajoSel='completado'; tipoJornadaSel='NORMAL';
   asignacionSeleccionada=null; expedienteActivo=null;

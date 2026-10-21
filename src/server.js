@@ -4100,7 +4100,28 @@ app.post('/api/partes', uploadMemory.any(), async (req, res) => {
       }
     } catch (e) { /* ante duda, no bloquear el parte */ }
 
+    // Fase 2 (parteExtra.js): obra del parte si no la eligió, material valorado y firma opcional.
+    const PX = require('./parteExtra');
+    try {
+      const ob = await PX.obra({ obraId: bodyData.obraId, workOrderId: bodyData.workOrderId, clientName: bodyData.clientName });
+      if (ob.obraId && !bodyData.obraId) {
+        bodyData.obraId = ob.obraId;
+        try { const o = await (await require('./db').getDB()).collection('obras').findOne({ _id: new (require('mongodb').ObjectId)(ob.obraId) }, { projection: { reference: 1 } }); bodyData.obraRef = o ? o.reference : bodyData.obraRef; } catch (e) {}
+      }
+    } catch (e) { console.warn('[Partes] obra:', e.message); }
+    try { bodyData.materiales = await PX.valorarMateriales(bodyData.materiales); } catch (e) { console.warn('[Partes] precios:', e.message); }
+    bodyData.firma = PX.firma(bodyData.firma);
+
     const parte = await partes.createParte(bodyData, workerInfo);
+
+    // Albaranes del parte → Compras, con su obra (la IA los lee como cualquier compra por foto)
+    try {
+      const fotosAlb = (req.files || []).filter(f => f.fieldname.startsWith('foto_albaran'));
+      if (fotosAlb.length) {
+        const ids = await PX.albaranesACompras(parte, fotosAlb);
+        if (ids.length) await (await require('./db').getDB()).collection('partes').updateOne({ _id: parte._id }, { $set: { albaranCompras: ids } });
+      }
+    } catch (e) { console.warn('[Partes] albaranes:', e.message); }
 
     // Cierre del ciclo pedido→parte (3C)
     if (bodyData.workOrderId) {

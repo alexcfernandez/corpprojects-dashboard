@@ -85,7 +85,7 @@ async function attachAssignments(list) {
     p.parteId          = a ? (a.parteId || null) : null;
     p.lastWorkerStatus = a ? (a.lastWorkerStatus || null) : null; // 'continua'|'parcial'|'material'
     // Cita y datos del trabajo creado desde una petición (trabajos.js)
-    p.cita = a && a.fecha ? { fecha: a.fecha, hora: a.hora || '', nota: a.nota || '', direccion: a.direccion || '', contacto: a.contacto || '', resumen: a.resumen || '', fotoIds: a.fotoIds || [] } : null;
+    p.cita = a && a.fecha ? { fecha: a.fecha, hora: a.hora || '', nota: a.nota || '', direccion: a.direccion || '', contacto: a.contacto || '', resumen: a.resumen || '', fotoIds: a.fotoIds || [], obraId: a.obraId || null } : null;
   });
   return list;
 }

@@ -126,7 +126,8 @@ async function crear(peticionId, { userId, fecha, hora = '09:00', urgente = null
   // 3) Asignación con día y hora
   const urg = urgente == null ? !!p.urgente : !!urgente;
   await require('./asignaciones').setAssignment(ped.id, String(u._id), por || null, urg ? 'urgent' : 'normal');
-  await db.collection('workOrderAssignments').updateOne({ workOrderId: String(ped.id) }, { $set: { fecha, hora, nota: String(nota || '').slice(0, 300), direccion: p.direccion || null, contacto: p.contacto || null, cliente, resumen: p.resumen, peticionId: String(p._id), incidenciaRef: incidencia.ref, pedidoRef: ped.ref, fotoIds: p.fotoIds || [], tipo: p.tipo } });
+  let obraId = null; try { obraId = (await require('./parteExtra').obra({ clientName: cliente }, { _db: db })).obraId; } catch (e) {}
+  await db.collection('workOrderAssignments').updateOne({ workOrderId: String(ped.id) }, { $set: { obraId, fecha, hora, nota: String(nota || '').slice(0, 300), direccion: p.direccion || null, contacto: p.contacto || null, cliente, resumen: p.resumen, peticionId: String(p._id), incidenciaRef: incidencia.ref, pedidoRef: ped.ref, fotoIds: p.fotoIds || [], tipo: p.tipo } });
   // 4) Planificación (y Google Calendar)
   try { await require('./planning').createPlanning({ date: fecha, workerId: String(u._id), workerName: u.name, tipo: p.tipo === 'presupuesto' ? 'visita' : 'trabajo', client: cliente, address: p.direccion || '', workOrderId: String(ped.id), workOrderNumber: ped.ref, nota: p.resumen, horaInicio: hora }); }
   catch (e) { console.warn('[Trabajos] planificación:', e.message); }

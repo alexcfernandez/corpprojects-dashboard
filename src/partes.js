@@ -57,6 +57,7 @@ async function createParte(data, workerInfo) {
     expedienteId: data.expedienteId || null,
     workOrderId:     data.workOrderId || null,      // pedido de trabajo vinculado (3C)
     workOrderNumber: data.workOrderNumber || null,
+    firma:        data.firma || null,              // firma opcional de quien abrió (parteExtra.firma)
     generadoAuto: false,
     _meta: {
       submittedAt:  new Date(),

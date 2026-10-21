@@ -179,12 +179,12 @@ function getObras(entry) {
 
 // Añade una obra a la lista del día. Si ese cliente ya está ese día (dos partes
 // del mismo sitio), suma las horas en la misma línea en vez de duplicarla.
-function addObra(list, clientName, horas) {
+function addObra(list, clientName, horas, obraId = null) {
   const out = (Array.isArray(list) ? list : []).map(o => ({ ...o }));
   const key = normName(clientName);
-  const found = out.find(o => normName(o.clientName) === key);
-  if (found) found.horas = parseFloat(found.horas || 0) + parseFloat(horas || 0);
-  else       out.push({ clientName: clientName || 'Sin cliente', horas: parseFloat(horas || 0) });
+  const found = out.find(o => (obraId && o.obraId && String(o.obraId) === String(obraId)) || normName(o.clientName) === key);
+  if (found) { found.horas = parseFloat(found.horas || 0) + parseFloat(horas || 0); if (obraId && !found.obraId) found.obraId = String(obraId); }
+  else       out.push({ clientName: clientName || 'Sin cliente', horas: parseFloat(horas || 0), ...(obraId ? { obraId: String(obraId) } : {}) });
   return out;
 }
 
@@ -200,7 +200,8 @@ async function syncPresenceFromParte(parte) {
   const existing   = await db.collection('attendance').findOne({ workerId, date: parte.date });
   const equipoParte = Array.isArray(parte.equipo) ? parte.equipo : [];
   const parteHoras  = parseFloat(parte.horas || 0);
-  const parteCli    = parte.clientName || 'Sin cliente';
+  // Con obra: se apunta con el nombre de la obra y su id, para que cuente en su rentabilidad (21/10/2026).
+  const parteCli    = (parte.obraId && parte.obraRef) || parte.clientName || 'Sin cliente';
 
   // Conflicto: el admin lo marcó en un estado que no es obra. No lo pisamos.
   if (existing && existing.estado && existing.estado !== 'obra') {
@@ -212,7 +213,7 @@ async function syncPresenceFromParte(parte) {
   }
 
   // Día de obra (o nuevo): acumulamos la obra del parte en la lista del día.
-  const obras      = addObra(getObras(existing), parteCli, parteHoras);
+  const obras      = addObra(getObras(existing), parteCli, parteHoras, parte.obraId || null);
   const totalHoras = obras.reduce((s, o) => s + parseFloat(o.horas || 0), 0);
 
   const entry = {

@@ -400,10 +400,13 @@
                 <tbody>${p.materiales.map(m=>`<tr>
                   <td>${m.nombre||'—'}</td>
                   <td style="text-align:right">${m.cantidad||0}</td>
-                  <td style="text-align:right">${m.precio||0}€</td>
+                  <td style="text-align:right" title="${m.precioFuente?'Precio de '+String(m.precioFuente).replace(/"/g,''):'Sin precio'}">${m.precio||0}€${m.precioFuente&&m.precioFuente!=='operario'?' <span style="color:var(--text3)">*</span>':''}</td>
                   <td style="text-align:right">${((m.cantidad||0)*(m.precio||0)).toFixed(2)}€</td>
                 </tr>`).join('')}</tbody>
-              </table>` : ''}
+              </table>
+              ${p.materiales.some(m=>m.precioFuente&&m.precioFuente!=='operario')?'<div style="font-size:11px;color:var(--text3);margin-top:4px">* Precio puesto solo con el almacén o la última compra (pasa el ratón para ver de dónde)</div>':''}` : ''}
+            ${p.firma && p.firma.png ? `<div style="margin-top:10px;font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:600;margin-bottom:4px">✍️ Firma${p.firma.nombre?' de '+p.firma.nombre:''}</div><img src="${p.firma.png}" alt="Firma" style="max-width:260px;width:100%;background:#fff;border:1px solid var(--border);border-radius:8px">` : ''}
+            ${p.albaranCompras?.length ? `<div style="margin-top:8px;font-size:12px;color:var(--text2)">🧾 ${p.albaranCompras.length} albarán${p.albaranCompras.length>1?'es':''} enviado${p.albaranCompras.length>1?'s':''} a Compras con la obra</div>` : ''}
           </div>
 
           ${(p._meta?.fotosTrabajo?.length || p._meta?.fotosAlbaran?.length) ? `
