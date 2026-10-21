@@ -32,6 +32,7 @@ async function getWorkers() {
       .filter(u => u.role !== 'client' && ['tecnico', 'encargado', 'oficina'].includes(normalizeRole(u.role)))
       .map(u => ({
         id:        String(u._id),
+        noFicha:   !!u.noFicha,
         name:      u.name,
         color:     u.color     || '#4d9cf8',
         costeHora: u.costeHora || CONFIG.getRateForWorker(u),

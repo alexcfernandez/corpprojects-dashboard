@@ -42,7 +42,7 @@ function whatsappDe(worker) {
 async function pendientesDeFichar(hoy) {
   const db = await getDB();
   const workers = await require('./attendance').getWorkers(); // users tech/office activos
-  const conWa = workers.map(w => ({ ...w, whatsapp: whatsappDe(w) })).filter(w => w.whatsapp);
+  const conWa = workers.filter(w => !w.noFicha).map(w => ({ ...w, whatsapp: whatsappDe(w) })).filter(w => w.whatsapp);
   const pendientes = [];
   for (const w of conWa) {
     const consta = await db.collection('attendance').findOne({ workerId: String(w.id), date: hoy });

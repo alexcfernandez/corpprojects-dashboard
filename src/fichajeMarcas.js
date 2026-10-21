@@ -409,6 +409,7 @@ async function trabajadoresQueFichan(fecha = fechaHoy()) {
     .filter(u => !(u.fechaInicio && String(u.fechaInicio) > String(fecha)))
     .filter(u => u.role !== 'client' && ['tecnico', 'encargado', 'oficina'].includes(normalizeRole(u.role)))
     .filter(u => !(u.autonomo && u.autonomo.activo))   // los autónomos no fichan (solo presencia)
+    .filter(u => !u.noFicha)                             // el dueño (Álex, 21/10/2026): ni recordatorios ni «no ha fichado»
     .map(u => ({ id: String(u._id), name: u.name, whatsapp: _tel(u.whatsapp || u.telefono), porPartes: !!u.porPartes }));
 }
 function _tel(t) {
