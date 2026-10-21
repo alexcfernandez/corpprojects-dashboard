@@ -403,7 +403,8 @@ async function resumenAbiertas({ dias = 90, conDinero = false } = {}) {
 const ESTADOS_CERRADA = ['terminada', 'facturada', 'archivada'];
 const DIAS_CERRADA_RECIENTE = Number(process.env.OBRA_CERRADA_DIAS) || 60;
 // Coste/hora de cada trabajador (para la rentabilidad y para «¿Dónde hemos estado?»): autónomos por su
-// tarifa; plantilla por su ficha de Trabajadores (nombre o alias); si no, una tarifa por defecto.
+// tarifa; plantilla por su coste real de nóminas (costeReal.js) o, si no hay, por su ficha de Trabajadores (nombre o
+// alias); si no, una tarifa por defecto.
 async function tarifaHora() {
   const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
   const RATES = { jose: 26.72, diego: 19.05, abdellah: 13.28, mamadou: 13.28, paula: 8.66 };
@@ -412,8 +413,12 @@ async function tarifaHora() {
   // Autónomos: su coste es su tarifa (por id de usuario, que es el workerId de presencia/partes).
   const tarifaAut = {};
   try { const aut = require('./autonomos'); (await aut.lista()).forEach(u => { const ch = aut.costeHora(u); if (ch) tarifaAut[String(u._id)] = ch; }); } catch (e) {}
+  // Asalariados: su coste REAL (nóminas + pagas extra + SS de la empresa, entre sus horas; costeReal.js) antes que la ficha.
+  let real = {};
+  try { real = await require('./costeReal').porUsuario(); } catch (e) {}
   return (name, id) => {
     if (id && tarifaAut[String(id)]) return tarifaAut[String(id)];
+    if (id && real[String(id)]) return real[String(id)].costeHora;
     const n = norm(name);
     for (const w of trabs) {
       if (!w.costeHora) continue;

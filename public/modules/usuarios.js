@@ -149,6 +149,7 @@
         <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">Coste/hora real (€)</div>
         <input type="number" id="u-coste-hora" value="${user.costeHora||''}" placeholder="Ej: 13.28" min="0" step="0.01" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px">
         <div style="font-size:10px;color:var(--text3);margin-top:3px">Sueldo + SS prorrateado por hora</div>
+        <div id="u-coste-real" style="font-size:11px;color:var(--text2);margin-top:4px"></div>
       </div>
     </div>
     <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:12px 14px;margin-bottom:12px">
@@ -364,6 +365,9 @@
       set('u-pass', '');
       set('u-pin',  u.pin&&u.pin!=='••••'?u.pin:'');
       set('u-coste-hora', u.costeHora||'');
+      // Coste real por las nóminas (bruto + pagas extra + SS de la empresa, entre sus horas): es el que usan las obras.
+      api('/api/coste-real').then(l=>{const r=(l||[]).find(x=>x.userId===String(id)),el=document.getElementById('u-coste-real');if(!el)return;
+        el.innerHTML=r&&r.costeHora?`Según sus nóminas (${r.meses.length} mes${r.meses.length>1?'es':''}): <b>${String(r.costeHora).replace('.',',')} €/h</b> · es el que usan las obras`:'Sin nóminas suficientes: las obras usan la ficha';}).catch(()=>{});
       set('u-telefono', u.telefono||'');
       set('u-nombre-completo', u.nombreCompleto||'');
       set('u-fecha-inicio', u.fechaInicio||'');
