@@ -139,7 +139,7 @@ async function crear(peticionId, { userId, fecha, hora = '09:00', urgente = null
     const url = (await require('./fichajeAvisos').enlacePersonal(String(u._id))) + '&ir=parte';
     const txt = `🔧 *Trabajo nuevo* para el *${fechaTxt(fecha)} a las ${hora}*${urg ? ' (URGENTE)' : ''}\n*${cliente}*${p.direccion ? ' · ' + p.direccion : ''}\n${p.resumen}${p.contacto ? `\nContacto: ${p.contacto}` : ''}${nota ? `\nNota: ${nota}` : ''}\n\nLo tienes en tu app, con las fotos, en «Mis trabajos»:\n${url}`;
     const tel = u.whatsapp || u.telefono;
-    if (tel) avisado = (await (_enviar || require('./notifications').sendWhatsAppTo)(tel, txt)) !== false;
+    if (tel) avisado = (await (_enviar || require('./notifications').sendWhatsAppTo)(tel, txt, { importante: true })) !== false;
     try { await require('./push').sendToWorker(String(u._id), { title: 'Trabajo nuevo', body: `${fechaTxt(fecha)} ${hora} · ${cliente}`, url: '/parte' }); } catch (e) {}
   } catch (e) { console.warn('[Trabajos] aviso:', e.message); }
   return { ok: true, incidencia: incidencia.ref, pedido: ped.ref, pedidoId: String(ped.id), operario: u.name, fecha, hora, fechaTxt: fechaTxt(fecha), avisado };

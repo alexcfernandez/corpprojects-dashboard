@@ -58,8 +58,8 @@ async function sendWhatsApp(message) {
 
 // ─── Enviar WhatsApp a UN destinatario concreto por el canal activo ──
 // `destinatario` en formato +34XXXXXXXXX (el transporte añade whatsapp: si hace falta).
-async function sendWhatsAppTo(destinatario, message) {
-  return require('./canalWhatsapp').enviarUno(destinatario, message);
+async function sendWhatsAppTo(destinatario, message, opts = {}) {
+  return require('./canalWhatsapp').enviarUno(destinatario, message, opts);
 }
 
 // ─── Enviar Email por la API de Gmail (HTTPS, no lo bloquea el host) ──

@@ -156,12 +156,40 @@ async function _esRepetido(to, body) {
   } catch (e) { return false; }
 }
 
+let _silCache = null, _silAt = 0;
+async function _silenciado(to) {
+  const d = String(to || '').replace(/\D/g, '').slice(-9);
+  if (!d) return false;
+  if (!_silCache || Date.now() - _silAt > 5 * 60 * 1000) {
+    try {
+      const us = await require('./users').getUsers(false);
+      _silCache = new Set(); us.filter(u => u.avisosWa === 'importante').forEach(u => [u.whatsapp, u.telefono].forEach(t => { const x = String(t || '').replace(/\D/g, '').slice(-9); if (x) _silCache.add(x); }));
+      _silAt = Date.now();
+    } catch (e) { return false; }
+  }
+  if (!_silCache.has(d)) return false;
+  // Acaba de escribir él (15 min): es una respuesta a lo suyo, sale.
+  try {
+    const db = await require('./db').getDB();
+    const ult = await db.collection('whatsappLog').findOne({ dir: 'in', numero: new RegExp(d + '$'), ts: { $gte: new Date(Date.now() - 15 * 60 * 1000) } }, { projection: { _id: 1 } });
+    return !ult;
+  } catch (e) { return false; }
+}
+function _olvidarSilenciados() { _silCache = null; }
+
 async function enviarUno(to, body, opts = {}) {
   if (!_destinoValido(to)) {
     console.warn('[Canal] destinatario inválido, no se envía:', JSON.stringify(to));
     return false;
   }
   if (!String(body || '').trim() && !opts.archivo) return false;   // nunca un mensaje vacío
+  // «Solo lo importante» (users.avisosWa, 22/10/2026: a Jose no le gusta que le lleguen mensajes todo el rato): lo
+  // automático no sale; sí lo marcado `importante` (trabajo asignado, encargo de Álex) y lo que se le contesta cuando
+  // él acaba de escribir. Lo que no sale queda en Conversaciones como «silenciado».
+  if (!opts.importante && await _silenciado(to)) {
+    require('./waLog').registrar({ dir: 'out', canal: canalActivo(opts.canal), numero: to, texto: body, ok: false, origen: 'silenciado' }).catch(() => {});
+    return true;
+  }
   if (!opts.archivo && !opts.permitirRepetido && await _esRepetido(to, body)) {
     console.log('[Canal] repetido en menos de 10 min, no se vuelve a mandar a', String(to).slice(-4));
     return true;
@@ -262,4 +290,4 @@ async function probar(to, canal) {
   } catch (e) { return { ok: false, error: e.message, code: e.code || null }; }
 }
 
-module.exports = { _olvidarRepetidos: () => _recientes.clear(), enviarArchivo, archivoPuente, enviarUno, canalActivo, tokenBridgeValido, encolarSalida, reclamarLoteOutbox, diagnostico, probar, guardarEstadoPuente, confirmarEntregas, esperarNuevo, registrarSondeo, metricasPuente };
+module.exports = { _silenciado, _olvidarSilenciados, _olvidarRepetidos: () => _recientes.clear(), enviarArchivo, archivoPuente, enviarUno, canalActivo, tokenBridgeValido, encolarSalida, reclamarLoteOutbox, diagnostico, probar, guardarEstadoPuente, confirmarEntregas, esperarNuevo, registrarSondeo, metricasPuente };

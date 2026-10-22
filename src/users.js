@@ -194,9 +194,10 @@ async function createUser(data) {
 
 async function updateUser(id, data) {
   const db      = await getDB();
-  const allowed = ['name','role','pin','color','costeHora','nota','active','notes','docs','telefono','email','username','porPartes','nombreCompleto','fechaInicio','idioma'];
+  const allowed = ['name','role','pin','color','costeHora','nota','active','notes','docs','telefono','email','username','porPartes','nombreCompleto','fechaInicio','idioma','avisosWa'];
   const set     = { updatedAt: new Date() };
   allowed.forEach(k => { if (data[k] !== undefined) set[k] = data[k]; });
+  if ('avisosWa' in set) { set.avisosWa = set.avisosWa === 'importante' ? 'importante' : 'todos'; try { require('./canalWhatsapp')._olvidarSilenciados(); } catch (e) {} }
   if ('idioma' in set) { set.idioma = require('./idiomas').IDIOMAS[set.idioma] ? set.idioma : 'es'; require('./idiomas').olvidar(); }
 
   // Parsear costeHora como número

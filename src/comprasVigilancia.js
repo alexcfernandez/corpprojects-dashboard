@@ -262,7 +262,7 @@ async function alSubir(compra, { _avisar = null, _crearEncargo = null, _hist = n
   // Álex también tiene ficha de trabajador (con su móvil): a él no se le pregunta «¿para qué obra?» (14/10/2026: BAUHAUS).
   if (quien && await esDelDueno(quien.userId)) quien = null;
   // Un papel sin importe (no es una compra: ficha técnica, certificado…) no lleva pregunta de obra (19/10/2026, Jose).
-  const sinObra = !compra.obraId && (!compra.destino || compra.destino === 'obra') && !compra.varias && !compra.noPreguntarObra && !(compra.tipo === 'otro' && !(Number(compra.total) > 0));
+  const sinObra = !compra.obraId && (!compra.destino || compra.destino === 'obra') && !compra.varias && !compra.noPreguntarObra && !(compra.tipo === 'otro' && !(Number(compra.total) > 0)) && !(compra.total != null && !(Number(compra.total) > 0));   // ni una de 0,00 € (22/10/2026)
   if (out.repetidas.length) {
     const t = out.repetidas.map(r => `⚠️ *Otra compra de ${r.cat.nombre}*: ${eur(r.imp)} en ${compra.proveedor || '¿?'} (${fmtF(compra.fecha)})${quien ? ` · la sube *${quien.name}*` : ''}${compra.obraRef ? ' · ' + compra.obraRef : ''}.\nEn los últimos ${VENTANA} días ya se compró:\n` +
       r.antes.slice(-5).map(y => `• ${fmtF(y.fecha)} · ${y.proveedor.split(/[\s,]+/).slice(0, 2).join(' ')} · ${eur(y.importe)}${y.quien ? ' · ' + y.quien : ''}${y.obra ? ' · ' + y.obra : ''}`).join('\n')).join('\n\n');

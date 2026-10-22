@@ -34,7 +34,7 @@ async function crear({ userId, que, mensaje, por = 'Álex', tipo = 'libre', text
   const txt = textoCompleto || `Hola ${primer(u.name)} 👋 Soy Corpy, de la oficina de Corp Projects. ${mensaje}\n\nContéstame por aquí en cuanto lo tengas (si es una foto o un papel, mándalo aquí mismo). Lo apunto yo, no hace falta esperar a decírselo a nadie.`;
   const diferido = /^\d{4}-\d{2}-\d{2}$/.test(String(cuando || '')) && cuando > hoyISO();
   if (!diferido) {
-    const ok = await (_enviar || require('./notifications').sendWhatsAppTo)(movil, txt);
+    const ok = await (_enviar || require('./notifications').sendWhatsAppTo)(movil, txt, { importante: por !== 'Corpy' });   // los de Álex/oficina salen siempre
     if (ok === false) throw new Error('No se pudo enviar el WhatsApp (mira que Corpy esté conectado)');
   }
   const doc = { userId: String(userId), nombre: u.name, movil, que, mensaje, tipo, estado: diferido ? 'programado' : 'abierto', cuando: diferido ? cuando : null, textoInicial: txt, origen, por, at: new Date(), recordatorios: 0, respuestas: [] };
@@ -152,7 +152,7 @@ async function recordar({ hoy = new Date(), _enviar = null, _avisarJefe = null }
   // Los programados para hoy (o antes): se envían ahora y pasan a abiertos.
   for (const e of await db.collection(COL).find({ estado: 'programado' }).toArray()) {
     if (e.cuando > hoyISO(hoy)) continue;
-    const ok = await (_enviar || require('./notifications').sendWhatsAppTo)(e.movil, e.textoInicial);
+    const ok = await (_enviar || require('./notifications').sendWhatsAppTo)(e.movil, e.textoInicial, { importante: e.por !== 'Corpy' });
     if (ok !== false) await db.collection(COL).updateOne({ _id: e._id }, { $set: { estado: 'abierto', at: hoy, enviadoAt: hoy } });
   }
   const l = await db.collection(COL).find({ estado: 'abierto' }).toArray();

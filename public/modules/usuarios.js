@@ -215,6 +215,14 @@
         </select>
         <div style="font-size:10px;color:var(--text3);margin-top:3px">Corpy le escribe en este idioma (con el español debajo) y entiende lo que conteste en él</div>
       </div>
+      <div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">💬 Mensajes de Corpy</div>
+        <select id="u-avisos-wa" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px">
+          <option value="todos" ${user.avisosWa!=='importante'?'selected':''}>Todos</option>
+          <option value="importante" ${user.avisosWa==='importante'?'selected':''}>Solo lo importante</option>
+        </select>
+        <div style="font-size:10px;color:var(--text3);margin-top:3px">«Solo lo importante»: sin enlaces de fichar ni recordatorios; sí los trabajos que se le asignan, tus encargos y las respuestas cuando escribe él</div>
+      </div>
     </div>
     <div class="g2" style="margin-bottom:12px">
       <div>
@@ -372,6 +380,7 @@
       set('u-nombre-completo', u.nombreCompleto||'');
       set('u-fecha-inicio', u.fechaInicio||'');
       set('u-idioma', u.idioma||'es');
+      set('u-avisos-wa', u.avisosWa==='importante'?'importante':'todos');
       set('u-email', u.email||'');
       set('u-color', u.color||'#4d9cf8');
       set('u-notes', u.notes||'');
@@ -440,6 +449,7 @@
     nombreCompleto: document.getElementById('u-nombre-completo')?.value?.trim() || '',
     fechaInicio: document.getElementById('u-fecha-inicio')?.value || '',
     idioma: document.getElementById('u-idioma')?.value || 'es',
+    avisosWa: document.getElementById('u-avisos-wa')?.value || 'todos',
     email:     document.getElementById('u-email')?.value?.trim(),
     color:     document.getElementById('u-color')?.value,
     notes:     document.getElementById('u-notes')?.value?.trim(),
