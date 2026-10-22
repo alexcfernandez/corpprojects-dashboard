@@ -220,8 +220,9 @@
         <select id="u-avisos-wa" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:9px 12px;color:var(--text);font-size:13px">
           <option value="todos" ${user.avisosWa!=='importante'?'selected':''}>Todos</option>
           <option value="importante" ${user.avisosWa==='importante'?'selected':''}>Solo lo importante</option>
+          <option value="ninguno" ${user.avisosWa==='ninguno'?'selected':''}>Ninguno (solo le contesta si escribe él)</option>
         </select>
-        <div style="font-size:10px;color:var(--text3);margin-top:3px">«Solo lo importante»: sin enlaces de fichar ni recordatorios; sí los trabajos que se le asignan, tus encargos y las respuestas cuando escribe él</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:3px">«Solo lo importante»: sin enlaces de fichar ni recordatorios; sí los trabajos que se le asignan, tus encargos y las respuestas cuando escribe él. «Ninguno»: tampoco trabajos ni encargos</div>
       </div>
     </div>
     <div class="g2" style="margin-bottom:12px">
@@ -380,7 +381,7 @@
       set('u-nombre-completo', u.nombreCompleto||'');
       set('u-fecha-inicio', u.fechaInicio||'');
       set('u-idioma', u.idioma||'es');
-      set('u-avisos-wa', u.avisosWa==='importante'?'importante':'todos');
+      set('u-avisos-wa', ['importante','ninguno'].includes(u.avisosWa)?u.avisosWa:'todos');
       set('u-email', u.email||'');
       set('u-color', u.color||'#4d9cf8');
       set('u-notes', u.notes||'');

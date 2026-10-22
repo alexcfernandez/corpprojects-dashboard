@@ -157,17 +157,18 @@ async function _esRepetido(to, body) {
 }
 
 let _silCache = null, _silAt = 0;
-async function _silenciado(to) {
+async function _silenciado(to, opts = {}) {
   const d = String(to || '').replace(/\D/g, '').slice(-9);
   if (!d) return false;
   if (!_silCache || Date.now() - _silAt > 5 * 60 * 1000) {
     try {
       const us = await require('./users').getUsers(false);
-      _silCache = new Set(); us.filter(u => u.avisosWa === 'importante').forEach(u => [u.whatsapp, u.telefono].forEach(t => { const x = String(t || '').replace(/\D/g, '').slice(-9); if (x) _silCache.add(x); }));
+      _silCache = new Map(); us.filter(u => ['importante', 'ninguno'].includes(u.avisosWa)).forEach(u => [u.whatsapp, u.telefono].forEach(t => { const x = String(t || '').replace(/\D/g, '').slice(-9); if (x) _silCache.set(x, u.avisosWa); }));
       _silAt = Date.now();
     } catch (e) { return false; }
   }
-  if (!_silCache.has(d)) return false;
+  const modo = _silCache.get(d);
+  if (!modo || (modo === 'importante' && opts.importante)) return false;
   // Acaba de escribir él (15 min): es una respuesta a lo suyo, sale.
   try {
     const db = await require('./db').getDB();
@@ -183,10 +184,10 @@ async function enviarUno(to, body, opts = {}) {
     return false;
   }
   if (!String(body || '').trim() && !opts.archivo) return false;   // nunca un mensaje vacío
-  // «Solo lo importante» (users.avisosWa, 22/10/2026: a Jose no le gusta que le lleguen mensajes todo el rato): lo
-  // automático no sale; sí lo marcado `importante` (trabajo asignado, encargo de Álex) y lo que se le contesta cuando
-  // él acaba de escribir. Lo que no sale queda en Conversaciones como «silenciado».
-  if (!opts.importante && await _silenciado(to)) {
+  // users.avisosWa (22/10/2026: a Jose no le gusta que le lleguen mensajes todo el rato): «importante» = lo automático
+  // no sale, sí lo marcado `importante` (trabajo asignado, encargo de Álex); «ninguno» = nada. En los dos casos sale lo
+  // que se le contesta cuando él acaba de escribir. Lo que no sale queda en Conversaciones como «silenciado».
+  if (await _silenciado(to, opts)) {
     require('./waLog').registrar({ dir: 'out', canal: canalActivo(opts.canal), numero: to, texto: body, ok: false, origen: 'silenciado' }).catch(() => {});
     return true;
   }
