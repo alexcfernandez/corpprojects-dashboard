@@ -1502,6 +1502,25 @@ async function cargarRevision(){
     ${hechos.length?`<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;color:var(--text3)">✔ ${hechos.length} cosa${hechos.length>1?'s':''} arreglada${hechos.length>1?'s':''} sola${hechos.length>1?'s':''}</summary>${hechos.map(fila).join('')}</details>`:''}
   </div>`;
 }
+// Días de obra que se facturan APARTE por horas (marcados en Presencia con 💶): hasta «Ya facturado». 24/10/2026.
+async function cargarFacturarAparte(){
+  const el=document.getElementById('ini-facturar'); if(!el) return;
+  let l; try{ l=await apiCall('/api/presencia/facturar-aparte'); }catch(e){ el.innerHTML=''; return; }
+  if(!Array.isArray(l)||!l.length){ el.innerHTML=''; return; }
+  window._factAparte=l;
+  const e=s=>String(s==null?'':s).replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+  const dia=f=>new Date(f+'T12:00:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'short'});
+  const h=n=>String(Math.round(n*100)/100).replace('.',',');
+  el.innerHTML=`<div class="card" style="margin:0 0 14px;border-color:rgba(245,158,11,.45)">
+    <div style="display:flex;align-items:center;gap:8px"><div class="card-title" style="margin:0">💶 Por facturar aparte (horas extra)</div><span style="margin-left:auto;font-size:12px;color:var(--text3)">${l.length} día${l.length>1?'s':''}</span></div>
+    ${l.map((g,i)=>`<div style="padding:9px 0;border-top:1px solid var(--border)">
+      <div style="font-weight:600;font-size:13.5px">${e(g.obra||'Sin obra')} · <span style="text-transform:capitalize">${e(dia(g.fecha))}</span> · ${h(g.horas)} h</div>
+      <div style="font-size:12.5px;color:var(--text2);margin-top:2px">${g.personas.map(p=>`${e(p.nombre)} ${h(p.horas)} h`).join(' · ')||'—'}</div>
+      <div style="margin-top:6px"><button class="btn btn-sm" onclick="facturadoAparte(${i},this)">✔ Ya facturado</button></div>
+    </div>`).join('')}
+  </div>`;
+}
+async function facturadoAparte(i,b){ const g=(window._factAparte||[])[i]; if(!g) return; b.disabled=true; try{ const r=await apiCall('/api/presencia/facturar-aparte/hecho','POST',{fecha:g.fecha,obraId:g.obraId||null,obra:g.obra||''}); if(r&&r.error) throw new Error(r.error); cargarFacturarAparte(); }catch(err){ alert(err.message); b.disabled=false; } }
 // Peticiones de los grupos de clientes (grupo de SYNC): lo que piden, cruzado con StelOrder (peticionesGrupo.js). 20/10/2026.
 async function cargarPeticiones(){
   const el=document.getElementById('ini-peticiones'); if(!el) return;
@@ -1688,6 +1707,7 @@ async function renderInicio(){
     ${enc.length?`<div id="enc-det" style="display:none;margin:-6px 0 14px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--bg2);font-size:13px;line-height:1.6">${enc.map(e=>`<div>📨 <b>${String(e.nombre||'').replace(/[<>&"]/g,'')}</b>: ${String(e.que||'').replace(/[<>&"]/g,'')} <span style="color:var(--text3)">· hace ${e.dias} día${e.dias===1?'':'s'}${e.recordatorios?` · recordado ${e.recordatorios}×`:''}${e.ultimaRespuesta&&e.ultimaRespuesta.texto?` · dijo «${String(e.ultimaRespuesta.texto).slice(0,60).replace(/[<>&"]/g,'')}»`:''}</span></div>`).join('')}<div style="color:var(--text3);font-size:12px;margin-top:4px">Para pedir algo: díselo a Corpy («pídele a Javi la talla de botas»). Para cerrar uno: «Javi ya lo ha hecho».</div></div>`:''}
     <div id="ini-revision"></div>
     <div id="ini-peticiones"></div>
+    <div id="ini-facturar"></div>
     <div id="ini-precios"></div>
     <div class="ini-kpis">
       ${kpi2('Facturado este mes',eur(f.mes),`${f.mesCount||0} facturas`,'var(--green)',"irA('dinero','facturas')")}
@@ -1716,6 +1736,7 @@ async function renderInicio(){
   try{cargarSubidasPrecio();}catch(e){}
   try{cargarRevision();}catch(e){}
   try{cargarPeticiones();}catch(e){}
+  try{cargarFacturarAparte();}catch(e){}
   if(tq&&sa){if(tq.parentElement!==sa){sa.innerHTML='<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin:8px 2px">Accesos rápidos</div>';sa.appendChild(tq);}tq.classList.add('compacto');}
 }
 function showGrupo(grp, btn){

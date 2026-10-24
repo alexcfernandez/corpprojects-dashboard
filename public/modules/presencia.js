@@ -260,6 +260,7 @@
         const clientLabel = entry?.clientName
           ? entry.clientName.slice(0,8) + (numObras > 1 ? ' +'+(numObras-1) : '')
           : (entry?.estado === 'visita' && entry.visita ? entry.visita.slice(0,8) : '');
+        const facturarIcono = entry?.facturarAparte && !entry?.facturadoAparte ? '💶' : '';
         const tooltip     = est
           ? (numObras > 1
               ? `${est.label} — ${entry.obras.map(o=>o.clientName+' ('+o.horas+'h)').join(', ')}${tieneEquipo?' · '+entry.equipo.length+' personas':''}`
@@ -276,6 +277,7 @@
           <div style="font-size:8px;line-height:1;display:flex;gap:1px">
             ${entry?.revisar ? `<span title="Revisar: ${(entry.revisarMotivo||'').replace(/"/g,'&quot;')}">⚠️</span>` : ''}
             ${entry?.tieneParte ? '<span title="Tiene parte">📋</span>' : ''}
+            ${facturarIcono ? '<span title="Se factura aparte por horas (pendiente de facturar)">💶</span>' : ''}
             ${entry?.avisoHoras==='sin_salida' ? '<span title="No fichó la salida: se cuentan 8 h">⏱️</span>' : entry?.avisoHoras==='corta' ? `<span title="Jornada corta: fichó ${entry.horasFichadas} h">⏱️</span>` : ''}
             ${entry?.obraDichaPorTrabajador ? `<span title="El trabajador dice que estuvo en ${String(entry.obraDichaPorTrabajador).replace(/"/g,'&quot;')}${(entry.equipoDichoPorTrabajador||[]).length?' con '+entry.equipoDichoPorTrabajador.join(', '):''} (tú le pusiste otra)">❓</span>` : ''}
             ${entry?.obraElegidaPorTrabajador ? '<span title="La obra la eligió él al fichar">📲</span>' : ''}
@@ -379,6 +381,10 @@
         </div>
 
         <div id="p-obra-fields" style="display:${selectedEstado==='obra'?'block':'none'}">
+          <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--bg3);cursor:pointer;font-size:13px;line-height:1.4">
+            <input type="checkbox" id="p-facturar" ${entry?.facturarAparte?'checked':''} ${entry?.facturadoAparte?'disabled':''} style="width:18px;height:18px;margin-top:1px">
+            <span>💶 <b>Este día se factura aparte por horas</b> (extra, fuera del presupuesto cerrado)${entry?.facturadoAparte?' · <span style="color:var(--green)">ya facturado</span>':'. Saldrá en Inicio hasta que lo factures; si van juntos, se marca a todo el equipo.'}</span>
+          </label>
           <div style="margin-bottom:12px">
             <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Cliente / Obra · Horas</div>
             <div id="p-obras-rows">${_obrasModal.map((o,i)=>_obraRowHtml(o,i)).join('')}</div>
@@ -643,6 +649,7 @@
       horas,
       notas:       document.getElementById('p-notas')?.value?.trim() || '',
       tieneParte:  document.getElementById('p-tiene-parte')?.checked || false,
+      facturarAparte: selectedEstado === 'obra' && !!document.getElementById('p-facturar')?.checked,
       revisar:     !!document.getElementById('p-revisar')?.checked,
       revisarMotivo: document.getElementById('p-revisar')?.checked ? (document.getElementById('p-revisar-motivo')?.value?.trim() || '') : '',
       tipoJornada: CFG.tipoJornadaPorFecha(modalDate),

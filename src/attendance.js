@@ -151,6 +151,13 @@ async function syncTeamPresence(db, entry, prev) {
       { upsert: true }
     );
   }
+
+  // 3) «Facturar aparte por horas» (24/10/2026): si van juntos, la marca vale para todo el equipo, también para los
+  //    que tienen su día puesto a mano o por el fichaje (solo se toca la marca). Lo ya facturado no se cambia.
+  const conMarca = [...nuevos];
+  if (conMarca.length && ('facturarAparte' in entry)) {
+    await db.collection('attendance').updateMany({ workerId: { $in: conMarca }, date, facturadoAparte: { $exists: false } }, { $set: { facturarAparte: !!entry.facturarAparte, updatedAt: new Date() } });
+  }
 }
 
 // Une dos listas de equipo evitando duplicados (por id o, si no, por nombre).
