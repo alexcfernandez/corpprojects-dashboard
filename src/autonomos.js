@@ -61,7 +61,7 @@ function diasDe(entries) {
   const dias = [];
   for (const e of entries) {
     const obras = getObras(e);
-    const trabajado = obras.length || ['obra', 'oficina'].includes(e.estado);
+    const trabajado = obras.length || ['obra', 'oficina', 'visita'].includes(e.estado);
     if (!trabajado) continue;
     const horasObras = obras.reduce((s, o) => s + (parseFloat(o.horas) || 0), 0);
     const horas = horasObras || parseFloat(e.horas) || HORAS_JORNADA;

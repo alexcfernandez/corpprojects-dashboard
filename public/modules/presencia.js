@@ -259,7 +259,7 @@
         // Etiqueta: cliente principal + "+N" si hubo varias obras ese día
         const clientLabel = entry?.clientName
           ? entry.clientName.slice(0,8) + (numObras > 1 ? ' +'+(numObras-1) : '')
-          : '';
+          : (entry?.estado === 'visita' && entry.visita ? entry.visita.slice(0,8) : '');
         const tooltip     = est
           ? (numObras > 1
               ? `${est.label} — ${entry.obras.map(o=>o.clientName+' ('+o.horas+'h)').join(', ')}${tieneEquipo?' · '+entry.equipo.length+' personas':''}`
@@ -369,6 +369,13 @@
               <span style="font-size:15px">${v.emoji}</span>
               <div style="font-size:11px;margin-top:3px">${v.label}</div>
             </button>`).join('')}
+        </div>
+
+        <div id="p-visita-fields" style="display:${selectedEstado==='visita'?'block':'none'};margin-bottom:12px">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">¿Qué ha ido a ver?</div>
+          <input type="text" id="p-visita" value="${(entry?.visita||'').replace(/"/g,'&quot;')}" placeholder="Dirección o cliente de la posible obra"
+            style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none;font-family:'Inter',sans-serif">
+          <div style="font-size:11px;color:var(--text3);margin-top:4px">Cuenta como jornada trabajada, pero no se carga a ninguna obra.</div>
         </div>
 
         <div id="p-obra-fields" style="display:${selectedEstado==='obra'?'block':'none'}">
@@ -497,6 +504,8 @@
       btn.style.background  = s===k ? ESTADOS[s].color+'33' : 'var(--bg3)';
       btn.style.borderColor = s===k ? ESTADOS[s].color      : 'var(--border2)';
     });
+    const visitaFields = document.getElementById('p-visita-fields');
+    if (visitaFields) visitaFields.style.display = k === 'visita' ? 'block' : 'none';
     const obraFields = document.getElementById('p-obra-fields');
     if (obraFields) obraFields.style.display = k==='obra' ? 'block' : 'none';
     const horasWrap = document.getElementById('p-horas-wrap');
@@ -618,6 +627,11 @@
     } else {
       horas = parseFloat(document.getElementById('p-horas')?.value || 8);
     }
+    const visita = selectedEstado === 'visita' ? (document.getElementById('p-visita')?.value?.trim() || '') : '';
+    if (selectedEstado === 'visita' && !visita) {
+      if (msg) { msg.textContent='⚠️ Escribe qué ha ido a ver (dirección o cliente)'; msg.style.display='block'; msg.style.color='var(--amber)'; }
+      document.getElementById('p-visita')?.focus(); return;
+    }
 
     const entry = {
       workerId:    modalWorker,
@@ -625,6 +639,7 @@
       date:        modalDate,
       estado:      selectedEstado,
       clientName,
+      visita,
       horas,
       notas:       document.getElementById('p-notas')?.value?.trim() || '',
       tieneParte:  document.getElementById('p-tiene-parte')?.checked || false,
@@ -882,7 +897,7 @@
       const rows = [['Fecha','Trabajador','Estado','Cliente/Obra','Horas','Jornada','Equipo','Notas','Revisar']];
       data.forEach(e => {
         const equipoStr = (e.equipo||[]).map(m=>m.nombre||m.name).join('+');
-        rows.push([e.date, e.workerName, ESTADOS[e.estado]?.label||e.estado, e.clientName||'', e.horas||8, e.tipoJornada||'NORMAL', equipoStr, e.notas||'', e.revisar?('REVISAR: '+(e.revisarMotivo||'')):'']);
+        rows.push([e.date, e.workerName, ESTADOS[e.estado]?.label||e.estado, e.clientName||e.visita||'', e.horas||8, e.tipoJornada||'NORMAL', equipoStr, e.notas||'', e.revisar?('REVISAR: '+(e.revisarMotivo||'')):'']);
       });
       const csv = rows.map(r=>r.map(v=>`"${v}"`).join(',')).join('\n');
       const a = document.createElement('a');

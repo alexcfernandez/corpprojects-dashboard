@@ -54,6 +54,7 @@ window.CP_CONFIG = {
   estadosPresencia: {
     obra:       { label: 'En obra',            emoji: '🏗️', color: '#22c487' },
     oficina:    { label: 'Oficina/almacén',    emoji: '🏢', color: '#4d9cf8' },
+    visita:     { label: 'Visita (posible obra)', emoji: '🔍', color: '#06b6d4' },
     vacaciones: { label: 'Vacaciones',         emoji: '🌴', color: '#a78bfa' },
     baja:       { label: 'Baja médica',        emoji: '🏥', color: '#f59e0b' },
     falta_j:    { label: 'Falta justificada',  emoji: '📋', color: '#f59e0b' },
@@ -67,6 +68,7 @@ window.CP_CONFIG = {
   estadosPresenciaInforme: {
     obra:       { l: 'O', bg: '#dcfce7', c: '#16a34a', label: 'En obra' },
     oficina:    { l: 'F', bg: '#dbeafe', c: '#2563eb', label: 'Oficina' },
+    visita:     { l: 'VI', bg: '#cffafe', c: '#0e7490', label: 'Visita' },
     vacaciones: { l: 'V', bg: '#ede9fe', c: '#7c3aed', label: 'Vacaciones' },
     baja:       { l: 'B', bg: '#fef3c7', c: '#d97706', label: 'Baja' },
     falta_j:    { l: 'J', bg: '#fef3c7', c: '#d97706', label: 'Falta just.' },

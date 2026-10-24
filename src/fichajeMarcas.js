@@ -438,7 +438,7 @@ async function sinFichar(fecha, pre = {}) {
   const [dia, plantilla] = await Promise.all([pre.dia || getDia(f), pre.plantilla || trabajadoresQueFichan(f)]);
   const conMarcas = new Set(dia.map(d => String(d.userId)));
   const pres = await db.collection('attendance').find({ date: f }).toArray();
-  const ausente = {}; pres.forEach(p => { if (p.estado && !['obra', 'oficina'].includes(p.estado)) ausente[String(p.workerId)] = p.estado; });
+  const ausente = {}; pres.forEach(p => { if (p.estado && !['obra', 'oficina', 'visita'].includes(p.estado)) ausente[String(p.workerId)] = p.estado; });
   const esperados = plantilla.filter(w => !ausente[w.id]);
   return {
     fecha: f, laborable: true,

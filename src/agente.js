@@ -257,7 +257,7 @@ async function consultarPresencia({ desde, hasta, trabajador = null, obra = null
         const enAus = (f) => AUS.deDia(aus, u._id, f);
         const meter = (a, f) => { const k = a.tipo; (r.porAusencia[k] = r.porAusencia[k] || { fechas: [], hasta: a.hasta, desde: a.desde, nota: a.nota }).fechas.push(f); };
         for (const x of suyos) { const a0 = /baja|falta_j/.test(x.estado || '') ? enAus(x.date) : null; if (a0) { meter(a0, x.date); continue; }
-          const k = NOM[x.estado || 'obra'] || 'trabajados'; r[k]++; if (['obra', 'oficina'].includes(x.estado || 'obra')) r.horas += Number(x.horas) || 0;
+          const k = NOM[x.estado || 'obra'] || 'trabajados'; r[k]++; if (['obra', 'oficina', 'visita'].includes(x.estado || 'obra')) r.horas += Number(x.horas) || 0;
           if (/falta/.test(x.estado || '')) r.fechasFaltas.push(x.date); if (x.estado === 'vacaciones') r.fechasVacaciones.push(x.date); if (x.estado === 'baja') r.fechasBaja.push(x.date); }
         if (!estado) for (let d = new Date(ini + 'T12:00:00Z'); ini <= fin && d <= new Date(fin + 'T12:00:00Z'); d = new Date(d.getTime() + 86400000)) {
           const f = d.toISOString().slice(0, 10), w = d.getUTCDay(); if (w === 0 || w === 6 || fest[f]) continue;

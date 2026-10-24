@@ -59,6 +59,7 @@ const CONFIG = {
   estadosPresencia: {
     obra:       { label: 'En obra',           emoji: '🏗️', color: '#22c487' },
     oficina:    { label: 'Oficina/almacén',   emoji: '🏢', color: '#4d9cf8' },
+    visita:     { label: 'Visita (posible obra)', emoji: '🔍', color: '#06b6d4' },   // ir a ver una obra que aún no es nuestra (24/10/2026)
     vacaciones: { label: 'Vacaciones',        emoji: '🌴', color: '#a78bfa' },
     baja:       { label: 'Baja médica',       emoji: '🏥', color: '#f59e0b' },
     falta_j:    { label: 'Falta justificada', emoji: '📋', color: '#f59e0b' },
