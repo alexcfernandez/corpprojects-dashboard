@@ -594,7 +594,16 @@ async function getRentabilidad(obraId) {
   // partes y presencia se reconocen por el nombre y los dos tramos se llaman igual.
   const fDesde = obra.faseDe && obra.startDate ? String(obra.startDate) : null, fHasta = obra.faseSiguiente && obra.endDate ? String(obra.endDate) : null;
   const enTramo = d => (!fDesde || String(d) >= fDesde) && (!fHasta || String(d) <= fHasta);
-  const partes = (await db.collection('partes').find({ $or: orPartes }).sort({ date: 1 }).toArray()).filter(p => enTramo(p.date));
+  // Otra obra del MISMO cliente (piso de Claudia y Bar Claudia): lo apuntado solo con el nombre del cliente y de antes de
+  // crear esta obra es de la otra; y lo que lleva la obra de otra (obraId), tampoco cuenta aquí (26/10/2026: el Bar
+  // Claudia sumaba siete días de septiembre del piso).
+  const idObra = String(obra._id);
+  // Lo apuntado solo con el nombre va a la obra de ese cliente más reciente que ya existiera ese día (o a la primera).
+  const dia = o => (o.createdAt ? new Date(o.createdAt).toISOString().slice(0, 10) : '0000');
+  const familia = obra.clientName ? [{ _id: obra._id, createdAt: obra.createdAt }, ...await db.collection('obras').find({ _id: { $ne: obra._id }, clientName: obra.clientName }).project({ createdAt: 1 }).toArray()].sort((a, b) => dia(a).localeCompare(dia(b))) : [];
+  const duenaDe = fecha => { if (familia.length < 2) return idObra; const ya = familia.filter(o => dia(o) <= String(fecha)); return String((ya.length ? ya[ya.length - 1] : familia[0])._id); };
+  const esDeOtra = (oid, fecha) => (oid && String(oid) !== idObra) || (!oid && duenaDe(fecha) !== idObra);
+  const partes = (await db.collection('partes').find({ $or: orPartes }).sort({ date: 1 }).toArray()).filter(p => enTramo(p.date) && !esDeOtra(p.obraId, p.date));
 
   // 2. Coste de personal — desde PARTES y, si no hay parte ese día, desde PRESENCIA.
   //    Tarifa real = coste/hora de la plantilla (con fallback razonable).
@@ -636,9 +645,9 @@ async function getRentabilidad(obraId) {
   presencias.forEach(e => {
     let horas = 0;
     if (Array.isArray(e.obras) && e.obras.length) {
-      e.obras.forEach(o => { if (matchObra(o.clientName)) horas += (o.horas || 0); });
-      if (!horas && matchObra(e.clientName)) horas = e.horas || 8;
-    } else if (matchObra(e.clientName)) horas = e.horas || 8;
+      e.obras.forEach(o => { if (o.obraId ? String(o.obraId) === idObra : (matchObra(o.clientName) && !esDeOtra(null, e.date))) horas += (o.horas || 0); });
+      if (!horas && !e.obras.some(o => o.obraId) && matchObra(e.clientName) && !esDeOtra(e.obraId, e.date)) horas = e.horas || 8;
+    } else if (matchObra(e.clientName) && !esDeOtra(e.obraId, e.date)) horas = e.horas || 8;
     if (!horas) return;
     const wk = e.workerId || e.workerName;
     if (cubierto.has(wk + '|' + e.date)) return; // ya contado por un parte ese día
