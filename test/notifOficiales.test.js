@@ -84,14 +84,15 @@ test('multa: quién llevaba la furgoneta ese día y aviso con el plazo de 20 dí
     attendance: [{ workerId: 'u1', date: '2026-06-25', estado: 'trabajo' }],
   });
   const enviados = [];
-  const p = N.leer({ de: 'datos@xvia-serviciosjuridicos.com', asunto: 'Solicitud Datos Conductor - 44049', cuerpo: MULTIVIA, fecha: new Date('2026-09-02T06:26:12Z') });
+  const p = N.leer({ de: 'datos@xvia-serviciosjuridicos.com', asunto: 'Solicitud Datos Conductor - 44049', cuerpo: MULTIVIA, fecha: new Date() });
   const d = await N.registrar(p, { gmailId: 'g1', _db: db, _enviar: async t => enviados.push(t) });
+  const plazo = new Date(Date.now() + 20 * 86400000).toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
   assert.strictEqual(d.conductorPropuesto.conductor.name, 'Diego');
   assert.strictEqual(d.conductorPropuesto.trabajo, true);
-  assert.strictEqual(d.plazoIdentificar, '2026-09-22');
+  assert.strictEqual(d.plazoIdentificar, plazo);
   assert.strictEqual(enviados.length, 1);
   assert.match(enviados[0], /La llevaba \*Diego\*/);
-  assert.match(enviados[0], /22\/09\/2026/);
+  assert.ok(enviados[0].includes(plazo.split('-').reverse().join('/')));
   const otra = await N.registrar(p, { gmailId: 'g2', _db: db, _enviar: async t => enviados.push(t) });
   assert.strictEqual(otra.repetida, true);
   assert.strictEqual(enviados.length, 1);
@@ -128,4 +129,22 @@ test('la misma de Red.es por DEHú (con número) y por el aviso de Red.es (sin n
     concepto: 'KD/0001063881 - PDCR: Notificación inicio del procedimiento de la pérdida del derecho al cobro o reintegro' }, { _db: db, avisar: false });
   assert.strictEqual(d.repetida, true);
   assert.strictEqual(db.cols.notifOficiales.length, 1);
+});
+
+test('las resoluciones de altas/bajas de Tesorería se guardan sin avisar; multa vieja de Multivia entra caducada', async () => {
+  const db = fakeDb(); const enviados = []; const env = async t => enviados.push(t);
+  const r = await N.registrar({ fuente: 'dehu', tipo: 'notificacion', organismo: 'Tesoreria General de la Seguridad Social', identificador: '', recibida: '2099-01-01', vence: '2099-01-11',
+    concepto: 'REGIMENES SEG. SOCIAL OBLIGADOS A RED / 1790A45 / RESOLUCION ALTAS/BAJAS (RED)' }, { _db: db, _enviar: env });
+  assert.strictEqual(r.estado, 'informativa');
+  assert.strictEqual(enviados.length, 0);
+  const m = await N.registrar(N.leer({ de: 'datos@xvia-serviciosjuridicos.com', asunto: 'Solicitud Datos Conductor', cuerpo: MULTIVIA, fecha: new Date('2026-09-02T06:26:12Z') }), { _db: db, _enviar: env });
+  assert.strictEqual(m.estado, 'caducada');
+});
+
+test('multa de antes del historial: propone quien la lleva desde que se apuntó, avisando de que es aproximado', async () => {
+  const db = fakeDb({ vehiculos: [{ _id: 'v1', nombre: 'Transit', matricula: '4694DWT', historialConductor: [{ userId: 'u2', name: 'David', desde: '2026-10-02', hasta: null }] }] });
+  const c = await N.conductorEn('4694 DWT', '2026-06-25', { _db: db });
+  assert.strictEqual(c.conductor.name, 'David');
+  assert.strictEqual(c.aprox, true);
+  assert.match(c.nota, /no hay historial de esa fecha/);
 });

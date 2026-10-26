@@ -30,6 +30,8 @@ function crudo(payload) {
 }
 const PLAZO_IDENTIFICAR = 20;   // días naturales (art. 11 LSV)
 const RE_MULTA = /\bmult[ae]s?\b|sanci[oó]n|sancionador|tr[aá]fico|tr[aà]nsit|denuncia|infracci[oó]n|estacionamiento|velocidad|radar/i;
+// Lo que es rutina y ya lleva la gestoría (Tesorería manda cada semana las resoluciones de altas y bajas): se guarda sin avisar.
+const RE_RUTINA = /altas\/bajas|alta\/baja/i;
 const RE_ORG_TRAFICO = /tr[aá]fico|tr[aà]nsit|xaloc|gesti[oó]n tributaria|guardia urbana|polic[ií]a local/i;
 
 // ── Lectura de cada tipo de aviso ────────────────────────────────────────────────────────────────────────────────────────
@@ -72,14 +74,21 @@ async function conductorEn(matricula, fecha, { _db = null } = {}) {
   if (!v) return { vehiculo: null, nota: `La matrícula ${mat} no está en Vehículos` };
   const vh = { id: String(v._id), nombre: v.nombre || '', matricula: mat };
   const f = fecha || hoyISO();
-  const h = (v.historialConductor || []).filter(x => x.userId && (!x.desde || x.desde <= f) && (!x.hasta || x.hasta >= f)).pop()
-    || ((!v.historialConductor || !v.historialConductor.length) && v.conductor ? v.conductor : null);
+  const hist = v.historialConductor || [];
+  let h = hist.filter(x => x.userId && (!x.desde || x.desde <= f) && (!x.hasta || x.hasta >= f)).pop();
+  // El historial empezó en oct 2026: si la multa es de antes de que hubiera nada apuntado, se propone quien la llevó primero.
+  let aprox = '';
+  if (!h) {
+    const primero = hist.filter(x => x.userId && x.desde).sort((a, b) => a.desde.localeCompare(b.desde))[0];
+    if (primero && primero.desde > f) { h = primero; aprox = `no hay historial de esa fecha: es quien la lleva desde el ${fmt(primero.desde)}`; }
+    else if (!hist.length && v.conductor) { h = v.conductor; aprox = 'es quien la lleva ahora (sin historial)'; }
+  }
   if (!h) return { vehiculo: vh, conductor: null, nota: 'Ese día no tenía conductor asignado en Vehículos' };
   const at = fecha ? await db.collection('attendance').findOne({ workerId: String(h.userId), date: fecha }) : null;
   const sinTrabajo = require('./config').estadosSinHorasProductivas || [];
   const trabajo = at ? !sinTrabajo.includes(at.estado) : null;
-  return { vehiculo: vh, conductor: { userId: String(h.userId), name: h.name || '' }, trabajo,
-    nota: trabajo === false ? `ojo: ese día ${h.name} no trabajó (${at.estado}); mira quién más la usó` : trabajo === null && fecha ? `${h.name} no tiene presencia apuntada ese día` : '' };
+  return { vehiculo: vh, conductor: { userId: String(h.userId), name: h.name || '' }, trabajo, aprox: !!aprox,
+    nota: aprox && trabajo !== false ? aprox : trabajo === false ? `ojo: ese día ${h.name} no trabajó (${at.estado}); mira quién más la usó` : trabajo === null && fecha ? `${h.name} no tiene presencia apuntada ese día` : '' };
 }
 
 // ── Textos de WhatsApp ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -114,15 +123,16 @@ async function registrar(p, { gmailId = null, avisar = true, _db = null, _enviar
     || (p.concepto && await col.findOne({ conceptoNorm: norm(p.concepto), recibida: { $gte: masDias(p.recibida, -3), $lte: masDias(p.recibida, 3) } }));
   if (igual) { if (gmailId) await col.updateOne({ _id: igual._id }, { $addToSet: { gmailIds: gmailId } }); return { ...igual, repetida: true }; }
   const doc = { ...p, conceptoNorm: norm(p.concepto), gmailIds: gmailId ? [gmailId] : [], estado: p.vence && p.vence < hoyISO() ? 'caducada' : 'pendiente', avisos: {}, creado: new Date() };
-  if (doc.tipo === 'comunicacion') doc.estado = 'informativa';
+  if (doc.tipo === 'comunicacion' || (doc.estado === 'pendiente' && RE_RUTINA.test(doc.concepto))) doc.estado = 'informativa';
+  const rutina = RE_RUTINA.test(doc.concepto);
   if (doc.tipo === 'multa' && doc.multa && doc.multa.matricula) {
     doc.conductorPropuesto = await conductorEn(doc.multa.matricula, doc.multa.fechaInfraccion, { _db: db }).catch(() => null);
     // Multivia avisa cuando ya ha abierto la notificación: el plazo de 20 días corre desde entonces (aprox., el día del correo).
-    if (doc.fuente === 'multivia') { doc.estado = 'abierta'; doc.plazoIdentificar = masDias(doc.recibida, PLAZO_IDENTIFICAR); }
+    if (doc.fuente === 'multivia') { doc.plazoIdentificar = masDias(doc.recibida, PLAZO_IDENTIFICAR); doc.estado = doc.plazoIdentificar < hoyISO() ? 'caducada' : 'abierta'; }
   }
   delete doc.recordatorio;
   const r = await col.insertOne(doc); doc._id = r.insertedId;
-  if (avisar && doc.estado !== 'caducada') {
+  if (avisar && doc.estado !== 'caducada' && !rutina) {
     try { await (_enviar || (t => require('./notifications').sendWhatsApp(t)))(textoAviso(doc)); await col.updateOne({ _id: doc._id }, { $set: { 'avisos.llegada': new Date() } }); }
     catch (e) { console.warn('[NotifOficiales] WhatsApp:', e.message); }
   }
