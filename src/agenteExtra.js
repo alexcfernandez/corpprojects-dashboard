@@ -223,6 +223,45 @@ async function ejecutar(name, input, from) {
     const eur = n => (Number(n) || 0).toFixed(2).replace('.', ',') + ' €';
     return { handled: true, reply: p.length ? `⛽ Repostajes sin vehículo (${p.length}):\n${p.slice(0, 10).map((x, i) => `${i + 1}. ${dm(x.fecha)}${x.hora ? ' ' + x.hora : ''} · ${eur(x.importe)} · ${x.establecimiento || 'Esclat'}`).join('\n')}\n\nDime «el 2 es de la Berlingo».` : '✅ No hay repostajes sin vehículo.' };
   }
+  // La FACTURA o el ticket de una compra (la foto/PDF que se subió a Compras): «mándame la factura del taladro de Obramat».
+  // 26/10/2026: Corpy encontraba la compra con buscar_compras pero luego la buscaba en Personal y decía que no la tenía.
+  if (name === 'pasar_factura_compra') {
+    if (!require('./acceso').esOwner(from)) return { handled: true, reply: 'Las facturas de compra solo se las paso a Álex.' };
+    const db = await require('./db').getDB();
+    const nnum = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    let cands = [];
+    if (input.numero && nnum(input.numero).length >= 4) {
+      const todas = await db.collection('compras').find({ numero: { $exists: true, $ne: null } }).project({ numero: 1, proveedor: 1, fecha: 1, total: 1, nFotos: 1, lineas: 1 }).toArray();
+      cands = todas.filter(c => nnum(c.numero).includes(nnum(input.numero)) || nnum(input.numero).includes(nnum(c.numero)) && nnum(c.numero).length >= 6)
+        .sort((a, b) => (b.nFotos || 0) - (a.nFotos || 0));
+    }
+    if (!cands.length && (input.que || input.proveedor)) {
+      const ws = _n(input.que || '').split(' ').filter(w => w.length >= 4);
+      const q = { estado: { $ne: 'descartada' } };
+      const l = await db.collection('compras').find(q).sort({ fecha: -1 }).limit(1500).project({ numero: 1, proveedor: 1, fecha: 1, total: 1, nFotos: 1, lineas: 1 }).toArray();
+      // Puntos = cuántas palabras casan en la mejor línea; se quedan las que más (la misma factura subida dos veces cuenta una).
+      const pts = c => ws.length ? Math.max(0, ...(c.lineas || []).map(li => ws.filter(w => _n(li.descripcion).includes(w)).length)) : 1;
+      const ok = l.filter(c => (!input.proveedor || casaProveedor(c.proveedor, input.proveedor)) && (!input.fecha || !c.fecha || String(c.fecha).slice(0, 7) === String(input.fecha).slice(0, 7)))
+        .map(c => ({ c, p: pts(c) })).filter(x => x.p > 0);
+      const max = Math.max(0, ...ok.map(x => x.p)); const vistos = new Set();
+      cands = ok.filter(x => x.p === max).map(x => x.c).filter(c => { const k = nnum(c.numero) || String(c._id); if (vistos.has(k)) return false; vistos.add(k); return true; });
+    }
+    if (!cands.length) return { handled: true, reply: `No encuentro esa compra en Compras${input.numero ? ` (nº ${input.numero})` : ''}. Dime el proveedor y qué se compró, o el número de factura.`, aclara: true };
+    if (cands.length > 1 && !input.numero) return { handled: true, reply: `Hay varias:\n${cands.slice(0, 6).map(c => `• ${c.proveedor || ''} nº *${c.numero || '—'}* · ${c.fecha ? c.fecha.split('-').reverse().join('/') : ''} · ${(Number(c.total) || 0).toFixed(2).replace('.', ',')} €`).join('\n')}\n¿Cuál te paso?`, aclara: true };
+    const c = cands[0];
+    const nombre = `Factura ${c.proveedor || ''} ${c.numero || ''}`.trim();
+    const fotos = await require('./compras').fotosDe(String(c._id));
+    const W = require('./canalWhatsapp');
+    if (fotos.length && W.canalActivo() === 'bridge') {
+      let ok = 0;
+      for (const f of fotos.slice(0, 5)) {
+        const ext = /pdf/.test(f.mimetype || '') ? 'pdf' : 'jpg';
+        if (await W.enviarArchivo(from, `📎 ${nombre}${fotos.length > 1 ? ` (${f.idx + 1}/${fotos.length})` : ''}`, { data: Buffer.from(f.data.buffer || f.data), mime: f.mimetype || 'image/jpeg', nombre: `${nombre.replace(/[^\w.-]+/g, '_')}.${ext}` })) ok++;
+      }
+      if (ok) return { handled: true, reply: `Te mando aquí mismo la *${nombre}* del ${c.fecha ? c.fecha.split('-').reverse().join('/') : ''} (${(Number(c.total) || 0).toFixed(2).replace('.', ',')} €).` };
+    }
+    return { handled: true, reply: fotos.length ? `📎 *${nombre}*: la tienes en Compras, https://dashboard.corpprojects.es/compras` : `La compra *${nombre}* está apuntada pero sin foto ni PDF de la factura. Si la necesitas, pídela a ${c.proveedor || 'la tienda'} (Obramat: área de cliente, «Mis compras»).` };
+  }
   if (name === 'pasar_documento_vehiculo') {
     if (!require('./acceso').esOwner(from)) return { handled: true, reply: 'Los documentos de los vehículos solo se los paso a Álex.' };
     const r = await _vehiculo(input.vehiculo || '');
@@ -261,6 +300,7 @@ const TOOLS = [
   { name: 'buscar_compras', description: 'Qué MATERIAL se ha comprado, dónde y para qué obra (líneas de las facturas y tickets de Compras): «qué suelo compramos para el piso de Claudia», «cuánta pintura llevamos en Rahola», «qué compró David en Obramat la semana pasada».', input_schema: { type: 'object', properties: { que: { type: 'string', description: 'Material o artículo (suelo, pintura, cable…); vacío si pregunta por todo.' }, obra: { type: 'string' }, proveedor: { type: 'string' }, desde: { type: ['string', 'null'] }, hasta: { type: ['string', 'null'] } } } },
   { name: 'gasto_proveedor', description: 'Cuánto GASTAMOS en un proveedor (facturas de proveedor de StelOrder), total y por meses: «cuánto gastamos en Obramat» (Obramat = Bricoman en StelOrder), «gasto en Saltoki este año».', input_schema: { type: 'object', properties: { proveedor: { type: 'string' }, desde: { type: ['string', 'null'] }, hasta: { type: ['string', 'null'] } }, required: ['proveedor'] } },
   { name: 'documentos_vehiculo', description: 'Qué papeles tenemos de un vehículo (ficha técnica, permiso de circulación, seguro, ITV) — solo mirar. Para MANDARLO usa pasar_documento_vehiculo.', input_schema: { type: 'object', properties: { vehiculo: { type: 'string', description: 'Nombre, marca/modelo, matrícula o quién lo lleva («el coche de Alfonso»).' } }, required: ['vehiculo'] } },
+  { name: 'pasar_factura_compra', description: 'MANDA a Álex la FACTURA o ticket de una COMPRA a un proveedor (la foto o PDF guardado en Compras): «mándame la factura del taladro que compramos en Obramat», «pásame la factura F0018-043-51-07-02841». Si antes buscaste la compra con buscar_compras, pon su número de factura.', input_schema: { type: 'object', properties: { numero: { type: ['string', 'null'], description: 'Número de factura si se sabe.' }, proveedor: { type: ['string', 'null'] }, que: { type: ['string', 'null'], description: 'Artículo comprado (taladro, martillo Stayer…).' }, fecha: { type: ['string', 'null'] } } } },
   { name: 'pasar_documento_vehiculo', description: 'MANDA a Álex un papel de un vehículo: «necesito la ficha técnica de la Nissan Primastar», «pásame el seguro de la Berlingo».', input_schema: { type: 'object', properties: { vehiculo: { type: 'string' }, que: { type: 'string', description: 'ficha técnica, permiso de circulación, seguro, ITV…' } }, required: ['vehiculo'] } },
   { name: 'asignar_repostaje', description: 'Dice de qué vehículo es un repostaje (o si es gasolina para una máquina: cortacésped, desbrozadora, garrafa, generador… → pon eso en «vehiculo») y, si lo dice, quién repostó. Úsalo cuando Corpy ha preguntado «¿de qué vehículo es?» y Álex contesta («la Berlingo», «es del coche de Alfonso», «lo puso Javi en la moto», «el 2 es de la Partner»). El id va en el mensaje de Corpy («ref. repostaje ID» o «#repostaje=ID»); si no lo ves, pon importe/fecha/número si los dice, o déjalo vacío.', input_schema: { type: 'object', properties: { vehiculo: { type: 'string' }, quien: { type: ['string', 'null'], description: 'Quién repostó, si lo dice («lo puso Javi»).' }, repostajeId: { type: ['string', 'null'] }, importe: { type: ['number', 'null'] }, fecha: { type: ['string', 'null'] }, numero: { type: ['integer', 'null'], description: 'Número de la lista que dio Corpy.' } }, required: ['vehiculo'] } },
   { name: 'crear_vehiculo', description: 'Da de alta un vehículo NUEVO en Flota cuando Álex lo pide («créala como la Peugeot Partner», «es una moto nueva, créala») — normalmente tras decirle Corpy que no existe. Si viene de un repostaje, se le asigna.', input_schema: { type: 'object', properties: { nombre: { type: 'string', description: 'Cómo la llamáis (Peugeot Partner, Moto de Javi…).' }, marca: { type: ['string', 'null'] }, modelo: { type: ['string', 'null'] }, matricula: { type: ['string', 'null'] }, tipo: { type: ['string', 'null'], enum: ['furgoneta', 'coche', 'camion', 'moto', 'remolque', 'otro', null] }, quien: { type: ['string', 'null'] }, repostajeId: { type: ['string', 'null'] } }, required: ['nombre'] } },

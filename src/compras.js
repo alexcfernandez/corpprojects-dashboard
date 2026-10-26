@@ -199,16 +199,23 @@ function aplicarLectura(doc, d) {
 }
 
 // ── DUPLICADOS: mismo proveedor + mismo número (y no descartada) ─
+// El mismo nº escrito distinto cuenta igual: «F0018-043-51-07-02841», «F0018-043-51-07/02841» y «…/0002841» (26/10/2026: la
+// misma factura de Obramat estaba 3 veces). Se comparan los trozos sin separadores ni ceros a la izquierda.
+const numClave = n => String(n || '').toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean).map(t => t.replace(/^0+(?=\d)/, '').replace(/^([A-Z]+)0+(?=\d)/, '$1')).join('-');
 async function buscarDuplicado(db, doc) {
   if (!doc.proveedorNorm || !doc.numero) return null;
-  const q = { empresaId: EMPRESA, estado: { $ne: 'descartada' }, proveedorNorm: doc.proveedorNorm, numero: doc.numero };
+  const q = { empresaId: EMPRESA, estado: { $ne: 'descartada' }, proveedorNorm: doc.proveedorNorm };
   // Mismo correo ya procesado (y no descartado) con el mismo nº: repetida. Un correo con dos facturas distintas no.
   if (doc.gmailId) { const e = await db.collection(COL).findOne({ empresaId: EMPRESA, gmailId: doc.gmailId, estado: { $ne: 'descartada' }, numero: doc.numero, _id: { $ne: doc._id }, ...(doc.createdAt ? { createdAt: { $lt: doc.createdAt } } : {}) }, { projection: { _id: 1 } }); if (e) return String(e._id); }
   if (doc._id) q._id = { $ne: doc._id };
   // La original es la que entró antes: así dos copias no se marcan la una a la otra (y no se pierden las dos).
   if (doc.createdAt) q.createdAt = { $lt: doc.createdAt };
-  const d = await db.collection(COL).findOne(q, { projection: { _id: 1 } });
-  return d ? String(d._id) : null;
+  const d = await db.collection(COL).findOne({ ...q, numero: doc.numero }, { projection: { _id: 1 } });
+  if (d) return String(d._id);
+  const k = numClave(doc.numero); if (k.replace(/-/g, '').length < 4) return null;
+  const otros = await db.collection(COL).find(q).project({ _id: 1, numero: 1, createdAt: 1 }).sort({ createdAt: 1 }).toArray();
+  const o = otros.find(x => x.numero && numClave(x.numero) === k);
+  return o ? String(o._id) : null;
 }
 
 // Vuelve a mirar las marcadas como repetidas (antes dos copias podían marcarse la una a la otra y no contaba ninguna).
@@ -1224,4 +1231,4 @@ async function resumenPendientes({ dryRun = false } = {}) {
   return { pendientes: pend.length, enviado: ok > 0 };
 }
 
-module.exports = { papelPersonal, papelVehiculo, aPersonal, aObra, aVehiculo, esParteNuestro, autoRevisar, autoRevisarPendientes, claridad, resolverDuplicado, repararDuplicados, subidaMasiva, estadoMasiva, _unaMasiva, _gemelaTicket, _partirPdf, propuestaLineas, _repartoDeLineas, separarFoto, n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, albaranesDelCorreo, repartoPorAlbaran, obraDeTexto, _aprenderAliasObras: aprenderAliasObras, clasificacionesParaStel, reglaProveedorDe, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };
+module.exports = { _numClave: numClave, papelPersonal, papelVehiculo, aPersonal, aObra, aVehiculo, esParteNuestro, autoRevisar, autoRevisarPendientes, claridad, resolverDuplicado, repararDuplicados, subidaMasiva, estadoMasiva, _unaMasiva, _gemelaTicket, _partirPdf, propuestaLineas, _repartoDeLineas, separarFoto, n2, nCant, TIPOS, TIPO_TXT, DESTINOS, DESTINO_TXT, buscarPrecios, deObra, resumenProveedores, propuestaCasar, albaranesDelCorreo, repartoPorAlbaran, obraDeTexto, _aprenderAliasObras: aprenderAliasObras, clasificacionesParaStel, reglaProveedorDe, casar, descasar, albaranesSinFactura, avisoAlbaranesSinFactura, crear, getFoto, fotosDe, lista, getCompra, mias, contarPendientes, editar, releer, revisar, descartar, reabrir, resumenPendientes, resumenParaTrabajador, _leerConIA: leerConIA, _aplicarLectura: aplicarLectura, _norm: norm };

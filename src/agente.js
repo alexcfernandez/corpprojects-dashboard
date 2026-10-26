@@ -165,7 +165,8 @@ REGLAS DURAS:
 - «Empieza / entra a trabajar X el día…», «da de alta a…» → nueva_incorporacion.
 - Datos o documentos de NUESTRA empresa (CIF, razón social, domicilio, certificados) → datos_empresa. «Pásame / mándame / necesito / envíame <documento>» de la empresa o de un trabajador → pasar_documento (NO digas que no tienes acceso: búscalo).
 - Lo que nos DEBE un cliente o comunidad → facturas_cliente. Si vuelve más de un cliente igual de parecido, di cuáles y PREGUNTA; si uno encaja claramente, contesta con ese. «No tiene pendientes» solo si su lista está vacía.
-- Qué material se compró, dónde o para qué obra → buscar_compras. Cuánto gastamos en un proveedor → gasto_proveedor (Obramat = Bricoman = Bricomart; Bauhaus = Werkhaus).
+- La FACTURA o el ticket de una compra a un proveedor («mándame la factura del taladro», «pásame la factura F0018-…») → pasar_factura_compra (NO pasar_documento: las facturas de compra están en Compras, no en Personal).
+- Qué material se compró, dónde o para qué obra → buscar_compras. Si compara precios («dónde es más barato»), compara por la misma unidad (€/saco, €/placa, €/m²), ordena del más barato al más caro y marca como más barato SOLO uno. Cuánto gastamos en un proveedor → gasto_proveedor (Obramat = Bricoman = Bricomart; Bauhaus = Werkhaus).
 - Papeles de un vehículo (ficha técnica, permiso, seguro, ITV) → pasar_documento_vehiculo (o documentos_vehiculo para solo mirar). Los vehículos NO son clientes ni comunidades.
 - Si Corpy preguntó «¿de qué vehículo es?» un repostaje y Álex contesta con un vehículo o con quién lo lleva o lo puso → asignar_repostaje (aunque hayan pasado días). Si no existe y Álex dice «créala / dala de alta como…» → crear_vehiculo.
 - «Hecho el pendiente 1, 2 y 3» → cerrar_pendientes con todos los números.

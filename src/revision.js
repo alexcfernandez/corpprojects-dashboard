@@ -73,9 +73,15 @@ async function datos(fecha = hoyMadrid()) {
   await w('altas', async () => (await require('./incorporaciones').lista({})).map(i => ({ id: i.id || String(i._id), nombre: i.nombre, inicio: i.fechaInicio, falta: (i.pasos || []).filter(p => !p.ok && p.antes).map(p => p.t + (p.nota ? ` (${p.nota})` : '')) })));
   // Lo que el dashboard ha escrito hoy en StelOrder
   await w('stel', async () => (await db.collection('stelWriteLog').find({ at: { $gte: ini, $lt: fin } }).project({ tipo: 1, doc: 1, tercero: 1, por: 1, hechos: 1 }).limit(100).toArray()).map(x => ({ tipo: x.tipo, doc: x.doc, tercero: x.tercero, por: x.por, n: (x.hechos || []).length })));
-  // Revisiones anteriores con puntos sin resolver (para no repetir y para insistir)
-  await w('pendientesDeAntes', async () => (await db.collection(COL).find({ 'items.estado': 'pendiente' }).project({ fecha: 1, items: 1 }).sort({ fecha: -1 }).limit(7).toArray())
-    .flatMap(r => r.items.filter(i => i.estado === 'pendiente').map(i => ({ fecha: r.fecha, titulo: i.titulo }))));
+  // Revisiones anteriores: lo que Álex ya resolvió (con su nota) y lo que sigue sin marcar. Un tema resuelto un día ya no
+  // cuenta como pendiente en las revisiones de días anteriores (26/10/2026: el 24 seguía «Kit Digital» o «Norman» sin marcar
+  // y la revisión del 26 los volvió a sacar aunque el 25 se habían marcado como hechos).
+  const anteriores = await db.collection(COL).find({ fecha: { $lt: fecha } }).project({ fecha: 1, items: 1 }).sort({ fecha: -1 }).limit(10).toArray();
+  const tema = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').split(/[:—(]/)[0].replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const resueltos = anteriores.flatMap(r => (r.items || []).filter(i => i.estado === 'hecho' || i.estado === 'ignorado').map(i => ({ fecha: r.fecha, titulo: i.titulo, estado: i.estado, nota: i.nota || null })));
+  out.resueltosDeAntes = resueltos.slice(0, 40);
+  await w('pendientesDeAntes', async () => anteriores.flatMap(r => (r.items || []).filter(i => i.estado === 'pendiente').map(i => ({ fecha: r.fecha, titulo: i.titulo })))
+    .filter(p => !resueltos.some(x => x.fecha >= p.fecha && tema(x.titulo) && tema(x.titulo) === tema(p.titulo))).slice(0, 40));
   return out;
 }
 
@@ -151,6 +157,7 @@ Qué buscar:
 - Lo estancado: encargos de 3 días o más o con 2 recordatorios sin respuesta; compras sin obra; altas con todo firmado que solo esperan «Enviado a la gestoría».
 - Compras: quién ha ido a comprar 3 veces o más hoy (viajes), y si la cola por revisar crece.
 - Correos que piden una acción (Administración/notificaciones oficiales con plazo, gestoría, clientes que reclaman o piden explicaciones, proveedores, médicos/prevención). Las notificaciones oficiales con plazo, lo primero.
+- resueltosDeAntes son temas que Álex YA marcó como hechos o ignorados (con su nota, p. ej. «pagado», «ya se mandó el 15/10»): NO los vuelvas a poner salvo que HOY pase algo NUEVO sobre ese tema (un correo o mensaje nuevo), y entonces di solo lo nuevo.
 - pendientesDeAntes son puntos de revisiones anteriores que Álex aún no ha marcado: NO los repitas salvo que en los datos de HOY se vea claramente que siguen sin resolver (y entonces dilo una vez). Nunca repitas mejoras del programa de días anteriores.
 - No pongas cosas sin importancia (saludos, mensajes de prueba, avisos automáticos que ya se ven solos).
 - Si un tema es una mejora del programa, ponlo como «aviso» empezando por «Mejora para Corpy/dashboard:».
