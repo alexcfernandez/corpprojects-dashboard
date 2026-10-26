@@ -480,6 +480,13 @@ async function procesarEmail(gmail, messageId) {
       }
     } catch (e) { console.warn('[Email] absentismes:', e.message); }
 
+    // Notificaciones OFICIALES (DEHú, e-NOTUM, Red.es) y MULTAS (Multivia): se guardan con su plazo y se avisa a Álex; si es una
+    // multa, con quién llevaba la furgoneta ese día (notifOficiales.js).
+    try {
+      const r = await require('./notifOficiales').desdeCorreo({ de, asunto, cuerpo, payload: msg.data.payload, fecha, gmailId: messageId });
+      if (r) console.log(`[Email] notificación oficial: ${r.tipo} ${r.organismo || ''}${r.repetida ? ' (repetida)' : ''}`);
+    } catch (e) { console.warn('[Email] notificación oficial:', e.message); }
+
     // Carta de efectos de Saltoki (qué facturas junta cada recibo): para que el cuadre case cada recibo exacto.
     try {
       const EP = require('./efectosProveedor');

@@ -1502,6 +1502,40 @@ async function cargarRevision(){
     ${hechos.length?`<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;color:var(--text3)">✔ ${hechos.length} cosa${hechos.length>1?'s':''} arreglada${hechos.length>1?'s':''} sola${hechos.length>1?'s':''}</summary>${hechos.map(fila).join('')}</details>`:''}
   </div>`;
 }
+// Notificaciones oficiales (DEHú, e-NOTUM, Red.es) y multas sin identificar al conductor (notifOficiales.js). 26/10/2026.
+async function cargarNotifOficiales(){
+  const el=document.getElementById('ini-notif'); if(!el) return;
+  let l; try{ l=await apiCall('/api/notificaciones-oficiales'); }catch(e){ el.innerHTML=''; return; }
+  if(!Array.isArray(l)||!l.length){ el.innerHTML=''; return; }
+  window._notifOf=l;
+  const e=s=>String(s==null?'':s).replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+  const f=d=>d?d.split('-').reverse().join('/'):'';
+  const hoy=new Date().toLocaleDateString('en-CA',{timeZone:'Europe/Madrid'});
+  const dias=d=>Math.round((new Date(d+'T12:00:00')-new Date(hoy+'T12:00:00'))/86400000);
+  const plazo=(d,txt)=>{ if(!d) return ''; const n=dias(d); const col=n<=2?'#f05252':n<=7?'#f59e0b':'var(--text3)'; return `<span style="color:${col};font-weight:600">${txt} ${f(d)} · ${n<=0?'HOY':n===1?'mañana':n+' días'}</span>`; };
+  el.innerHTML=`<div class="card" style="margin:0 0 14px;border-color:rgba(240,82,82,.45)">
+    <div style="display:flex;align-items:center;gap:8px"><div class="card-title" style="margin:0">📬 Notificaciones oficiales y multas</div><span style="margin-left:auto;font-size:12px;color:var(--text3)">${l.length} pendiente${l.length>1?'s':''}</span></div>
+    ${l.map((n,i)=>{ const m=n.multa||{}; const c=n.conductorPropuesto||{};
+      return `<div style="padding:9px 0;border-top:1px solid var(--border)">
+      <div style="font-weight:600;font-size:13.5px">${n.tipo==='multa'?'🚨 Multa · ':''}${e(n.organismo||'')}</div>
+      <div style="font-size:12.5px;color:var(--text2);margin-top:2px">${e(n.concepto||'')}${n.identificador?` · nº ${e(n.identificador)}`:''}</div>
+      ${n.tipo==='multa'?`<div style="font-size:12.5px;margin-top:3px">${m.matricula?`🚐 ${e(m.matricula)}${c.vehiculo?' · '+e(c.vehiculo.nombre):''}${m.fechaInfraccion?' · día '+f(m.fechaInfraccion):''}${m.importe?` · ${String(m.importe).replace('.',',')} €`:''}${m.puntos?` · ${m.puntos} pts`:''}`:'Sin matrícula todavía: ábrela y pon la matrícula y el día'}${c.conductor?`<br>👤 La llevaba <b>${e(c.conductor.name)}</b>`:''}${c.nota?` <span style="color:var(--text3)">(${e(c.nota)})</span>`:''}</div>`:''}
+      <div style="font-size:12.5px;margin-top:3px">${n.estado==='pendiente'?plazo(n.vence,'Abrir antes del'):''}${n.plazoIdentificar?plazo(n.plazoIdentificar,'Identificar conductor antes del'):''}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px">
+        ${n.enlace?`<a class="btn btn-sm" href="${e(n.enlace)}" target="_blank" rel="noopener">Abrir en la sede</a>`:''}
+        ${n.estado==='pendiente'?`<button class="btn btn-sm btn-primary" onclick="notifOf(${i},'abierta',this)">✔ Ya abierta</button>`:''}
+        ${n.tipo==='multa'?`<button class="btn btn-sm" onclick="notifOfDatos(${i},this)">${m.matricula?'Cambiar matrícula/día':'Poner matrícula y día'}</button>`:''}
+        ${n.tipo==='multa'&&n.estado==='abierta'?`<button class="btn btn-sm btn-primary" onclick="notifOf(${i},'identificado',this)">✔ Conductor identificado</button>`:''}
+        <button class="btn btn-sm" onclick="notifOf(${i},'ignorar',this)">Ignorar</button>
+      </div></div>`; }).join('')}
+  </div>`;
+}
+async function notifOf(i,accion,b,extra){ const n=(window._notifOf||[])[i]; if(!n) return; if(accion==='ignorar'&&!confirm('¿Quitarla de la lista?')) return; b.disabled=true;
+  try{ const r=await apiCall('/api/notificaciones-oficiales/'+n.id,'POST',{accion,...(extra||{})}); if(r&&r.error) throw new Error(r.error); cargarNotifOficiales(); }catch(err){ alert(err.message); b.disabled=false; } }
+function notifOfDatos(i,b){ const n=(window._notifOf||[])[i]; if(!n) return; const m=n.multa||{};
+  const mat=prompt('Matrícula de la multa',m.matricula||''); if(!mat) return;
+  const d=prompt('Día de la infracción (dd/mm/aaaa)',m.fechaInfraccion?m.fechaInfraccion.split('-').reverse().join('/'):''); const x=String(d||'').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  notifOf(i,'datos',b,{matricula:mat,fechaInfraccion:x?`${x[3]}-${x[2].padStart(2,'0')}-${x[1].padStart(2,'0')}`:null}); }
 // Días de obra que se facturan APARTE por horas (marcados en Presencia con 💶): hasta «Ya facturado». 24/10/2026.
 async function cargarFacturarAparte(){
   const el=document.getElementById('ini-facturar'); if(!el) return;
@@ -1707,6 +1741,7 @@ async function renderInicio(){
     ${enc.length?`<div id="enc-det" style="display:none;margin:-6px 0 14px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--bg2);font-size:13px;line-height:1.6">${enc.map(e=>`<div>📨 <b>${String(e.nombre||'').replace(/[<>&"]/g,'')}</b>: ${String(e.que||'').replace(/[<>&"]/g,'')} <span style="color:var(--text3)">· hace ${e.dias} día${e.dias===1?'':'s'}${e.recordatorios?` · recordado ${e.recordatorios}×`:''}${e.ultimaRespuesta&&e.ultimaRespuesta.texto?` · dijo «${String(e.ultimaRespuesta.texto).slice(0,60).replace(/[<>&"]/g,'')}»`:''}</span></div>`).join('')}<div style="color:var(--text3);font-size:12px;margin-top:4px">Para pedir algo: díselo a Corpy («pídele a Javi la talla de botas»). Para cerrar uno: «Javi ya lo ha hecho».</div></div>`:''}
     <div id="ini-revision"></div>
     <div id="ini-peticiones"></div>
+    <div id="ini-notif"></div>
     <div id="ini-facturar"></div>
     <div id="ini-precios"></div>
     <div class="ini-kpis">
@@ -1736,6 +1771,7 @@ async function renderInicio(){
   try{cargarSubidasPrecio();}catch(e){}
   try{cargarRevision();}catch(e){}
   try{cargarPeticiones();}catch(e){}
+  try{cargarNotifOficiales();}catch(e){}
   try{cargarFacturarAparte();}catch(e){}
   if(tq&&sa){if(tq.parentElement!==sa){sa.innerHTML='<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin:8px 2px">Accesos rápidos</div>';sa.appendChild(tq);}tq.classList.add('compacto');}
 }

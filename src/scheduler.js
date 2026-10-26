@@ -416,6 +416,8 @@ function startScheduler() {
   cron.schedule('50 9 * * 1-5', () => require('./ispFacturas').revisar().then(r => { if (r.revisadas) console.log(`[ISP] ${r.revisadas} factura(s) sin IVA mirada(s)`); }).catch(e => console.warn('[ISP]', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('30 8 * * 1-6', () => require('./incorporaciones').revisarManana().catch(e => console.warn('[Incorporaciones] mañana:', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('0 9 * * *', () => require('./bancoSync').revisarCaducidad().catch(e => console.warn('[BancoSync] caducidad:', e.message)), { timezone: 'Europe/Madrid' });
+  // Notificaciones oficiales que vencen (2 días antes y el último) y multas sin identificar al conductor (7, 2 y 0 días).
+  cron.schedule('10 9 * * *', () => require('./notifOficiales').recordatorios().then(r => r.avisos.length && console.log('[NotifOficiales] recordatorios:', r.avisos.length)).catch(e => console.warn('[NotifOficiales]', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('5 9 * * *', () => require('./vehiculos').revisarVencimientos().then(r => r.avisos.length && console.log('[Vehículos] avisos:', r.avisos.length)).catch(e => console.warn('[Vehículos] avisos:', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('40 8 * * 1-5', () => require('./trimestre').revisionDiaria()
     .then(r => console.log('[Trimestre] revisión diaria →', JSON.stringify(r)))
