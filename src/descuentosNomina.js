@@ -3,8 +3,7 @@
 // Entra de dos sitios:
 //   · Compras: una línea de factura con destino «💸 A descontar en nómina» y el trabajador (al confirmar la compra);
 //   · Corpy: «descuéntale a David las botas, 45 €».
-// Sale en Inicio (por persona, con «✔ Descontado») y en el correo mensual de absentismes a la gestoría, que es quien lo
-// resta de la nómina. Colección `descuentosNomina`: { userId, nombre, concepto, importe, fecha, origen, estado
+// Sale en Inicio (por persona, con «✔ Descontado»). A la gestoría NO se le manda (Álex: «a Eduard solo los absentismos»). Colección `descuentosNomina`: { userId, nombre, concepto, importe, fecha, origen, estado
 // pendiente|descontado|anulado, mes (el de la nómina en que se descontó) }.
 'use strict';
 async function getDB() { return require('./db').getDB(); }
@@ -67,11 +66,5 @@ async function anular(id, por = '', { _db = null } = {}) {
   return { ok: true };
 }
 
-// Para el correo de absentismes (en catalán, como el resto del correo).
-function textoGestoria(lista) {
-  if (!lista.length) return '';
-  const eur = n => n.toFixed(2).replace('.', ',') + ' €';
-  return `\n\nDescomptes de nòmina d'aquest mes (material que la empresa ha pagat per ells):\n\n${lista.map(p => `- ${p.nombre}: ${eur(p.total)} (${p.lineas.map(x => `${x.concepto} ${eur(x.importe)}`).join('; ')})`).join('\n')}`;
-}
 
-module.exports = { apuntar, desdeCompra, pendientes, marcarDescontado, anular, textoGestoria };
+module.exports = { apuntar, desdeCompra, pendientes, marcarDescontado, anular };

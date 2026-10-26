@@ -117,12 +117,22 @@ async function guardar(rev = {}, por = 'Claude') {
 }
 
 // Para el inicio: la última revisión y lo que quede pendiente de las anteriores (7 días).
+// El tema de un punto (lo de antes de «:»): «Norman Martínez: todo firmado…» → «norman martinez». Sirve para no enseñar el
+// mismo tema de varios días y para cerrarlo en todos al marcarlo (26/10/2026: salían 71 «por decidir», casi todos repetidos).
+const temaDe = t => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').split(/[:—(]/)[0].replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
 async function paraInicio() {
   const db = await getDB();
   const rs = await db.collection(COL).find({}).sort({ fecha: -1 }).limit(7).toArray();
   if (!rs.length) return null;
   const ult = rs[0];
-  const antes = rs.slice(1).flatMap(r => r.items.filter(i => i.estado === 'pendiente' && i.tipo === 'decidir').map(i => ({ ...i, revId: String(r._id), fecha: r.fecha })));
+  const vistos = new Set(ult.items.map(i => temaDe(i.titulo)).filter(Boolean));
+  const cerrados = new Set(rs.flatMap(r => r.items.filter(i => i.estado === 'hecho' || i.estado === 'ignorado').map(i => temaDe(i.titulo))).filter(Boolean));
+  const antes = [];
+  for (const r of rs.slice(1)) for (const i of r.items) {
+    if (i.estado !== 'pendiente' || i.tipo !== 'decidir') continue;
+    const t = temaDe(i.titulo); if (t && (vistos.has(t) || cerrados.has(t))) continue;
+    if (t) vistos.add(t); antes.push({ ...i, revId: String(r._id), fecha: r.fecha });
+  }
   return { id: String(ult._id), fecha: ult.fecha, resumen: ult.resumen, items: ult.items.map(i => ({ ...i, revId: String(ult._id), fecha: ult.fecha })), antes };
 }
 
@@ -131,6 +141,15 @@ async function marcar(revId, itemId, estado, por) {
   if (!['hecho', 'ignorado', 'pendiente'].includes(estado)) throw new Error('Estado no válido');
   const r = await db.collection(COL).updateOne({ _id: new ObjectId(String(revId)), 'items.id': String(itemId) }, { $set: { 'items.$.estado': estado, 'items.$.resueltoPor': por, 'items.$.resueltoAt': new Date() } });
   if (!r.matchedCount) throw new Error('No encuentro ese punto');
+  // Hecho o ignorado: el mismo tema de otros días también (si no, vuelve a salir de una revisión anterior).
+  if (estado !== 'pendiente') {
+    const rev = await db.collection(COL).findOne({ _id: new ObjectId(String(revId)) }, { projection: { items: 1 } });
+    const t = temaDe(((rev && rev.items) || []).find(i => String(i.id) === String(itemId))?.titulo);
+    if (t) for (const o of await db.collection(COL).find({ 'items.estado': 'pendiente' }).project({ items: 1 }).toArray()) {
+      const ids = o.items.filter(i => i.estado === 'pendiente' && temaDe(i.titulo) === t).map(i => i.id);
+      for (const id of ids) await db.collection(COL).updateOne({ _id: o._id, 'items.id': id }, { $set: { 'items.$.estado': estado, 'items.$.resueltoPor': `${por} (mismo tema)`, 'items.$.resueltoAt': new Date() } });
+    }
+  }
   return { ok: true };
 }
 
@@ -215,4 +234,4 @@ async function automatica({ fecha = hoyMadrid(), avisar = true, _llamar = null }
   return guardar({ fecha, avisar, resumen: out.resumen, items: out.items }, 'Corpy (revisión automática)');
 }
 
-module.exports = { datos, guardar, automatica, paraInicio, marcar, ejecutar, limpiarItem, limites, ACCIONES, _compacto };
+module.exports = { _temaDe: temaDe, datos, guardar, automatica, paraInicio, marcar, ejecutar, limpiarItem, limites, ACCIONES, _compacto };

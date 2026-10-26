@@ -233,7 +233,7 @@ async function ejecutar(name, input, from) {
     if (!(Number(input.importe) > 0)) return { handled: true, reply: `¿Cuánto le descuento a ${c[0].u.name} por «${input.concepto}»?`, aclara: true };
     const d = await require('./descuentosNomina').apuntar({ userId: String(c[0].u._id), nombre: c[0].u.name, concepto: input.concepto, importe: input.importe, fecha: input.fecha || null, origen: { tipo: 'corpy' } }, 'Álex (Corpy)');
     const p = (await require('./descuentosNomina').pendientes({ userId: String(c[0].u._id) }))[0];
-    return { handled: true, reply: `💸 Apuntado: a *${d.nombre}* se le descuentan *${d.importe.toFixed(2).replace('.', ',')} €* (${d.concepto}).${p && p.lineas.length > 1 ? ` En total lleva *${p.total.toFixed(2).replace('.', ',')} €* por descontar.` : ''} Irá en el correo de absentismes a la gestoría.` };
+    return { handled: true, reply: `💸 Apuntado: a *${d.nombre}* se le descuentan *${d.importe.toFixed(2).replace('.', ',')} €* (${d.concepto}).${p && p.lineas.length > 1 ? ` En total lleva *${p.total.toFixed(2).replace('.', ',')} €* por descontar.` : ''} Lo tienes en Inicio, en «A descontar en nómina».` };
   }
   // La FACTURA o el ticket de una compra (la foto/PDF que se subió a Compras): «mándame la factura del taladro de Obramat».
   // 26/10/2026: Corpy encontraba la compra con buscar_compras pero luego la buscaba en Personal y decía que no la tenía.

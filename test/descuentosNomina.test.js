@@ -2,7 +2,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const D = require('../src/descuentosNomina');
-const AB = require('../src/absentismes');
 function fakeDb() {
   const l = []; let n = 0;
   const val = (d, k) => k.split('.').reduce((o, p) => (o == null ? undefined : o[p]), d);
@@ -46,9 +45,3 @@ test('las botas de David por Corpy, y al marcarlo descontado ya no sale', async 
   assert.strictEqual(db.l[0].mes, '2026-10');
 });
 
-test('el correo a la gestoría lleva los descuentos', () => {
-  const t = AB.texto({ mes: '2026-10', desde: '2026-10-01', hasta: '2026-10-31', personas: [] }, [{ nombre: 'David Taladros', total: 45.5, lineas: [{ concepto: 'Botas', importe: 45.5 }] }]);
-  assert.match(t, /Descomptes de nòmina/);
-  assert.match(t, /David Taladros: 45,50 € \(Botas 45,50 €\)/);
-  assert.doesNotMatch(AB.texto({ mes: '2026-10', desde: '2026-10-01', hasta: '2026-10-31', personas: [] }), /Descomptes/);
-});
