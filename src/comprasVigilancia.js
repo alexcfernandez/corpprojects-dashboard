@@ -231,6 +231,80 @@ async function obrasDesdePistas({ aplicar = false, soloId = null } = {}) {
   return { n: out.length, aplicado: aplicar, lista: out };
 }
 
+// ── Obra de las compras sin obra: el papel (dirección, «CLAUDIA») y, si no basta, DÓNDE ESTABA ESE DÍA quien compró ──
+// (26/10/2026, Álex: «hay que mirar las obras: pone albarán y Claudia, y han estado hoy en Claudia»). Quien compró sale de
+// quien la subió (trabajador), de quien se apuntó como comprador o del pago con tarjeta que casa; su presencia de ese día
+// dice la obra si solo estuvo en una. Si el papel nombra varias obras, decide la presencia. Sin aplicar, solo propone.
+async function obrasCandidatas(texto, os) {
+  // Nuestra dirección (C/ Nou 12) o «varias obras» no dicen ninguna obra.
+  if (!texto || /m[uú]ltiples|varias|varios|diverses|diversas|\bnou,? (n[ºo°]? ?)?12\b/i.test(texto)) return [];
+  const stop = new Set(['obra', 'obras', 'para', 'esta', 'este', 'compra', 'creo', 'casa', 'calle', 'carrer', 'piso', 'comunidad', 'girona', 'corporacio', 'corporacion', 'corp', 'projects', 'project', 'holding', 'direccion', 'entrega', 'obres', 'portal', 'bajo', 'baixos', 'planta', 'logistica', 'operario', 'cliente', 'promocion', 'codigo', 'referencia', 'pedido', 'albaran', 'factura', 'material', 'local', 'pintar', 'reforma']);
+  const t = [...new Set(n(texto).split(/[^a-z0-9]+/).filter(w => w.length >= 4 && !stop.has(w) && !/^\d+$/.test(w)))];
+  // Una palabra en el nombre de la obra o sus alias vale 2; en el cliente o la dirección, 1. Hace falta 2.
+  return os.map(o => { const fuerte = n([o.reference, ...(o.aliases || [])].join(' ')), debil = n([o.clientName, o.address].join(' '));
+    return { o, s: t.reduce((a, w) => a + (fuerte.includes(w) ? 2 : debil.includes(w) ? 1 : 0), 0) }; }).filter(x => x.s >= 2).map(x => x.o);
+}
+async function obrasPorPresencia({ aplicar = false, limite = 400 } = {}) {
+  const db = await getDB();
+  const os = await db.collection('obras').find({ status: { $nin: ['facturada', 'archivada', 'descartada'] } }, { projection: { reference: 1, clientName: 1, address: 1, aliases: 1, status: 1 } }).toArray();
+  const users = await require('./users').getUsers(false);
+  const cs = await db.collection('compras').find({ estado: 'por_revisar', obraId: { $in: [null, ''] }, varias: { $ne: true }, destino: { $in: [null, 'obra'] } })
+    .project({ obraPista: 1, proveedor: 1, razonSocial: 1, numero: 1, total: 1, fecha: 1, subidaPor: 1, compradoPor: 1, 'lineas.obraTexto': 1, createdAt: 1 }).limit(limite).toArray();
+  const desde = cs.reduce((m, c) => (c.fecha && c.fecha < m ? c.fecha : m), '9999');
+  const pagos = cs.length ? await pagosTarjeta(new Date(new Date((desde === '9999' ? '2026-01-01' : desde) + 'T12:00:00Z').getTime() - 2 * 864e5).toISOString().slice(0, 10)) : [];
+  const userDe = nombre => { const x = n(nombre); return users.find(u => n(u.name) === x) || users.find(u => n(u.name).split(' ')[0] === x.split(' ')[0]) || null; };
+  // Hasta septiembre la presencia guardaba solo el nombre del cliente («CTAT PROPIETARIS C. COMERÇ»), sin la obra: se busca.
+  const porNombre = new Map();
+  const obraDeEntrada = async o => { if (o.obraId) return String(o.obraId); const k = n(o.clientName || '').trim(); if (!k) return null;
+    if (!porNombre.has(k)) { const cs0 = os.filter(x => n(x.clientName || '').trim() === k || n(x.reference || '').trim() === k); const c1 = cs0.length ? cs0 : await obrasCandidatas(o.clientName, os); const act = c1.filter(x => x.status !== 'terminada'); porNombre.set(k, (c1.length === 1 ? c1[0] : act.length === 1 ? act[0] : null)); }
+    const ob = porNombre.get(k); return ob ? String(ob._id) : null; };
+  const obrasDe = async e => { const l = (e.obras && e.obras.length) ? e.obras : (e.clientName ? [{ clientName: e.clientName, obraId: e.obraId, horas: e.horas }] : []); const r = []; for (const o of l) { const id = await obraDeEntrada(o); if (id) r.push({ id, horas: Number(o.horas != null ? o.horas : e.horas) || 0 }); } return r; };
+  const out = [], sin = { sinComprador: 0, sinPresencia: 0, variasObras: 0, sinFecha: 0 };
+  for (const c of cs) {
+    // Gasolina, ITV o taller son del vehículo, no de una obra.
+    if (/\bitv\b|controlauto|applus|petroprix|esclat|gasoliner|repsol|cepsa|galp|\bbp\b|taller|neum[aà]tic|pneumat/i.test(c.proveedor || '')) continue;
+    const pistas = [c.obraPista, ...new Set((c.lineas || []).map(l => l.obraTexto).filter(Boolean))].filter(Boolean).join(' · ');
+    const porPapel = await obrasCandidatas(pistas, os);
+    let obra = null, motivo = null;
+    const activasPapel = porPapel.filter(o => o.status !== 'terminada');
+    if (activasPapel.length === 1 || (porPapel.length === 1)) { obra = activasPapel[0] || porPapel[0]; motivo = `el papel dice «${pistas.slice(0, 60)}»`; }
+    // Quién compró y dónde estaba ese día.
+    let comprador = c.subidaPor && c.subidaPor.kind === 'worker' ? { userId: String(c.subidaPor.userId), name: c.subidaPor.name } : (c.compradoPor && c.compradoPor.userId ? { userId: String(c.compradoPor.userId), name: c.compradoPor.name } : null);
+    if (!comprador && c.fecha && c.total) {
+      // En el banco Obramat sale como Bricoman/Bricomart y Bauhaus como Werkhaus.
+      const toks = n([c.proveedor, c.razonSocial].filter(Boolean).join(' ')).replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length >= 4 && !/^(girona|materials|materiales|derivats|sociedad|limitada)$/.test(w));
+      if (/obramat/.test(n(c.proveedor))) toks.push('bricoman', 'bricomart'); if (/bauhaus/.test(n(c.proveedor))) toks.push('werkhaus');
+      const cerca = p => (new Date(c.fecha) - new Date(p.fecha)) / 864e5 >= -1 && (new Date(c.fecha) - new Date(p.fecha)) / 864e5 <= 3;
+      const ps = [...new Set(pagos.filter(p => cerca(p) && Math.abs(p.importe - Math.abs(c.total)) < 0.6 && toks.some(w => n(p.concepto).includes(w))).map(p => p.persona))];
+      if (ps.length === 1) { const u = userDe(ps[0]); comprador = { userId: u ? String(u._id) : null, name: u ? u.name : ps[0], porTarjeta: true }; }
+    }
+    if (!obra) {
+      if (!c.fecha) { sin.sinFecha++; continue; }
+      if (!comprador) { sin.sinComprador++; continue; }
+      const at = comprador.userId ? await db.collection('attendance').findOne({ workerId: comprador.userId, date: c.fecha }) : null;
+      let ids = at ? [...new Set((await obrasDe(at)).map(x => x.id))] : [];
+      // Álex o Alfonso no fichan: si ese día casi todo el equipo (≥ 75 % de las horas) estuvo en una obra, esa (aproximado).
+      let aprox = false;
+      if (!at) {
+        const dia = await db.collection('attendance').find({ date: c.fecha }).project({ obras: 1, horas: 1, clientName: 1, obraId: 1 }).toArray();
+        const h = {}; let tot = 0;
+        for (const e of dia) for (const o of await obrasDe(e)) { h[o.id] = (h[o.id] || 0) + o.horas; tot += o.horas; }
+        const top = Object.entries(h).sort((a, b) => b[1] - a[1])[0];
+        if (top && tot && top[1] / tot >= 0.75) { ids = [top[0]]; aprox = true; }
+      }
+      const elegibles = porPapel.length ? ids.filter(id => porPapel.some(o => String(o._id) === id)) : ids;
+      if (elegibles.length !== 1) { if (ids.length > 1 || porPapel.length > 1) sin.variasObras++; else sin.sinPresencia++; continue; }
+      obra = os.find(o => String(o._id) === elegibles[0]) || null;
+      if (!obra) { sin.sinPresencia++; continue; }
+      motivo = aprox ? `lo pagó ${comprador.name} y ese día casi todo el equipo estuvo en ${obra.reference} (aproximado)`
+        : `${comprador.name}${comprador.porTarjeta ? ' (pagó con su tarjeta)' : ''} estuvo ese día en ${obra.reference}${porPapel.length > 1 ? ' (el papel nombra varias)' : ''}`;
+    }
+    out.push({ id: String(c._id), proveedor: c.proveedor, numero: c.numero, total: c.total, fecha: c.fecha, obra: obra.reference, obraId: String(obra._id), motivo, aprox: /aproximado/.test(motivo), quien: comprador ? comprador.name : null });
+    if (aplicar) await db.collection('compras').updateOne({ _id: c._id, obraId: { $in: [null, ''] } }, { $set: { obraId: String(obra._id), obraRef: obra.reference, destino: 'obra', obraAuto: { desde: motivo, at: new Date() }, ...(comprador && comprador.userId && !c.compradoPor ? { compradoPor: { userId: comprador.userId, name: comprador.name } } : {}), updatedAt: new Date() } });
+  }
+  return { n: out.length, de: cs.length, aplicado: aplicar, porQueNo: sin, lista: out };
+}
+
 // Al entrar una compra (ya leída por la IA).
 const _dig = x => String(x || '').replace(/\D/g, '').slice(-9);
 async function esDelDueno(userId) {
@@ -410,4 +484,4 @@ async function respuestaCompra(origen, texto, nombre) {
   return obra ? { obra: obra.reference, subida: !!(auto && auto.revisada) } : {};
 }
 
-module.exports = { _pagosTarjeta: pagosTarjeta, resumenRevision, sinObra, preguntarObras, altaHerramientas, duplicados, limpiarDuplicados, obrasDesdePistas, categoria, historial, repetidas, textoInforme, alSubir, respuestaCompra, obraDeTexto, DURABLES, VENTANA };
+module.exports = { obrasPorPresencia, _pagosTarjeta: pagosTarjeta, resumenRevision, sinObra, preguntarObras, altaHerramientas, duplicados, limpiarDuplicados, obrasDesdePistas, categoria, historial, repetidas, textoInforme, alSubir, respuestaCompra, obraDeTexto, DURABLES, VENTANA };

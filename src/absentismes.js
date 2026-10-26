@@ -44,7 +44,7 @@ async function resumen(mes) {
   return { mes, desde: `${mes}-01`, hasta, personas: (r.resumenPorPersona || []).filter(p => !p.autonomo && (p.laborables || p.trabajados)) };
 }
 
-function texto(res) {
+function texto(res, descuentos = []) {
   const nom = MESOS[Number(res.mes.slice(5, 7)) - 1];
   const lin = [];
   for (const p of res.personas) {
@@ -58,19 +58,22 @@ function texto(res) {
     if (p.fechasVacaciones.length) parts.push(`vacances ${tramos(p.fechasVacaciones)}`);
     if (parts.length) lin.push(`- ${p.nombre}: ${parts.join('; ')}`);
   }
-  return `Bon dia Eduard,\n\n${lin.length ? `Els absentismes del mes ${deMes(nom)} són:\n\n${lin.join('\n')}` : `Aquest mes ${deMes(nom)} no hi ha cap absentisme.`}\n\nLa resta de treballadors, sense absentismes.\n\nSalutacions,\n\nCorp Projects Holding, S.L.\nhola@corpprojects.es`;
+  return `Bon dia Eduard,\n\n${lin.length ? `Els absentismes del mes ${deMes(nom)} són:\n\n${lin.join('\n')}` : `Aquest mes ${deMes(nom)} no hi ha cap absentisme.`}\n\nLa resta de treballadors, sense absentismes.${require('./descuentosNomina').textoGestoria(descuentos)}\n\nSalutacions,\n\nCorp Projects Holding, S.L.\nhola@corpprojects.es`;
 }
 
 // Prepara el borrador (como respuesta al correo de Eduard si se sabe cuál) y avisa a Álex.
 async function preparar({ mes = null, gmailId = null, threadId = null, messageId = null, asunto = null, para = 'eduard@somassessors.com', avisar = true } = {}) {
   mes = /^\d{4}-\d{2}$/.test(String(mes || '')) ? mes : mesDe();
   const res = await resumen(mes);
-  const cuerpo = texto(res);
+  // Lo que hay que descontar en nómina (material personal que pagó la empresa) va en el mismo correo.
+  let descuentos = []; try { descuentos = await require('./descuentosNomina').pendientes(); } catch (e) { console.warn('[Absentismes] descuentos:', e.message); }
+  const cuerpo = texto(res, descuentos);
   const b = await require('./gmailBorrador').crear({ para: [para], asunto: asunto ? (/^re:/i.test(asunto) ? asunto : `Re: ${asunto}`) : `Absentismes ${MESOS[Number(mes.slice(5, 7)) - 1]} — Corp Projects`, texto: cuerpo, threadId, inReplyTo: messageId });
   const sinApuntar = res.personas.filter(p => p.sinApuntar);
   let wa = `📋 *Absentismes de ${MESOS[Number(mes.slice(5, 7)) - 1]}* para la gestoría: te he dejado la respuesta preparada en Gmail (no se ha enviado).\n${b.url}\n\n`;
   const con = res.personas.filter(p => p.fechasFaltas.length || p.fechasBaja.length || p.fechasVacaciones.length || Object.keys(p.porAusencia || {}).length);
   wa += con.length ? con.map(p => `• *${p.nombre}*: ${[p.fechasFaltas.length ? `${p.fechasFaltas.length} falta(s) ${tramos(p.fechasFaltas)}` : '', p.fechasBaja.length ? `baja ${tramos(p.fechasBaja)}` : '', p.fechasVacaciones.length ? `vacaciones ${tramos(p.fechasVacaciones)}` : '', ...Object.entries(p.porAusencia || {}).map(([t, x]) => `${t}${x.hasta ? ' hasta el ' + x.hasta.split('-').reverse().join('/') : ''}`)].filter(Boolean).join('; ')}`).join('\n') : 'Sin faltas, bajas ni vacaciones apuntadas.';
+  if (descuentos.length) wa += `\n\n💸 *A descontar en nómina* (va en el correo): ${descuentos.map(p => `${p.nombre} ${p.total.toFixed(2).replace('.', ',')} €`).join(' · ')}. Cuando Eduard lo descuente, márcalo en Inicio.`;
   if (sinApuntar.length) wa += `\n\n⚠️ *Días laborables sin nada apuntado* (¿faltó o falta poner la presencia?):\n${sinApuntar.map(p => `• ${p.nombre}: ${tramos(p.fechasSinApuntar)}`).join('\n')}\n\nArréglalos en Presencia y dime *«prepara los absentismes»* para rehacer el correo.`;
   if (avisar) { try { await require('./notifications').sendWhatsApp(wa); } catch (e) { console.warn('[Absentismes] WhatsApp:', e.message); } }
   return { ok: true, mes, borrador: b.url, texto: cuerpo, aviso: wa, sinApuntar: sinApuntar.map(p => ({ nombre: p.nombre, fechas: p.fechasSinApuntar })) };

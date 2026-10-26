@@ -2017,6 +2017,19 @@ app.post('/api/compras/preguntar-obras', express.json(), async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./comprasVigilancia').preguntarObras({ dryRun: (req.body || {}).enviar !== true })); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
+// Obra por el papel o por dónde estaba ese día quien compró (comprasVigilancia.obrasPorPresencia). Sin «aplicar», solo propone;
+// con «ids», aplica solo esas (las aproximadas no se aplican si no se eligen una a una).
+app.post('/api/compras/obra-presencia', express.json(), async (req, res) => {
+  try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); const b = req.body || {};
+    const V = require('./comprasVigilancia'); const prop = await V.obrasPorPresencia({ aplicar: false });
+    if (b.aplicar !== true) return res.json(prop);
+    const elegidas = Array.isArray(b.ids) ? new Set(b.ids.map(String)) : null;
+    const db = await require('./db').getDB(); const { ObjectId } = require('mongodb'); let n = 0;
+    for (const x of prop.lista) { if (elegidas ? !elegidas.has(x.id) : x.aprox) continue;
+      const r = await db.collection('compras').updateOne({ _id: new ObjectId(x.id), obraId: { $in: [null, ''] } }, { $set: { obraId: x.obraId, obraRef: x.obra, destino: 'obra', obraAuto: { desde: x.motivo, at: new Date(), por: q.name }, updatedAt: new Date() } }); n += r.modifiedCount; }
+    res.json({ aplicadas: n, de: prop.n }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
 app.post('/api/compras/obra-sola', express.json(), async (req, res) => {
   try { const q = await _quienPush(req); if (!_revisaCompras(q)) return res.status(403).json({ error: 'Solo oficina' }); res.json(await require('./comprasVigilancia').obrasDesdePistas({ aplicar: (req.body || {}).aplicar === true })); }
   catch (err) { res.status(500).json({ error: err.message }); }
@@ -2524,6 +2537,11 @@ app.get('/api/personal/tallas', requireAuthOficina, async (req, res) => { try { 
 app.post('/api/personal/tallas/pedir', requireAuthOficina, express.json(), async (req, res) => { try { const F = require('./fichaDatos'); const b = req.body || {}; res.json(b.userId ? await F.pedir(b.userId, { por: req.user?.name || 'Oficina', cuando: b.cuando || null }) : await F.pedirATodos({ por: req.user?.name || 'Oficina', cuando: b.cuando || null })); } catch (err) { res.status(400).json({ error: err.message }); } });
 // Encargos a trabajadores (lo que Álex les pide por Corpy): lista, crear y cerrar.
 // Días de obra que se facturan aparte por horas (marcados en Presencia): Inicio los recuerda hasta «Ya facturado».
+// Descuentos de nómina (descuentosNomina.js): lo que la empresa pagó y es de un trabajador; la gestoría lo resta.
+app.get('/api/descuentos-nomina', requireAuthOficina, async (req, res) => { try { res.json(await require('./descuentosNomina').pendientes()); } catch (err) { res.status(500).json({ error: err.message }); } });
+app.post('/api/descuentos-nomina', requireAuthOficina, express.json(), async (req, res) => { try { if (!_soloDueno(req)) return res.status(403).json({ error: 'Solo el dueño' }); const b = req.body || {}; res.json(await require('./descuentosNomina').apuntar({ userId: b.userId, nombre: b.nombre, concepto: b.concepto, importe: b.importe, fecha: b.fecha, origen: { tipo: 'manual' } }, req.user?.name || 'Oficina')); } catch (err) { res.status(400).json({ error: err.message }); } });
+app.post('/api/descuentos-nomina/descontado', requireAuthOficina, express.json(), async (req, res) => { try { if (!_soloDueno(req)) return res.status(403).json({ error: 'Solo el dueño' }); const b = req.body || {}; res.json(await require('./descuentosNomina').marcarDescontado({ userId: b.userId || null, ids: b.ids || null, mes: b.mes || null }, req.user?.name || 'Oficina')); } catch (err) { res.status(400).json({ error: err.message }); } });
+app.post('/api/descuentos-nomina/:id/anular', requireAuthOficina, async (req, res) => { try { if (!_soloDueno(req)) return res.status(403).json({ error: 'Solo el dueño' }); res.json(await require('./descuentosNomina').anular(req.params.id, req.user?.name || 'Oficina')); } catch (err) { res.status(400).json({ error: err.message }); } });
 // Notificaciones oficiales y multas (notifOficiales.js): pendientes en Inicio, «abierta», datos de la multa, conductor identificado.
 app.get('/api/notificaciones-oficiales', requireAuthOficina, async (req, res) => { try { res.json(await require('./notifOficiales').pendientes()); } catch (err) { res.status(500).json({ error: err.message }); } });
 app.post('/api/notificaciones-oficiales/:id', requireAuthOficina, express.json(), async (req, res) => { try { res.json(await require('./notifOficiales').marcar(req.params.id, req.body || {}, req.user?.name || 'Oficina')); } catch (err) { res.status(400).json({ error: err.message }); } });

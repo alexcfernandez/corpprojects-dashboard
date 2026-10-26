@@ -32,12 +32,13 @@ const TIPO_TXT = { albaran: 'Albarán', factura: 'Factura', ticket: 'Ticket', de
 //   guarda como `reparto` (así cuenta en cada obra igual que «varias») y lo demás en `repartoOtros`.
 const DESTINOS = ['obra', 'varias', 'lineas', 'herramientas', 'ropa', 'almacen', 'general', 'vehiculo', 'cliente'];
 const DESTINO_TXT = { obra: 'Obra', varias: 'Varias obras', lineas: 'Por líneas (mezcla)', herramientas: 'Herramientas', ropa: 'Ropa de trabajo', almacen: 'Stock de almacén', general: 'Gasto general', vehiculo: 'Vehículo', cliente: 'Cliente (sin obra)' };
-const PARA_T = ['obra', 'herramientas', 'ropa', 'almacen', 'general'];
+const PARA_T = ['obra', 'herramientas', 'ropa', 'almacen', 'general', 'descontar'];
 function limpiarPara(p) {
   if (!p || !PARA_T.includes(p.t)) return null;
   const o = { t: p.t };
   if (p.t === 'obra') { if (!/^[a-f0-9]{24}$/.test(String(p.obraId || ''))) return null; o.obraId = String(p.obraId); }
-  if ((p.t === 'herramientas' || p.t === 'ropa') && p.workerId) { o.workerId = String(p.workerId).slice(0, 40); o.workerName = String(p.workerName || '').trim().slice(0, 80); }
+  if (p.t === 'descontar' && !p.workerId) return null;   // a descontar en nómina: siempre de alguien
+  if ((p.t === 'herramientas' || p.t === 'ropa' || p.t === 'descontar') && p.workerId) { o.workerId = String(p.workerId).slice(0, 40); o.workerName = String(p.workerName || '').trim().slice(0, 80); }
   return o;
 }
 // Coche particular de un trabajador (gasolina, ITV…): lo paga la empresa pero es personal suyo.
@@ -567,7 +568,7 @@ async function editar(id, data, por) {
 }
 // Factura por líneas: lo de cada obra se suma en `reparto` (cuenta en su rentabilidad como «varias obras») y lo
 // demás (herramientas, EPIs, almacén, gasto general) en `repartoOtros`.
-const _OTROS_TXT = { herramientas: 'herramientas', ropa: 'EPIs / ropa', almacen: 'almacén', general: 'gasto general' };
+const _OTROS_TXT = { herramientas: 'herramientas', ropa: 'EPIs / ropa', almacen: 'almacén', general: 'gasto general', descontar: 'a descontar en nómina' };
 function _textoOtros(otros) { return (otros || []).filter(o => o.importe).map(o => `${_OTROS_TXT[o.t] || o.t}${o.quien ? ' (' + o.quien + ')' : ''} ${o.importe.toFixed(2)} €`).join(', ') || null; }
 async function _repartoDeLineas(db, lineas) {
   const porObra = new Map(), otros = {};
@@ -714,6 +715,10 @@ async function revisar(id, por, { enviarStel = true, herramientas = null, almace
     if (!(c.activosCreados || []).length) set.activosCreados = await _altaActivos(c, ls.filter(l => l.para.t === 'herramientas' || l.para.t === 'ropa').map(l => ({ nombre: l.descripcion, cantidad: l.cantidad, talla: l.talla, valor: l.importe, valorEsTotal: 1, tipo: l.para.t === 'ropa' ? 'ropa' : 'herramienta', worker: l.para.workerId ? { id: l.para.workerId, name: l.para.workerName } : null })), por);
     if (!(c.almacenCreado || []).length) set.almacenCreado = await _entradaAlmacen(c, ls.filter(l => l.para.t === 'almacen').map(l => ({ nombre: l.descripcion, unidad: l.unidad || 'ud', cantidad: Number(l.cantidad) || 1, recogida: !!l.recogida, valor: l.importe, valorEsTotal: 1 })), por);
   }
+  // A descontar en nómina: cada línea así queda apuntada para la gestoría (descuentosNomina.js).
+  if (dest === 'lineas' && (c.lineas || []).some(l => l.para && l.para.t === 'descontar')) {
+    try { set.descuentosNomina = (await require('./descuentosNomina').desdeCompra(c, por)).map(d => String(d._id)); } catch (e) { console.warn('[Compras] descuento nómina:', e.message); }
+  }
   // ALMACÉN: cada línea marcada entra como existencias (se agrupa por nombre; precio medio).
   if (dest === 'almacen' && Array.isArray(almacen) && almacen.length && !(c.almacenCreado || []).length) set.almacenCreado = await _entradaAlmacen(c, almacen, por);
   // HERRAMIENTAS y ROPA: cada línea marcada se da de alta en Llaves y herramientas. Si hay un
@@ -783,7 +788,9 @@ async function claridad(c, db) {
   if (!c.ia || !c.ia.ok || c.ia.calidad !== 'legible' || (c.ia.confianza != null && c.ia.confianza < 0.85)) falta.push('la IA no la lee del todo bien');
   // Avisos menores que no impiden nada (facturas simplificadas de Obramat: sin NIF del proveedor o sin desglose de IVA).
   const avisoMenor = a => /^(?=.*\b(nif|cif|desglose|base imponible|iva)\b)(?!.*(ilegib|cortad|falta (una|la) p|presupuest|proforma|duplic|abono|no es)).*$/i.test(String(a || ''));
-  if (c.ia && c.ia.aviso && !avisoMenor(c.ia.aviso)) falta.push('la IA avisa: ' + c.ia.aviso);
+  // Obramat imprime «DUPLICADO» en las copias de la factura: no es una compra repetida (eso lo mira el nº, abajo).
+  const sinCopia = a => String(a || '').replace(/[^.]*\bduplicad[oa]\b[^.]*(\.|$)/gi, ' ').trim();
+  if (c.ia && c.ia.aviso && !avisoMenor(c.ia.aviso) && (sinCopia(c.ia.aviso) && !avisoMenor(sinCopia(c.ia.aviso)) || sinCopia(c.ia.aviso) === String(c.ia.aviso).trim())) falta.push('la IA avisa: ' + c.ia.aviso);
   if (!c.proveedor || !c.numero || !c.fecha || !(Number(c.total) > 0)) falta.push('falta proveedor, nº, fecha o importe');
   if (c.duplicadoDe) falta.push('posible duplicado');
   else if (db.collection && c.proveedorNorm && c.total != null && c.fecha) {   // otra compra igual (el ticket de esta factura, otra copia…)

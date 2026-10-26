@@ -447,32 +447,32 @@ function onDest(inicial){const d=destSel();const show=(id,v)=>document.getElemen
 const nrm=t=>String(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 const RX_EPI=/\b(guant|guante|ulleres?|gafas?|sabat|bota|botas|calcat|calzado|casc|casco|mascaret|mascarill|orejera|armilla|chaleco|arnes|faixa|genoller|rodiller|pantalo|samarret|camiseta|jaqueta|chaqueta|sudadera|epi)/;
 const RX_HERR=/\b(pala|paleti|paleta|llana|regle|regla|nivell|nivel|martell|martillo|maceta|tornavis|destornillador|alicat|tenalla|serra|sierra|serrucho|flexomet|carretilla|escala|escalera|cisell|cincel|espatula|cutter|trepant|taladr|radial|amoladora)/;
-const LD_TXT={herramientas:'🔧 Herramienta',ropa:'🦺 EPI / ropa',almacen:'📦 Almacén',general:'🏢 Gasto general (consumible de uso común)'};
+const LD_TXT={herramientas:'🔧 Herramienta',ropa:'🦺 EPI / ropa',almacen:'📦 Almacén',general:'🏢 Gasto general (consumible de uso común)',descontar:'💸 A descontar en nómina (es suyo)'};
 function _ldOpts(){const gr={abierta:'Obras abiertas',estudio:'En estudio',cerrada:'Cerradas hace poco'};
   return '<option value="">— ¿a dónde va? —</option>'+Object.entries(LD_TXT).map(([k,t])=>`<option value="${k}">${t}</option>`).join('')+
     Object.entries(gr).map(([g,t])=>{const os=obras.filter(o=>(o.grupo||'abierta')===g);return os.length?`<optgroup label="${t}">${os.map(o=>`<option value="o:${esc(o.id)}">🏗️ ${esc(o.reference)}</option>`).join('')}</optgroup>`:'';}).join('');}
 function _lwOpts(){return '<option value="">En oficina (sin entregar)</option>'+workers.map(w=>`<option value="${esc(w.id)}">→ ${esc(w.name)}</option>`).join('');}
 function paraDe(tr){const s=tr.querySelector('select.ld');if(!s||!s.value)return null;const v=s.value;if(v.startsWith('o:'))return {t:'obra',obraId:v.slice(2)};
-  const p={t:v};if(v==='herramientas'||v==='ropa'){const w=tr.querySelector('select.lw');if(w&&w.value){p.workerId=w.value;p.workerName=w.options[w.selectedIndex].textContent.replace(/^→\s*/,'');}}return p;}
+  const p={t:v};if(v==='herramientas'||v==='ropa'||v==='descontar'){const w=tr.querySelector('select.lw');if(w&&w.value){p.workerId=w.value;p.workerName=w.options[w.selectedIndex].textContent.replace(/^→\s*/,'');}}return p;}
 async function lineasDestino(){const c=cur,rev=['revisada','descartada'].includes(c.estado);const oo=_ldOpts(),wo=_lwOpts();
   document.querySelectorAll('#lineas tbody tr').forEach(tr=>{const s=tr.querySelector('select.ld'),w=tr.querySelector('select.lw');if(!s)return;const v=s.value||s.dataset.v||'';s.innerHTML=oo;
     if(v.startsWith('o:')&&![...s.options].some(o=>o.value===v)){const ob=obras.find(o=>'o:'+o.id===v);s.insertAdjacentHTML('beforeend',`<option value="${esc(v)}">🏗️ ${esc(ob?ob.reference:'obra')}</option>`);}
-    s.value=v;const wv=w.value||w.dataset.v||'';w.innerHTML=wo;w.value=wv;w.style.display=(v==='herramientas'||v==='ropa')?'':'none';});
+    s.value=v;const wv=w.value||w.dataset.v||'';w.innerHTML=wo;w.value=wv;w.style.display=(v==='herramientas'||v==='ropa'||v==='descontar')?'':'none';});
   contarLd();if(rev)return;
   let prop=[];try{prop=await api('GET','/api/compras/'+c._id+'/lineas-destino');}catch(e){}if(cur!==c)return;
   const filas=[...document.querySelectorAll('#lineas tbody tr')];let n=0;
   prop.forEach(p=>{const tr=filas[p.idx];if(!tr||!p.para)return;const s=tr.querySelector('select.ld');if(!s||s.value)return;
     const v=p.para.t==='obra'?'o:'+p.para.obraId:p.para.t;if(![...s.options].some(o=>o.value===v))return;s.value=v;n++;
-    tr.querySelector('select.lw').style.display=(v==='herramientas'||v==='ropa')?'':'none';const m=tr.querySelector('.ldm');if(m&&p.motivo&&p.motivo!=='elegido')m.textContent='propuesto: '+p.motivo;});
+    tr.querySelector('select.lw').style.display=(v==='herramientas'||v==='ropa'||v==='descontar')?'':'none';const m=tr.querySelector('.ldm');if(m&&p.motivo&&p.motivo!=='elegido')m.textContent='propuesto: '+p.motivo;});
   contarLd();if(n)toast(`🧩 ${n} de ${filas.length} líneas propuestas: revísalas`,'ok');}
-function cambioLd(s){const tr=s.closest('tr'),v=s.value;tr.querySelector('select.lw').style.display=(v==='herramientas'||v==='ropa')?'':'none';const m=tr.querySelector('.ldm');if(m)m.textContent='';
+function cambioLd(s){const tr=s.closest('tr'),v=s.value;tr.querySelector('select.lw').style.display=(v==='herramientas'||v==='ropa'||v==='descontar')?'':'none';const m=tr.querySelector('.ldm');if(m)m.textContent='';
   // La obra suele ser la de todo el albarán: las demás líneas vacías de ese albarán, igual.
   if(v.startsWith('o:')&&tr.dataset.alb)document.querySelectorAll('#lineas tbody tr').forEach(t=>{if(t===tr||t.dataset.alb!==tr.dataset.alb)return;const x=t.querySelector('select.ld');if(x&&!x.value){x.value=v;const mm=t.querySelector('.ldm');if(mm)mm.textContent='mismo albarán';}});
   contarLd();}
 function resumenLd(){const tot={},sin=[];const num=v=>Number(String(v||'').replace(',','.'))||0;
   document.querySelectorAll('#lineas tbody tr').forEach(tr=>{const s=tr.querySelector('select.ld');if(!s)return;const li=tr.querySelector('input.li');const imp=num(li&&li.value);
     if(!s.value){sin.push(imp);return;}const k=s.value;const txt=k.startsWith('o:')?s.options[s.selectedIndex].textContent:LD_TXT[k];
-    const w=tr.querySelector('select.lw'),quien=(k==='herramientas'||k==='ropa')&&w&&w.value?w.options[w.selectedIndex].textContent.replace(/^→\s*/,''):null;
+    const w=tr.querySelector('select.lw'),quien=(k==='herramientas'||k==='ropa'||k==='descontar')&&w&&w.value?w.options[w.selectedIndex].textContent.replace(/^→\s*/,''):null;
     const r=tot[k]=tot[k]||{txt,imp:0,quien:new Set()};r.imp+=imp;if(quien)r.quien.add(quien);});
   const out=Object.values(tot).map(r=>({txt:r.txt,imp:Math.round(r.imp*100)/100,extra:r.quien.size?[...r.quien].join(', '):''}));
   if(sin.length)out.push({txt:`⚠️ ${sin.length} línea(s) sin decir`,imp:Math.round(sin.reduce((a,b)=>a+b,0)*100)/100,sin:true});return out;}
@@ -542,6 +542,7 @@ async function confirmar(){if(!(await guardar(true)))return;
   if(d.destino==='cliente'&&!d.clienteNombre){toast('Elige el cliente','error');return;}
   if(d.destino==='vehiculo'&&!d.vehiculoId&&!d.personalDe&&!d.lineas.some(l=>l.vehiculoId||l.personalDe)){toast('Elige el vehículo (o el de cada línea)','error');return;}
   if(d.destino==='almacen'&&!d._almacen.length){toast('Marca qué líneas entran en el almacén','error');return;}
+  if(d.destino==='lineas'&&d.lineas.some(l=>l.para&&l.para.t==='descontar'&&!l.para.workerId)){toast('Elige a quién se le descuenta en nómina','error');return;}
   if(d.destino==='lineas'){const sin=d.lineas.filter(l=>!l.para).length;if(sin){toast(`Hay ${sin} línea(s) sin decir a dónde van`,'error');const s0=[...document.querySelectorAll('#lineas select.ld')].find(x=>!x.value);if(s0)s0.scrollIntoView({block:'center'});return;}}
   let txt=['factura','ticket'].includes(d.tipo)&&d._enviarStel?'Se da por revisada y se envía a StelOrder (contabilidad).':'Se da por revisada'+(['email','whatsapp'].includes(cur.origen)?' (sin reenviar a StelOrder).':'. Los albaranes y devoluciones se quedan solo en el dashboard (no van a StelOrder).');
   if(d.destino==='vehiculo'&&d.lineas.some(l=>l.vehiculoId)){const sin=d.lineas.filter(l=>!l.vehiculoId).length;if(sin)txt+=d.vehiculoId?`\n\n${sin} línea(s) sin vehículo van a ${document.getElementById('f-veh').selectedOptions[0].textContent}.`:`\n\nOjo: ${sin} línea(s) sin vehículo no se apuntan en ninguna ficha.`;}
