@@ -195,8 +195,7 @@ textarea.obra-sel{resize:vertical;line-height:1.4}
     <button onclick="moverMes(1)" id="mes-next" aria-label="Mes siguiente">›</button>
   </div>
   <div class="mes-kpis">
-    <div class="mk"><div class="n" id="mes-horas">–</div><div class="l">Horas</div></div>
-    <div class="mk"><div class="n" id="mes-extra">–</div><div class="l">De más</div></div>
+    <div class="mk"><div class="n" id="mes-extra">–</div><div class="l">Jornadas cumplidas</div></div>
     <div class="mk"><div class="n" id="mes-ndias">–</div><div class="l">Días</div></div>
   </div>
   <div id="mes-firma"></div>
@@ -444,7 +443,9 @@ function render(d){
   document.getElementById('estado').innerHTML=
     `<span class="dot" style="background:${col}"></span><span class="lbl">${lbl}</span>`+
     (est==='dentro'&&d.desde?`<div class="desde">desde las ${hora(d.desde)}</div>`:'');
-  document.getElementById('horas-hoy').textContent=hm(d.minutos);
+  // Sin horas «de más» a la vista (Álex, 27/10/2026): con la jornada hecha solo «cumplida»; si no, lo que lleva.
+  const J=d.jornadaMin||window._jornadaMin||480, hh=document.getElementById('horas-hoy'), hu=hh.nextElementSibling;
+  if(d.minutos>=J){hh.textContent='✓';if(hu)hu.textContent='jornada cumplida';}else{hh.textContent=hm(d.minutos);if(hu)hu.textContent=est==='fuera'&&d.minutos?'aún no has cumplido la jornada':'horas de hoy';}
   renderObra(est,d.obraId);
   const btn=document.getElementById('fichar-btn');
   if(est==='fuera'){btn.textContent='▶ Empiezo';btn.className='fichar-btn entrada';}
@@ -649,19 +650,19 @@ async function cargarMes(){
   catch(e){toast(e.message,'error');}
 }
 function renderMes(d){
-  document.getElementById('mes-horas').textContent=hm(d.totales.minutos);
-  document.getElementById('mes-extra').textContent=d.totales.extraMin?('+'+hm(d.totales.extraMin)):'0:00';
+  const J=d.jornadaMin||480;window._jornadaMin=J;const cumple=x=>!x.sinCerrar&&!x.enCurso&&x.minutos>=J;
+  document.getElementById('mes-extra').textContent=d.dias.filter(cumple).length;
   document.getElementById('mes-ndias').textContent=d.totales.dias;
   // Semanas (la más reciente arriba), con su subtotal
   const sem={};d.dias.forEach(x=>(sem[x.semana]=sem[x.semana]||[]).push(x));
   const fD=f=>new Date(f+'T12:00:00');
   const html=Object.keys(sem).sort().reverse().map(s=>{
-    const dias=sem[s].slice().reverse();const tot=dias.reduce((a,x)=>a+x.minutos,0);
+    const dias=sem[s].slice().reverse();
     const fin=new Date(fD(s));fin.setDate(fin.getDate()+6);
-    return `<div class="sem"><div class="sem-h"><span>Semana del ${fD(s).getDate()} al ${fin.getDate()}${fin.getMonth()!==fD(s).getMonth()?' '+fin.toLocaleDateString('es-ES',{month:'short'}):''}</span><span>${hm(tot)}</span></div>${dias.map(x=>`
+    return `<div class="sem"><div class="sem-h"><span>Semana del ${fD(s).getDate()} al ${fin.getDate()}${fin.getMonth()!==fD(s).getMonth()?' '+fin.toLocaleDateString('es-ES',{month:'short'}):''}</span></div>${dias.map(x=>`
       <div class="dia ${x.sinCerrar?'warn':''}"><span class="dd">${fD(x.fecha).toLocaleDateString('es-ES',{weekday:'short'})} ${fD(x.fecha).getDate()}</span>
       <span class="hh">${hora(x.entrada)} – ${x.sinCerrar?'<b style="color:#f59e0b">sin cerrar</b>':x.enCurso?'<span class="abierto" style="color:var(--green)">en curso</span>':hora(x.salida)}${x.pausasMin?` · pausa ${hm(x.pausasMin)}`:''}${x.correcciones?' · ✎':''}</span>
-      <span class="tt">${x.sinCerrar?'—':hm(x.minutos)}${x.extraMin?`<span class="ex">+${hm(x.extraMin)}</span>`:''}</span></div>`).join('')}</div>`;
+      <span class="tt">${x.sinCerrar?'—':x.enCurso?'':cumple(x)?'<span style="color:var(--green)">✓ cumplida</span>':'<span class="ex">incompleta</span>'}</span></div>`).join('')}</div>`;
   }).join('');
   document.getElementById('mes-dias').innerHTML=html||'<div class="tramo" style="color:var(--text3);justify-content:center;margin-top:16px">Sin jornadas este mes</div>';
   // Firma del resumen
@@ -755,7 +756,7 @@ function padFirma(cv){
 function abrirFirma(){
   const d=_mesData;if(!d)return;
   document.getElementById('fi-titulo').textContent='Resumen de '+mesLabel(d.mes);
-  document.getElementById('fi-sub').innerHTML=`<b>${d.totales.dias}</b> días · <b>${hm(d.totales.minutos)}</b> horas${d.totales.extraMin?` · <b>+${hm(d.totales.extraMin)}</b> de más`:''}<br>Al firmar confirmas que estas horas son correctas.`;
+  document.getElementById('fi-sub').innerHTML=`<b>${d.totales.dias}</b> días trabajados<br>Al firmar confirmas que las horas de entrada y salida de este mes son correctas.`;
   document.getElementById('fi-coment').value='';verNoConforme(false);showPage('firma');
   // Recrear el canvas para un pad limpio (y con tamaño real, ya visible)
   const old=document.getElementById('sig2'),cv=old.cloneNode(false);old.parentNode.replaceChild(cv,old);

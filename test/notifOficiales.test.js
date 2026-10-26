@@ -101,16 +101,16 @@ test('multa: quién llevaba la furgoneta ese día y aviso con el plazo de 20 dí
 
 test('Red.es llega dos veces (TITULAR y DESTINATARIO): una sola, y recordatorio 2 días antes y el último día', async () => {
   const db = fakeDb(); const enviados = []; const env = async t => enviados.push(t);
-  const p = N.leer({ de: 'avisos-pkd@acelerapyme.gob.es', asunto: 'Notificación nueva', cuerpo: REDES, fecha: new Date('2026-10-16T01:15:44Z') });
+  const p = N.leer({ de: 'avisos-pkd@acelerapyme.gob.es', asunto: 'Notificación nueva', cuerpo: REDES, fecha: new Date('2099-10-16T01:15:44Z') });
   await N.registrar(p, { _db: db, _enviar: env, avisar: false });
   await N.registrar({ ...p }, { _db: db, _enviar: env, avisar: false });
   assert.strictEqual(db.cols.notifOficiales.length, 1);
-  assert.strictEqual((await N.recordatorios({ hoy: '2026-10-23', _db: db, _enviar: env })).avisos.length, 0);
-  assert.deepStrictEqual((await N.recordatorios({ hoy: '2026-10-24', _db: db, _enviar: env })).avisos.map(a => a.clave), ['vence2']);
-  assert.deepStrictEqual((await N.recordatorios({ hoy: '2026-10-24', _db: db, _enviar: env })).avisos, []);
-  assert.deepStrictEqual((await N.recordatorios({ hoy: '2026-10-26', _db: db, _enviar: env })).avisos.map(a => a.clave), ['vence0']);
+  assert.strictEqual((await N.recordatorios({ hoy: '2099-10-23', _db: db, _enviar: env })).avisos.length, 0);
+  assert.deepStrictEqual((await N.recordatorios({ hoy: '2099-10-24', _db: db, _enviar: env })).avisos.map(a => a.clave), ['vence2']);
+  assert.deepStrictEqual((await N.recordatorios({ hoy: '2099-10-24', _db: db, _enviar: env })).avisos, []);
+  assert.deepStrictEqual((await N.recordatorios({ hoy: '2099-10-26', _db: db, _enviar: env })).avisos.map(a => a.clave), ['vence0']);
   assert.match(enviados[1], /HOY es el último día/);
-  await N.recordatorios({ hoy: '2026-10-27', _db: db, _enviar: env });
+  await N.recordatorios({ hoy: '2099-10-27', _db: db, _enviar: env });
   assert.strictEqual(db.cols.notifOficiales[0].estado, 'caducada');
 });
 

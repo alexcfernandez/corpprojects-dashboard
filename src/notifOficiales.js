@@ -92,8 +92,7 @@ async function conductorEn(matricula, fecha, { _db = null } = {}) {
 }
 
 // ── Textos de WhatsApp ────────────────────────────────────────────────────────────────────────────────────────────────────
-function textoAviso(n, { recordatorio = '' } = {}) {
-  const hoy = hoyISO();
+function textoAviso(n, { recordatorio = '', hoy = hoyISO() } = {}) {
   const lin = [];
   if (n.tipo === 'multa') {
     const m = n.multa || {};
@@ -157,10 +156,10 @@ async function recordatorios({ hoy = hoyISO(), _db = null, _enviar = null, dryRu
     if (n.estado === 'pendiente' && n.vence) {
       const d = entre(hoy, n.vence);
       if (d < 0) { if (!dryRun) await col.updateOne({ _id: n._id }, { $set: { estado: 'caducada' } }); continue; }
-      if (d === 2 || d === 0) { clave = 'vence' + d; txt = textoAviso(n, { recordatorio: d === 0 ? 'último día para abrirla' : 'quedan 2 días' }); }
+      if (d === 2 || d === 0) { clave = 'vence' + d; txt = textoAviso(n, { recordatorio: d === 0 ? 'último día para abrirla' : 'quedan 2 días', hoy }); }
     } else if (n.tipo === 'multa' && n.plazoIdentificar && !(n.multa && n.multa.identificado)) {
       const d = entre(hoy, n.plazoIdentificar);
-      if ([7, 2, 0].includes(d)) { clave = 'ident' + d; txt = textoAviso(n, { recordatorio: d === 0 ? 'HOY acaba el plazo para identificar' : `quedan ${d} días para identificar` }); }
+      if ([7, 2, 0].includes(d)) { clave = 'ident' + d; txt = textoAviso(n, { recordatorio: d === 0 ? 'HOY acaba el plazo para identificar' : `quedan ${d} días para identificar`, hoy }); }
     }
     if (!clave || (n.avisos && n.avisos[clave])) continue;
     out.push({ id: String(n._id), clave });

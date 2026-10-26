@@ -1616,7 +1616,7 @@ app.post('/api/fichaje/traducir', express.json({ limit: '64kb' }), async (req, r
 });
 app.get('/api/fichaje/estado', async (req, res) => {
   try { const w = await _worker(req, res); if (!w) return;
-    res.json(await require('./fichajeMarcas').estadoActual(w.workerId)); }
+    res.json({ ...(await require('./fichajeMarcas').estadoActual(w.workerId)), jornadaMin: Math.round((parseFloat(process.env.FICHAJE_HORAS_DIA) || 8) * 60) }); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 // Fichaje LEGAL append-only. body: { tipo: entrada|pausa_inicio|pausa_fin|salida, loc, obraId }.
