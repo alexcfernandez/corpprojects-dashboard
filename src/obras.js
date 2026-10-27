@@ -572,6 +572,37 @@ function resumenCertificaciones(obra) {
 // coste real vs facturado por obra
 
 const miIdC = o => String(o._id);
+
+// ¿ESTÁ TODO FACTURADO? (27/10/2026, Álex: «de todo lo que se compra tiene que estar facturado; no se puede perder nada»).
+// Lo hecho hasta hoy a precio MÍNIMO de venta: material comprado (sin IVA) +30 %, cada hora de operario a precio de
+// jornada (450 € / 9 h), 20 € por día de desplazamiento y el tiempo de Álex/Alfonso marcado «se cobra» (40 €/h + km).
+// Se compara con lo facturado (facturas de StelOrder enlazadas; si no hay, lo certificado). Con presupuesto, dice además
+// si cubre lo hecho y, en los «todo incluido» por m² (SATE con la placa), cuánto deja para mano de obra una vez puesto
+// el material comprado +30 % (y cuántas jornadas da, contra las que se llevan).
+function calcularPorFacturar({ totalHoras = 0, dias = 0, material = 0, socios = null, presupuesto = 0, facturado = 0, certificado = 0, precioJornada = 450 } = {}) {
+  const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+  const MARGEN = Number(process.env.MARGEN_MATERIAL) || 0.30, DESPL = Number(process.env.DESPLAZAMIENTO_DIA) || 20;
+  const COBRO_SOCIO = Number(process.env.TARIFA_SOCIO_COBRO) || 40, EUR_KM = Number(process.env.EUR_KM) || 0.3;
+  const ratos = ((socios && socios.ratos) || []).filter(x => x.facturable);
+  const lineas = {
+    material:        { coste: r2(material), venta: r2(material * (1 + MARGEN)) },
+    manoObra:        { horas: r2(totalHoras), jornadas: Math.round(totalHoras / 9 * 10) / 10, venta: r2(totalHoras * precioJornada / 9) },
+    desplazamientos: { dias, venta: r2(dias * DESPL) },
+    gestion:         { ratos: ratos.length, venta: r2(ratos.reduce((a, x) => a + x.minutos / 60 * COBRO_SOCIO * x.quienes.length + (x.km || 0) * EUR_KM, 0)) },
+  };
+  const minimo = r2(Object.values(lineas).reduce((a, l) => a + l.venta, 0));
+  const cobrado = facturado > 0 ? facturado : certificado, fuente = facturado > 0 ? 'facturas' : (certificado > 0 ? 'certificaciones' : null);
+  const falta = r2(Math.max(0, minimo - cobrado));
+  const out = { lineas, minimo, cobrado: r2(cobrado), fuente, falta, margenMaterial: MARGEN, estado: falta <= Math.max(50, minimo * 0.02) ? 'ok' : 'falta' };
+  if (presupuesto > 0) {
+    const paraManoObra = r2(presupuesto - lineas.material.venta - lineas.desplazamientos.venta);
+    Object.assign(out, { presupuesto: r2(presupuesto), cubre: r2(presupuesto - minimo), quedaPorFacturar: r2(Math.max(0, presupuesto - cobrado)),
+      paraManoObra, jornadasQueDa: paraManoObra > 0 ? Math.floor(paraManoObra / precioJornada * 10) / 10 : 0, jornadasLlevadas: lineas.manoObra.jornadas });
+    if (presupuesto < minimo) out.estado = 'corto';   // lo hecho ya vale más que todo el presupuesto
+  }
+  return out;
+}
+
 async function getRentabilidad(obraId) {
   const db = await getDB();
   const obra = await db.collection('obras').findOne({ _id: new ObjectId(obraId) });
@@ -797,6 +828,8 @@ async function getRentabilidad(obraId) {
   // (≈ 50 €/h; cubre la nómina, la SS y los gastos fijos). Jornada = una persona un día en la obra.
   const jornadas = Object.values(byDate).reduce((s, l) => s + l.length, 0);
   const precioJornada = Number(process.env.PRECIO_JORNADA) || 450;
+  const porFacturar = calcularPorFacturar({ totalHoras, dias: Object.keys(byDate).length, material: totalMateriales + totalProveedores + totalCompras + (almacen.importe || 0),
+    socios, presupuesto: obra.budgetAmount || 0, facturado: obra.invoicedAmount || 0, certificado: resumenCertificaciones(obra).certificado, precioJornada });
   return {
     obra,
     partes: partes.length,
@@ -811,6 +844,8 @@ async function getRentabilidad(obraId) {
     almacen,                                  // material del almacén sacado para la obra
     socios,                                   // horas de gestión de Álex y Alfonso (y sus km) en la obra
     beneficioTrasGestion: Math.round((facturado - totalCoste - socios.total) * 100) / 100,
+    porFacturar,                              // ¿está todo facturado? lo hecho a precio mínimo vs lo facturado
+
     totalCoste,
     costePresupuestado,                       // lo que esperábamos gastar (del presupuesto)
     desvioCoste: Math.round((totalCoste - costePresupuestado) * 100) / 100, // real − presupuestado (+ = de más)
@@ -857,7 +892,7 @@ module.exports = {
   ESTADOS_OBRA, CATEGORIAS_GASTO,
   ESTADOS_PREVIOS, createObra, getObras, getObra, updateObra, deleteObra, getSelector, getEnEstudio, resumenAbiertas, addMaterial, deleteMaterial,
   addCertificacion, setCertificacion, deleteCertificacion, resumenCertificaciones,
-  getRentabilidad, getResumenGeneral,
+  getRentabilidad, getResumenGeneral, calcularPorFacturar,
   tarifaHora, extraerObraMarcador, extraerGastoMarcador, getAsignacionesFacturaMap, getReglasMap, resolverFacturaObra,
   clasificarFactura, desclasificarFactura, repartirFactura, quitarReparto,
   setReglaProveedor, deleteReglaProveedor, getReglas,

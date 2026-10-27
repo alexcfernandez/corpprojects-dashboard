@@ -218,6 +218,36 @@
     } catch(e) {}
   }
 
+  // ¿Está todo facturado? Lo hecho a precio mínimo (material +30 %, jornada a 450 €, 20 €/día de desplazamiento y lo de
+  // Álex/Alfonso que se cobra) contra lo facturado; con presupuesto, si cubre y cuánto deja para mano de obra.
+  function cardPorFacturar(rent) {
+    const pf = rent && rent.porFacturar; if (!pf || !(pf.minimo > 0)) return '';
+    const L = pf.lineas, pct = Math.round(pf.margenMaterial * 100);
+    const fila = (t, d, v) => `<tr><td>${t}<div style="font-size:11px;color:var(--text3)">${d}</div></td><td style="text-align:right">${eur(v)}</td></tr>`;
+    const estado = pf.estado === 'corto'
+      ? `<div style="color:var(--red);font-weight:600">🚨 Lo hecho ya vale ${eur(pf.minimo)} y el presupuesto es de ${eur(pf.presupuesto)}: se queda corto en ${eur(-pf.cubre)}. Hay que facturar extras o rehacer el precio.</div>`
+      : pf.estado === 'ok' ? `<div style="color:var(--green);font-weight:600">✅ Lo hecho está facturado${pf.fuente === 'certificaciones' ? ' (por certificaciones)' : ''}.</div>`
+      : `<div style="color:var(--amber);font-weight:600">🧾 Falta facturar al menos ${eur(pf.falta)} de lo ya hecho.</div>`;
+    const pres = pf.presupuesto ? `<div style="font-size:12px;color:var(--text2);margin-top:8px;line-height:1.55">
+        Presupuesto ${eur(pf.presupuesto)} · facturado ${eur(pf.cobrado)} · <b>queda por facturar ${eur(pf.quedaPorFacturar)}</b><br>
+        Quitando el material comprado +${pct} % y los desplazamientos, el presupuesto deja <b>${eur(pf.paraManoObra)}</b> para mano de obra:
+        da para <b>${String(pf.jornadasQueDa).replace('.', ',')} jornadas</b> a ${eur(rent.precioJornada)} y lleváis <b>${String(pf.jornadasLlevadas).replace('.', ',')}</b>${pf.jornadasLlevadas > pf.jornadasQueDa ? ' <span style="color:var(--red)">(pasadas)</span>' : ''}.
+        ${pf.paraManoObra < 0 ? '<span style="color:var(--red)">El material solo ya se come el presupuesto.</span>' : ''}</div>` : '';
+    return `<div class="card" style="margin-bottom:14px">
+      <div class="card-title">🧾 ¿Está todo facturado? <span style="font-weight:400;color:var(--text3);font-size:11px">— lo hecho a precio mínimo, sin IVA</span></div>
+      <table><tbody>
+        ${fila('Material', `comprado ${eur(L.material.coste)} + ${pct} %`, L.material.venta)}
+        ${fila('Mano de obra', `${Math.round(L.manoObra.horas)} h ≈ ${String(L.manoObra.jornadas).replace('.', ',')} jornadas × ${eur(rent.precioJornada)}`, L.manoObra.venta)}
+        ${L.desplazamientos.dias ? fila('Desplazamientos', `${L.desplazamientos.dias} días × 20 €`, L.desplazamientos.venta) : ''}
+        ${L.gestion.venta ? fila('Visitas Álex/Alfonso que se cobran', `${L.gestion.ratos} rato${L.gestion.ratos > 1 ? 's' : ''} a 40 €/h + km`, L.gestion.venta) : ''}
+        <tr style="font-weight:700"><td>Mínimo a facturar por lo hecho</td><td style="text-align:right">${eur(pf.minimo)}</td></tr>
+        <tr><td>Facturado${pf.fuente === 'certificaciones' ? ' (certificado)' : ''}</td><td style="text-align:right">${eur(pf.cobrado)}</td></tr>
+      </tbody></table>
+      <div style="margin-top:8px;font-size:13px">${estado}</div>${pres}
+      <div style="font-size:11px;color:var(--text3);margin-top:6px">Lo facturado sale de las facturas de StelOrder enlazadas a la obra (ficha → facturas). Si falta alguna, enlázala o aquí parecerá que falta facturar. Obras lejanas: el viaje y las dietas van aparte.</div>
+    </div>`;
+  }
+
   async function loadResumen() {
     const el      = document.getElementById('ob-resumen-lista');
     const metrics = document.getElementById('ob-resumen-metrics');
@@ -240,13 +270,16 @@
       const totalCoste    = data.reduce((s,o) => s+(o.totalCoste||0), 0);
       const totalBeneficio = totalFacturado - totalCoste;
       const margenGlobal  = totalFacturado > 0 ? (totalBeneficio/totalFacturado*100) : 0;
+      // Obras en curso con trabajo hecho que aún no se ha facturado (material +30 %, jornada a 450 €).
+      const sinFacturar = data.filter(o => o.obra?.status === 'activa' && o.porFacturar && o.porFacturar.falta > 0 && o.porFacturar.estado !== 'ok');
 
       if (metrics) metrics.innerHTML = `
         <div class="mc"><div class="ml">Obras activas</div><div class="mv g">${obrasActivas}</div><div class="ms">de ${totalObras} total</div></div>
         <div class="mc"><div class="ml">Total facturado</div><div class="mv b">${eur(totalFacturado)}</div></div>
         <div class="mc"><div class="ml">Coste total</div><div class="mv r">${eur(totalCoste)}</div></div>
         <div class="mc"><div class="ml">Beneficio total</div><div class="mv ${totalBeneficio>=0?'g':'r'}">${eur(totalBeneficio)}</div></div>
-        <div class="mc"><div class="ml">Margen global</div><div class="mv ${margenGlobal>=20?'g':margenGlobal>=0?'a':'r'}">${margenGlobal.toFixed(1)}%</div></div>`;
+        <div class="mc"><div class="ml">Margen global</div><div class="mv ${margenGlobal>=20?'g':margenGlobal>=0?'a':'r'}">${margenGlobal.toFixed(1)}%</div></div>
+        ${sinFacturar.length?`<div class="mc"><div class="ml">Hecho sin facturar</div><div class="mv a">${eur(sinFacturar.reduce((s,o)=>s+o.porFacturar.falta,0))}</div><div class="ms">${sinFacturar.length} obra${sinFacturar.length>1?'s':''} en curso · a precio mínimo</div></div>`:''}`;
 
       el.innerHTML = `<div style="display:grid;grid-template-columns:minmax(0,1fr);gap:10px">
         ${data.map(o => {
@@ -282,6 +315,7 @@
                 <span>⚡ Coste: <strong style="color:var(--red)">${eur(o.totalCoste)}</strong></span>
                 <span>⏱️ <strong>${o.totalHoras?.toFixed(0)||0} h</strong></span>
                 <span>📋 <strong>${o.partes||0} partes</strong></span>
+                ${o.porFacturar&&o.porFacturar.estado!=='ok'&&o.porFacturar.falta>0&&obra.status==='activa'?`<span style="color:var(--amber)">🧾 Falta facturar <strong>${eur(o.porFacturar.falta)}</strong></span>`:''}
               </div>
               ${diag ? `<div style="margin-top:8px;padding:6px 10px;background:${diag.color}15;border-radius:6px;font-size:11px;color:${diag.color}">
                 ${diag.emoji} ${diag.mensaje}
@@ -476,6 +510,7 @@
             <div class="mc"><div class="ml">Coste total</div><div class="mv r">${eur(rent.totalCoste)}</div></div>
             <div class="mc"><div class="ml">Beneficio${prev?' previsto':''}</div><div class="mv ${ok?'g':'r'}">${eur(rent.beneficio)}</div><div style="font-size:10px;color:var(--text3)">${pct!=null?pct.toString().replace('.',',')+' %':''}${prev?' · sobre el presupuesto':''}</div></div>
           </div>
+          ${cardPorFacturar(rent)}
           <div style="font-size:11px;color:var(--text3);margin-bottom:14px">Todo sin IVA. ${prev?'Aún no hay nada facturado: el beneficio se calcula con el presupuesto. ':''}${rent.partes?rent.partes+' partes · ':''}Compras y proveedores no se cuentan dos veces si una factura está en los dos sitios.</div>`;
           })()}
 
