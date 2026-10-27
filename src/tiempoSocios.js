@@ -33,6 +33,12 @@ async function apuntar({ quienes = [], obra = '', cliente = '', que = '', tipo =
   if (!(min > 0)) throw new Error('¿Cuánto rato fue? Dime de qué hora a qué hora o los minutos.');
   const texto = [obra, cliente].filter(Boolean).join(' ');
   let o = null; try { o = texto ? await (_obraDeTexto || require('./comprasVigilancia').obraDeTexto)(texto) : null; } catch (e) {}
+  // Dos obras del mismo cliente (piso y bar de Claudia) → obraDeTexto no elige; vale la única cuyo nombre lo contiene entero.
+  if (!o && texto) try {
+    const t = norm(texto), l = await db.collection('obras').find({ status: { $ne: 'descartada' } }).project({ reference: 1, aliases: 1, address: 1 }).toArray();
+    const c = l.filter(x => [x.reference, ...(x.aliases || [])].some(n => norm(n) && norm(n).includes(t)));
+    if (c.length === 1) o = c[0];
+  } catch (e) {}
   const kms = km != null && km !== '' ? Number(km) : (['visita', 'compra', 'intervencion'].includes(tipo) ? kmDe([texto, o && o.address, o && o.reference, nota].join(' ')) : null);
   const doc = { fecha: /^\d{4}-\d{2}-\d{2}$/.test(String(fecha || '')) ? fecha : hoyISO(), quienes: ps, minutos: Math.round(min), desde: desde || null, hasta: hasta || null,
     tipo: TIPOS.includes(tipo) ? tipo : 'otro', que: String(que || '').trim().slice(0, 200), obraId: o ? String(o._id) : null, obraRef: o ? o.reference : null, cliente: String(cliente || '').trim().slice(0, 120) || null,
