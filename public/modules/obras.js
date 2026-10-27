@@ -228,7 +228,7 @@
       ? `<div style="color:var(--red);font-weight:600">🚨 Lo hecho ya vale ${eur(pf.minimo)} y el presupuesto es de ${eur(pf.presupuesto)}: se queda corto en ${eur(-pf.cubre)}. Hay que facturar extras o rehacer el precio.</div>`
       : pf.estado === 'ok' ? `<div style="color:var(--green);font-weight:600">✅ Lo hecho está facturado${pf.fuente === 'certificaciones' ? ' (por certificaciones)' : ''}.</div>`
       : `<div style="color:var(--amber);font-weight:600">🧾 Falta facturar al menos ${eur(pf.falta)} de lo ya hecho.</div>`;
-    const pres = pf.presupuesto ? `<div style="font-size:12px;color:var(--text2);margin-top:8px;line-height:1.55">
+    const pres = pf.porMedir ? `<div style="font-size:12px;color:var(--text2);margin-top:8px">📐 El presupuesto es por m² y aún no tiene los m² puestos: se factura por medición (Certificaciones → «Certificar por medición»). Con los m², aquí saldrá si cubre lo hecho.</div>` : pf.presupuesto ? `<div style="font-size:12px;color:var(--text2);margin-top:8px;line-height:1.55">
         Presupuesto ${eur(pf.presupuesto)} · facturado ${eur(pf.cobrado)} · <b>queda por facturar ${eur(pf.quedaPorFacturar)}</b><br>
         Quitando el material comprado +${pct} % y los desplazamientos, el presupuesto deja <b>${eur(pf.paraManoObra)}</b> para mano de obra:
         da para <b>${String(pf.jornadasQueDa).replace('.', ',')} jornadas</b> a ${eur(rent.precioJornada)} y lleváis <b>${String(pf.jornadasLlevadas).replace('.', ',')}</b>${pf.jornadasLlevadas > pf.jornadasQueDa ? ' <span style="color:var(--red)">(pasadas)</span>' : ''}.

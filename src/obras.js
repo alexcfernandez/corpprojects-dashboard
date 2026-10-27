@@ -579,7 +579,7 @@ const miIdC = o => String(o._id);
 // Se compara con lo facturado (facturas de StelOrder enlazadas; si no hay, lo certificado). Con presupuesto, dice además
 // si cubre lo hecho y, en los «todo incluido» por m² (SATE con la placa), cuánto deja para mano de obra una vez puesto
 // el material comprado +30 % (y cuántas jornadas da, contra las que se llevan).
-function calcularPorFacturar({ totalHoras = 0, dias = 0, material = 0, socios = null, presupuesto = 0, facturado = 0, certificado = 0, precioJornada = 450 } = {}) {
+function calcularPorFacturar({ totalHoras = 0, dias = 0, material = 0, socios = null, presupuesto = 0, porMedir = false, facturado = 0, certificado = 0, precioJornada = 450 } = {}) {
   const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
   const MARGEN = Number(process.env.MARGEN_MATERIAL) || 0.30, DESPL = Number(process.env.DESPLAZAMIENTO_DIA) || 20;
   const COBRO_SOCIO = Number(process.env.TARIFA_SOCIO_COBRO) || 40, EUR_KM = Number(process.env.EUR_KM) || 0.3;
@@ -594,7 +594,9 @@ function calcularPorFacturar({ totalHoras = 0, dias = 0, material = 0, socios = 
   const cobrado = facturado > 0 ? facturado : certificado, fuente = facturado > 0 ? 'facturas' : (certificado > 0 ? 'certificaciones' : null);
   const falta = r2(Math.max(0, minimo - cobrado));
   const out = { lineas, minimo, cobrado: r2(cobrado), fuente, falta, margenMaterial: MARGEN, estado: falta <= Math.max(50, minimo * 0.02) ? 'ok' : 'falta' };
-  if (presupuesto > 0) {
+  // Presupuesto por m² sin los m² puestos (Arenys: 90/98 €/m² × 0): su total no dice nada; se factura por medición.
+  if (porMedir) out.porMedir = true;
+  else if (presupuesto > 0) {
     const paraManoObra = r2(presupuesto - lineas.material.venta - lineas.desplazamientos.venta);
     Object.assign(out, { presupuesto: r2(presupuesto), cubre: r2(presupuesto - minimo), quedaPorFacturar: r2(Math.max(0, presupuesto - cobrado)),
       paraManoObra, jornadasQueDa: paraManoObra > 0 ? Math.floor(paraManoObra / precioJornada * 10) / 10 : 0, jornadasLlevadas: lineas.manoObra.jornadas });
@@ -829,7 +831,7 @@ async function getRentabilidad(obraId) {
   const jornadas = Object.values(byDate).reduce((s, l) => s + l.length, 0);
   const precioJornada = Number(process.env.PRECIO_JORNADA) || 450;
   const porFacturar = calcularPorFacturar({ totalHoras, dias: Object.keys(byDate).length, material: totalMateriales + totalProveedores + totalCompras + (almacen.importe || 0),
-    socios, presupuesto: obra.budgetAmount || 0, facturado: obra.invoicedAmount || 0, certificado: resumenCertificaciones(obra).certificado, precioJornada });
+    socios, presupuesto: obra.budgetAmount || 0, porMedir: (obra.presupuestosStel || []).some(p => (p.lineas || []).some(l => l.unidad === 'm²' && !(l.unidades > 0))), facturado: obra.invoicedAmount || 0, certificado: resumenCertificaciones(obra).certificado, precioJornada });
   return {
     obra,
     partes: partes.length,

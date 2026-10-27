@@ -32,3 +32,8 @@ test('solo cuenta el tiempo de socios marcado «se cobra»', () => {
   const socios = { ratos: [{ minutos: 60, quienes: ['Álex', 'Alfonso'], km: 10, facturable: true }, { minutos: 120, quienes: ['Álex'], km: 0, facturable: false }] };
   assert.strictEqual(calcularPorFacturar({ socios }).lineas.gestion.venta, 83);
 });
+
+test('presupuesto por m² sin medir: no compara ni da «corto»', () => {
+  const r = calcularPorFacturar({ totalHoras: 100, dias: 6, material: 2500, presupuesto: 788, porMedir: true });
+  assert.strictEqual(r.porMedir, true); assert.strictEqual(r.estado, 'falta'); assert.strictEqual(r.cubre, undefined);
+});
