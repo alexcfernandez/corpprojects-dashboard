@@ -831,7 +831,7 @@ async function getRentabilidad(obraId) {
   const jornadas = Object.values(byDate).reduce((s, l) => s + l.length, 0);
   const precioJornada = Number(process.env.PRECIO_JORNADA) || 450;
   const porFacturar = calcularPorFacturar({ totalHoras, dias: Object.keys(byDate).length, material: totalMateriales + totalProveedores + totalCompras + (almacen.importe || 0),
-    socios, presupuesto: obra.budgetAmount || 0, porMedir: (obra.presupuestosStel || []).some(p => (p.lineas || []).some(l => l.unidad === 'm²' && !(l.unidades > 0))), facturado: obra.invoicedAmount || 0, certificado: resumenCertificaciones(obra).certificado, precioJornada });
+    socios, presupuesto: obra.budgetAmount || 0, porMedir: (obra.presupuestosStel || []).some(p => (p.lineas || []).some(l => l.unidad === 'm²' && !(l.unidades > 1))), facturado: obra.invoicedAmount || 0, certificado: resumenCertificaciones(obra).certificado, precioJornada });
   return {
     obra,
     partes: partes.length,
