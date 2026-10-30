@@ -5,7 +5,8 @@
 // con `peticiones: true` en bridgeGrupos pasan además por aquí: cada media hora la IA lee lo nuevo, lo separa en
 // peticiones (presupuesto / trabajo / queja / consulta / aviso) y lo cruza con StelOrder (cliente, incidencias abiertas,
 // presupuestos recientes) para decir si ya está cubierto o es nuevo. A Álex y a la oficina les llega un aviso con lo
-// nuevo y queda la lista en el inicio del dashboard. No se escribe nada en StelOrder ni en el grupo.
+// nuevo y queda la lista en el inicio del dashboard. Solo en los grupos con autoIncidencia (CINC) se crea sola la
+// incidencia de un trabajo o queja nueva, y con corpyResponde Corpy pide en el grupo el contacto que falte.
 //
 // El historial de antes de que Corpy entrara no llega por WhatsApp: se importa el chat exportado (Exportar chat → sin
 // archivos) con importarChat(); se guarda en `grupoHistorial` y se analiza igual, sin avisos.
@@ -139,13 +140,43 @@ ${cat.clientes.join('\n')}`;
   return { nuevas, actualizadas };
 }
 
-function _textoAviso(grupo, nuevas, actualizadas) {
+function _textoAviso(grupo, nuevas, actualizadas, auto = {}) {
   const et = { presupuesto: '💶 Presupuesto', trabajo: '🔧 Trabajo', queja: '⚠️ Queja', consulta: '❓ Consulta', aviso: 'ℹ️ Aviso' };
   const sit = p => p.situacion === 'ya_hay_incidencia' ? ` (ya está en ${p.incidencia || 'una incidencia'})` : p.situacion === 'ya_hay_presupuesto' ? ` (ya hay ${p.presupuesto || 'presupuesto'})` : p.situacion === 'seguimiento' ? ' (insisten)' : '';
+  const hecho = p => { const a = auto[String(p._id)]; if (!a) return '';
+    return ['', a.incidencia ? `   ✅ Incidencia creada: *${a.incidencia}*` : a.error ? `   ⚠️ No he podido crear la incidencia: ${a.error}` : '',
+      a.propuesta ? `   👷 Propongo a *${a.propuesta.nombre}* el ${a.propuesta.fechaTxt} a las ${a.propuesta.hora} (${a.propuesta.motivo}). Dime a quién o confírmalo en Inicio → Peticiones.` : '',
+      a.pedidoContacto ? '   📨 He pedido en el grupo un teléfono de contacto.' : ''].filter((x, i) => !i || x).join('\n'); };
   const l = [...nuevas, ...actualizadas.filter(p => p.urgente || p.situacion === 'seguimiento')];
   return `📋 *Grupo «${grupo}»*: ${l.length} cosa${l.length > 1 ? 's' : ''} que nos piden\n\n` +
-    l.map(p => `${p.urgente ? '🚨 ' : ''}${et[p.tipo] || p.tipo} · *${p.cliente}*${p.direccion ? ' ' + p.direccion : ''}: ${p.resumen}${sit(p)}\n   → ${p.queHacer}`).join('\n\n') +
+    l.map(p => `${p.urgente ? '🚨 ' : ''}${et[p.tipo] || p.tipo} · *${p.cliente}*${p.direccion ? ' ' + p.direccion : ''}: ${p.resumen}${sit(p)}\n   → ${p.queHacer}${hecho(p)}`).join('\n\n') +
     `\n\nLas tienes en el inicio del dashboard (Peticiones de los grupos).`;
+}
+
+// Consultas que no piden nada («vaaaale», «gracias»): al archivo y sin aviso (30/10/2026, Álex).
+const SIN_ACCION = /^\s*(nada|ninguna?)\b|no hay acci[oó]n|no requiere|no pide nada/i;
+const sinAccion = p => p.tipo === 'consulta' && SIN_ACCION.test(p.queHacer || '');
+
+// Grupos con bridgeGrupos.autoIncidencia (los de CINC; 30/10/2026, Álex: «que cree la incidencia y me proponga operario
+// y día; si no dan teléfono, que Corpy lo pida en el grupo»): un trabajo o una queja nueva crea su incidencia en
+// StelOrder y el aviso lleva la propuesta de trabajos.propuesta(). El trabajo se sigue confirmando en Inicio → Peticiones.
+// Corpy solo escribe en el grupo si además tiene corpyResponde.
+async function _autoIncidencias(db, g, nuevas, { _crear = null, _propuesta = null, _enviar = null } = {}) {
+  const out = {};
+  if (!g.autoIncidencia) return out;
+  for (const p of nuevas) {
+    if (!['trabajo', 'queja'].includes(p.tipo) || p.incidencia || p.situacion !== 'nuevo') continue;
+    const r = out[String(p._id)] = {};
+    if (p.clienteId) { try { r.incidencia = (await (_crear || crearIncidencia)(String(p._id), 'Corpy (grupo)')).ref; } catch (e) { r.error = e.message; } }
+    else r.error = 'no sé de qué comunidad de StelOrder es';
+    try { r.propuesta = (await (_propuesta || require('./trabajos').propuesta)(String(p._id))).propuesta; } catch (e) {}
+    if (!p.contacto && g.corpyResponde) {
+      const txt = `Hola, soy Corpy, de la oficina de Corp Projects. Para lo de ${p.cliente}${p.direccion ? ' (' + p.direccion + ')' : ''}: ¿nos pasáis un nombre y teléfono de contacto y cuándo se puede entrar? Gracias.`;
+      try { r.pedidoContacto = (await (_enviar || require('./notifications').sendWhatsAppTo)(g._id, txt, { sinTraducir: true, importante: true })) !== false; } catch (e) {}
+      if (r.pedidoContacto) await db.collection(COL).updateOne({ _id: p._id }, { $set: { contactoPedidoAt: new Date() } });
+    }
+  }
+  return out;
 }
 
 // Cada media hora: lo nuevo de los grupos con peticiones:true.
@@ -162,9 +193,14 @@ async function analizar({ avisar = true, _llamar = null, _cat = null } = {}) {
     const cat = _cat || await _catalogo();
     const r = await _tanda(db, { jid: g._id, grupo: g.nombre, msgs, fuente: 'whatsapp', cat, _llamar });
     await db.collection('grupoMensajes').updateMany({ _id: { $in: raw.map(m => m._id) } }, { $set: { pet: true } });
-    if (avisar && (r.nuevas.length || r.actualizadas.some(p => p.urgente || p.situacion === 'seguimiento'))) {
+    const mudas = r.nuevas.filter(sinAccion);
+    if (mudas.length) await db.collection(COL).updateMany({ _id: { $in: mudas.map(p => p._id) } }, { $set: { estado: 'archivo', archivadoPor: 'sin acción' } });
+    const nuevas = r.nuevas.filter(p => !sinAccion(p));
+    let auto = {};
+    try { auto = await _autoIncidencias(db, g, nuevas); } catch (e) { console.warn('[Peticiones] incidencias:', e.message); }
+    if (avisar && (nuevas.length || r.actualizadas.some(p => p.urgente || p.situacion === 'seguimiento'))) {
       const N = require('./notifications');
-      const txt = _textoAviso(g.nombre || 'WhatsApp', r.nuevas, r.actualizadas);
+      const txt = _textoAviso(g.nombre || 'WhatsApp', nuevas, r.actualizadas, auto);
       for (const to of [...new Set([N.destinoDueno(), process.env.OFICINA_TELEFONO || '+34674013723'].filter(Boolean))]) {
         try { await N.sendWhatsAppTo(to, txt); } catch (e) { console.warn('[Peticiones] aviso:', e.message); }
       }
@@ -320,4 +356,4 @@ ${pend.length ? `<h3 style="margin:16px 0 4px">Sigue abierto</h3>${tabla(pend.fi
   return { enviado: !!ok, to, subject, nuevas: nuevas.length, abiertas: pend.length };
 }
 
-module.exports = { crearIncidencia, resumenDiario, _ventana, analizar, importarChat, analizarHistorial, parsearChat, lista, marcar, marcarGrupo, _tanda, _textoAviso, TIPOS };
+module.exports = { crearIncidencia, resumenDiario, _ventana, analizar, importarChat, analizarHistorial, parsearChat, lista, marcar, marcarGrupo, _tanda, _textoAviso, _autoIncidencias, _sinAccion: sinAccion, TIPOS };

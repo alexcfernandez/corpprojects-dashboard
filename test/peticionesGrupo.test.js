@@ -75,3 +75,36 @@ test('resumenDiario: correo con lo nuevo y lo abierto', async () => {
     assert.match(enviado.html, /9 días/);
   } finally { db.getDB = real; }
 });
+
+test('consultas que no piden nada no avisan', () => {
+  assert.strictEqual(P._sinAccion({ tipo: 'consulta', queHacer: 'Nada, no hay acción requerida.' }), true);
+  assert.strictEqual(P._sinAccion({ tipo: 'consulta', queHacer: 'Contestar cuándo vamos' }), false);
+  assert.strictEqual(P._sinAccion({ tipo: 'trabajo', queHacer: 'Nada' }), false);
+});
+
+test('_autoIncidencias: trabajo nuevo crea incidencia, propone operario y pide el contacto en el grupo', async () => {
+  const set = [], enviados = [];
+  const db = { collection: () => ({ updateOne: async (q, u) => set.push(u.$set) }) };
+  const g = { _id: 'g@g.us', autoIncidencia: true, corpyResponde: true };
+  const nuevas = [
+    { _id: 'p1', tipo: 'trabajo', situacion: 'nuevo', clienteId: '15538798', cliente: 'Castell Solterra 16', direccion: 'parking', contacto: null },
+    { _id: 'p2', tipo: 'presupuesto', situacion: 'nuevo', clienteId: '1', cliente: 'Otra', contacto: null },
+    { _id: 'p3', tipo: 'queja', situacion: 'nuevo', clienteId: null, cliente: 'Sin cliente', contacto: 'Marta 600000000' },
+  ];
+  const auto = await P._autoIncidencias(db, g, nuevas, {
+    _crear: async id => ({ ref: 'INC00999', id: '1' }),
+    _propuesta: async id => ({ propuesta: { nombre: 'David Taladros', fechaTxt: 'lunes 02/11', hora: '09:00', motivo: 'ese día lo tiene libre' } }),
+    _enviar: async (to, txt) => { enviados.push({ to, txt }); return true; },
+  });
+  assert.strictEqual(auto.p1.incidencia, 'INC00999');
+  assert.strictEqual(auto.p1.pedidoContacto, true);
+  assert.strictEqual(auto.p2, undefined);
+  assert.match(auto.p3.error, /comunidad/);
+  assert.strictEqual(enviados.length, 1);
+  assert.strictEqual(enviados[0].to, 'g@g.us');
+  const txt = P._textoAviso('Projects Holding', nuevas.slice(0, 1), [], auto);
+  assert.match(txt, /INC00999/);
+  assert.match(txt, /Propongo a \*David Taladros\*/);
+  assert.match(txt, /He pedido en el grupo/);
+  assert.deepStrictEqual(await P._autoIncidencias(db, { _id: 'x@g.us' }, nuevas), {});
+});
