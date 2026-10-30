@@ -108,3 +108,26 @@ test('_autoIncidencias: trabajo nuevo crea incidencia, propone operario y pide e
   assert.match(txt, /He pedido en el grupo/);
   assert.deepStrictEqual(await P._autoIncidencias(db, { _id: 'x@g.us' }, nuevas), {});
 });
+
+test('presupuestoEnviado: un PRT mandado al grupo marca la petición y deja la nota en StelOrder', async () => {
+  assert.strictEqual(P.refDePdf('PRT00853.pdf'), 'PRT00853');
+  assert.strictEqual(P.refDePdf('PRESUPUESTODETRABAJO-00754-JOAN_MARAGALL__34.pdf'), 'PRT00754');
+  assert.strictEqual(P.refDePdf('FACTURA-00998.pdf'), null);
+  const path = require('path'); const dbPath = require.resolve(path.join(__dirname, '..', 'src', 'db.js'));
+  const previo = require.cache[dbPath];
+  const pets = [{ _id: 'a', jid: 'g@g.us', tipo: 'presupuesto', estado: 'pendiente', clienteId: '15325413', presupuesto: null }];
+  const set = [];
+  const col = { find: q => ({ toArray: async () => pets.filter(p => Object.entries(q).every(([k, v]) => p[k] === v)) }), updateOne: async (q, u) => set.push(u.$set) };
+  require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: { getDB: async () => ({ collection: () => col }) } };
+  const notas = [];
+  try {
+    const r = await P.presupuestoEnviado({ jid: 'g@g.us', grupo: 'Projects Holding', nombres: ['PRT00853.pdf', 'foto.pdf'], por: 'Alex', ts: new Date('2026-10-23T08:50:00Z') },
+      { _presupuestos: async () => [{ id: 61, 'full-reference': 'PRT00853', 'account-id': 15325413 }], _nota: async (id, t) => { notas.push({ id, t }); return true; } });
+    assert.deepStrictEqual(r.refs, [{ ref: 'PRT00853', peticiones: 1, nota: true }]);
+    assert.strictEqual(set[0].presupuesto, 'PRT00853');
+    assert.strictEqual(set[0].estado, 'hecho');
+    assert.match(set[0].queHacer, /PRT00853 enviado al grupo el 23\/10\/26/);
+    assert.strictEqual(notas[0].id, 61);
+    assert.match(notas[0].t, /Enviado por WhatsApp al grupo «Projects Holding»/);
+  } finally { if (previo) require.cache[dbPath] = previo; else delete require.cache[dbPath]; }
+});

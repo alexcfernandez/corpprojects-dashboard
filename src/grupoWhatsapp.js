@@ -8,6 +8,7 @@
 //     (fotos de la obra) no se guardan;
 //   · las fotos que NO son documentos (fotos de la obra) se guardan aparte en grupoFotos (14/10/2026), con la
 //     obra si el texto la nombra, para ir ordenándolas por obra;
+//   · un PDF de presupuesto («PRT00853.pdf») que manda alguien de Corp → presupuesto enviado (peticionesGrupo.presupuestoEnviado);
 //   · Corpy NO contesta en el grupo (modo escucha): el aviso va a oficina como cualquier compra.
 //
 //   bridgeGrupos  { _id: jid, nombre, activo, vistoAt, activadoAt, activadoPor, nMensajes, nCompras, ultimoMsgAt }
@@ -75,6 +76,9 @@ async function procesar(p) {
   const media = (p.media || []).filter(m => m && m.url);
   const doc = { jid, grupo: p.groupName || g.nombre || null, from: p.from || null, quien: quien.name, texto: texto || null, media: (p.media || []).map(m => ({ type: m.type, name: m.name || null, fallo: !m.url })), compraId: null, ts: new Date() };
   const ins = await d.collection(MSG).insertOne(doc);
+  // Un presupuesto que manda alguien de Corp al grupo queda como enviado (petición + nota en StelOrder). Sin esperar.
+  const pdfs = doc.media.filter(m => /pdf/i.test(m.type) && m.name).map(m => m.name);
+  if (quien.userId && pdfs.length) require('./peticionesGrupo').presupuestoEnviado({ jid, grupo: doc.grupo, nombres: pdfs, por: quien.name }).catch(e => console.warn('[Grupo] presupuesto enviado:', e.message));
   let nCompras = 0; const fotoIds = [];
   const docs = media.filter(m => /^image\//i.test(m.type) || /pdf/i.test(m.type));
   for (const m of docs) {

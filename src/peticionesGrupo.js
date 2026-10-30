@@ -302,6 +302,40 @@ async function marcarGrupo(jid, peticiones) {
   return { ok: true };
 }
 
+// ── Presupuesto mandado al grupo (30/10/2026): un PDF de presupuesto que alguien de Corp manda al grupo («PRT00853.pdf»,
+// «PRESUPUESTODETRABAJO-00754-JOAN_MARAGALL__34.pdf») es un presupuesto ENVIADO. StelOrder no ve los envíos por WhatsApp
+// y la petición seguía como pendiente: dos veces el mismo día se dio por no enviado lo que Álex ya había pasado. Se marca la
+// petición (la que ya lleva ese PRT o la de presupuesto abierta del mismo cliente) y se deja la nota privada en StelOrder.
+const RE_PRT = /(?:PRT|PRESUPUESTODETRABAJO[-_ ]?)0*(\d{3,5})/i;
+function refDePdf(nombre) { const m = String(nombre || '').match(RE_PRT); return m ? 'PRT' + m[1].padStart(5, '0') : null; }
+async function _notaStel(id, texto) {
+  const S = require('./stelorder');
+  if (S.enPausa() || S.cupoAgotado()) return false;
+  const g = await S._client.get(`/workEstimates/${id}`, { timeout: 20000 });
+  const b = Array.isArray(g.data) ? g.data[0] : g.data;
+  if (!b || !b.id || String(b['private-comments'] || '').includes(texto)) return false;
+  await S._client.put(`/workEstimates/${id}`, { ...b, 'private-comments': [b['private-comments'], texto].filter(Boolean).join('\n') }, { headers: { 'Content-Type': 'application/json; charset=utf-8' }, timeout: 25000 });
+  return true;
+}
+async function presupuestoEnviado({ jid, grupo = null, nombres = [], por = '', ts = new Date() }, { _presupuestos = null, _nota = _notaStel } = {}) {
+  const refs = [...new Set(nombres.map(refDePdf).filter(Boolean))];
+  if (!refs.length) return { refs: [] };
+  const db = await getDB();
+  const prts = await (_presupuestos || require('./stelorder').getWorkEstimates)().catch(() => []);
+  const out = [];
+  for (const ref of refs) {
+    const prt = (prts || []).find(e => (e['full-reference'] || '') === ref);
+    let pets = await db.collection(COL).find({ jid, presupuesto: ref }).toArray();
+    if (!pets.length && prt) pets = await db.collection(COL).find({ jid, tipo: 'presupuesto', estado: 'pendiente', clienteId: String(prt['account-id']) }).toArray();
+    const queHacer = `${ref} enviado al grupo el ${fmt(ts)}${por ? ' por ' + por : ''}. Esperar respuesta.`;
+    for (const p of pets) await db.collection(COL).updateOne({ _id: p._id }, { $set: { presupuesto: ref, situacion: 'ya_hay_presupuesto', estado: 'hecho', nota: 'Presupuesto enviado al grupo', queHacer, presupuestoEnviado: { ref, at: ts, por }, actualizado: new Date() } });
+    let nota = false;
+    if (prt) { try { nota = await _nota(prt.id, `Enviado por WhatsApp al grupo «${grupo || 'WhatsApp'}» el ${fmt(ts)}${por ? ' (' + por + ')' : ''}.`); } catch (e) { console.warn('[Peticiones] nota StelOrder:', e.message); } }
+    out.push({ ref, peticiones: pets.length, nota });
+  }
+  return { refs: out };
+}
+
 // ── Incidencia en StelOrder desde una petición (botón «Crear incidencia» de la tarjeta). Presupuesto → tipo Presupuesto;
 // lo demás → Actuación. Necesita el cliente de StelOrder; la descripción lleva el resumen, el contacto y los mensajes.
 const TIPO_INC = { presupuesto: 3145, otro: 3146 };
@@ -356,4 +390,4 @@ ${pend.length ? `<h3 style="margin:16px 0 4px">Sigue abierto</h3>${tabla(pend.fi
   return { enviado: !!ok, to, subject, nuevas: nuevas.length, abiertas: pend.length };
 }
 
-module.exports = { crearIncidencia, resumenDiario, _ventana, analizar, importarChat, analizarHistorial, parsearChat, lista, marcar, marcarGrupo, _tanda, _textoAviso, _autoIncidencias, _sinAccion: sinAccion, TIPOS };
+module.exports = { presupuestoEnviado, refDePdf, crearIncidencia, resumenDiario, _ventana, analizar, importarChat, analizarHistorial, parsearChat, lista, marcar, marcarGrupo, _tanda, _textoAviso, _autoIncidencias, _sinAccion: sinAccion, TIPOS };
