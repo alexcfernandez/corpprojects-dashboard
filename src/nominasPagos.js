@@ -52,6 +52,12 @@ async function estado(mes, { hoy = new Date() } = {}) {
     db.collection('docsPersonal').find({ tipo: 'nomina', mes: { $in: meses } }).project({ data: 0 }).toArray(),
     db.collection('bancoMovimientos').find({ fechaOperacion: { $gte: desde, $lte: hasta }, importe: { $lt: 0 } }).toArray(),
   ]);
+  // Transferencias al trabajador que NO son sueldo (30/10/2026: a David se le pasan 80 € para las comidas de la obra y
+  // salían como pagos de su nómina): las ya justificadas en el punteo como comida, obra, vehículo o con su factura, y
+  // las que lo dicen en el concepto (dietas, compra de material, formación pagada a la academia).
+  const punteo = await db.collection('punteoManual').find({ _id: { $in: movs.map(m => String(m._id)) } }).project({ decision: 1, compraId: 1 }).toArray();
+  const noEsSueldo = new Set(punteo.filter(p => p.compraId || ['dieta', 'obra', 'vehiculo', 'tercero'].includes(p.decision)).map(p => String(p._id)));
+  const NO_SUELDO = /\bdietas?\b|compra (de )?material|formaci[oó]/i;
   // Asalariados: ni autónomos (facturan) ni el dueño; y un nombre de una sola palabra («Alex») casaría con cualquiera.
   const plantilla = users.filter(u => u.active !== false && !u.autonomo && ['tecnico', 'encargado', 'oficina'].includes(require('./users').normalizeRole(u.role)) && nombresDe(u).some(ws => ws.length >= 2));
   const out = [];
@@ -69,7 +75,8 @@ async function estado(mes, { hoy = new Date() } = {}) {
       const efectivo = l.flatMap(n => (n.pagosEfectivo || []).map(p => ({ fecha: p.fecha, importe: r2(p.importe), efectivo: true })));
       return { _id: usar[0]._id, mes: mesN, importes: { liquido: usar.every(n => n.importes && n.importes.liquido != null) ? r2(liq) : null }, efectivo };
     }).sort((a, b) => a.mes.localeCompare(b.mes));
-    const pagos = movs.filter(m => (m.categoria === 'nomina' || /transferencia|a favor de|bizum/i.test(m.concepto || '')) && esDe(m.concepto, u))
+    const pagos = movs.filter(m => (m.categoria === 'nomina' || /transferencia|a favor de|bizum/i.test(m.concepto || '')) && esDe(m.concepto, u)
+      && !noEsSueldo.has(String(m._id)) && !NO_SUELDO.test(m.concepto || ''))
       .sort((a, b) => a.fechaOperacion.localeCompare(b.fechaOperacion)).map(m => ({ fecha: m.fechaOperacion, importe: r2(-m.importe), concepto: m.concepto, restante: r2(-m.importe) }));
     // Reparto: cada pago, a la nómina más antigua sin pagar cuyo mes sea ≤ el del pago (o el anterior).
     const estadoNom = suyas.map(n => ({ id: String(n._id), mes: n.mes, liquido: n.importes && n.importes.liquido != null ? n.importes.liquido : null, pagado: r2(n.efectivo.reduce((a, p) => a + p.importe, 0)), pagos: [...n.efectivo] }));

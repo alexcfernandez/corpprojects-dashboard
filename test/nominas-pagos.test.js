@@ -18,7 +18,8 @@ const movs = [
   { fechaOperacion: '2026-10-08', importe: -493, concepto: 'TRANSFERENCIA INMEDIATA A FAVOR DE Melvin CONCEPTO Nómina septiembre' },
 ];
 const cumple = (d, q) => Object.entries(q).every(([k, c]) => c && typeof c === 'object' ? ('$in' in c ? c.$in.includes(d[k]) : (c.$gte == null || d[k] >= c.$gte) && (c.$lte == null || d[k] <= c.$lte) && (c.$lt == null || d[k] < c.$lt)) : d[k] === c);
-stub('src/db.js', { getDB: async () => ({ collection: n => ({ find: q => { const L = (n === 'docsPersonal' ? noms : movs).filter(d => cumple(d, q)); return { project: () => ({ toArray: async () => L }), toArray: async () => L }; } }) }) });
+const punteo = [];
+stub('src/db.js', { getDB: async () => ({ collection: n => ({ find: q => { const L = (n === 'docsPersonal' ? noms : n === 'punteoManual' ? punteo : movs).filter(d => cumple(d, q)); return { project: () => ({ toArray: async () => L }), toArray: async () => L }; } }) }) });
 stub('src/users.js', { getUsers: async () => [U1, U2], normalizeRole: r => r });
 const N = require(path.join(root, 'src/nominasPagos.js'));
 
@@ -38,4 +39,16 @@ test('lo pagado en efectivo cuenta para la nómina', async () => {
   const m = (await N.estado('2026-09')).trabajadores.find(t => t.nombre === 'Melvin Ramirez');
   assert.equal(m.estado, 'pagada'); assert.equal(m.nomina.pagado, 793.92); assert.ok(m.nomina.pagos.some(p => p.efectivo));
   delete noms.find(n => n._id === 'm1').pagosEfectivo;
+});
+
+test('el dinero para comidas o material no cuenta como pago de la nómina', async () => {
+  const extra = [
+    { _id: 'b1', fechaOperacion: '2026-10-27', importe: -80, concepto: 'TRANSFERENCIA INMEDIATA A FAVOR DE Melvin CONCEPTO Adelanto' },
+    { _id: 'b2', fechaOperacion: '2026-10-28', importe: -80, concepto: 'TRANSFERENCIA INMEDIATA A FAVOR DE Melvin CONCEPTO Dietas Sant Pere' },
+    { _id: 'b3', fechaOperacion: '2026-10-22', importe: -70, concepto: 'TRANSFERENCIA INMEDIATA A FAVOR DE Melvin CONCEPTO Compra material placa' },
+  ];
+  movs.push(...extra); punteo.push({ _id: 'b1', decision: 'dieta' });
+  const m = (await N.estado('2026-10')).trabajadores.find(t => t.nombre === 'Melvin Ramirez');
+  assert.ok(!m || !m.sinNomina.some(p => ['2026-10-27', '2026-10-28', '2026-10-22'].includes(p.fecha)));
+  movs.splice(movs.length - extra.length, extra.length); punteo.length = 0;
 });
