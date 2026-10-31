@@ -194,6 +194,92 @@ async function guardarEntrevista(id, { oficio, respuestas = [], conclusion }, po
   return ver(id);
 }
 
+// ── Informe de la IA (31/10/2026, Álex: «un informe con lo que piensa la IA de ese candidato y con un score, no solo el
+// mío sino una valoración global con todo»). Lee la ficha, el CV (el documento) y la entrevista con las notas del que
+// entrevista, y devuelve: su propia nota de las respuestas, una nota global con desglose, recomendación, puntos fuertes y
+// débiles, dudas a comprobar y preguntas para la prueba. Se guarda en el candidato (`informeIA`).
+const RECOMENDACION = { contratar: 'Contratar', prueba: 'Probarle unos días', segunda: 'Segunda entrevista', descartar: 'Descartar' };
+const AREAS = { entrevista: 'Entrevista (respuestas)', experiencia: 'Experiencia y CV', encaje: 'Encaje con el puesto', disponibilidad: 'Disponibilidad y movilidad', condiciones: 'Condiciones (lo que pide, PRL, papeles)' };
+async function informeIA(id, por, { _llamar = null } = {}) {
+  const db = await getDB();
+  const c = await db.collection(COL).findOne({ _id: oid(id) });
+  if (!c) throw new Error('Candidato no encontrado');
+  const e = c.entrevista;
+  if (!e || !(e.respuestas || []).length) throw new Error('Primero haz y guarda la entrevista');
+  const P = preguntas(e.oficio);
+  const busca = new Map(P.preguntas.map(p => [p.id, p.busca]));
+  const ficha = [
+    ['Nombre', c.nombre], ['Oficio', (OFICIOS[c.oficio] || OFICIOS.otro).nombre], ['Años de experiencia', c.anosExperiencia], ['Vive en', c.poblacion],
+    ['Carnés', c.carnet], ['Coche', c.coche === true ? 'sí' : c.coche === false ? 'no' : null], ['Puede empezar', c.disponible], ['Pide cobrar', c.salarioPedido],
+    ['Viene de', c.procedencia], ['Recomendado por', c.recomendadoPor], ['Empresas anteriores', (c.empresasAnteriores || []).join(' · ')], ['Resumen del CV', c.resumen], ['Notas de oficina', c.notas],
+  ].filter(([, v]) => v != null && v !== '').map(([k, v]) => `${k}: ${v}`).join('\n');
+  const docs = await db.collection(DOCS).find({ candidatoId: String(c._id) }).project({ data: 0 }).toArray();
+  const tiene = Object.values(TIPOS_DOC).filter((n, i) => docs.some(d => d.tipo === Object.keys(TIPOS_DOC)[i]));
+  const ent = e.respuestas.map((r, i) => `${i + 1}. [${r.id}] ${r.pregunta}\n   Lo que hay que buscar: ${busca.get(r.id) || '—'}\n   Lo que contestó (apuntado por quien entrevista): ${r.respuesta || '(no se apuntó)'}\n   Nota de quien entrevista: ${r.nota ? r.nota + '/5' : 'sin nota'}`).join('\n');
+  const texto = `Eres el responsable de personal de Corp Projects, una empresa de reformas, fachadas, rehabilitación y obra nueva en Girona y el Maresme (obras en comunidades de vecinos, pisos y locales; se trabaja en altura a menudo; hace falta moverse entre obras).
+Valora a este candidato para el puesto de ${P.nombre}. Sé claro y sincero, en castellano llano, sin tecnicismos de recursos humanos. No inventes nada que no esté aquí: si falta un dato, dilo como duda. Si una respuesta no se apuntó, no la cuentes ni a favor ni en contra.
+
+FICHA
+${ficha || '(casi vacía)'}
+Documentos que tenemos: ${tiene.length ? tiene.join(', ') : 'ninguno'}${docs.some(d => d.tipo === 'cv') ? ' (el CV va adjunto)' : ''}
+
+ENTREVISTA (${fd(e.fecha)}${e.por ? ', la hizo ' + e.por : ''}; nota de quien entrevista: ${e.puntuacion != null ? e.puntuacion + '/100' : 'sin nota'})
+${ent}
+Conclusión de quien entrevista: ${e.conclusion || '(no puso)'}
+
+Pon TU nota a cada respuesta comparándola con lo que hay que buscar (independiente de la de quien entrevista), tu nota de la entrevista sobre 100 y una nota GLOBAL sobre 100 que lo junte todo (entrevista, experiencia y CV, encaje, disponibilidad y movilidad, condiciones). Si tu nota de una respuesta se aleja 2 puntos o más de la de quien entrevista, explícalo en «diferencias».`;
+  const content = [];
+  const cv = docs.filter(d => d.tipo === 'cv').sort((a, b) => new Date(b.subido) - new Date(a.subido))[0];
+  if (cv && (cv.size || 0) < 8 * 1024 * 1024) {
+    const d = await db.collection(DOCS).findOne({ _id: cv._id });
+    const b64 = Buffer.from(d.data.buffer || d.data).toString('base64');
+    if (/pdf/i.test(cv.mime)) content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } });
+    else if (/^image\/(jpeg|png|gif|webp)$/i.test(cv.mime)) content.push({ type: 'image', source: { type: 'base64', media_type: cv.mime, data: b64 } });
+  }
+  content.push({ type: 'text', text: texto });
+  const n100 = { type: 'integer', minimum: 0, maximum: 100 };
+  const lista = d => ({ type: 'array', items: { type: 'string' }, description: d });
+  const tool = { name: 'informe_candidato', description: 'Informe sobre el candidato', input_schema: { type: 'object', properties: {
+    resumen: { type: 'string', description: 'Tres a cinco frases: quién es, cómo ha ido la entrevista y qué harías.' },
+    recomendacion: { type: 'string', enum: Object.keys(RECOMENDACION) },
+    notaEntrevistaIA: { ...n100, description: 'Tu nota de las respuestas de la entrevista.' },
+    notaGlobal: { ...n100, description: 'Nota global con todo junto.' },
+    desglose: { type: 'object', properties: Object.fromEntries(Object.keys(AREAS).map(k => [k, n100])), required: Object.keys(AREAS) },
+    fuertes: lista('Puntos fuertes, concretos.'), debiles: lista('Puntos débiles, concretos.'),
+    dudas: lista('Lo que falta saber o hay que comprobar (referencias, PRL, papeles, señales raras).'),
+    preguntasSiguientes: lista('Preguntas o pruebas para la segunda entrevista o el día de prueba.'),
+    porPregunta: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, nota: { type: ['integer', 'null'], minimum: 1, maximum: 5 }, comentario: { type: 'string' } }, required: ['id', 'comentario'] } },
+    diferencias: { type: 'string', description: 'Dónde no coincides con las notas de quien entrevista y por qué; vacío si coincides.' },
+  }, required: ['resumen', 'recomendacion', 'notaEntrevistaIA', 'notaGlobal', 'desglose', 'fuertes', 'debiles', 'dudas', 'preguntasSiguientes', 'porPregunta'] } };
+  const llamar = _llamar || (async body => {
+    const key = process.env.ANTHROPIC_API_KEY;
+    if (!key) throw new Error('ANTHROPIC_API_KEY no configurada');
+    const ac = new AbortController(); const t = setTimeout(() => ac.abort(), 90000);
+    const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', signal: ac.signal,
+      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' }, body: JSON.stringify(body) }).finally(() => clearTimeout(t));
+    const data = await r.json();
+    if (!r.ok) throw new Error(`IA ${r.status}`);
+    return data;
+  });
+  const data = await llamar({ model: require('./config').ia.vision, max_tokens: 4000, tools: [tool], tool_choice: { type: 'tool', name: tool.name }, messages: [{ role: 'user', content }] });
+  const tu = (data.content || []).find(b => b.type === 'tool_use');
+  if (!tu) throw new Error('La IA no ha devuelto el informe; vuelve a probar');
+  const x = tu.input || {};
+  const nn = v => Math.max(0, Math.min(100, Math.round(Number(v) || 0)));
+  const arr = (v, n = 8) => (Array.isArray(v) ? v : []).map(s => txt(s, 400)).filter(Boolean).slice(0, n);
+  const inf = {
+    resumen: txt(x.resumen, 1500), recomendacion: RECOMENDACION[x.recomendacion] ? x.recomendacion : 'segunda',
+    notaEntrevistador: e.puntuacion, notaEntrevistaIA: nn(x.notaEntrevistaIA), notaGlobal: nn(x.notaGlobal),
+    desglose: Object.fromEntries(Object.keys(AREAS).map(k => [k, nn((x.desglose || {})[k])])),
+    fuertes: arr(x.fuertes), debiles: arr(x.debiles), dudas: arr(x.dudas), preguntasSiguientes: arr(x.preguntasSiguientes),
+    porPregunta: (Array.isArray(x.porPregunta) ? x.porPregunta : []).filter(p => busca.has(p.id)).map(p => ({ id: p.id, nota: p.nota == null ? null : Math.max(1, Math.min(5, Math.round(Number(p.nota)))), comentario: txt(p.comentario, 600) })),
+    diferencias: txt(x.diferencias, 1500), conCV: content.length > 1, fechaEntrevista: e.fecha, fecha: new Date(), por: por || '',
+  };
+  await db.collection(COL).updateOne({ _id: c._id }, { $set: { informeIA: inf, actualizado: new Date() }, $push: { historial: { at: new Date(), por: por || '', que: `informe IA · global ${inf.notaGlobal}/100 · ${RECOMENDACION[inf.recomendacion]}` } } });
+  return ver(id);
+}
+const fd = d => d ? new Date(d).toLocaleDateString('es-ES', { timeZone: 'Europe/Madrid' }) : '';
+
 // ── Pasar a trabajador: usuario técnico con PIN + su DNI, carné y PRL a la carpeta de Personal ──
 async function contratar(id, { pin, costeHora } = {}, por) {
   if (!(Number(costeHora) > 0)) throw new Error('Pon su coste por hora (lo que cuesta a la empresa): sirve para la rentabilidad de las obras');
@@ -248,4 +334,4 @@ async function desdeWeb(d = {}) {
   return { ok: true, id: c.id, repetido: !!ya };
 }
 
-module.exports = { desdeWeb, lista, ver, crear, editar, borrar, subirDoc, archivoDoc, borrarDoc, preguntas, guardarEntrevista, contratar, leerCV, ESTADOS, OFICIOS, TIPOS_DOC, _limpiar: limpiar };
+module.exports = { informeIA, RECOMENDACION, AREAS, desdeWeb, lista, ver, crear, editar, borrar, subirDoc, archivoDoc, borrarDoc, preguntas, guardarEntrevista, contratar, leerCV, ESTADOS, OFICIOS, TIPOS_DOC, _limpiar: limpiar };

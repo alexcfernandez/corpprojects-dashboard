@@ -25,7 +25,11 @@ h3{font-size:12px;margin:0 0 10px;color:var(--text2);text-transform:uppercase;le
 .doc{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px}.doc .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .preg{padding:12px 0;border-bottom:1px solid var(--border)}.preg .q{font-weight:600;font-size:15px}.preg .bu{font-size:12.5px;color:var(--text3);margin:4px 0 8px}
 .preg textarea{width:100%;min-height:56px}
-.notas{display:flex;gap:6px;margin-top:8px}.notas button{width:44px;height:40px;border-radius:10px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-weight:700;cursor:pointer}.notas button.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.notas{display:flex;gap:6px;margin-top:8px}.notas button{flex:1;min-width:0;min-height:54px;padding:6px 4px;border-radius:10px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}.notas button b{font-size:17px}.notas button small{font-size:11px;line-height:1.15;color:var(--text2);text-align:center}.notas button.on small{color:#fff}
+.escala{font-size:12.5px;color:var(--text2);background:var(--bg3);border-radius:10px;padding:8px 10px;margin:4px 0 6px;line-height:1.6}
+.inf3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}.inf3>div{background:var(--bg3);border-radius:12px;padding:10px;text-align:center}.inf3 .v{font-size:30px;font-weight:800}.inf3 .t{font-size:12px;color:var(--text2)}
+.barra{display:grid;grid-template-columns:minmax(120px,190px) 1fr 34px;gap:8px;align-items:center;font-size:13px;margin:5px 0}.barra .b{height:8px;border-radius:99px;background:var(--bg3);overflow:hidden}.barra .b i{display:block;height:100%}
+.inf h4{font-size:13px;margin:12px 0 4px}.inf ul{margin:0 0 0 18px;font-size:14px;line-height:1.5}.reco{display:inline-block;font-weight:700;border-radius:99px;padding:4px 12px;margin-bottom:10px}.notas button.on{background:var(--blue);border-color:var(--blue);color:#fff}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--border2);padding:10px 16px;border-radius:10px;display:none;z-index:50;max-width:92%}
 .vacio{color:var(--text3);font-size:14px;padding:12px 0}
 @media(max-width:600px){.g2{grid-template-columns:1fr}.fila .btn{flex:1}}
@@ -43,6 +47,11 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 const fd=d=>d?String(d).slice(0,10).split('-').reverse().join('/'):'';
 function toast(t){const e=document.getElementById('toast');e.textContent=t;e.style.display='block';clearTimeout(window._tt);window._tt=setTimeout(()=>e.style.display='none',3500);}
 async function api(m,u,b){const o={method:m,headers:{...H}};if(b instanceof FormData)o.body=b;else if(b){o.headers['Content-Type']='application/json';o.body=JSON.stringify(b);}const r=await fetch(u,o);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Error');return d;}
+const ESCALA={1:'No sabe o contesta mal',2:'Flojo',3:'Correcto',4:'Bien',5:'Muy bien'};
+const ESCALA_LARGA='<b>1</b> no sabe o contesta mal · <b>2</b> flojo, le falta casi todo · <b>3</b> correcto, lo básico · <b>4</b> bien, dice casi todo lo que se busca · <b>5</b> muy bien, todo y con detalle';
+const RECO={contratar:['Contratar','var(--green)'],prueba:['Probarle unos días','var(--blue)'],segunda:['Segunda entrevista','var(--amber)'],descartar:['Descartar','var(--red)']};
+const AREAS={entrevista:'Entrevista (respuestas)',experiencia:'Experiencia y CV',encaje:'Encaje con el puesto',disponibilidad:'Disponibilidad y movilidad',condiciones:'Condiciones (lo que pide, PRL, papeles)'};
+const colorNota=n=>n>=70?'var(--green)':n>=50?'var(--amber)':'var(--red)';
 const ESTADOS={nuevo:'Nuevo',entrevista:'Entrevista',prueba:'A prueba',contratado:'Contratado',descartado:'Descartado'};
 let L=[],filtro='activos',OF={},C=null,ENT=null,_docTipo='cv';
 async function init(){if(!tok){document.getElementById('app').innerHTML='<div class="card">Abre esta página desde el dashboard.</div>';return;}
@@ -78,12 +87,13 @@ function pintarFicha(){const c=C;
     <div class="fila" style="margin-top:10px">${[['cv','📄 CV'],['dni','🪪 DNI / NIE'],['carnet','🚗 Carné'],['prl','🦺 PRL'],['otro','📎 Otro']].map(([t,l])=>`<button class="btn peq" onclick="pedirDoc('${t}')">${l}</button>`).join('')}</div>
     <div class="sub" style="margin-top:6px">En el móvil abre la cámara: haz la foto del documento. El DNI, el carné y la PRL pasan solos a su carpeta de Personal cuando lo des de alta.</div></div>
   <div class="card" id="ent"></div>
+  <div class="card" id="inf"></div>
   <div class="card"><h3>Decisión</h3><div class="fila">
     ${c.estado!=='contratado'?`<button class="btn" onclick="estado('prueba')">🧪 A prueba</button><button class="btn ok" onclick="contratar()">✅ Pasar a trabajador</button><button class="btn" onclick="descartar()">Descartar</button>`:`<span class="sub">Dado de alta el ${fd(c.contratado)}. Está en Usuarios y su carpeta en Personal.</span>`}
     <button class="btn peq rojo" style="margin-left:auto" onclick="borrar()">Borrar candidato</button></div>
     ${c.motivoDescarte?`<div class="sub" style="margin-top:8px">Descartado: ${esc(c.motivoDescarte)}</div>`:''}
     <div class="sub" style="margin-top:8px">Protección de datos: si no se le contrata, borra su ficha cuando ya no la necesites (como mucho, un año).</div></div>`;
-  pintarEntrevista();}
+  pintarEntrevista();pintarInforme();}
 function datosForm(){const g=k=>document.getElementById('c-'+k);const d={};['nombre','telefono','email','poblacion','oficio','anosExperiencia','carnet','disponible','salarioPedido','procedencia','recomendadoPor','notas'].forEach(k=>{if(g(k))d[k]=g(k).value;});const co=g('coche').value;if(co)d.coche=co;return d;}
 async function guardar(){try{C=await api('PUT','/api/rrhh/candidatos/'+C.id,datosForm());toast('Guardado');pintarFicha();}catch(e){toast(e.message);}}
 function pedirDoc(t){_docTipo=t;document.getElementById('f-doc').click();}
@@ -95,14 +105,47 @@ async function borrarDoc(docId){if(!confirm('¿Borrar este documento?'))return;t
 async function empezarEntrevista(){const of=document.getElementById('c-oficio').value;try{const P=await api('GET','/api/rrhh/preguntas?oficio='+of);const prev=C.entrevista&&C.entrevista.oficio===P.oficio?C.entrevista:null;
   ENT={...P,res:Object.fromEntries(P.preguntas.map(p=>{const r=prev&&prev.respuestas.find(x=>x.id===p.id);return [p.id,{nota:r?r.nota:null,respuesta:r?r.respuesta:''}];})),conclusion:prev?prev.conclusion:''};pintarEntrevista();document.getElementById('ent').scrollIntoView({behavior:'smooth'});}catch(e){toast(e.message);}}
 function pintarEntrevista(){const el=document.getElementById('ent');if(!el)return;const e=C.entrevista;
-  if(!ENT){el.innerHTML=`<h3>Entrevista</h3>${e?`<div class="fila"><span class="nota" style="font-size:26px;color:${e.puntuacion>=70?'var(--green)':e.puntuacion>=50?'var(--amber)':'var(--red)'}">${e.puntuacion!=null?e.puntuacion:'—'}</span><span class="sub">/100 · ${esc(OF[e.oficio]||'')} · ${fd(e.fecha)} · ${esc(e.por||'')}</span></div>${e.conclusion?`<div style="margin-top:8px;font-size:14px">${esc(e.conclusion)}</div>`:''}<details style="margin-top:8px"><summary class="sub" style="cursor:pointer">Ver respuestas</summary>${e.respuestas.map(r=>`<div class="preg"><div class="q">${esc(r.pregunta)} ${r.nota?`<span class="est">${r.nota}/5</span>`:''}</div><div class="sub" style="color:var(--text2)">${esc(r.respuesta||'—')}</div></div>`).join('')}</details>`:'<div class="sub" style="margin-bottom:10px">Preguntas generales y las de su oficio, con lo que hay que buscar en cada respuesta. Puntúa de 1 a 5 y sale una nota sobre 100.</div>'}
+  if(!ENT){el.innerHTML=`<h3>Entrevista</h3>${e?`<div class="fila"><span class="nota" style="font-size:26px;color:${e.puntuacion>=70?'var(--green)':e.puntuacion>=50?'var(--amber)':'var(--red)'}">${e.puntuacion!=null?e.puntuacion:'—'}</span><span class="sub">/100 · ${esc(OF[e.oficio]||'')} · ${fd(e.fecha)} · ${esc(e.por||'')}</span></div>${e.conclusion?`<div style="margin-top:8px;font-size:14px">${esc(e.conclusion)}</div>`:''}<details style="margin-top:8px"><summary class="sub" style="cursor:pointer">Ver respuestas</summary>${e.respuestas.map(r=>`<div class="preg"><div class="q">${esc(r.pregunta)} ${r.nota?`<span class="est">${r.nota}/5</span>`:''}</div><div class="sub" style="color:var(--text2)">${esc(r.respuesta||'—')}</div></div>`).join('')}</details>`:'<div class="sub" style="margin-bottom:10px">Preguntas generales y las de su oficio, con lo que hay que buscar en cada respuesta. Puntúa de 1 a 5 y sale una nota sobre 100.</div>'}<div class="escala">${ESCALA_LARGA}</div>
     <div class="fila" style="margin-top:10px"><button class="btn pri" onclick="empezarEntrevista()">🎤 ${e?'Repetir / continuar la entrevista':'Empezar la entrevista'}</button></div>`;return;}
-  el.innerHTML=`<h3>Entrevista · ${esc(ENT.nombre)}</h3>${ENT.preguntas.map((p,i)=>`<div class="preg"><div class="q">${i+1}. ${esc(p.q)}</div><div class="bu">👀 ${esc(p.busca)}</div>
+  el.innerHTML=`<h3>Entrevista · ${esc(ENT.nombre)}</h3><div class="escala">Cómo puntuar cada respuesta, comparándola con el 👀: ${ESCALA_LARGA}. Si no la preguntas, déjala sin nota: no cuenta.</div>${ENT.preguntas.map((p,i)=>`<div class="preg"><div class="q">${i+1}. ${esc(p.q)}</div><div class="bu">👀 ${esc(p.busca)}</div>
       <textarea placeholder="Lo que contesta…" oninput="ENT.res['${p.id}'].respuesta=this.value">${esc(ENT.res[p.id].respuesta||'')}</textarea>
-      <div class="notas">${[1,2,3,4,5].map(n=>`<button class="${ENT.res[p.id].nota===n?'on':''}" onclick="ENT.res['${p.id}'].nota=${n};this.parentElement.querySelectorAll('button').forEach((b,k)=>b.classList.toggle('on',k===${n-1}))">${n}</button>`).join('')}</div></div>`).join('')}
+      <div class="notas">${[1,2,3,4,5].map(n=>`<button class="${ENT.res[p.id].nota===n?'on':''}" onclick="ENT.res['${p.id}'].nota=${n};this.parentElement.querySelectorAll('button').forEach((b,k)=>b.classList.toggle('on',k===${n-1}))" title="${ESCALA[n]}"><b>${n}</b><small>${ESCALA[n]}</small></button>`).join('')}</div></div>`).join('')}
     <label style="display:grid;gap:5px;font-size:12.5px;color:var(--text3);margin-top:12px">Conclusión<textarea id="ent-concl" rows="3" oninput="ENT.conclusion=this.value">${esc(ENT.conclusion||'')}</textarea></label>
     <div class="fila" style="margin-top:12px"><button class="btn pri" onclick="guardarEntrevista()">💾 Guardar la entrevista</button><button class="btn" onclick="ENT=null;pintarEntrevista()">Cancelar</button></div>`;}
-async function guardarEntrevista(){try{C=await api('POST',`/api/rrhh/candidatos/${C.id}/entrevista`,{oficio:ENT.oficio,respuestas:Object.entries(ENT.res).map(([id,r])=>({id,...r})),conclusion:ENT.conclusion});ENT=null;toast(C.entrevista.puntuacion!=null?`Entrevista guardada: ${C.entrevista.puntuacion}/100`:'Entrevista guardada');pintarFicha();}catch(e){toast(e.message);}}
+async function guardarEntrevista(){try{C=await api('POST',`/api/rrhh/candidatos/${C.id}/entrevista`,{oficio:ENT.oficio,respuestas:Object.entries(ENT.res).map(([id,r])=>({id,...r})),conclusion:ENT.conclusion});ENT=null;toast(C.entrevista.puntuacion!=null?`Entrevista guardada: ${C.entrevista.puntuacion}/100`:'Entrevista guardada');pintarFicha();pedirInforme();}catch(e){toast(e.message);}}
+// ── Informe de la IA: su nota, la global y lo que piensa del candidato ──
+let _infCargando=false;
+async function pedirInforme(){if(_infCargando)return;_infCargando=true;pintarInforme();const id=C.id;
+  try{const c=await api('POST',`/api/rrhh/candidatos/${id}/informe`);if(C&&C.id===id){C=c;}toast('🤖 Informe de la IA listo');}catch(e){toast(e.message);}finally{_infCargando=false;if(C&&C.id===id)pintarInforme();}}
+function pintarInforme(){const el=document.getElementById('inf');if(!el)return;const c=C,i=c.informeIA;
+  if(!c.entrevista){el.style.display='none';return;}el.style.display='';
+  if(_infCargando){el.innerHTML='<h3>Informe de la IA</h3><div class="vacio">🤖 La IA está leyendo la ficha, el CV y la entrevista… (unos 30 segundos)</div>';return;}
+  if(!i){el.innerHTML='<h3>Informe de la IA</h3><div class="sub" style="margin-bottom:10px">La IA lee la ficha, el CV y tu entrevista, pone su propia nota y una valoración global.</div><button class="btn pri" onclick="pedirInforme()">🤖 Hacer el informe</button>';return;}
+  const viejo=c.entrevista&&i.fechaEntrevista&&new Date(c.entrevista.fecha)>new Date(i.fechaEntrevista);
+  el.innerHTML=htmlInforme(c)+`<div class="fila" style="margin-top:12px">${viejo?'<span class="sub" style="color:var(--amber);flex-basis:100%">La entrevista ha cambiado desde este informe.</span>':''}<button class="btn" onclick="pedirInforme()">🔄 Rehacer el informe</button><button class="btn" onclick="imprimirInforme()">🖨️ Imprimir / PDF</button></div>`;}
+function htmlInforme(c){const i=c.informeIA,r=RECO[i.recomendacion]||RECO.segunda;const lst=(t,a)=>a&&a.length?`<h4>${t}</h4><ul>${a.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:'';
+  const preg=new Map(((c.entrevista||{}).respuestas||[]).map(x=>[x.id,x]));
+  return `<div class="inf"><h3>Informe de la IA · ${fd(i.fecha)}${i.conCV?' · con el CV':' · sin CV'}</h3>
+    <div class="inf3"><div><div class="v" style="color:${i.notaEntrevistador!=null?colorNota(i.notaEntrevistador):'var(--text3)'}">${i.notaEntrevistador!=null?i.notaEntrevistador:'—'}</div><div class="t">Tu nota<br>(entrevista)</div></div>
+      <div><div class="v" style="color:${colorNota(i.notaEntrevistaIA)}">${i.notaEntrevistaIA}</div><div class="t">Nota de la IA<br>(entrevista)</div></div>
+      <div><div class="v" style="color:${colorNota(i.notaGlobal)}">${i.notaGlobal}</div><div class="t">Valoración global<br>(todo junto)</div></div></div>
+    <span class="reco" style="background:color-mix(in srgb,${r[1]} 18%,transparent);color:${r[1]}">${r[0]}</span>
+    <div style="font-size:14.5px;line-height:1.55">${esc(i.resumen)}</div>
+    <h4>De qué sale la valoración global</h4>${Object.entries(AREAS).map(([k,t])=>{const v=(i.desglose||{})[k]||0;return `<div class="barra"><span>${t}</span><span class="b"><i style="width:${v}%;background:${colorNota(v)}"></i></span><b style="text-align:right">${v}</b></div>`;}).join('')}
+    ${lst('👍 Puntos fuertes',i.fuertes)}${lst('👎 Puntos débiles',i.debiles)}${lst('❓ Dudas y lo que hay que comprobar',i.dudas)}${lst('🎯 Para la segunda entrevista o el día de prueba',i.preguntasSiguientes)}
+    ${i.diferencias?`<h4>Dónde no coincide con tus notas</h4><div style="font-size:14px;line-height:1.5">${esc(i.diferencias)}</div>`:''}
+    <details style="margin-top:10px"><summary class="sub" style="cursor:pointer">Pregunta por pregunta</summary>${(i.porPregunta||[]).map(p=>{const x=preg.get(p.id)||{};return `<div class="preg"><div class="q">${esc(x.pregunta||p.id)}</div><div class="sub">Tú: ${x.nota?x.nota+'/5':'sin nota'} · IA: ${p.nota?p.nota+'/5':'sin nota'}</div><div style="font-size:13.5px;margin-top:4px">${esc(p.comentario)}</div></div>`;}).join('')}</details></div>`;}
+function imprimirInforme(){const w=window.open('','_blank');if(!w)return toast('Permite las ventanas emergentes para imprimir');
+  w.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Informe · ${esc(C.nombre)}</title><style>
+  :root{--bg3:#f1f3f7;--text:#111;--text2:#555;--text3:#777;--green:#0f9d63;--amber:#c27803;--red:#d63333;--blue:#2b6fd6;--border:#ddd}
+  body{font-family:-apple-system,'Segoe UI',sans-serif;color:#111;max-width:760px;margin:24px auto;padding:0 16px;font-size:14px}
+  h1{font-size:22px;margin:0 0 2px}h3{font-size:12px;color:#555;text-transform:uppercase;letter-spacing:.05em}.sub{font-size:12.5px;color:#666}
+  .inf3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}.inf3>div{background:#f1f3f7;border-radius:10px;padding:10px;text-align:center}.inf3 .v{font-size:28px;font-weight:800}.inf3 .t{font-size:12px;color:#555}
+  .barra{display:grid;grid-template-columns:200px 1fr 34px;gap:8px;align-items:center;font-size:13px;margin:5px 0}.barra .b{height:8px;border-radius:99px;background:#eee;overflow:hidden}.barra .b i{display:block;height:100%}
+  h4{font-size:14px;margin:14px 0 4px}ul{margin:0 0 0 18px;line-height:1.5}.reco{display:inline-block;font-weight:700;border-radius:99px;padding:4px 12px;margin-bottom:10px;border:1px solid currentColor}
+  .preg{padding:8px 0;border-bottom:1px solid #ddd}.preg .q{font-weight:600}details>summary{display:none}details{display:block}
+  </style></head><body><h1>${esc(C.nombre)}</h1><div class="sub">${esc(OF[C.oficio]||'')}${C.telefono?' · '+esc(C.telefono):''}${C.poblacion?' · '+esc(C.poblacion):''} — Corp Projects</div>${htmlInforme(C).replace('<details','<details open')}</body></html>`);
+  w.document.close();setTimeout(()=>w.print(),300);}
 async function estado(e){try{C=await api('PUT','/api/rrhh/candidatos/'+C.id,{estado:e});pintarFicha();}catch(x){toast(x.message);}}
 async function descartar(){const m=prompt('¿Por qué se descarta? (para acordarte si vuelve a llamar)');if(m===null)return;try{C=await api('PUT','/api/rrhh/candidatos/'+C.id,{estado:'descartado',motivoDescarte:m});pintarFicha();}catch(e){toast(e.message);}}
 async function contratar(){await guardar();const ch=prompt(`Coste por hora de ${C.nombre} para la empresa (€/h, con Seguridad Social):`);if(ch===null)return;const pin=prompt('PIN para fichar (4 cifras). Déjalo vacío y se pone uno solo:','');if(pin===null)return;

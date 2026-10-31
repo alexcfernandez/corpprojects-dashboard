@@ -2963,6 +2963,7 @@ app.get('/api/rrhh/candidatos/:id/docs/:docId', requireAuthOficina, async (req, 
 });
 app.delete('/api/rrhh/candidatos/:id/docs/:docId', requireAuthOficina, _rr(req => RRHH().borrarDoc(req.params.id, req.params.docId)));
 app.post('/api/rrhh/candidatos/:id/entrevista', requireAuthOficina, _rr(req => RRHH().guardarEntrevista(req.params.id, req.body || {}, req.user?.name)));
+app.post('/api/rrhh/candidatos/:id/informe', requireAuthOficina, _rr(req => RRHH().informeIA(req.params.id, req.user?.name)));
 app.post('/api/rrhh/candidatos/:id/contratar', requireAuthOficina, _rr(req => RRHH().contratar(req.params.id, req.body || {}, req.user?.name)));
 app.post('/api/personal/docs', requireAuthOficina, uploadPersonal.single('archivo'), async (req, res) => {
   try { const b = req.body || {}; res.json(await require('./personalDocs').subir({ ambito: b.ambito, userId: b.userId, obraId: b.obraId, tipo: b.tipo, archivo: req.file, fecha: b.fecha, caduca: b.caduca, mes: b.mes, notas: b.notas, visibleTrabajador: b.visibleTrabajador }, await _porPers(req))); }
