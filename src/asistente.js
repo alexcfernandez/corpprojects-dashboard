@@ -1951,6 +1951,13 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
     }
   }
 
+  // A0.45) Respuesta a «💸 Pago del banco por aclarar» (adelantos.js): «1», «2 Diego», «1 noviembre», «luego».
+  if (!imagenes.length && acceso.esOwner(from)) {
+    const pa = pendiente.get(from);
+    const otro = pa && pa.accion && pa.accion !== 'agente_aclara' && (Date.now() - (pa.ts || 0)) < 45 * 60 * 1000;
+    if (!otro) { try { const r = await require('./adelantos').responder(texto, { por: 'Álex' }); if (r) return r; } catch (e) { console.error('[Adelantos] respuesta:', e.message); } }
+  }
+
   // A0.5) EL AGENTE PRIMERO para el dueño (17/10/2026: «las cosas que le pregunto no se entera de nada»). La IA, con la
   // conversación reciente y herramientas que leen datos reales, entiende lo que se pide; las reglas de palabras quedan
   // para las órdenes exactas (crear presupuestos, cambios de dinero con PIN, confirmaciones en curso) y de respaldo.

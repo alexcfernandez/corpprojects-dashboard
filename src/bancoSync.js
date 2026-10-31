@@ -278,6 +278,12 @@ async function sincronizar({ soloId = null, _api: api = _api } = {}) {
     T.revisarLimites().catch(e => console.warn('[Tickets] límites:', e.message));
     // Resumen por WhatsApp a Álex y oficina de lo que acaba de entrar: cobros, pagos y lo que falta de cada factura.
     if (nuevosIds.length && process.env.AVISO_PAGOS !== 'off') require('./avisoPagos').avisar(nuevosIds).catch(e => console.warn('[AvisoPagos]', e.message));
+    // Pagos a trabajadores → registro de adelantos; lo dudoso se le pregunta a Álex, de uno en uno, tras el resumen.
+    if (process.env.ADELANTOS !== 'off') {
+      const A = require('./adelantos');
+      (nuevosIds.length ? A.desdeBanco(nuevosIds) : Promise.resolve()).then(() => setTimeout(() => A.siguientePregunta().catch(e => console.warn('[Adelantos] pregunta:', e.message)), 30000))
+        .catch(e => console.warn('[Adelantos]', e.message));
+    }
     // Lo que el banco ya ha casado, cobrado/pagado también en StelOrder (stelCobros).
     if (process.env.STEL_COBROS !== 'off') setTimeout(() => require('./stelCobros').sincronizar({ dryRun: false, por: 'banco automático' }).catch(e => console.warn('[StelCobros]', e.message)), 60000);
   }

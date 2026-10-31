@@ -2537,6 +2537,16 @@ app.get('/api/personal/tallas', requireAuthOficina, async (req, res) => { try { 
 app.post('/api/personal/tallas/pedir', requireAuthOficina, express.json(), async (req, res) => { try { const F = require('./fichaDatos'); const b = req.body || {}; res.json(b.userId ? await F.pedir(b.userId, { por: req.user?.name || 'Oficina', cuando: b.cuando || null }) : await F.pedirATodos({ por: req.user?.name || 'Oficina', cuando: b.cuando || null })); } catch (err) { res.status(400).json({ error: err.message }); } });
 // Encargos a trabajadores (lo que Álex les pide por Corpy): lista, crear y cerrar.
 // Días de obra que se facturan aparte por horas (marcados en Presencia): Inicio los recuerda hasta «Ya facturado».
+// Registro de adelantos y pagos a trabajadores (adelantos.js), por mes; ?formato=csv para la hoja de Drive.
+app.get('/api/adelantos', requireAuthOficina, async (req, res) => {
+  try {
+    if (!_soloDueno(req)) return res.status(403).json({ error: 'Solo el dueño' });
+    const mes = /^\d{4}-\d{2}$/.test(String(req.query.mes || '')) ? req.query.mes : new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' }).slice(0, 7);
+    const A = require('./adelantos');
+    if (req.query.formato === 'csv') { res.setHeader('Content-Type', 'text/csv; charset=utf-8'); res.setHeader('Content-Disposition', `attachment; filename="adelantos-${mes}.csv"`); return res.send('\ufeff' + await A.csvMes(mes)); }
+    res.json(await A.resumenMes(mes));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 // Descuentos de nómina (descuentosNomina.js): lo que la empresa pagó y es de un trabajador; la gestoría lo resta.
 app.get('/api/descuentos-nomina', requireAuthOficina, async (req, res) => { try { res.json(await require('./descuentosNomina').pendientes()); } catch (err) { res.status(500).json({ error: err.message }); } });
 app.post('/api/descuentos-nomina', requireAuthOficina, express.json(), async (req, res) => { try { if (!_soloDueno(req)) return res.status(403).json({ error: 'Solo el dueño' }); const b = req.body || {}; res.json(await require('./descuentosNomina').apuntar({ userId: b.userId, nombre: b.nombre, concepto: b.concepto, importe: b.importe, fecha: b.fecha, origen: { tipo: 'manual' } }, req.user?.name || 'Oficina')); } catch (err) { res.status(400).json({ error: err.message }); } });
