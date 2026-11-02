@@ -33,10 +33,14 @@ async function datos({ _S = null, _db = null } = {}) {
   const S = _S || require('./stelorder');
   const db = _db || await require('./db').getDB();
   const hoy = hoyStr();
-  const [incs, incSt, tm, { clientMap }, wos, woSt, facMap, ests] = await Promise.all([
+  const [incs, incSt, tm, { clientMap }, wos, woSt, facMap0, ests] = await Promise.all([
     S.getAllIncidents(), S.getIncidentStateMap(), S.getIncidentTypeMaps(), S.getClients(),
     S.getAllWorkOrders(), S.getWorkOrderStateMap(), S.getAllOrdinaryInvoices().catch(() => ({})), S.getWorkEstimates().catch(() => []),
   ]);
+  // Copia de facturas de antes del 2/11/2026 (sin el pedido del que salen): se renueva una vez (2 llamadas a StelOrder).
+  let facMap = facMap0;
+  const unaFac = Object.values(facMap || {})[0];
+  if (unaFac && unaFac.lineParents === undefined && S.invalidate) { try { S.invalidate('ordinaryInvoices'); facMap = await S.getAllOrdinaryInvoices(); } catch (e) {} }
   const tipos = (tm && tm.typeName) || {};
   const cliente = id => { const c = clientMap[String(id)]; return c ? (c['legal-name'] || c.name || '') : ''; };
 
