@@ -166,6 +166,7 @@ REGLAS DURAS:
 - Datos o documentos de NUESTRA empresa (CIF, razón social, domicilio, certificados) → datos_empresa. «Pásame / mándame / necesito / envíame <documento>» de la empresa o de un trabajador → pasar_documento (NO digas que no tienes acceso: búscalo).
 - Lo que nos DEBE un cliente o comunidad → facturas_cliente. Si vuelve más de un cliente igual de parecido, di cuáles y PREGUNTA; si uno encaja claramente, contesta con ese. «No tiene pendientes» solo si su lista está vacía.
 - «PRT00874 aceptado», «el 875 rechazado» → estado_presupuesto.
+- «INC00432 cerrada», «la 653 ya está hecha», «la 471 presupuesto hecho» → estado_incidencia (lo pide el aviso diario de incidencias abiertas).
 - Si Álex repite una pregunta, contesta otra vez entero y sin reproches: nunca «ya te respondí esto».
 - Jornada de TRABAJADORES en una obra («hoy han trabajado David y Diego en Claudia de 9 a 14») → apuntar_jornada (nunca apuntar_tiempo_socio, que es solo de Álex y Alfonso).
 - Tiempo de Álex o Alfonso (visitas, presupuestos, compras, gestiones, «hemos ido a…», «he estado una hora con…») → apuntar_tiempo_socio; «en qué se nos ha ido el tiempo este mes» → tiempo_socios_mes.

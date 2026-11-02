@@ -2076,7 +2076,32 @@ async function setWorkEstimateState(estId, stateId, { requestedBy = null } = {})
   }
 }
 
-module.exports = { leerPresupuesto, setWorkEstimateState, WORK_ESTIMATE_STATES, _client: client, enPausa, marcarBloqueo, estadoPausa, cupoAgotado, fetchAllPages, invalidate,
+// Estado de una INCIDENCIA (2/11/2026: el aviso diario de incidencias abiertas insiste hasta que se cierran; Álex las
+// cierra por WhatsApp con «INC00432 cerrada»). Igual que setWorkEstimateState: documento entero, copia y relectura.
+async function setIncidentState(incId, stateId, { requestedBy = null } = {}) {
+  const id = String(incId || '').replace(/\D/g, '');
+  if (!id || !stateId) throw new Error('Faltan datos (incidencia o estado)');
+  const db = await require('./db').getDB();
+  const r = await client.get(`/incidents/${id}`, { timeout: 20000 });
+  const before = Array.isArray(r.data) ? r.data[0] : r.data;
+  if (!before || !before.id) throw new Error('No encuentro esa incidencia en StelOrder');
+  const ins = await db.collection('stelWriteLog').insertOne({ tipo: 'estado-incidencia', incidentId: id, reference: before['full-reference'] || null, requestedState: Number(stateId), requestedBy, before: { 'incident-state-id': before['incident-state-id'], description: String(before.description || '').slice(0, 200) }, at: new Date(), result: 'pending' });
+  try {
+    await client.put(`/incidents/${id}`, { ...before, 'incident-state-id': Number(stateId) }, { headers: { 'Content-Type': 'application/json; charset=utf-8' }, timeout: 25000 });
+    const r2 = await client.get(`/incidents/${id}`, { timeout: 20000 });
+    const after = Array.isArray(r2.data) ? r2.data[0] : r2.data;
+    const ok = Number(after['incident-state-id']) === Number(stateId) && String(after.description || '') === String(before.description || '');
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: ok ? 'ok' : 'no_cuajo', after: { 'incident-state-id': after['incident-state-id'] } } });
+    try { invalidate('incidents'); } catch (e) {}
+    if (!ok) throw new Error('StelOrder no guardó el cambio de estado');
+    return { ok: true, ref: after['full-reference'], estado: Number(stateId) };
+  } catch (err) {
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: 'error', error: `${err.response?.status || ''} ${err.message}` } });
+    throw err;
+  }
+}
+
+module.exports = { leerPresupuesto, setWorkEstimateState, setIncidentState, WORK_ESTIMATE_STATES, _client: client, enPausa, marcarBloqueo, estadoPausa, cupoAgotado, fetchAllPages, invalidate,
   listaPresupuestos, lineasPresupuesto,
   getInvoices, getAllReceipts, getAllOrdinaryInvoices, getPendingInvoices, getClients,
   getWorkEstimates, getEstimatesSummary, getBankAccounts, getSummary, diagProveedores,

@@ -160,7 +160,8 @@ function _textoAviso(grupo, nuevas, actualizadas, auto = {}) {
       a.propuesta ? `   👷 Propongo a *${a.propuesta.nombre}* el ${a.propuesta.fechaTxt} a las ${a.propuesta.hora} (${a.propuesta.motivo}). Dime a quién o confírmalo en Inicio → Peticiones.` : '',
       a.pedidoContacto ? '   📨 He pedido en el grupo un teléfono de contacto.' : ''].filter((x, i) => !i || x).join('\n'); };
   const l = [...nuevas, ...actualizadas.filter(importa)];
-  return `📋 *Grupo «${grupo}»*: ${l.length} cosa${l.length > 1 ? 's' : ''} que nos piden\n\n` +
+  const cab = /^Correo · /.test(grupo || '') ? `📧 *${grupo}*` : `📋 *Grupo «${grupo}»*`;
+  return `${cab}: ${l.length} cosa${l.length > 1 ? 's' : ''} que nos piden\n\n` +
     l.map(p => `${p.urgente ? '🚨 ' : ''}${et[p.tipo] || p.tipo} · *${p.cliente}*${p.direccion ? ' ' + p.direccion : ''}: ${p.resumen}${sit(p)}\n   → ${p.queHacer}${hecho(p)}`).join('\n\n') +
     `\n\nLas tienes en el inicio del dashboard (Peticiones de los grupos).`;
 }
@@ -247,6 +248,43 @@ async function analizar({ avisar = true, _llamar = null, _cat = null } = {}) {
     res.push({ grupo: g.nombre, mensajes: raw.length, nuevas: r.nuevas.length, actualizadas: r.actualizadas.length });
   }
   return res;
+}
+
+// ── Correos de administradores y clientes (2/11/2026, Álex: «que no nos queden correos sueltos»): Finques Company
+// mandó tres correos por la gotera de Bellpuig 41 3-1 (8/10, 19/10 y 2/11, este ya avisando de que mandaban a otro
+// industrial y nos pasaban la factura) y solo salió un aviso suelto cada vez. Ahora cada correo de incidencia entra como
+// los mensajes de un grupo: petición, incidencia en StelOrder con operario propuesto, y si insisten se junta con la que
+// había y se vuelve a avisar. Cada remitente (dominio) es su propio «grupo» correo:dominio.
+const EXTRA_CORREO = `Esto es un CORREO (no un grupo de WhatsApp) de un administrador de fincas o de un cliente. Suele llevar debajo los correos anteriores citados: úsalos para entender, pero lo que cuenta es lo que pide el correo nuevo. Si insisten («no heu anat», «torna a sortir aigua», «quan anireu?») o avisan de que mandarán a otro industrial, es la misma petición (seguimiento) y es urgente.`;
+const CORREO_GENERICO = /^(gmail|googlemail|hotmail|outlook|yahoo|icloud|live|msn|me)\./i;
+function _limpiaCorreo(t) {
+  return String(t || '').split(/\n-- ?\n|Este e-mail puede contener|Aquest e-mail pot contenir|This email may contain/i)[0]
+    .replace(/^>+ ?/gm, '').replace(/\[https?:[^\]]+\]/g, '').replace(/<https?:[^>]+>/g, '').replace(/\n{3,}/g, '\n\n').trim();
+}
+function _jidCorreo(de) {
+  const email = String((String(de).match(/<([^>]+)>/) || [, de])[1] || '').trim().toLowerCase();
+  const dominio = email.split('@')[1] || email;
+  const nombre = String(de).replace(/<[^>]*>/, '').replace(/"/g, '').trim() || email;
+  return CORREO_GENERICO.test(dominio) ? { jid: 'correo:' + email, grupo: `Correo · ${nombre}`, nombre } : { jid: 'correo:' + dominio, grupo: `Correo · ${dominio}`, nombre };
+}
+async function deCorreo({ gmailId, de, asunto, cuerpo, fecha = new Date(), avisar = true, autoIncidencia = true, _llamar = null, _cat = null } = {}) {
+  const db = await getDB();
+  if (gmailId && await db.collection(COL).findOne({ gmailIds: gmailId })) return { ya: true };
+  const { jid, grupo, nombre } = _jidCorreo(de);
+  const texto = `Asunto: ${asunto}\n${_limpiaCorreo(cuerpo)}`.slice(0, 2500);
+  const msgs = [{ fecha: new Date(fecha), quien: `${nombre} (correo)`, texto, fotoIds: [], nMedia: 0 }];
+  const cat = _cat || await _catalogo();
+  const memoria = await require('./memoria').paraPrompt(texto, { paraGrupo: jid, limite: 40 }).catch(() => '');
+  const r = await _tanda(db, { jid, grupo, msgs, fuente: 'correo', cat, _llamar, extra: EXTRA_CORREO, memoria });
+  const ids = [...r.nuevas, ...r.actualizadas].map(p => p._id);
+  if (ids.length) await db.collection(COL).updateMany({ _id: { $in: ids } }, { $set: { canal: 'correo' }, $addToSet: { gmailIds: gmailId || null } });
+  for (const p of [...r.nuevas, ...r.actualizadas]) _memo(p);
+  const nuevas = r.nuevas.filter(p => !sinAccion(p));
+  let auto = {};
+  if (autoIncidencia) { try { auto = await _autoIncidencias(db, { _id: jid, autoIncidencia: true }, nuevas); } catch (e) { console.warn('[Peticiones] correo incidencias:', e.message); } }
+  const avisado = !!(avisar && (nuevas.length || r.actualizadas.some(importa)));
+  if (avisado) await _avisarOficina(_textoAviso(grupo, nuevas, r.actualizadas, auto));
+  return { jid, nuevas: nuevas.map(p => ({ id: String(p._id), cliente: p.cliente, resumen: p.resumen, incidencia: (auto[String(p._id)] || {}).incidencia || p.incidencia || null })), actualizadas: r.actualizadas.map(p => String(p._id)), avisado };
 }
 
 // ── Historial: chat exportado de WhatsApp (.txt) ──
@@ -420,8 +458,8 @@ async function resumenDiario({ hoy = new Date(), enviar = true, _enviar = null }
   const jids = grupos.map(g => g._id);
   const [nMsgs, nuevas, pend] = await Promise.all([
     db.collection('grupoMensajes').countDocuments({ jid: { $in: jids }, ts: { $gte: ini } }),
-    db.collection(COL).find({ jid: { $in: jids }, creado: { $gte: ini }, fuente: { $ne: 'historial' } }).sort({ urgente: -1, fecha: 1 }).toArray(),
-    db.collection(COL).find({ jid: { $in: jids }, estado: 'pendiente' }).sort({ urgente: -1, fecha: 1 }).toArray(),
+    db.collection(COL).find({ $or: [{ jid: { $in: jids } }, { canal: 'correo' }], creado: { $gte: ini }, fuente: { $ne: 'historial' } }).sort({ urgente: -1, fecha: 1 }).toArray(),
+    db.collection(COL).find({ $or: [{ jid: { $in: jids } }, { canal: 'correo' }], estado: 'pendiente' }).sort({ urgente: -1, fecha: 1 }).toArray(),
   ]);
   if (!nMsgs && !nuevas.length && !pend.length) return { enviado: false, motivo: 'nada' };
   const et = { presupuesto: 'Presupuesto', trabajo: 'Trabajo', queja: 'Queja', consulta: 'Consulta', aviso: 'Aviso' };
@@ -446,4 +484,4 @@ ${pend.length ? `<h3 style="margin:16px 0 4px">Sigue abierto</h3>${tabla(pend.fi
   return { enviado: !!ok, to, subject, nuevas: nuevas.length, abiertas: pend.length };
 }
 
-module.exports = { presupuestoEnviado, presupuestoDevuelto, refDePdf, crearIncidencia, resumenDiario, _ventana, analizar, importarChat, analizarHistorial, parsearChat, lista, marcar, marcarGrupo, _tanda, _textoAviso, _autoIncidencias, _sinAccion: sinAccion, _contexto, TIPOS };
+module.exports = { deCorreo, _limpiaCorreo, _jidCorreo, presupuestoEnviado, presupuestoDevuelto, refDePdf, crearIncidencia, resumenDiario, _ventana, analizar, importarChat, analizarHistorial, parsearChat, lista, marcar, marcarGrupo, _tanda, _textoAviso, _autoIncidencias, _sinAccion: sinAccion, _contexto, TIPOS };

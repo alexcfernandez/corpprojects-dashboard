@@ -500,9 +500,20 @@ async function procesarEmail(gmail, messageId) {
       if (process.env.DOCS_CORREO !== 'off' && !NC.esCorreoNominas({ de, asunto, adjuntos }) && DC.esCorreoDocs({ de, asunto, adjuntos, clasificacion })) console.log(`[Email] papeles: ${JSON.stringify(await DC.desdeCorreo(messageId, adjuntos, { de, asunto, fecha }))}`);
     } catch (e) { console.warn('[Email] papeles:', e.message); }
 
+    // Incidencias que nos piden por correo (administradores, clientes): entran en el flujo de peticiones como un grupo más
+    // (petición → incidencia en StelOrder → operario propuesto; si insisten, se junta y se avisa). Ver peticionesGrupo.deCorreo.
+    // Los «PRESUPUESTO» solo si el remitente es cliente nuestro (los demás suelen ser ofertas de proveedores).
+    let enFlujo = false;
+    const cat = String(clasificacion.categoria || '');
+    const pideAlgo = /^INCIDENCIA/.test(cat) || (/^PRESUPUESTO/.test(cat) && remitente.encontrado && /cliente|comunidad/.test(remitente.tipo || ''));
+    if (pideAlgo && process.env.PETICIONES_CORREO !== 'off' && !/@corpprojects\.es/i.test(de)) {
+      try { const r = await require('./peticionesGrupo').deCorreo({ gmailId: messageId, de, asunto, cuerpo, fecha }); enFlujo = !!(r && r.avisado); console.log(`[Email] → peticiones: ${JSON.stringify(r)}`); }
+      catch (e) { console.warn('[Email] peticiones:', e.message); }
+    }
+
     // Lo que hay que hacer pronto (cita hoy, pago rechazado, plazo, contratista pidiendo papeles…): WhatsApp a Álex al
-    // momento, una sola vez. La gestoría ya tiene su propio aviso (abajo).
-    if (clasificacion.categoria !== 'GESTORIA' && !['PUBLICIDAD', 'SPAM', 'FACTURA_PROVEEDOR'].includes(clasificacion.categoria) && (clasificacion.urgencia === 'ALTA' || clasificacion.avisar === true)) {
+    // momento, una sola vez. La gestoría ya tiene su propio aviso (abajo). Si ya avisó el flujo de peticiones, no se repite.
+    if (!enFlujo && clasificacion.categoria !== 'GESTORIA' && !['PUBLICIDAD', 'SPAM', 'FACTURA_PROVEEDOR'].includes(clasificacion.categoria) && (clasificacion.urgencia === 'ALTA' || clasificacion.avisar === true)) {
       try {
         const fl = /^\d{4}-\d{2}-\d{2}$/.test(String(clasificacion.fechaLimite || '')) ? ` · ⏰ ${clasificacion.fechaLimite.split('-').reverse().join('/')}` : '';
         await require('./notifications').sendWhatsApp(`🔔 *Correo para atender*${clasificacion.urgencia === 'ALTA' ? ' (urgente)' : ''}${fl}\n*${asunto}*\n${clasificacion.resumen || ''}\n➡ ${clasificacion.accionSugerida || 'Revisar'}\n_(${remitente.emailRemitente || de})_`);

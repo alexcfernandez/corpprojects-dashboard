@@ -405,6 +405,8 @@ function startScheduler() {
   // Cada media hora (8-21 h): lo que piden en los grupos de clientes, separado y cruzado con StelOrder (peticionesGrupo.js, 20/10/2026).
   cron.schedule('*/30 8-21 * * *', () => { if (process.env.PETICIONES_GRUPO !== 'off') require('./peticionesGrupo').analizar().then(r => { if (r.length) console.log('[Peticiones]', JSON.stringify(r)); }).catch(e => console.warn('[Peticiones]', e.message)); }, { timezone: 'Europe/Madrid' });
   // 20:30 cada día: correo con el resumen de los grupos de clientes (lo nuevo de hoy y lo que sigue abierto).
+  // Incidencias abiertas cada mañana (L-S) a Álex y oficina: presupuestos por hacer y trabajos a los que ir, hasta que se cierran.
+  cron.schedule('15 8 * * 1-6', () => { if (process.env.AVISO_INCIDENCIAS !== 'off') require('./incidenciasDia').avisar().then(r => console.log('[IncidenciasDia]', r.enviado ? `enviado a ${r.destinos}` : 'nada')).catch(e => console.warn('[IncidenciasDia]', e.message)); }, { timezone: 'Europe/Madrid' });
   cron.schedule('30 20 * * *', () => { if (process.env.RESUMEN_GRUPOS !== 'off') require('./peticionesGrupo').resumenDiario().then(r => { if (r.enviado) console.log('[Peticiones] resumen:', r.subject); }).catch(e => console.warn('[Peticiones] resumen:', e.message)); }, { timezone: 'Europe/Madrid' });
   // 9:40 L-V: facturas de proveedor mal pasadas a StelOrder (descuento que suma, total que no cuadra con la foto) → aviso (facturasProveedorCheck.js).
   cron.schedule('40 9 * * 1-5', () => require('./facturasProveedorCheck').revisar().then(r => { if (r.nuevas.length) console.log(`[FPR] ${r.nuevas.length} factura(s) de proveedor con problemas`); }).catch(e => console.warn('[FPR]', e.message)), { timezone: 'Europe/Madrid' });
