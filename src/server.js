@@ -1672,6 +1672,17 @@ app.post('/api/ciclo/incidencia/:ref/estado', requireAuthOficina, express.json()
   try { res.json(await require('./ciclo').cerrarIncidencia(String(req.params.ref).toUpperCase(), (req.body || {}).estado, req.user?.name || req.user?.username)); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+// Facturar desde el parte (src/facturarParte.js): propuesta editable → líneas al pedido → factura desde el pedido.
+app.get('/api/ciclo/factura/:woId', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./facturarParte').propuesta(req.params.woId)); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/ciclo/factura/:woId', requireAuthOficina, express.json({ limit: '128kb' }), async (req, res) => {
+  try { res.json(await require('./facturarParte').facturar(req.params.woId, req.body || {}, req.user?.name || req.user?.username || 'Oficina')); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/ciclo/factura/:woId/desbloquear', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./facturarParte').desbloquear(req.params.woId, req.user?.name || req.user?.username)); } catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.post('/api/ciclo/ignorar', requireAuthOficina, express.json(), async (req, res) => {
   try { const b = req.body || {}; res.json(await require('./ciclo').ignorar(b.id, b.motivo, req.user?.name || req.user?.username)); }
   catch (err) { res.status(400).json({ error: err.message }); }

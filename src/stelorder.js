@@ -1476,6 +1476,65 @@ async function generarPedidoDesdeIncidencia({ incidentId, accId, descripcion, ti
   }
 }
 
+// ── DEL PARTE A LA FACTURA (2/11/2026, botón «Facturar» del tablero del ciclo; src/facturarParte.js) ──
+// lineas: [{ concepto, descripcion, unidades, precio, iva }]. Líneas ITEM con el producto genérico «Actuación».
+function _lineasStel(lineas, itemId) {
+  return lineas.map(l => {
+    const iva = IVA_TAX_IDS[Number(l.iva)] != null ? Number(l.iva) : 21;
+    return { 'line-type': 'ITEM', 'item-id': Number(itemId), 'item-name': String(l.concepto || 'Trabajo').slice(0, 200),
+      'item-description': String(l.descripcion || l.concepto || '').slice(0, 1000), units: Number(l.unidades) || 1,
+      'item-base-price': Math.round((Number(l.precio) || 0) * 100) / 100, 'primary-tax-percentage': iva, 'primary-tax-id': IVA_TAX_IDS[iva] };
+  });
+}
+
+// Añade las líneas al pedido (leer → copia en stelWriteLog → PUT del pedido entero con las líneas nuevas al final).
+// Las que ya tenía se quedan (la genérica a 0 € con la descripción del trabajo).
+async function ponerLineasPedido(workOrderId, lineas, { requestedBy = null } = {}) {
+  const before = await _findWorkOrderRaw(workOrderId);
+  if (!before || !before.id) throw new Error('No encuentro el pedido en StelOrder');
+  const itemId = await getProductoGenerico('actuacion');
+  const nuevas = _lineasStel(lineas, itemId);
+  const db = await require('./db').getDB();
+  const ins = await db.collection('stelWriteLog').insertOne({ tipo: 'lineas-pedido', workOrderId: String(before.id), reference: before['full-reference'], before, lineas: nuevas, requestedBy, at: new Date(), result: 'pending' });
+  try {
+    const r = await client.put(`/workOrders/${before.id}`, { ...before, lines: [...(before.lines || []), ...nuevas] }, { headers: { 'Content-Type': 'application/json; charset=utf-8' }, timeout: 25000 });
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: 'ok', status: r.status } });
+    try { invalidate('workOrders'); } catch (e) {}
+    return { ok: true, ref: before['full-reference'], estadoId: before['document-state-id'] };
+  } catch (err) {
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: 'error', error: `${err.response?.status || ''} ${err.message}`, errorBody: err.response?.data || null } });
+    throw new Error(`StelOrder no aceptó las líneas del pedido: ${err.response?.status || ''} ${JSON.stringify(err.response?.data || err.message).slice(0, 200)}`);
+  }
+}
+
+// Crea la factura generada DESDE el pedido (parent-document-id), como «Generar → Factura» de StelOrder.
+// Es un documento fiscal: se llama una sola vez por pedido (el candado está en facturarParte.js) y sin reintentos.
+async function crearFacturaDesdePedido({ workOrderId, accId, lineas, titulo = null, nota = null, requestedBy = null }) {
+  if (!workOrderId || !accId) throw new Error('Faltan el pedido o el cliente');
+  if (!Array.isArray(lineas) || !lineas.length) throw new Error('La factura no tiene líneas');
+  const itemId = await getProductoGenerico('actuacion');
+  const body = { 'account-id': Number(accId), 'parent-document-id': Number(workOrderId), lines: [...(titulo ? [seccionTitulo(titulo)] : []), ..._lineasStel(lineas, itemId)] };
+  if (nota) body['private-comments'] = String(nota).slice(0, 1000);
+  const db = await require('./db').getDB();
+  const ins = await db.collection('stelWriteLog').insertOne({ tipo: 'factura-desde-pedido', workOrderId: String(workOrderId), body, requestedBy, at: new Date(), result: 'pending' });
+  try {
+    const r = await client.post('/ordinaryInvoices', body, { headers: { 'Content-Type': 'application/json; charset=utf-8' }, timeout: 30000 });
+    const d = Array.isArray(r.data) ? r.data[0] : r.data;
+    const id = d && d.id ? String(d.id) : null;
+    const ref = (d && (d['full-reference'] || (d.reference ? 'FAC' + d.reference : null))) || (id ? '#' + id : null);
+    const total = d && d['total-amount'] != null ? Number(d['total-amount']) : null;
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: 'ok', status: r.status, invoiceId: id, ref, total } });
+    try { invalidate('ordinaryInvoices'); invalidate('receipts'); invalidate('workOrders'); } catch (e) {}
+    return { ok: true, id, ref, total, pdfPath: (d && d['pdf-path']) || null };
+  } catch (err) {
+    const sinRespuesta = !err.response;   // timeout o corte: no sabemos si la creó
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: sinRespuesta ? 'desconocido' : 'error', error: `${err.response?.status || ''} ${err.message}`, errorBody: err.response?.data || null } });
+    const e = new Error(sinRespuesta ? 'StelOrder no contestó: mira en StelOrder si la factura se ha creado antes de repetir' : `StelOrder rechazó la factura: ${err.response?.status || ''} ${JSON.stringify(err.response?.data || err.message).slice(0, 200)}`);
+    e.sinRespuesta = sinRespuesta;
+    throw e;
+  }
+}
+
 // IDs de impuesto (taxLines) confirmados en el catálogo de StelOrder de Corpprojects.
 // Para escribir el IVA de una línea hay que mandar primary-tax-percentage + primary-tax-id.
 const IVA_TAX_IDS = { 21: 183287, 10: 183288, 4: 183289, 0: 183873 };
@@ -2117,5 +2176,6 @@ module.exports = { leerPresupuesto, setWorkEstimateState, setIncidentState, WORK
   getMonthlyBilling,
   getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap,
   getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA, diagLineaImpuesto, diagImpuestos,
-  crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, crearPresupuestoStel, crearPresupuestoMultiSeccionPrueba, diagClienteCampos, diagCrearCliente, crearClienteStel, getAccountCategories, ultimaIncidencia, incidenciaPorRef, diagPresupuestoConLineas, diagCambiarIvaPrueba, getPresupuestoIva, cambiarIvaPresupuesto, getPresupuestoDetalle, modificarImportePresupuesto
+  crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, crearPresupuestoStel, crearPresupuestoMultiSeccionPrueba, diagClienteCampos, diagCrearCliente, crearClienteStel, getAccountCategories, ultimaIncidencia, incidenciaPorRef, diagPresupuestoConLineas, diagCambiarIvaPrueba, getPresupuestoIva, cambiarIvaPresupuesto, getPresupuestoDetalle, modificarImportePresupuesto,
+  ponerLineasPedido, crearFacturaDesdePedido, IVA_TAX_IDS
 };

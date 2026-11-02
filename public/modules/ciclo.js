@@ -62,6 +62,13 @@
   .cy-paso-l .ic{width:24px;height:24px;border-radius:50%;flex:0 0 24px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
   .cy-acc{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
   .cy-acc button{border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;border:1px solid var(--border2);background:var(--bg3);color:var(--text)}
+  .cy-fl{border:1px solid var(--border2);border-radius:10px;padding:8px;margin-bottom:7px;background:var(--bg3)}
+  .cy-fl input,.cy-fl textarea,.cy-fx select,.cy-fx input{background:var(--bg2);border:1px solid var(--border2);border-radius:7px;color:var(--text);font:inherit;font-size:13px;padding:6px 8px;width:100%;box-sizing:border-box}
+  .cy-fl textarea{font-size:12px;color:var(--text2);resize:vertical;margin-top:5px}
+  .cy-fl .nums{display:grid;grid-template-columns:1fr 1fr 1fr 28px;gap:6px;margin-top:5px;align-items:center;font-size:12px}
+  .cy-fl .nums label{display:block;color:var(--text3);font-size:10.5px}
+  .cy-tot{display:flex;justify-content:flex-end;gap:16px;font-size:13px;margin-top:8px;flex-wrap:wrap}
+  .cy-tot b{font-size:16px}
   .cy-limp{margin-top:14px}
   .cy-limp .fila{display:flex;gap:8px;align-items:center;font-size:12.5px;padding:5px 0;border-bottom:1px solid var(--border2)}
   .cy-limp .fila span{flex:1}
@@ -183,9 +190,10 @@
       acc.push(`<button onclick="CP.Ciclo.peticion('${esc(t.peticionId)}','hecho',this,'${esc(t.id)}')">✓ Ya está hecho</button>`);
       acc.push(`<button onclick="CP.Ciclo.peticion('${esc(t.peticionId)}','descartado',this,'${esc(t.id)}')">✕ Descartar</button>`);
     }
+    if (t.col === 'facturar' && t.woId) acc.push(`<button onclick="CP.Ciclo.facturar('${esc(t.woId)}')" style="background:var(--blue);border-color:var(--blue);color:#fff;font-weight:700">🧾 Facturar</button>`);
     if (t.col === 'facturar') acc.push(`<button onclick="CP.Ciclo.ignorar('${esc(t.id)}',this)">Ya está facturado / no se factura</button>`);
     const ayuda = t.col === 'asignar' ? 'Para mandarlo a un técnico: contesta a Corpy «David» cuando te pregunte «¿Quién va?», o desde Inicio → Peticiones.'
-      : t.col === 'facturar' ? 'Factura desde el pedido en StelOrder (Generar → Factura) y la tarjeta pasa sola a «Por cobrar».'
+      : t.col === 'facturar' ? '«Facturar» monta la factura con el parte (horas, material y desplazamiento); la revisas, se pasa al pedido y se crea en StelOrder enlazada a él. La tarjeta pasa sola a «Por cobrar».'
       : t.col === 'cita' ? 'El técnico pone el día en su app o contesta en el grupo; tú también: «David ha quedado con … el jueves».' : '';
     const m = document.createElement('div');
     m.className = 'cy-modal'; m.id = 'cy-modal';
@@ -219,7 +227,91 @@
     catch (e) { if (btn) { btn.disabled = false; btn.textContent = 'Error: ' + e.message; } }
   }
 
+  // ── Facturar desde el parte ──
+  const fx = { p: null };
+  const num = v => Number(String(v == null ? '' : v).replace(',', '.')) || 0;
+  function fxTotales() {
+    const L = fx.p.lineas; const iva = Number(document.getElementById('fx-iva')?.value || fx.p.iva);
+    const base = L.reduce((s, l) => s + Math.round(num(l.unidades) * num(l.precio) * 100) / 100, 0);
+    const cuota = Math.round(base * iva) / 100;
+    L.forEach((l, i) => { const e = document.getElementById('fx-imp-' + i); if (e) e.textContent = eur2(num(l.unidades) * num(l.precio)); });
+    const t = document.getElementById('fx-tot');
+    if (t) t.innerHTML = `<span>Base ${eur2(base)}</span><span>IVA ${iva} % ${eur2(cuota)}</span><span>Total <b>${eur2(base + cuota)}</b></span>`;
+    return { base, cuota, total: Math.round((base + cuota) * 100) / 100, iva };
+  }
+  const eur2 = n => (Number(n) || 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+  function fxLineas() {
+    const box = document.getElementById('fx-lineas'); if (!box) return;
+    box.innerHTML = fx.p.lineas.map((l, i) => `<div class="cy-fl">
+      <input value="${esc(l.concepto)}" placeholder="Concepto" oninput="CP.Ciclo._fx(${i},'concepto',this.value)" style="font-weight:600">
+      <textarea rows="2" placeholder="Detalle (sale en la factura)" oninput="CP.Ciclo._fx(${i},'descripcion',this.value)">${esc(l.descripcion || '')}</textarea>
+      <div class="nums"><div><label>${l.tipo === 'mano' ? 'Horas' : 'Unidades'}</label><input inputmode="decimal" value="${esc(l.unidades)}" oninput="CP.Ciclo._fx(${i},'unidades',this.value)"></div>
+        <div><label>Precio €${l.coste ? ` <span title="${esc(l.precioFuente || '')}">(coste ${esc(l.coste)})</span>` : ''}</label><input inputmode="decimal" value="${esc(l.precio)}" oninput="CP.Ciclo._fx(${i},'precio',this.value)"></div>
+        <div><label>Importe</label><span id="fx-imp-${i}" style="font-weight:600"></span></div>
+        <button title="Quitar" onclick="CP.Ciclo._fxQuitar(${i})" style="background:none;border:0;color:var(--text3);font-size:16px;cursor:pointer">✕</button></div></div>`).join('') || '<div class="cy-vacio">Sin líneas</div>';
+    fxTotales();
+  }
+  async function facturar(woId) {
+    document.getElementById('cy-modal')?.remove();
+    const m = document.createElement('div'); m.className = 'cy-modal'; m.id = 'cy-modal';
+    m.onclick = e => { if (e.target === m) m.remove(); };
+    m.innerHTML = '<div class="bx">Montando la factura con el parte…</div>';
+    document.body.appendChild(m);
+    let p; try { p = await api('/api/ciclo/factura/' + woId); } catch (e) { m.querySelector('.bx').textContent = 'No se ha podido: ' + e.message; return; }
+    fx.p = p;
+    const bloqueo = p.yaFacturado ? `<div class="alert" style="margin:10px 0;color:var(--green)">✅ Ya está facturado${p.yaFacturado.ref ? ': ' + esc(p.yaFacturado.ref) : ''}.</div>`
+      : (p.enCurso === 'revisar' || p.enCurso === 'enviando') ? `<div style="margin:10px 0;color:var(--red);font-size:13px">⚠️ El último intento no tuvo respuesta de StelOrder. Mira en StelOrder si la factura de ${esc(p.pedidoRef)} existe. Si NO existe: <button onclick="CP.Ciclo._fxDesbloquear('${esc(woId)}',this)">Desbloquear</button></div>` : '';
+    m.querySelector('.bx').innerHTML = `
+      <div style="display:flex;gap:8px;align-items:flex-start"><div style="flex:1">
+        <div style="font-size:12px;color:var(--text2)">🧾 Facturar · ${esc(p.pedidoRef)}${p.incRef ? ' · ' + esc(p.incRef) : ''} · ${p.partes} parte${p.partes === 1 ? '' : 's'}</div>
+        <div style="font-size:17px;font-weight:700;margin-top:2px">${esc(p.cliente)}</div>
+        ${p.familia ? `<div style="font-size:12px;color:var(--text3)">${esc(p.familia)}</div>` : ''}
+      </div><button onclick="document.getElementById('cy-modal').remove()" style="background:none;border:0;color:var(--text2);font-size:20px;cursor:pointer">✕</button></div>
+      ${bloqueo}
+      ${(p.avisos || []).length ? `<div style="font-size:12.5px;color:var(--amber);margin:8px 0">${p.avisos.map(a => '• ' + esc(a)).join('<br>')}</div>` : ''}
+      <div class="cy-fx" style="margin:10px 0 8px"><label style="font-size:11px;color:var(--text3)">Título de la factura (sale como sección)</label><input id="fx-tit" value="${esc(p.titulo || '')}"></div>
+      <div id="fx-lineas"></div>
+      <button onclick="CP.Ciclo._fxNueva()" style="background:none;border:1px dashed var(--border2);border-radius:8px;color:var(--text2);padding:6px 10px;font-size:12.5px;cursor:pointer;width:100%">＋ Añadir línea</button>
+      <div class="cy-fx" style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:13px"><span>IVA</span>
+        <select id="fx-iva" style="width:auto" onchange="CP.Ciclo._fxTot()">${[21, 10, 4, 0].map(v => `<option value="${v}"${v === p.iva ? ' selected' : ''}>${v} %</option>`).join('')}</select>
+        <span style="font-size:11.5px;color:var(--text3)">10 % reparación en comunidad con material &lt; 40 %</span></div>
+      <div class="cy-tot" id="fx-tot"></div>
+      <div style="font-size:11.5px;color:var(--text3);margin-top:8px">Precios de partida: mano de obra ${esc(p.reglas.precioHora)} €/h (mín. ${esc(p.reglas.horasMin)} h por salida), material a coste ×${esc(p.reglas.margenMaterial)}, desplazamiento ${esc(p.reglas.desplazamiento)} € por salida. Cambia lo que quieras antes de crearla.</div>
+      <div id="fx-res" style="font-size:13px;margin-top:10px"></div>
+      ${p.yaFacturado ? '' : `<div class="cy-acc">
+        <button id="fx-ok" onclick="CP.Ciclo._fxCrear('${esc(woId)}',false,this)" style="background:var(--blue);border-color:var(--blue);color:#fff;font-weight:700">Crear factura en StelOrder</button>
+        <button onclick="CP.Ciclo._fxCrear('${esc(woId)}',true,this)">${p.pedidoConLineas ? 'Las líneas ya están en el pedido' : 'Solo pasar al pedido'}</button></div>`}`;
+    fxLineas();
+  }
+  async function fxCrear(woId, soloPedido, btn) {
+    const t = fxTotales();
+    const L = fx.p.lineas.filter(l => String(l.concepto || '').trim() && num(l.unidades) > 0);
+    if (!L.length) { alert('La factura no tiene líneas'); return; }
+    if (!soloPedido && !confirm(`Se va a crear la factura de ${fx.p.cliente} en StelOrder por ${eur2(t.total)} (IVA ${t.iva} % incluido).\n\nEs una factura de verdad: después solo se corrige con una rectificativa. ¿Crearla?`)) return;
+    const res = document.getElementById('fx-res');
+    document.querySelectorAll('#cy-modal .cy-acc button').forEach(b => { b.disabled = true; });
+    btn.textContent = 'Un momento…';
+    try {
+      const r = await api('/api/ciclo/factura/' + woId, { method: 'POST', body: JSON.stringify({ lineas: L, iva: t.iva, titulo: document.getElementById('fx-tit').value, soloPedido }) });
+      res.innerHTML = r.soloPedido ? `<span style="color:var(--green)">✅ Líneas pasadas a ${esc(r.pedidoRef)}. Ya se puede facturar desde el pedido.</span>`
+        : `<span style="color:var(--green);font-weight:700">✅ Factura ${esc(r.factura.ref)} creada · ${eur2(r.factura.total != null ? r.factura.total : r.total)}</span>${r.factura.pdfPath ? ` · <a href="${esc(r.factura.pdfPath)}" target="_blank" rel="noopener">Ver PDF</a>` : ''}${r.aviso ? `<div style="color:var(--amber)">${esc(r.aviso)}</div>` : ''}<div style="color:var(--text3);font-size:12px;margin-top:4px">Pasa a «Por cobrar». Para mandársela al cliente, desde StelOrder o Pendientes de cobro.</div>`;
+      document.querySelector('#cy-modal .cy-acc')?.remove();
+      if (!r.soloPedido) cargar();
+    } catch (e) {
+      res.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`;
+      document.querySelectorAll('#cy-modal .cy-acc button').forEach(b => { b.disabled = false; });
+      btn.textContent = soloPedido ? 'Solo pasar al pedido' : 'Crear factura en StelOrder';
+    }
+  }
+
   CP.Ciclo = {
+    facturar,
+    _fx(i, k, v) { fx.p.lineas[i][k] = v; if (k === 'unidades' || k === 'precio') fxTotales(); },
+    _fxTot: () => fxTotales(),
+    _fxQuitar(i) { fx.p.lineas.splice(i, 1); fxLineas(); },
+    _fxNueva() { fx.p.lineas.push({ tipo: 'otro', concepto: '', descripcion: '', unidades: 1, precio: 0 }); fxLineas(); },
+    _fxCrear: fxCrear,
+    async _fxDesbloquear(woId, b) { try { await api('/api/ciclo/factura/' + woId + '/desbloquear', { method: 'POST' }); facturar(woId); } catch (e) { b.textContent = e.message; } },
     render, cargar, ver,
     filtrar(v) { st.filtro = v; pintar(); },
     rojos() { st.soloRojos = !st.soloRojos; document.getElementById('cy-rojos')?.classList.toggle('on', st.soloRojos); pintar(); },
