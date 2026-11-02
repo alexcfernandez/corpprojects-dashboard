@@ -6,6 +6,8 @@
 //   · cada foto o PDF que parezca un albarán/factura/ticket → Compras (origen 'grupo'),
 //     con quién lo mandó y el texto que lo acompañaba; las fotos que no son documentos
 //     (fotos de la obra) no se guardan;
+//   · los presupuestos y facturas NUESTROS no van a Compras; si el cliente devuelve uno con sello o firma se avisa
+//     (peticionesGrupo.presupuestoDevuelto);
 //   · las fotos que NO son documentos (fotos de la obra) se guardan aparte en grupoFotos (14/10/2026), con la
 //     obra si el texto la nombra, para ir ordenándolas por obra;
 //   · un PDF de presupuesto («PRT00853.pdf») que manda alguien de Corp → presupuesto enviado (peticionesGrupo.presupuestoEnviado);
@@ -85,6 +87,8 @@ async function procesar(p) {
   let nCompras = 0; const fotoIds = [];
   const docs = media.filter(m => /^image\//i.test(m.type) || /pdf/i.test(m.type));
   for (const m of docs) {
+    // Un presupuesto nuestro que manda alguien de Corp ya lo marca presupuestoEnviado: no pasa por Compras.
+    if (quien.userId && /pdf/i.test(m.type) && require('./peticionesGrupo').refDePdf(m.name)) continue;
     try {
       const buf = await require('./mediaPuente').leer(m.url);
       if (!buf) continue;
@@ -94,6 +98,11 @@ async function procesar(p) {
         grupo: { jid, nombre: doc.grupo },
         subidaPor: { kind: 'grupo', userId: quien.userId || String(p.from || 'grupo'), name: quien.name },
       });
+      if (r && r.nuestro) {
+        // Documento nuestro de vuelta (el cliente lo reenvía, a veces sellado y firmado = aceptado).
+        if (!quien.userId) await require('./peticionesGrupo').presupuestoDevuelto({ jid, grupo: doc.grupo, ref: r.numero, nombre: m.name, firmado: r.firmado, quien: quien.name, data: buf, mimetype: m.type, msgId: ins.insertedId }).catch(e => console.warn('[Grupo] presupuesto devuelto:', e.message));
+        continue;
+      }
       if (r && r.id) { nCompras++; await d.collection(MSG).updateOne({ _id: ins.insertedId }, { $set: { compraId: r.id } }); }
       else if (r && r.noEsDocumento && /^image\//i.test(m.type)) {
         // Foto de la obra: se guarda con la obra que nombre el texto (si nombra solo una).

@@ -87,7 +87,7 @@ test('_autoIncidencias: trabajo nuevo crea incidencia, propone operario y pide e
   const db = { collection: () => ({ updateOne: async (q, u) => set.push(u.$set) }) };
   const g = { _id: 'g@g.us', autoIncidencia: true, corpyResponde: true };
   const nuevas = [
-    { _id: 'p1', tipo: 'trabajo', situacion: 'nuevo', clienteId: '15538798', cliente: 'Castell Solterra 16', direccion: 'parking', contacto: null },
+    { _id: 'p1', tipo: 'trabajo', situacion: 'nuevo', clienteId: '15538798', cliente: 'Castell Solterra 16', direccion: 'parking', contacto: null, pedirContacto: true },
     { _id: 'p2', tipo: 'presupuesto', situacion: 'nuevo', clienteId: '1', cliente: 'Otra', contacto: null },
     { _id: 'p3', tipo: 'queja', situacion: 'nuevo', clienteId: null, cliente: 'Sin cliente', contacto: 'Marta 600000000' },
   ];
@@ -130,4 +130,67 @@ test('presupuestoEnviado: un PRT mandado al grupo marca la petición y deja la n
     assert.strictEqual(notas[0].id, 61);
     assert.match(notas[0].t, /Enviado por WhatsApp al grupo «Projects Holding»/);
   } finally { if (previo) require.cache[dbPath] = previo; else delete require.cache[dbPath]; }
+});
+
+test('_autoIncidencias: si alguien de Corp ya contestó o no hace falta contacto, Corpy no pregunta en el grupo', async () => {
+  const enviados = [], propuestas = [];
+  const db = { collection: () => ({ updateOne: async () => {} }) };
+  const g = { _id: 'g@g.us', autoIncidencia: true, corpyResponde: true };
+  const nuevas = [
+    // Joan Maragall 5º 3ª (2/11/2026): «ya que estáis colgados» y Alfonso contestó «Si miramos».
+    { _id: 'jm', tipo: 'trabajo', situacion: 'nuevo', clienteId: '1', cliente: 'Joan Maragall 44-46', direccion: '5º 3ª', contacto: null, respondimos: true, pedirContacto: false },
+    { _id: 'zc', tipo: 'trabajo', situacion: 'nuevo', clienteId: '2', cliente: 'Creu 2', direccion: 'cubierta', contacto: null, respondimos: false, pedirContacto: false },
+  ];
+  const auto = await P._autoIncidencias(db, g, nuevas, {
+    _crear: async () => ({ ref: 'INC00653' }), _propuesta: async id => { propuestas.push(id); return { propuesta: null }; },
+    _enviar: async (to, txt) => { enviados.push(txt); return true; },
+  });
+  assert.strictEqual(enviados.length, 0);
+  assert.strictEqual(auto.jm.incidencia, 'INC00653');
+  assert.strictEqual(auto.jm.yaContestado, true);
+  assert.deepStrictEqual(propuestas, ['zc']);
+  assert.match(P._textoAviso('Projects Holding', nuevas.slice(0, 1), [], auto), /Ya contestó alguien de Corp/);
+});
+
+test('_tanda: lleva la conversación anterior, reabre una queja archivada y el aviso la incluye', async () => {
+  const sets = [];
+  const abierta = { _id: { toString: () => '6ad7a435a3989bc018e3be2b' }, cliente: 'Cartagena 2-4-6', resumen: 'Malla antipalomas', estado: 'archivo', contacto: 'Presidente 600000000', fecha: new Date('2026-10-08T13:40:00Z') };
+  const db = { collection: () => ({
+    find: () => ({ sort: () => ({ limit: () => ({ toArray: async () => [abierta] }) }) }),
+    updateOne: async (q, u) => { sets.push(u.$set); },
+  }) };
+  const msgs = [{ fecha: new Date(), quien: 'CINC Gestió Inmobiliària', texto: 'osea el precio de los pinchos sube el doble?' }];
+  const r = await P._tanda(db, { jid: 'g@g.us', grupo: 'Projects Holding', msgs, fuente: 'whatsapp', cat: { clientes: [], incidencias: [], presupuestos: [], nombre: () => '' },
+    contexto: ['02/11/26, 11:30 Corpy (oficina Corp): ¿nos pasáis un nombre y teléfono de contacto?'],
+    _llamar: async prompt => {
+      assert.match(prompt, /CONVERSACIÓN ANTERIOR[\s\S]*Corpy \(oficina Corp\): ¿nos pasáis/);
+      assert.match(prompt, /6ad7a435a3989bc018e3be2b · Cartagena 2-4-6 · Malla antipalomas · 08\/10\/26/);
+      return { peticiones: [{ msgs: [0], tipo: 'queja', cliente: 'Cartagena 2-4-6', resumen: 'El precio de los pinchos dobla', que_hacer: 'Llamar al presidente', urgente: false, situacion: 'ya_hay_presupuesto', respondimos: false, actualiza: '6ad7a435a3989bc018e3be2b' }] };
+    } });
+  assert.strictEqual(sets[0].estado, 'pendiente');
+  assert.strictEqual('contacto' in sets[0], false);   // el contacto que ya teníamos no se pisa con null
+  assert.ok(sets[0].reabiertaAt);
+  assert.match(P._textoAviso('Projects Holding', [], r.actualizadas), /Queja · \*Cartagena 2-4-6\*/);
+  // Si Corp ya contestó la queja, no se avisa otra vez.
+  assert.doesNotMatch(P._textoAviso('Projects Holding', [], [{ ...r.actualizadas[0], respondimos: true }]), /Cartagena/);
+});
+
+test('presupuestoDevuelto: un PRT nuestro con sello o firma avisa y marca la petición; sin firma no hace nada', async () => {
+  const db = require('../src/db'); const real = db.getDB;
+  const ops = [];
+  db.getDB = async () => ({ collection: n => ({
+    insertOne: async d => { ops.push([n, 'insert', d.texto]); return { insertedId: 'f1' }; },
+    find: () => ({ toArray: async () => [{ _id: 'p1' }] }),
+    updateOne: async (q, u) => { ops.push([n, 'update', u.$set.queHacer]); },
+  }) });
+  try {
+    const avisos = [];
+    const sin = await P.presupuestoDevuelto({ jid: 'g@g.us', ref: 'PRT00876', firmado: false, quien: 'CINC' }, { _avisar: async t => avisos.push(t) });
+    assert.deepStrictEqual([sin.firmado, avisos.length, ops.length], [false, 0, 0]);
+    const r = await P.presupuestoDevuelto({ jid: 'g@g.us', grupo: 'Projects Holding', ref: 'PRT00876', firmado: true, quien: 'CINC Gestió Inmobiliària', data: Buffer.from('x'), mimetype: 'application/pdf' }, { _avisar: async t => avisos.push(t) });
+    assert.deepStrictEqual([r.ref, r.peticiones], ['PRT00876', 1]);
+    assert.match(avisos[0], /CINC Gestió Inmobiliària.*PRT00876.*sello o firma/);
+    assert.ok(ops.some(o => o[0] === 'grupoFotos'));
+    assert.ok(ops.some(o => o[0] === 'peticionesGrupo' && /parece aceptado/.test(o[2])));
+  } finally { db.getDB = real; }
 });

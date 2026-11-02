@@ -72,6 +72,8 @@ function _noSomos(v, max) {
   if (!t || t.replace(/\D/g, '').includes(NUESTRO_NIF) || /corp\.?\s*projects/i.test(t)) return null;
   return t;
 }
+// Documento emitido por nosotros (presupuesto, factura): la IA pone a Corp como «proveedor».
+const esNuestro = d => [d.proveedor, d.razonSocial, d.nif].some(v => String(v || '').trim() && _noSomos(v, 200) === null);
 const PROMPT = `Eres el administrativo de una empresa de reformas en Girona. Te paso la(s) foto(s) de UN documento de compra de material (albarán de entrega, factura, ticket de caja o abono/devolución). Devuelve SOLO un JSON con esta forma exacta, sin texto alrededor:
 {
  "calidad": "legible" | "borroso" | "cortado" | "no_es_documento",
@@ -110,6 +112,7 @@ const HERRAMIENTA = {
       queEs: { type: ['string', 'null'], enum: ['obra', 'trafico', 'vehiculo', 'parte', 'persona', 'otro', null] },
       documentoVehiculo: { type: ['object', 'null'], description: 'Si es un PAPEL DE UN VEHÍCULO (ficha técnica, permiso de circulación, tarjeta o informe de ITV, póliza o recibo del seguro), su tipo y la matrícula que se lea; si no, null.', properties: { tipo: { type: 'string', enum: ['ficha_tecnica', 'permiso', 'itv', 'seguro', 'otro'] }, matricula: { type: ['string', 'null'] } } },
       descripcionFoto: _s,
+      selloFirma: { type: ['boolean', 'null'], description: 'true si el documento lleva un sello o una firma a mano del cliente (p. ej. un presupuesto devuelto aceptado)' },
     },
     required: ['calidad', 'tipo', 'lineas'],
   },
@@ -305,6 +308,13 @@ async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaP
     await db.collection(COL).deleteOne({ _id: doc._id });
     await db.collection(FOTOS).deleteMany({ compraId: String(doc._id) });
     return { ok: true, noEsDocumento: true, queEs: lec.datos.queEs || null, descripcion: String(lec.datos.descripcionFoto || '').slice(0, 160) || null };
+  }
+  // Del grupo llegan también NUESTROS presupuestos o facturas (los reenvía el administrador o los pasa Álex): no son compras
+  // (2/11/2026: seis PDF de Cartagena acabaron en Compras «por revisar»; uno era el PRT00876 devuelto con el sello de la comunidad).
+  if (soloSiDocumento && lec.ok && esNuestro(lec.datos)) {
+    await db.collection(COL).deleteOne({ _id: doc._id });
+    await db.collection(FOTOS).deleteMany({ compraId: String(doc._id) });
+    return { ok: true, noEsDocumento: true, nuestro: true, numero: String(lec.datos.numero || '').trim().slice(0, 60) || null, firmado: lec.datos.selloFirma === true };
   }
   // Papeles personales que un trabajador manda por WhatsApp (justificante de tasa de extranjería, certificado del banco
   // para cobrar la nómina…) NO son compras: van a su carpeta de Personal (15/10/2026: el 790 de Javier y el CaixaBank de

@@ -44,12 +44,14 @@ const HERRAMIENTA = {
       actualiza: { type: ['string', 'null'], description: 'id de una petición anterior (lista PETICIONES ABIERTAS) si esto es la misma cosa' },
       respondimos: { type: 'boolean', description: 'Alguien de Corp contestó en el chat a esta petición' },
       hecho_en_chat: { type: 'boolean', description: 'En el chat se ve que se hizo, se mandó el presupuesto o se cerró (fotos de acabado, «ya está», «enviado»…)' },
+      pedir_contacto: { type: 'boolean', description: 'true SOLO si para ir a hacerlo nos falta un contacto o cómo entrar y nadie lo ha dado. false si ya estamos trabajando en ese edificio, si alguien de Corp ya contestó que se encarga («sí miramos», «vamos»), si el contacto ya salió (en la conversación anterior o en la petición abierta), si es zona común con acceso o si no hay que ir a ningún sitio' },
     }, required: ['msgs', 'tipo', 'cliente', 'resumen', 'que_hacer', 'urgente', 'situacion'] } },
   }, required: ['peticiones'] },
 };
 
 const INSTRUCCIONES = `Eres de la oficina de Corp Projects Holding SL (reformas y mantenimiento de comunidades en Girona). Te paso mensajes de un grupo de WhatsApp con un administrador de fincas que nos encarga trabajos. Sepáralos en PETICIONES: cada cosa distinta que nos piden (un presupuesto, un trabajo, una queja, una consulta o un aviso). Junta en la misma petición los mensajes que hablan de lo mismo (texto + fotos + contacto que viene después). Lo que no pide nada (saludos, «ok», «gracias», emojis, conversación) no es petición.
 Cruza cada una con StelOrder: busca el cliente en CLIENTES (las comunidades suelen ir por calle y número; «Ctat.», «CP», «Comunitat» = comunidad). Mira si una INCIDENCIA ABIERTA o un PRESUPUESTO RECIENTE del mismo cliente ya lo cubre (misma cosa, no solo mismo cliente). Si hay una PETICIÓN ABIERTA que es la misma cosa, pon su id en «actualiza».
+Usa la CONVERSACIÓN ANTERIOR para entender a qué responde cada mensaje nuevo: un nombre o un teléfono suelto («Josep Maria», «te lo he pasado antes») contesta a lo último que se preguntó (también a Corpy) y va a esa petición con «actualiza» y el contacto; lo que cuenta alguien de Corp después de ir («no hay pérdida», «ya está») es el resultado de la petición de la que se hablaba justo antes, aunque se parezca a otra más antigua. Mira la fecha de las peticiones abiertas: lo de hoy casi siempre sigue a lo más reciente.
 Escribe en castellano llano, frases cortas, sin tecnicismos. No inventes datos: si no se sabe el cliente, deja cliente_id vacío y pon lo que se entienda.`;
 
 async function _catalogo({ desde = null, historial = false } = {}) {
@@ -89,7 +91,7 @@ async function _llamarIA(prompt, maxTokens = 8000) {
 
 // Analiza una tanda de mensajes [{ _id, fecha, quien, texto, fotoIds, nMedia }] de UN grupo.
 const NUESTROS = /alfonso|alex|álex|oficina corp|corpy|judit|paula/i;
-async function _tanda(db, { jid, grupo, msgs, fuente, cat, _llamar, extra = '', maxTokens = 8000 }) {
+async function _tanda(db, { jid, grupo, msgs, fuente, cat, _llamar, extra = '', maxTokens = 8000, contexto = [] }) {
   const abiertas = await db.collection(COL).find({ jid, estado: { $in: ['pendiente', 'archivo'] } }).sort({ fecha: -1 }).limit(fuente === 'historial' ? 80 : 40).toArray();
   const nuestros = [...new Set(msgs.map(m => m.quien).filter(q => NUESTROS.test(q || '')))];
   const lineas = msgs.map((m, n) => `[${n}] ${fmt(m.fecha)} ${m.quien}: ${corto(m.texto, 900) || '(sin texto)'}${m.nMedia ? ` (📷 ${m.nMedia} foto${m.nMedia > 1 ? 's' : ''})` : ''}`);
@@ -97,11 +99,11 @@ async function _tanda(db, { jid, grupo, msgs, fuente, cat, _llamar, extra = '', 
 
 GRUPO: ${grupo || jid}${nuestros.length ? `\nSON DE CORP (los demás son el administrador o vecinos): ${nuestros.join(', ')}` : ''}
 
-MENSAJES:
+${contexto.length ? `CONVERSACIÓN ANTERIOR (ya analizada; solo para entender los mensajes nuevos, no saques peticiones de aquí):\n${contexto.join('\n')}\n\n` : ''}MENSAJES:
 ${lineas.join('\n')}
 
-PETICIONES ABIERTAS (id · cliente · resumen):
-${abiertas.map(p => `${p._id} · ${p.cliente} · ${corto(p.resumen, 120)}`).join('\n') || '(ninguna)'}
+PETICIONES ABIERTAS (id · cliente · resumen · fecha · contacto):
+${abiertas.map(p => `${p._id} · ${p.cliente}${p.direccion ? ' (' + corto(p.direccion, 40) + ')' : ''} · ${corto(p.resumen, 120)} · ${fmt(p.fecha)}${p.contacto ? ' · contacto: ' + corto(p.contacto, 60) : ''}`).join('\n') || '(ninguna)'}
 
 INCIDENCIAS DE STELORDER (ref · fecha · estado · tipo · cliente · descripción):
 ${cat.incidencias.join('\n')}
@@ -120,10 +122,15 @@ ${cat.clientes.join('\n')}`;
     const fotoIds = ms.flatMap(m => m.fotoIds || []);
     const set = { tipo: TIPOS.includes(p.tipo) ? p.tipo : 'consulta', clienteId: p.cliente_id && /^\d+$/.test(String(p.cliente_id)) ? String(p.cliente_id) : null,
       cliente: corto(p.cliente, 120), direccion: corto(p.direccion, 120) || null, contacto: corto(p.contacto, 120) || null, resumen: corto(p.resumen, 400), queHacer: corto(p.que_hacer, 300),
-      urgente: !!p.urgente, respondimos: p.respondimos == null ? null : !!p.respondimos, hechoEnChat: p.hecho_en_chat == null ? null : !!p.hecho_en_chat, situacion: SITUACIONES.includes(p.situacion) ? p.situacion : 'nuevo', incidencia: corto(p.incidencia, 12) || null, presupuesto: corto(p.presupuesto, 12) || null, actualizado: new Date() };
+      urgente: !!p.urgente, respondimos: p.respondimos == null ? null : !!p.respondimos, hechoEnChat: p.hecho_en_chat == null ? null : !!p.hecho_en_chat, situacion: SITUACIONES.includes(p.situacion) ? p.situacion : 'nuevo', incidencia: corto(p.incidencia, 12) || null, presupuesto: corto(p.presupuesto, 12) || null, pedirContacto: p.pedir_contacto === true, actualizado: new Date() };
     if (set.clienteId) set.clienteStel = cat.nombre(set.clienteId) || null;
     const prev = p.actualiza && ObjectId.isValid(String(p.actualiza)) ? abiertas.find(a => String(a._id) === String(p.actualiza)) : null;
     if (prev) {
+      // Una queja, una urgencia o que insistan sobre algo ya archivado lo vuelve a poner a la vista (2/11/2026: lo de
+      // Cartagena siguió archivado mientras CINC pedía que llamáramos al presidente).
+      // Lo que ya sabíamos (contacto, piso, cliente, INC/PRT) no se borra porque el mensaje nuevo no lo repita.
+      for (const k of ['contacto', 'direccion', 'clienteId', 'clienteStel', 'incidencia', 'presupuesto']) if (set[k] == null && prev[k] != null) delete set[k];
+      if (prev.estado === 'archivo' && importa(set) && ms.some(m => !NUESTROS.test(m.quien || ''))) Object.assign(set, { estado: 'pendiente', reabiertaAt: new Date() });
       await db.collection(COL).updateOne({ _id: prev._id }, { $set: set, $push: { mensajes: { $each: mensajes } }, $addToSet: { fotoIds: { $each: fotoIds }, archivos: { $each: ms.flatMap(m => m.archivos || []) } } });
       actualizadas.push({ ...prev, ...set });
     } else {
@@ -140,14 +147,18 @@ ${cat.clientes.join('\n')}`;
   return { nuevas, actualizadas };
 }
 
+// Lo de una petición que ya existía que merece aviso: urgente, insisten, o una queja que nadie de Corp ha contestado.
+const importa = p => !!(p.urgente || p.situacion === 'seguimiento' || (p.tipo === 'queja' && !p.respondimos));
+
 function _textoAviso(grupo, nuevas, actualizadas, auto = {}) {
   const et = { presupuesto: '💶 Presupuesto', trabajo: '🔧 Trabajo', queja: '⚠️ Queja', consulta: '❓ Consulta', aviso: 'ℹ️ Aviso' };
   const sit = p => p.situacion === 'ya_hay_incidencia' ? ` (ya está en ${p.incidencia || 'una incidencia'})` : p.situacion === 'ya_hay_presupuesto' ? ` (ya hay ${p.presupuesto || 'presupuesto'})` : p.situacion === 'seguimiento' ? ' (insisten)' : '';
   const hecho = p => { const a = auto[String(p._id)]; if (!a) return '';
     return ['', a.incidencia ? `   ✅ Incidencia creada: *${a.incidencia}*` : a.error ? `   ⚠️ No he podido crear la incidencia: ${a.error}` : '',
+      a.yaContestado ? '   💬 Ya contestó alguien de Corp en el grupo: no propongo operario ni pido contacto.' : '',
       a.propuesta ? `   👷 Propongo a *${a.propuesta.nombre}* el ${a.propuesta.fechaTxt} a las ${a.propuesta.hora} (${a.propuesta.motivo}). Dime a quién o confírmalo en Inicio → Peticiones.` : '',
       a.pedidoContacto ? '   📨 He pedido en el grupo un teléfono de contacto.' : ''].filter((x, i) => !i || x).join('\n'); };
-  const l = [...nuevas, ...actualizadas.filter(p => p.urgente || p.situacion === 'seguimiento')];
+  const l = [...nuevas, ...actualizadas.filter(importa)];
   return `📋 *Grupo «${grupo}»*: ${l.length} cosa${l.length > 1 ? 's' : ''} que nos piden\n\n` +
     l.map(p => `${p.urgente ? '🚨 ' : ''}${et[p.tipo] || p.tipo} · *${p.cliente}*${p.direccion ? ' ' + p.direccion : ''}: ${p.resumen}${sit(p)}\n   → ${p.queHacer}${hecho(p)}`).join('\n\n') +
     `\n\nLas tienes en el inicio del dashboard (Peticiones de los grupos).`;
@@ -169,14 +180,39 @@ async function _autoIncidencias(db, g, nuevas, { _crear = null, _propuesta = nul
     const r = out[String(p._id)] = {};
     if (p.clienteId) { try { r.incidencia = (await (_crear || crearIncidencia)(String(p._id), 'Corpy (grupo)')).ref; } catch (e) { r.error = e.message; } }
     else r.error = 'no sé de qué comunidad de StelOrder es';
+    // Si alguien de Corp ya contestó («sí miramos») lo lleva él: ni operario propuesto ni preguntas en el grupo (2/11/2026:
+    // Corpy pidió contacto y día para Joan Maragall 5º 3ª cuando Alfonso ya había dicho que lo miraban, colgados allí mismo).
+    if (p.respondimos) { r.yaContestado = true; continue; }
     try { r.propuesta = (await (_propuesta || require('./trabajos').propuesta)(String(p._id))).propuesta; } catch (e) {}
-    if (!p.contacto && g.corpyResponde) {
+    if (!p.contacto && g.corpyResponde && p.pedirContacto) {
       const txt = `Hola, soy Corpy, de la oficina de Corp Projects. Para lo de ${p.cliente}${p.direccion ? ' (' + p.direccion + ')' : ''}: ¿nos pasáis un nombre y teléfono de contacto y cuándo se puede entrar? Gracias.`;
       try { r.pedidoContacto = (await (_enviar || require('./notifications').sendWhatsAppTo)(g._id, txt, { sinTraducir: true, importante: true })) !== false; } catch (e) {}
       if (r.pedidoContacto) await db.collection(COL).updateOne({ _id: p._id }, { $set: { contactoPedidoAt: new Date() } });
     }
   }
   return out;
+}
+
+async function _avisarOficina(txt) {
+  const N = require('./notifications');
+  for (const to of [...new Set([N.destinoDueno(), process.env.OFICINA_TELEFONO || '+34674013723'].filter(Boolean))]) {
+    try { await N.sendWhatsAppTo(to, txt); } catch (e) { console.warn('[Peticiones] aviso:', e.message); }
+  }
+}
+
+// Lo que se habló justo antes (ya analizado) y lo que escribió Corpy en el grupo: sin esto la IA leía «Josep Maria» o
+// «no hay pérdida» sueltos y los pegaba a otra petición (2/11/2026). Lo de Corpy dentro de la tanda va con los mensajes.
+async function _contexto(db, jid, desde, hasta) {
+  const ini = new Date(new Date(desde).getTime() - 36 * 3600 * 1000);
+  const [ant, out] = await Promise.all([
+    db.collection('grupoMensajes').find({ jid, pet: true, ts: { $gte: ini, $lt: new Date(desde) } }).sort({ ts: -1 }).limit(25).toArray(),
+    db.collection('whatsappLog').find({ dir: 'out', numero: jid, ok: { $ne: false }, ts: { $gte: ini, $lte: new Date(hasta) } }).sort({ ts: 1 }).limit(20).toArray(),
+  ]);
+  const deCorpy = out.map(o => ({ fecha: o.ts, quien: 'Corpy (oficina Corp)', texto: o.texto, fotoIds: [], nMedia: 0 }));
+  const contexto = [...ant.map(m => ({ fecha: m.ts, quien: m.quien, texto: m.texto, nMedia: (m.media || []).length })), ...deCorpy.filter(m => m.fecha < new Date(desde))]
+    .sort((a, b) => new Date(a.fecha) - new Date(b.fecha))
+    .map(m => `${fmt(m.fecha)} ${m.quien}: ${corto(m.texto, 300) || '(sin texto)'}${m.nMedia ? ' (📎)' : ''}`);
+  return { contexto, corpy: deCorpy.filter(m => m.fecha >= new Date(desde)) };
 }
 
 // Cada media hora: lo nuevo de los grupos con peticiones:true.
@@ -189,22 +225,18 @@ async function analizar({ avisar = true, _llamar = null, _cat = null } = {}) {
     if (!raw.length) continue;
     // Se espera a que la persona acabe de escribir (el texto suele ir en varios mensajes y las fotos después).
     if (Date.now() - new Date(raw[raw.length - 1].ts).getTime() < 10 * 60 * 1000) continue;
-    const msgs = raw.map(m => ({ _id: m._id, fecha: m.ts, quien: m.quien, texto: m.texto, fotoIds: m.fotoIds || [], nMedia: (m.media || []).length }));
+    const { contexto, corpy } = await _contexto(db, g._id, raw[0].ts, raw[raw.length - 1].ts);
+    const msgs = [...raw.map(m => ({ _id: m._id, fecha: m.ts, quien: m.quien, texto: m.texto, fotoIds: m.fotoIds || [], nMedia: (m.media || []).length })), ...corpy]
+      .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
     const cat = _cat || await _catalogo();
-    const r = await _tanda(db, { jid: g._id, grupo: g.nombre, msgs, fuente: 'whatsapp', cat, _llamar });
+    const r = await _tanda(db, { jid: g._id, grupo: g.nombre, msgs, fuente: 'whatsapp', cat, _llamar, contexto });
     await db.collection('grupoMensajes').updateMany({ _id: { $in: raw.map(m => m._id) } }, { $set: { pet: true } });
     const mudas = r.nuevas.filter(sinAccion);
     if (mudas.length) await db.collection(COL).updateMany({ _id: { $in: mudas.map(p => p._id) } }, { $set: { estado: 'archivo', archivadoPor: 'sin acción' } });
     const nuevas = r.nuevas.filter(p => !sinAccion(p));
     let auto = {};
     try { auto = await _autoIncidencias(db, g, nuevas); } catch (e) { console.warn('[Peticiones] incidencias:', e.message); }
-    if (avisar && (nuevas.length || r.actualizadas.some(p => p.urgente || p.situacion === 'seguimiento'))) {
-      const N = require('./notifications');
-      const txt = _textoAviso(g.nombre || 'WhatsApp', nuevas, r.actualizadas, auto);
-      for (const to of [...new Set([N.destinoDueno(), process.env.OFICINA_TELEFONO || '+34674013723'].filter(Boolean))]) {
-        try { await N.sendWhatsAppTo(to, txt); } catch (e) { console.warn('[Peticiones] aviso:', e.message); }
-      }
-    }
+    if (avisar && (nuevas.length || r.actualizadas.some(importa))) await _avisarOficina(_textoAviso(g.nombre || 'WhatsApp', nuevas, r.actualizadas, auto));
     res.push({ grupo: g.nombre, mensajes: raw.length, nuevas: r.nuevas.length, actualizadas: r.actualizadas.length });
   }
   return res;
@@ -336,6 +368,22 @@ async function presupuestoEnviado({ jid, grupo = null, nombres = [], por = '', t
   return { refs: out };
 }
 
+// ── Presupuesto NUESTRO que el cliente devuelve al grupo (2/11/2026): CINC mandó escaneado el PRT00876 con el sello y la
+// firma de la comunidad y acabó en Compras como si fuera un gasto; nadie se enteró de que lo aceptaban. Si lleva sello o
+// firma se guarda el archivo, se marca la petición y se avisa a Álex y a oficina; StelOrder no se toca (lo decide Álex).
+// Si solo nos reenvían nuestro PDF, nada.
+async function presupuestoDevuelto({ jid, grupo = null, ref = null, nombre = null, firmado = false, quien = '', data = null, mimetype = null, msgId = null, ts = new Date() }, { _avisar = _avisarOficina } = {}) {
+  const r = refDePdf(ref) || refDePdf(nombre);
+  if (!firmado) return { ref: r, firmado: false };
+  const db = await getDB();
+  const f = data ? await db.collection('grupoFotos').insertOne({ jid, grupo, msgId, from: null, quien, texto: `${r || 'Presupuesto'} devuelto con sello o firma`, obraId: null, obraRef: null, mimetype, bytes: data.length, data, ts }) : null;
+  const pets = r ? await db.collection(COL).find({ jid, $or: [{ presupuesto: r }, { 'presupuestoEnviado.ref': r }] }).toArray() : [];
+  const queHacer = `${r} devuelto con sello/firma por ${quien} el ${fmt(ts)}: parece aceptado. Marcarlo como aceptado en StelOrder y programar el trabajo.`;
+  for (const p of pets) await db.collection(COL).updateOne({ _id: p._id }, { $set: { estado: 'pendiente', queHacer, presupuestoFirmado: { ref: r, at: ts, por: quien }, actualizado: new Date() }, ...(f ? { $addToSet: { fotoIds: String(f.insertedId) } } : {}) });
+  await _avisar(`📝 *${quien || 'El cliente'}* ha devuelto en el grupo «${grupo || 'WhatsApp'}» el *${r || 'presupuesto'}* con sello o firma: parece que lo aceptan.\n→ Míralo y, si es así, márcalo como aceptado en StelOrder.`);
+  return { ref: r, firmado: true, peticiones: pets.length };
+}
+
 // ── Incidencia en StelOrder desde una petición (botón «Crear incidencia» de la tarjeta). Presupuesto → tipo Presupuesto;
 // lo demás → Actuación. Necesita el cliente de StelOrder; la descripción lleva el resumen, el contacto y los mensajes.
 const TIPO_INC = { presupuesto: 3145, otro: 3146 };
@@ -390,4 +438,4 @@ ${pend.length ? `<h3 style="margin:16px 0 4px">Sigue abierto</h3>${tabla(pend.fi
   return { enviado: !!ok, to, subject, nuevas: nuevas.length, abiertas: pend.length };
 }
 
-module.exports = { presupuestoEnviado, refDePdf, crearIncidencia, resumenDiario, _ventana, analizar, importarChat, analizarHistorial, parsearChat, lista, marcar, marcarGrupo, _tanda, _textoAviso, _autoIncidencias, _sinAccion: sinAccion, TIPOS };
+module.exports = { presupuestoEnviado, presupuestoDevuelto, refDePdf, crearIncidencia, resumenDiario, _ventana, analizar, importarChat, analizarHistorial, parsearChat, lista, marcar, marcarGrupo, _tanda, _textoAviso, _autoIncidencias, _sinAccion: sinAccion, _contexto, TIPOS };
