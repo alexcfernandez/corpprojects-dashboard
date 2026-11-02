@@ -1951,6 +1951,11 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
     }
   }
 
+  // A0.44) Respuesta corta a «⛽ ¿De qué vehículo es?» («motoreta», «1 motoreta»): antes que la del banco.
+  if (!imagenes.length && acceso.esOwner(from)) {
+    try { const r = await require('./agenteExtra').respuestaRepostaje(texto, from); if (r) { pendiente.delete(from); return r; } } catch (e) { console.error('[Repostajes] respuesta:', e.message); }
+  }
+
   // A0.45) Respuesta a «💸 Pago del banco por aclarar» (adelantos.js): «1», «2 Diego», «1 noviembre», «luego».
   if (!imagenes.length && acceso.esOwner(from)) {
     const pa = pendiente.get(from);

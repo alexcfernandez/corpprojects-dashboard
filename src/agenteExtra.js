@@ -125,6 +125,33 @@ async function _vehiculo(q) {
   if (c.length > 1 && Math.floor(c[0].p) === Math.floor(c[1].p)) return { varios: c.slice(0, 5).map(x => `${x.v.nombre}${x.v.matricula ? ' ' + x.v.matricula : ''}${x.v.conductor ? ' (lo lleva ' + x.v.conductor.name + ')' : ''}`) };
   return { v: c[0].v };
 }
+// Respuesta corta de Álex a «⛽ ¿De qué vehículo es?» sin pasar por la IA (2/11/2026: contestó «motoreta» dos veces
+// y Corpy no lo apuntó; el «1 motoreta» se lo quedó la pregunta del banco). Mira la última pregunta de repostaje
+// (con su «ref. repostaje ID») de las últimas 6 h que siga sin vehículo; solo apunta si el vehículo sale claro por su
+// nombre, marca o matrícula (no por quién lo lleva, para no confundir «1 Diego» del banco).
+async function respuestaRepostaje(texto, from) {
+  const t = _n(texto);
+  if (!t || t.length > 50) return null;
+  let h; try { h = await require('./waLog').hilo(from, { dias: 1 }); } catch (e) { return null; }
+  const preg = (h.mensajes || []).filter(m => m.dir !== 'in' && Date.now() - new Date(m.ts) < 6 * 3600e3 && /ref\. repostaje [a-f0-9]{24}/.test(m.texto || '')).pop();
+  if (!preg) return null;
+  const id = preg.texto.match(/ref\. repostaje ([a-f0-9]{24})/)[1];
+  const R = require('./repostajes');
+  const rep = (await R.pendientes()).find(x => x.id === id);
+  if (!rep) return null;
+  const q = t.replace(/^\d+\s+/, '').replace(/\b(es|era|de|del|la|el|en|mi|mio|mia|para|lo|puso|vale|si)\b/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!q) return null;
+  const db = await getDB();
+  const vs = await db.collection('vehiculos').find({ estado: { $ne: 'baja' } }).project({ nombre: 1, marca: 1, modelo: 1, matricula: 1, aliasEsclat: 1 }).toArray();
+  const c = vs.map(v => ({ v, p: puntos([v.nombre, v.marca, v.modelo, v.matricula, ...(v.aliasEsclat || [])].join(' '), q) })).filter(x => x.p >= 1).sort((a, b) => b.p - a.p);
+  if (!c.length || (c[1] && c[1].p === c[0].p)) return null;
+  // Si lo que dice es también un trabajador («1 Diego»), no es esto.
+  const us = (await require('./users').getUsers(false)).filter(u => u.active !== false);
+  if (us.some(u => puntos(u.name, q) > 0)) return null;
+  const x = await R.asignar(id, String(c[0].v._id), 'Álex (Corpy)');
+  const eur = n => (Number(n) || 0).toFixed(2).replace('.', ',') + ' €';
+  return `⛽ Apuntado: el repostaje de ${eur(rep.importe)} del ${dm(rep.fecha)} es de la *${x.vehiculo}*.`;
+}
 async function documentosVehiculo({ vehiculo } = {}) {
   const r = await _vehiculo(vehiculo || '');
   if (r.ninguno) return { vehiculo, encontrado: false, vehiculosActivos: r.todos };
@@ -198,7 +225,8 @@ async function ejecutar(name, input, from) {
     }
     const r = await _vehiculo(input.vehiculo || '');
     if (r.ninguno) return { handled: true, reply: `No tengo «${input.vehiculo}» en Flota. Los que hay: ${r.todos.join(', ')}.\n\n¿Es uno de esos? Si es nuevo, dime «créala como ${input.vehiculo}» (y si quieres la matrícula) y la doy de alta con este repostaje.`, aclara: true };
-    if (r.varios) return { handled: true, reply: `¿Cuál? ${r.varios.join(' · ')}`, aclara: true };
+    // Con la referencia, la respuesta («motoreta») encuentra el repostaje aunque entre otra pregunta por medio.
+    if (r.varios) return { handled: true, reply: `¿Cuál? ${r.varios.join(' · ')}\n\n(ref. repostaje ${id})`, aclara: true };
     const x = await R.asignar(id, String(r.v._id), 'Álex (Corpy)', { quien: input.quien || null });
     return { handled: true, reply: `⛽ Apuntado: el repostaje${rep ? ` de ${eur(rep.importe)} del ${dm(rep.fecha)}` : ''} es de la *${x.vehiculo}*${input.quien ? `, lo puso *${input.quien}*` : x.conductor ? ` (la lleva ${x.conductor})` : ''}.` };
   }
@@ -236,7 +264,7 @@ async function ejecutar(name, input, from) {
   if (name === 'repostajes_sin_vehiculo') {
     const p = await require('./repostajes').pendientes();
     const eur = n => (Number(n) || 0).toFixed(2).replace('.', ',') + ' €';
-    return { handled: true, reply: p.length ? `⛽ Repostajes sin vehículo (${p.length}):\n${p.slice(0, 10).map((x, i) => `${i + 1}. ${dm(x.fecha)}${x.hora ? ' ' + x.hora : ''} · ${eur(x.importe)} · ${x.establecimiento || 'Esclat'}`).join('\n')}\n\nDime «el 2 es de la Berlingo».` : '✅ No hay repostajes sin vehículo.' };
+    return { handled: true, reply: p.length ? `⛽ Repostajes sin vehículo (${p.length}):\n${p.slice(0, 10).map((x, i) => `${i + 1}. ${dm(x.fecha)}${x.hora ? ' ' + x.hora : ''} · ${eur(x.importe)} · ${x.establecimiento || 'Esclat'}`).join('\n')}\n\n${p.length === 1 ? `Dime de qué vehículo es («la Berlingo»).\n\n(ref. repostaje ${p[0].id})` : 'Dime «el 2 es de la Berlingo».'}` : '✅ No hay repostajes sin vehículo.' };
   }
   // «PRT00874 aceptado» (2/11/2026: para que Álex conteste a los avisos de Alfonso «¿lo marco aceptado?»).
   if (name === 'estado_presupuesto') {
@@ -432,4 +460,4 @@ const TOOLS = [
 const LECTURA = new Set(['facturas_cliente', 'buscar_compras', 'gasto_proveedor', 'documentos_vehiculo', 'consulta_clasica', 'consultar_memoria']);
 const LECTORES = { consultar_memoria: consultarMemoria, facturas_cliente: facturasCliente, buscar_compras: buscarCompras, gasto_proveedor: gastoProveedor, documentos_vehiculo: documentosVehiculo, consulta_clasica: consultaClasica };
 
-module.exports = { DENTRO, TOOLS, LECTURA, LECTORES, ejecutar, contextoReciente, _puntos: puntos, _casaProveedor: casaProveedor, _terminosMaterial: terminosMaterial };
+module.exports = { DENTRO, TOOLS, respuestaRepostaje, LECTURA, LECTORES, ejecutar, contextoReciente, _puntos: puntos, _casaProveedor: casaProveedor, _terminosMaterial: terminosMaterial };
