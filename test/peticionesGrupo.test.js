@@ -98,7 +98,9 @@ test('_autoIncidencias: trabajo nuevo crea incidencia, propone operario y pide e
   });
   assert.strictEqual(auto.p1.incidencia, 'INC00999');
   assert.strictEqual(auto.p1.pedidoContacto, true);
-  assert.strictEqual(auto.p2, undefined);
+  // Presupuesto: incidencia de presupuesto, sin operario ni contacto en el grupo (lo hace Álex; 2/11/2026).
+  assert.strictEqual(auto.p2.incidencia, 'INC00999');
+  assert.strictEqual(auto.p2.propuesta, undefined);
   assert.match(auto.p3.error, /comunidad/);
   assert.strictEqual(enviados.length, 1);
   assert.strictEqual(enviados[0].to, 'g@g.us');

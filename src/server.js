@@ -4199,6 +4199,8 @@ app.post('/api/partes', uploadMemory.any(), async (req, res) => {
           workerId: workerInfo.workerId, parteId: String(parte._id || parte.id),
           estadoTrabajo: bodyData.estadoTrabajo || 'completado'
         });
+        // Trabajo que vino de una petición: cierra la incidencia y avisa, o pregunta la próxima visita (trabajosSeguimiento).
+        require('./trabajosSeguimiento').alParte(bodyData.workOrderId, parte).catch(e => console.warn('[Partes] seguimiento:', e.message));
       } catch (e) { console.warn('[Partes] recordParteResult:', e.message); }
     }
 
@@ -4449,6 +4451,8 @@ app.post('/api/partes/confirmar', uploadMemory.any(), async (req, res) => {
           workerId: workerInfo.workerId, parteId: String(parte._id || parte.id),
           estadoTrabajo: bodyData.estadoTrabajo || 'completado'
         });
+        // Trabajo que vino de una petición: cierra la incidencia y avisa, o pregunta la próxima visita (trabajosSeguimiento).
+        require('./trabajosSeguimiento').alParte(bodyData.workOrderId, parte).catch(e => console.warn('[Partes] seguimiento:', e.message));
       } catch (e) { console.warn('[Partes] recordParteResult:', e.message); }
     }
 

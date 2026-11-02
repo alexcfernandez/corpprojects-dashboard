@@ -689,7 +689,8 @@ async function finalizarPedido(i) {
     const fc = document.getElementById('f-client');
     const fh = document.getElementById('f-horas');
     if (fc) fc.value = p.client || '';
-    if (fh) fh.value = horasReales;
+    // Trabajo de un aviso (con cita): mínimo 2 h por salida (2/11/2026, Álex: «siempre son 2 horas»).
+    if (fh) fh.value = p.cita ? Math.max(2, horasReales) : horasReales;
     // La obra del trabajo, si se sabe (trabajos.js → p.cita.obraId)
     if (p.cita && p.cita.obraId && obraPick) { const o = obrasCampo.find(x => String(x.id) === String(p.cita.obraId)); if (o) { obraPick.set(o.id); onObraChange(o); } }
     try { buscarExpediente(); } catch(e) {}
