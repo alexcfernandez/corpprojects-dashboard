@@ -73,6 +73,7 @@ async function datos(fecha = hoyMadrid()) {
   // Antes de hablar de altas se cierran las de quien ya cobra nómina (memoria.js); y va lo que Álex ya corrigió o
   // confirmó (2/11/2026: la revisión repetía «Javier lleva 13 días sin alta» aunque ya estaba de alta).
   await w('altasCerradasPorNomina', async () => require('./memoria').cerrarAltasConNomina({ por: 'Corpy (revisión: ya tiene nómina)' }));
+  await w('altasCerradasPorAltaSS', async () => require('./incorporaciones').cerrarConAltaSS({ por: 'Corpy (revisión: ya está el alta)' }));
   await w('memoria', async () => require('./memoria').vigentesRecientes());
   await w('altas', async () => (await require('./incorporaciones').lista({})).map(i => ({ id: i.id || String(i._id), nombre: i.nombre, inicio: i.fechaInicio, falta: (i.pasos || []).filter(p => !p.ok && p.antes).map(p => p.t + (p.nota ? ` (${p.nota})` : '')) })));
   // Lo que el dashboard ha escrito hoy en StelOrder

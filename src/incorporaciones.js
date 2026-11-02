@@ -143,14 +143,17 @@ async function pasos(inc, db) {
   const u = inc.userId ? await db.collection('users').findOne({ _id: _oid(inc.userId) }, { projection: { tallas: 1, whatsapp: 1 } }) : null;
   const t = (u && u.tallas) || {};
   const consultar = CONSULTAR(inc.condiciones || {});
+  // Con el alta de la gestoría en su carpeta, firmas y envío a la gestoría ya están hechos (2/11/2026: a Javier se le
+  // reabrió «gestoría» al corregir las horas y su 2.º lote de firma quedó pendiente; seguía «sin alta» con el alta guardada).
+  const alta = tiene('alta_ss'), yaAlta = alta ? 'Hecho: ya está el alta' : null;
   const l = [
     { k: 'datos', t: 'Condiciones del contrato', ok: !!(inc.nombre && inc.dni && inc.fechaInicio && inc.confirmadas) && !consultar.length, nota: consultar.length ? `Consultar antes con Som Assessors: ${consultar.join(', ')}.` : !inc.confirmadas ? 'Falta confirmar categoría, horario y demás condiciones' : !inc.dni ? 'Falta el DNI/NIE' : null, accion: inc.confirmadas ? null : 'confirmar', antes: true },
     { k: 'ficha', t: 'Ficha del trabajador y su WhatsApp', ok: !!(inc.userId && u && u.whatsapp), antes: true },
     { k: 'papeles', t: 'DNI/NIE y número de la Seguridad Social', ok: !!(ya.doc_delante && ya.doc_detras && ya.seguridad_social), nota: 'Falta ' + [!ya.doc_delante && 'el DNI/NIE por delante', !ya.doc_detras && 'el DNI/NIE por detrás', !ya.seguridad_social && 'el nº de la Seguridad Social'].filter(Boolean).join(', '), accion: 'pedir_papeles', antes: true },
     { k: 'formulario', t: 'Formulario de elementos esenciales', ok: !!inc.formularioId, accion: 'formulario', antes: true },
-    { k: 'firma_empresa', t: `Firma de ${ADMIN.nombre.split(' ')[0]} con sello`, ok: firmas.empresa, nota: firmas.enviado && !firmas.empresa ? 'Enlace enviado, falta que firme' : null, accion: 'firmas', antes: true },
-    { k: 'firma_trabajador', t: 'Firma del trabajador', ok: firmas.trabajador, nota: firmas.empresa && !firmas.trabajador ? 'Enlace enviado, falta que firme' : null, antes: true },
-    { k: 'gestoria', t: 'Enviado a la gestoría para el alta', ok: !!(inc.gestoria && inc.gestoria.at), accion: 'gestoria', antes: true },
+    { k: 'firma_empresa', t: `Firma de ${ADMIN.nombre.split(' ')[0]} con sello`, ok: firmas.empresa || alta, nota: alta && !firmas.empresa ? yaAlta : firmas.enviado && !firmas.empresa ? 'Enlace enviado, falta que firme' : null, accion: 'firmas', antes: true },
+    { k: 'firma_trabajador', t: 'Firma del trabajador', ok: firmas.trabajador || alta, nota: alta && !firmas.trabajador ? yaAlta : firmas.empresa && !firmas.trabajador ? 'Enlace enviado, falta que firme' : null, antes: true },
+    { k: 'gestoria', t: 'Enviado a la gestoría para el alta', ok: !!(inc.gestoria && inc.gestoria.at) || alta, accion: 'gestoria', antes: true },
     { k: 'alta', t: 'Alta en la Seguridad Social (llega de la gestoría)', ok: tiene('alta_ss'), antes: true },
     { k: 'tallas', t: 'Tallas para la ropa y los EPIs', ok: !!(t.ropa && t.pantalon && t.calzado), accion: 'tallas' },
     { k: 'reconocimiento', t: 'Reconocimiento médico (SPASS)', ok: tiene('reconocimiento') },
@@ -302,11 +305,26 @@ async function accion(id, que, por) {
 async function config() { const db = await getDB(); const d = await db.collection('appSettings').findOne({ key: 'incorporaciones' }); return { autoGestoria: false, ...((d && d.valor) || {}) }; }
 async function setConfig(c = {}) { const db = await getDB(); const v = { autoGestoria: !!c.autoGestoria }; await db.collection('appSettings').updateOne({ key: 'incorporaciones' }, { $set: { key: 'incorporaciones', valor: v } }, { upsert: true }); return v; }
 
+// Las altas que ya tienen el papel del alta de la gestoría (alta_ss) se cierran el mismo día que llega (2/11/2026).
+async function cerrarConAltaSS({ por = 'Corpy (ya está el alta)', _db = null, _cerrar = null } = {}) {
+  const db = _db || await getDB();
+  const cerradas = [];
+  for (const i of await db.collection(COL).find({ estado: 'abierta', userId: { $nin: [null, ''] } }).toArray()) {
+    const alta = await db.collection('docsPersonal').findOne({ userId: String(i.userId), tipo: 'alta_ss' }, { projection: { _id: 1 } });
+    if (!alta) continue;
+    await (_cerrar || ((id, p) => accion(id, 'hecha', p)))(String(i._id), por);
+    try { await require('./memoria').apuntar({ sujeto: { tipo: 'persona', id: String(i.userId), nombre: i.nombre }, tipo: 'estado', unico: 'alta', texto: 'De alta: ya está el alta de la Seguridad Social de la gestoría', ambito: 'interno', fuente: { tipo: 'alta_ss', ref: String(i._id) } }, { _db: db }); } catch (e) {}
+    cerradas.push(i.nombre);
+  }
+  return cerradas;
+}
+
 // Cada mañana: avanzar lo que se pueda y avisar a Álex de lo que va tarde (empieza en ≤ 3 días y falta algo de antes).
 async function revisarManana({ _avisar = null } = {}) {
   // Quien ya cobra nómina de la gestoría está de alta: su ficha se cierra antes de avisar (2/11/2026: Javi y Norman
   // salieron 14 días seguidos como «sin alta» cuando ya estaban en la nómina de Eduard).
   if (!_avisar) { try { await require('./memoria').cerrarAltasConNomina({ por: 'Corpy (mañana: ya tiene nómina)' }); } catch (e) { console.warn('[Incorporaciones] nómina:', e.message); } }
+  if (!_avisar) { try { await cerrarConAltaSS({ por: 'Corpy (mañana: ya está el alta)' }); } catch (e) { console.warn('[Incorporaciones] alta_ss:', e.message); } }
   const l = await lista(); const avisos = [];
   for (const v0 of l) {
     let v = v0; try { v = (await avanzar(v0.id, 'Corpy (mañana)')) || v0; } catch (e) { console.warn('[Incorporaciones]', e.message); }
@@ -317,4 +335,4 @@ async function revisarManana({ _avisar = null } = {}) {
   return { revisadas: l.length, avisos: avisos.length };
 }
 
-module.exports = { FIRMA_EMPRESA, FIRMA_TRABAJADOR, recibidasDe, lista, ver, crear, editar, avanzar, accion, generarFormulario, pedirFirmas, enviarGestoria, config, setConfig, revisarManana, rellenarFormulario, condiciones, CATEGORIAS, TIPOS, POR_DEFECTO, _consultar: CONSULTAR };
+module.exports = { FIRMA_EMPRESA, FIRMA_TRABAJADOR, recibidasDe, lista, ver, crear, editar, avanzar, accion, generarFormulario, pedirFirmas, enviarGestoria, config, setConfig, revisarManana, cerrarConAltaSS, rellenarFormulario, condiciones, CATEGORIAS, TIPOS, POR_DEFECTO, _consultar: CONSULTAR };

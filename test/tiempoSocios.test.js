@@ -26,3 +26,11 @@ test('sin duración no se apunta; presupuestos en la oficina no llevan km', asyn
   assert.strictEqual(d.km, null);
   assert.strictEqual(d.cliente, 'Sing');
 });
+
+test('un trabajador no se apunta como Álex: error claro (2/11/2026, David y Diego en Claudia)', async () => {
+  const db = fakeDb();
+  await assert.rejects(T.apuntar({ quienes: ['David Valencia', 'Diego'], obra: 'Claudia Bar', tipo: 'intervencion', minutos: 300 }, '', { _db: db, _obraDeTexto: async () => null }), /no es socio.*apuntar_jornada/);
+  assert.strictEqual(db.l.length, 0);
+  const d = await T.apuntar({ quienes: ['Álex Castro'], tipo: 'gestion', minutos: 30 }, '', { _db: db, _obraDeTexto: async () => null });
+  assert.deepStrictEqual(d.quienes, ['Álex']);
+});

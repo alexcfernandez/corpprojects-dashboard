@@ -45,6 +45,20 @@ async function _peticion(db, id) {
 }
 
 // Propuesta de Corpy para una petición.
+// ¿Está atado a una obra ese día? Obra fija o 3+ de los últimos días en la misma obra (2/11/2026: propuso a Abdellah
+// «el martes lo tiene libre» y está cada día en el INSS). Si la petición es de esa misma obra, no cuenta como ocupado.
+function ocupadoEn(workerId, { fijas = [], recientes = [], fecha, casa = () => false } = {}) {
+  const f = fijas.find(x => String(x.workerId) === String(workerId) && x.activa !== false && String(x.desde || '') <= fecha && (!x.hasta || x.hasta >= fecha));
+  if (f && !casa(f.obraRef)) return f.obraRef || 'su obra fija';
+  const dias = {};
+  for (const a of recientes.filter(a => String(a.workerId) === String(workerId) && (a.estado || 'obra') === 'obra')) {
+    const ns = (a.obras && a.obras.length ? a.obras.map(o => o.clientName) : [a.clientName]).filter(Boolean);
+    for (const n of new Set(ns)) (dias[n] = dias[n] || new Set()).add(a.date);
+  }
+  const top = Object.entries(dias).map(([n, d]) => [n, d.size]).sort((x, y) => y[1] - x[1])[0];
+  return top && top[1] >= 3 && !casa(top[0]) ? top[0] : null;
+}
+
 async function propuesta(peticionId, { ahora = new Date() } = {}) {
   const db = await getDB();
   const p = await _peticion(db, peticionId);
@@ -57,6 +71,11 @@ async function propuesta(peticionId, { ahora = new Date() } = {}) {
     db.collection('workOrderAssignments').find({ status: { $nin: ['done', 'invoiced'] } }).toArray(),
     require('./ausencias').lista().catch(() => []),
   ]);
+  const hace7 = new Date(new Date(fecha + 'T12:00:00Z').getTime() - 7 * 86400000).toISOString().slice(0, 10);
+  const [fijas, recientes] = await Promise.all([
+    db.collection('obrasFijas').find({ activa: true }).toArray().catch(() => []),
+    db.collection('attendance').find({ date: { $gte: hace7, $lt: fecha } }).project({ workerId: 1, clientName: 1, obras: 1, date: 1, estado: 1 }).toArray().catch(() => []),
+  ]);
   const deDia = require('./ausencias').deDia;
   const casa = s => { const w = palabras(s); return claves.length && claves.every(k => w.includes(k)); };
   const filas = ops.map(o => {
@@ -64,19 +83,21 @@ async function propuesta(peticionId, { ahora = new Date() } = {}) {
     const mios = asig.filter(a => String(a.userId) === o.id);
     const eseDia = mios.filter(a => a.fecha === fecha);
     const ausente = deDia(aus, o.id, fecha);
-    return { ...o, conoce: dias, abiertos: mios.length, eseDia: eseDia.length, horas: eseDia.map(a => a.hora).filter(Boolean), ausente: ausente ? ausente.tipo : null };
+    return { ...o, conoce: dias, abiertos: mios.length, eseDia: eseDia.length, horas: eseDia.map(a => a.hora).filter(Boolean), ausente: ausente ? ausente.tipo : null, ocupado: ocupadoEn(o.id, { fijas, recientes, fecha, casa }) };
   });
-  const candidatos = filas.filter(f => !f.ausente).sort((a, b) => (b.conoce > 0) - (a.conoce > 0) || a.eseDia - b.eseDia || b.conoce - a.conoce || a.abiertos - b.abiertos);
+  const candidatos = filas.filter(f => !f.ausente && !f.ocupado).sort((a, b) => (b.conoce > 0) - (a.conoce > 0) || a.eseDia - b.eseDia || b.conoce - a.conoce || a.abiertos - b.abiertos);
   const el = candidatos[0] || null;
   const hora = el ? (HUECOS.find(h => !el.horas.includes(h)) || '09:00') : '09:00';
-  const motivo = !el ? 'No hay nadie disponible ese día' :
+  const atados = filas.filter(f => f.ocupado && !f.ausente).map(f => `${f.name.split(' ')[0]} (${f.ocupado})`);
+  const motivo = !el ? `No hay nadie libre ese día${atados.length ? ': ' + atados.join(', ') : ''}. Dime a quién se lo damos.` :
     [el.conoce ? `ha ido ${el.conoce} día${el.conoce > 1 ? 's' : ''} a ${p.clienteStel || p.cliente} en los últimos 4 meses` : null,
       el.eseDia ? `ese día ya tiene ${el.eseDia} trabajo${el.eseDia > 1 ? 's' : ''}` : 'ese día lo tiene libre',
       el.abiertos ? `${el.abiertos} trabajo${el.abiertos > 1 ? 's' : ''} abierto${el.abiertos > 1 ? 's' : ''}` : null].filter(Boolean).join(' · ');
   return {
     peticion: { id: String(p._id), cliente: p.clienteStel || p.cliente, clienteId: p.clienteId || null, tipo: p.tipo, resumen: p.resumen, direccion: p.direccion, contacto: p.contacto, urgente: !!p.urgente, incidencia: p.incidencia || null, pedido: p.pedido || null },
     propuesta: el ? { userId: el.id, nombre: el.name, fecha, hora, fechaTxt: fechaTxt(fecha), motivo } : null,
-    operarios: filas.map(f => ({ id: f.id, nombre: f.name, conoce: f.conoce, abiertos: f.abiertos, ausente: f.ausente })),
+    operarios: filas.map(f => ({ id: f.id, nombre: f.name, conoce: f.conoce, abiertos: f.abiertos, ausente: f.ausente, ocupado: f.ocupado })),
+    motivo: el ? null : motivo,
   };
 }
 
@@ -153,4 +174,4 @@ async function fotoParaOperario(fotoId, workerId) {
   return require('./grupoWhatsapp').foto(fotoId);
 }
 
-module.exports = { propuesta, crear, operarios, diaPropuesto, fotoParaOperario, _palabras: palabras, _fechaTxt: fechaTxt };
+module.exports = { propuesta, crear, operarios, diaPropuesto, fotoParaOperario, _palabras: palabras, _fechaTxt: fechaTxt, _ocupadoEn: ocupadoEn };

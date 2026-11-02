@@ -647,7 +647,9 @@ async function contactoConocido(from, body, media = {}) {
   const ultimo = await db.collection('whatsappOutbox').findOne({ to: { $regex: d9 + '$' }, ts: { $gte: new Date(Date.now() - 30 * 24 * 3600 * 1000) } }, { sort: { ts: -1 }, projection: { body: 1 } });
   if (!ultimo) return null;
   const m = /^Hola ([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)/.exec(String(ultimo.body || ''));
-  const nombre = m ? m[1] : from;
+  // Nunca por el número («Gracias, +34692270438», 20 y 30/10/2026): el nombre de su ficha o nada.
+  let nombre = m ? m[1] : '';
+  if (!nombre) { try { const u = await db.collection('users').findOne({ $or: [{ telefono: { $regex: d9 + '$' } }, { whatsapp: { $regex: d9 + '$' } }] }, { projection: { name: 1 } }); if (u && u.name) nombre = String(u.name).split(' ')[0]; } catch (e) {} }
   const archivos = (media.archivos && media.archivos.length ? media.archivos : [...(media.fotos || []), ...(media.pdf ? [media.pdf] : [])]).filter(x => x && x.url);
   const adjuntos = [];
   for (const [i, a] of archivos.entries()) {
@@ -655,11 +657,11 @@ async function contactoConocido(from, body, media = {}) {
   }
   const texto = String(body || '').trim();
   if (adjuntos.length) {
-    try { await require('./notifications').sendEmail({ to: process.env.EMAIL_OFICINA || 'hola@corpprojects.es', subject: `WhatsApp de ${nombre} (${from}) a Corpy${texto ? ': ' + texto.slice(0, 60) : ''}`, text: `${nombre} (${from}) ha escrito a Corpy por WhatsApp:\n\n${texto || '(sin texto)'}\n\nAdjuntos: ${adjuntos.map(x => x.filename).join(', ')}`, attachments: adjuntos }); } catch (e) { console.error('[Contacto] correo:', e.message); }
+    try { await require('./notifications').sendEmail({ to: process.env.EMAIL_OFICINA || 'hola@corpprojects.es', subject: `WhatsApp de ${nombre || from} (${from}) a Corpy${texto ? ': ' + texto.slice(0, 60) : ''}`, text: `${nombre || from} (${from}) ha escrito a Corpy por WhatsApp:\n\n${texto || '(sin texto)'}\n\nAdjuntos: ${adjuntos.map(x => x.filename).join(', ')}`, attachments: adjuntos }); } catch (e) { console.error('[Contacto] correo:', e.message); }
   }
-  try { await require('./notifications').sendWhatsApp(`📩 *${nombre}* (${from}) escribe a Corpy:${texto ? `\n"${texto.slice(0, 400)}"` : ''}${adjuntos.length ? `\n📎 ${adjuntos.length} archivo${adjuntos.length > 1 ? 's' : ''} (${adjuntos.map(x => x.filename).join(', ')}): te los he mandado a hola@corpprojects.es` : (archivos.length || media.numMedia ? '\n📎 Mandó un archivo que no he podido descargar: pídeselo por correo.' : '')}`); } catch (e) {}
+  try { await require('./notifications').sendWhatsApp(`📩 *${nombre || 'Alguien'}* (${from}) escribe a Corpy:${texto ? `\n"${texto.slice(0, 400)}"` : ''}${adjuntos.length ? `\n📎 ${adjuntos.length} archivo${adjuntos.length > 1 ? 's' : ''} (${adjuntos.map(x => x.filename).join(', ')}): te los he mandado a hola@corpprojects.es` : (archivos.length || media.numMedia ? '\n📎 Mandó un archivo que no he podido descargar: pídeselo por correo.' : '')}`); } catch (e) {}
   if (await _yaContestado(from, 6)) return '__callar__';   // ya se le dijo; lo nuevo le llega a Álex igualmente
-  return `Gracias, ${nombre} 🙏. Se lo paso a Álex${adjuntos.length ? ' (con los archivos)' : ''} y te contesta él.`;
+  return `Gracias${nombre ? ', ' + nombre : ''} 🙏. Se lo paso a Álex${adjuntos.length ? ' (con los archivos)' : ''} y te contesta él.`;
 }
 
 function registrarEntradaWa(from, body, media = {}) {
@@ -859,6 +861,12 @@ async function procesarTrabajador(from, body, media, trab, responder) {
   let pend = null;
   if (trab.userId && !PALABRAS_FICHAJE.test(texto)) { try { pend = await require('./encargos').apuntarDeTrabajador(trab.userId, trab.name, texto); } catch (e) { console.warn('[Encargos] memoria:', e.message); } }
 
+  // Alfonso es SOCIO (2/11/2026): lo que escribe le llega también a Álex y, si confirma algo («ya está aceptado y
+  // programado para el lunes»), como acción. Antes solo iba a la oficina y Álex no se enteraba.
+  let socio = false; try { socio = require('./memoria').esSocio(trab); } catch (e) {}
+  if (socio) {
+    try { await require('./notifications').sendWhatsApp(require('./acceso').avisoDeSocio(trab.name, texto)); } catch (e) { console.warn('[Socio] aviso:', e.message); }
+  }
   // Texto → a la oficina (por WhatsApp si hay destino configurado; siempre queda en Conversaciones)
   try {
     const dest = String(process.env.FICHAJE_AVISOS_TO || process.env.WHATSAPP_TO || '').split(',').map(x => x.trim()).filter(Boolean);
@@ -866,8 +874,9 @@ async function procesarTrabajador(from, body, media, trab, responder) {
     for (const d of dest) await require('./notifications').sendWhatsAppTo(d, aviso);
   } catch (e) {}
   if (pend) return responder(`Apuntado${nombreCap ? ', ' + nombreCap : ''} 📌. Te lo vuelvo a preguntar${pend.cuando ? ' el ' + pend.cuando.split('-').reverse().join('/') : ' mañana'} para ver si ya está.`);
-  return responder(`Gracias${nombreCap ? ', ' + nombreCap : ''} 🙏, se lo paso a la oficina.` + (PALABRAS_FICHAJE.test(texto) ? lineaFichar : ''));
+  return responder(`Gracias${nombreCap ? ', ' + nombreCap : ''} 🙏, se lo paso a ${socio ? 'Álex' : 'la oficina'}.` + (!socio && PALABRAS_FICHAJE.test(texto) ? lineaFichar : ''));
 }
+
 
 // Transcribe una nota de voz de WhatsApp (descarga de Twilio + STT compatible OpenAI).
 // Configurable por entorno: STT_API_KEY (obligatoria), STT_BASE_URL, STT_MODEL.

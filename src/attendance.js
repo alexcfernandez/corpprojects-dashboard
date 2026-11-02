@@ -555,7 +555,48 @@ async function extremosPorTrabajador() {
   return new Map(l.map(x => [String(x._id), { primero: x.primero, ultimo: x.ultimo }]));
 }
 
+// Corpy: «hoy han trabajado David y Diego en Claudia de 9 a 14» → presencia de cada uno ese día en esa obra (2/11/2026:
+// sin esta herramienta el modelo usó la del tiempo de socios y lo apuntó todo a Álex). Upsert por día y trabajador; si el
+// día ya tiene horas fichadas no se pisan (solo se pone la obra).
+const _aMin = h => { const m = /^(\d{1,2})(?::(\d{2}))?$/.exec(String(h || '').trim()); return m ? Number(m[1]) * 60 + Number(m[2] || 0) : null; };
+async function apuntarJornada({ trabajadores = [], obra = '', fecha = null, horas = null, desde = null, hasta = null } = {}, por = '', { _db = null } = {}) {
+  const db = _db || await getDB();
+  const N = require('./nombres');
+  const fec = /^\d{4}-\d{2}-\d{2}$/.test(String(fecha || '')) ? fecha : new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
+  let h = horas != null && horas !== '' ? Number(horas) : null;
+  const d0 = _aMin(desde), d1 = _aMin(hasta);
+  if (!(h > 0) && d0 != null && d1 != null && d1 > d0) h = Math.round((d1 - d0) / 60 * 100) / 100;
+  if (!(h > 0)) throw new Error('¿Cuántas horas? Dime de qué hora a qué hora o las horas de cada uno.');
+  const obras = await db.collection('obras').find({ status: { $ne: 'descartada' } }).project({ reference: 1, aliases: 1, clientName: 1, address: 1, status: 1 }).toArray();
+  const o = N.casarObra(obra, obras);
+  if (!o) throw new Error(`No encuentro la obra «${obra}». Dímela como sale en el dashboard.`);
+  if (o.varias) throw new Error(`¿Qué obra? Hay varias: ${o.varias.join(', ')}.`);
+  const users = await db.collection('users').find({}).project({ name: 1, nombreCompleto: 1, active: 1 }).toArray();
+  const alias = await N.aliasDeTrabajadores(db);
+  const quienes = [], dudas = [];
+  for (const t of (Array.isArray(trabajadores) ? trabajadores : [trabajadores]).filter(Boolean)) {
+    const u = N.casarTrabajador(t, users, alias);
+    if (!u) dudas.push(`no conozco a «${t}»`); else if (u.varios) dudas.push(`«${t}»: ¿${u.varios.join(' o ')}?`); else quienes.push(u);
+  }
+  if (dudas.length) throw new Error('Antes de apuntar: ' + dudas.join('; ') + '.');
+  if (!quienes.length) throw new Error('¿Quién ha trabajado?');
+  const out = [];
+  for (const u of quienes) {
+    const workerId = String(u._id);
+    const prev = await db.collection('attendance').findOne({ workerId, date: fec });
+    const fichadas = prev && (prev.fichado || prev.autoFromFichaje) && Number(prev.horas) > 0 ? Number(prev.horas) : null;
+    const hh = fichadas != null ? fichadas : h;
+    await db.collection('attendance').updateOne({ workerId, date: fec }, {
+      $set: { workerName: u.name, estado: 'obra', obraId: String(o._id), clientName: o.reference, obras: [{ obraId: String(o._id), clientName: o.reference, horas: hh }], horas: hh, apuntadoPor: por || 'Corpy', updatedAt: new Date() },
+      $setOnInsert: { workerId, date: fec, creadoPor: por || 'Corpy' },
+    }, { upsert: true });
+    out.push({ nombre: u.name, horas: hh, fichadas: fichadas != null });
+  }
+  return { fecha: fec, obra: o.reference, obraId: String(o._id), trabajadores: out };
+}
+
 module.exports = {
+  apuntarJornada,
   extremosPorTrabajador,
   buscarSitio, getObras,
   WORKERS, ESTADOS, getWorkers,

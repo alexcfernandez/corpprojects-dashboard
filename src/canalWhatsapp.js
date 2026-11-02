@@ -131,6 +131,8 @@ async function _dispatch(to, body, { canal, fallbackTwilio = true } = {}) {
 async function enviarArchivo(to, pie, archivo) {
   if (canalActivo() !== 'bridge' || !_destinoValido(to) || !archivo || !archivo.data) return false;
   await encolarSalida(to, pie, { archivo });
+  // Queda en Conversaciones qué archivo se mandó (2/11/2026: «Te lo mando aquí mismo» sin rastro de qué salió).
+  require('./waLog').registrar({ dir: 'out', canal: 'bridge', numero: to, texto: pie, media: [{ type: archivo.mime || null, name: archivo.nombre || null }], ok: true }).catch(() => {});
   return true;
 }
 async function archivoPuente(id) {

@@ -25,8 +25,14 @@ const aMin = h => { const m = String(h || '').match(/^(\d{1,2})[:.h]?(\d{2})?$/)
 
 async function apuntar({ quienes = [], obra = '', cliente = '', que = '', tipo = 'otro', fecha = null, desde = null, hasta = null, minutos = null, km = null, facturable = false, nota = '' } = {}, por = '', { _db = null, _obraDeTexto = null } = {}) {
   const db = _db || await getDB();
-  const ps = [...new Set((Array.isArray(quienes) ? quienes : [quienes]).map(q => /alfons/i.test(q) ? 'Alfonso' : /alex|álex|yo/i.test(q) ? 'Álex' : null).filter(Boolean))];
-  if (!ps.length) ps.push('Álex');
+  const entrada = (Array.isArray(quienes) ? quienes : [quienes]).map(q => String(q || '').trim()).filter(Boolean);
+  const socio = q => /alfons/i.test(q) ? 'Alfonso' : /(^|\s)(alex|álex|yo)(\s|$)/i.test(q) ? 'Álex' : null;
+  // Solo socios. Un trabajador NO se convierte en Álex (2/11/2026: «han trabajado David y Diego en Claudia» quedó como
+  // «Álex · 5 h» sin avisar): su jornada va con apuntar_jornada (presencia).
+  const raros = entrada.filter(q => !socio(q));
+  if (raros.length) throw new Error(`«${raros.join(', ')}» no es socio: aquí solo se apunta el tiempo de Álex y Alfonso. La jornada de un trabajador va en su presencia (apuntar_jornada).`);
+  const ps = [...new Set(entrada.map(socio))];
+  if (!ps.length) ps.push('Álex');   // sin nombre = habla Álex en primera persona
   let min = Number(minutos) || null;
   const d0 = aMin(desde), d1 = aMin(hasta);
   if (!min && d0 != null && d1 != null) min = d1 > d0 ? d1 - d0 : null;
@@ -50,14 +56,14 @@ async function apuntar({ quienes = [], obra = '', cliente = '', que = '', tipo =
 
 async function deObra(obraId, { _db = null } = {}) {
   const db = _db || await getDB();
-  const l = await db.collection('tiempoSocios').find({ obraId: String(obraId) }).sort({ fecha: 1 }).toArray();
+  const l = await db.collection('tiempoSocios').find({ obraId: String(obraId), anulado: { $ne: true } }).sort({ fecha: 1 }).toArray();
   return { total: r2(l.reduce((a, x) => a + (x.coste || 0), 0)), minutos: l.reduce((a, x) => a + x.minutos * x.quienes.length, 0), km: l.reduce((a, x) => a + (x.km || 0), 0), ratos: l.map(x => ({ id: String(x._id), fecha: x.fecha, quienes: x.quienes, minutos: x.minutos, tipo: x.tipo, que: x.que, km: x.km, coste: x.coste, facturable: x.facturable })) };
 }
 
 // Resumen del mes: horas de cada uno, por obra/cliente, y lo que cubre de los 2.000 €.
 async function resumenMes(mes = hoyISO().slice(0, 7), { _db = null } = {}) {
   const db = _db || await getDB();
-  const l = await db.collection('tiempoSocios').find({ fecha: { $regex: '^' + mes } }).toArray();
+  const l = await db.collection('tiempoSocios').find({ fecha: { $regex: '^' + mes }, anulado: { $ne: true } }).toArray();
   const por = {};
   for (const x of l) for (const q of x.quienes) {
     const p = (por[q] = por[q] || { quien: q, minutos: 0, facturableMin: 0, km: 0, sitios: {} });

@@ -165,6 +165,9 @@ REGLAS DURAS:
 - «Empieza / entra a trabajar X el día…», «da de alta a…» → nueva_incorporacion.
 - Datos o documentos de NUESTRA empresa (CIF, razón social, domicilio, certificados) → datos_empresa. «Pásame / mándame / necesito / envíame <documento>» de la empresa o de un trabajador → pasar_documento (NO digas que no tienes acceso: búscalo).
 - Lo que nos DEBE un cliente o comunidad → facturas_cliente. Si vuelve más de un cliente igual de parecido, di cuáles y PREGUNTA; si uno encaja claramente, contesta con ese. «No tiene pendientes» solo si su lista está vacía.
+- «PRT00874 aceptado», «el 875 rechazado» → estado_presupuesto.
+- Si Álex repite una pregunta, contesta otra vez entero y sin reproches: nunca «ya te respondí esto».
+- Jornada de TRABAJADORES en una obra («hoy han trabajado David y Diego en Claudia de 9 a 14») → apuntar_jornada (nunca apuntar_tiempo_socio, que es solo de Álex y Alfonso).
 - Tiempo de Álex o Alfonso (visitas, presupuestos, compras, gestiones, «hemos ido a…», «he estado una hora con…») → apuntar_tiempo_socio; «en qué se nos ha ido el tiempo este mes» → tiempo_socios_mes.
 - «Descuéntale / descontárselo de la nómina a X…» (botas, una herramienta o material suyo que pagó la empresa) → apuntar_descuento_nomina.
 - «Pide el DNI / NIF a <cliente>», «pídele el DNI a Aura, teléfono 687…», o falta el NIF de un cliente para facturar → pedir_datos_cliente (si no hay teléfono en su ficha, pregúntaselo a Álex).
@@ -365,11 +368,13 @@ async function pasarDocumento({ de, que } = {}, from) {
   return { handled: true, reply: `${lineas.join('\n\n')}${extra}\n\n_El enlace es solo para ti y caduca en ${E.HORAS} h._` };
 }
 
+// Por nombre corto, nombre completo y apodos (nombres.js, 2/11/2026: «el contrato de David Valencia» preguntaba «¿qué David?»).
 async function _trabajador(nombre, { inactivos = false } = {}) {
-  const us = (await require('./users').getUsers(false)).filter(u => inactivos || u.active !== false);
-  const c = us.filter(u => _casa(u.name, nombre)); if (c.length === 1) return c[0];
-  const p = us.filter(u => _n(u.name).split(' ')[0] === _n(nombre).split(' ')[0]); if (p.length === 1) return p[0];
-  return { varios: (c.length ? c : p).map(u => u.name) };
+  const N = require('./nombres');
+  const us = await require('./users').getUsers(false);
+  let alias = []; try { alias = await N.aliasDeTrabajadores(await require('./db').getDB()); } catch (e) {}
+  const u = N.casarTrabajador(nombre, us, alias, { inactivos });
+  return u || { varios: [] };
 }
 async function ejecutarTool(name, input, from) {
   if (name === 'nueva_incorporacion') {

@@ -340,7 +340,17 @@ async function pedirPin(from, texto) {
   return g && g.mensaje ? g.mensaje : '🔐 Para confirmar esta acción, envíame tu PIN.';
 }
 
+// Lo que escribe un socio, para Álex: si confirma o acepta algo, se le pregunta qué marcar.
+function avisoDeSocio(nombre, texto) {
+  const t = String(texto || '');
+  const prt = (t.match(/\bPRT\s?0*(\d{3,5})\b/i) || [])[1];
+  const acepta = /acept|aprob|confirm|programad|firmad|dan el ok|(dicen|dicho|dijo|dijeron) que s[ií]/i.test(t);
+  const accion = !acepta ? '' : prt ? `\n👉 ¿Marco el *PRT${prt.padStart(5, '0')}* como aceptado? Dime «PRT${prt.padStart(5, '0')} aceptado» y lo cambio en StelOrder.` : '\n👉 Parece que aceptan algo: ¿qué presupuesto marco como aceptado? Dime «PRT… aceptado» y lo cambio en StelOrder.';
+  return `🤝 *${String(nombre || 'Alfonso').split(' ')[0]}* escribe a Corpy:\n"${t.slice(0, 400)}"${accion}`;
+}
+
 module.exports = {
+  avisoDeSocio,
   // identidad
   esOwner, resolverIdentidad, normalizarNumero, ultimos9, ownersConfigurados,
   // trabajadores (solo presencia)
