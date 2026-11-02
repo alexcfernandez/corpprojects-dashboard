@@ -35,7 +35,9 @@ function diaPropuesto({ urgente = false, ahora = new Date() } = {}) {
 async function operarios() {
   const us = await require('./users').getUsers(false);
   const N = require('./users').normalizeRole;
-  return us.filter(u => ['tecnico', 'encargado'].includes(N(u.role))).map(u => ({ id: String(u._id), name: u.name, telefono: u.whatsapp || u.telefono || '' }));
+  // Los socios (Alfonso, Álex) no salen como propuesta (2/11/2026: propuso a Alfonso para Bellpuig); se les puede asignar a mano.
+  const socio = require('./memoria').esSocio;
+  return us.filter(u => u.active !== false && ['tecnico', 'encargado'].includes(N(u.role)) && !socio(u)).map(u => ({ id: String(u._id), name: u.name, telefono: u.whatsapp || u.telefono || '' }));
 }
 
 async function _peticion(db, id) {
