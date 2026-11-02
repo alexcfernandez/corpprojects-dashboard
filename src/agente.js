@@ -167,6 +167,7 @@ REGLAS DURAS:
 - Lo que nos DEBE un cliente o comunidad → facturas_cliente. Si vuelve más de un cliente igual de parecido, di cuáles y PREGUNTA; si uno encaja claramente, contesta con ese. «No tiene pendientes» solo si su lista está vacía.
 - Tiempo de Álex o Alfonso (visitas, presupuestos, compras, gestiones, «hemos ido a…», «he estado una hora con…») → apuntar_tiempo_socio; «en qué se nos ha ido el tiempo este mes» → tiempo_socios_mes.
 - «Descuéntale / descontárselo de la nómina a X…» (botas, una herramienta o material suyo que pagó la empresa) → apuntar_descuento_nomina.
+- «Pide el DNI / NIF a <cliente>», «pídele el DNI a Aura, teléfono 687…», o falta el NIF de un cliente para facturar → pedir_datos_cliente (si no hay teléfono en su ficha, pregúntaselo a Álex).
 - «Le he dado / pasado X € a Y», «adelanto a Y», «el sábado de Y» → apuntar_adelanto (medio: efectivo, bizum o banco). «¿Cuánto lleva Y de adelantos?», «adelantos de octubre» → adelantos_mes. Si Álex contesta con palabras a «💸 Pago del banco por aclarar» → aclarar_pago_banco.
 - La FACTURA o el ticket de una compra a un proveedor («mándame la factura del taladro», «pásame la factura F0018-…») → pasar_factura_compra (NO pasar_documento: las facturas de compra están en Compras, no en Personal).
 - Qué material se compró, dónde o para qué obra → buscar_compras. Si compara precios («dónde es más barato»), compara por la misma unidad (€/saco, €/placa, €/m²), ordena del más barato al más caro y marca como más barato SOLO uno. Cuánto gastamos en un proveedor → gasto_proveedor (Obramat = Bricoman = Bricomart; Bauhaus = Werkhaus).
@@ -324,9 +325,12 @@ async function pasarDocumento({ de, que } = {}, from) {
     if (!u || (u.varios && !u.varios.length)) u = await _trabajador(de || '', { inactivos: true });
     if (u && u.varios && u.varios.length) return { handled: true, reply: `¿De quién? Hay varios: ${u.varios.join(', ')}.`, aclara: true };
     docs = u && !u.varios ? await P.carpeta({ userId: String(u._id) }) : []; quien = u && !u.varios ? u.name : de;
-    const db = await require('./db').getDB();
-    const sueltos = (await db.collection('docsPersonal').find({ ambito: 'trabajador', $or: [{ userId: null }, { userId: { $exists: false } }, { estado: 'propuesta' }] }, { projection: { data: 0 } }).sort({ subido: -1 }).limit(300).toArray())
-      .filter(d => _casa([d.nombre, d.notas].join(' '), (u && !u.varios ? u.name : de) || '') || _casa([d.nombre, d.notas].join(' '), de || '')).map(d => ({ ...d, id: String(d._id) }));
+    let sueltos = [];
+    try {
+      const db = await require('./db').getDB();
+      sueltos = (await db.collection('docsPersonal').find({ ambito: 'trabajador', $or: [{ userId: null }, { userId: { $exists: false } }, { estado: 'propuesta' }] }, { projection: { data: 0 } }).sort({ subido: -1 }).limit(300).toArray())
+        .filter(d => _casa([d.nombre, d.notas].join(' '), (u && !u.varios ? u.name : de) || '') || _casa([d.nombre, d.notas].join(' '), de || '')).map(d => ({ ...d, id: String(d._id) }));
+    } catch (e) { console.warn('[Agente] papeles sin dueño:', e.message); }
     docs = [...docs, ...sueltos.filter(x => !docs.some(d => String(d.id) === x.id))];
     if (!docs.length && (!u || u.varios)) return { handled: true, reply: `No encuentro a «${de}» ni papeles suyos en Personal.`, aclara: true };
   }
@@ -353,7 +357,8 @@ async function pasarDocumento({ de, que } = {}, from) {
         if (raw && raw.data && await W.enviarArchivo(from, pie, { data: raw.data.buffer ? Buffer.from(raw.data.buffer) : raw.data, mime: raw.mime || d.mime, nombre: d.nombre || nombreTipo(d) })) mandados++;
       } catch (e) { console.warn('[Agente] archivo:', e.message); }
     }
-    if (mandados === top.length) return { handled: true, reply: `Te lo mando aquí mismo${mandados > 1 ? ` (${mandados} documentos)` : ''}.${extra}` };
+    // Que diga QUÉ manda (2/11/2026: «Te lo mando aquí mismo» sin decir cuál; Álex no sabía si era el bueno).
+    if (mandados === top.length) return { handled: true, reply: `Te mando aquí mismo ${top.map(d => `*${nombreTipo(d)}* de ${quien}${d.nombre ? ` (${d.nombre})` : ''}`).join(', ')}.${extra}` };
   }
   const lineas = [];
   for (const d of top) lineas.push(`📎 *${nombreTipo(d)}*${d.nombre ? ` (${d.nombre})` : ''}${d.fecha ? ` · ${f(d.fecha)}` : ''}${d.caduca ? ` · caduca ${f(d.caduca)}` : ''}\n${await E.crear(d.id || d._id, { nombre: d.nombre || nombreTipo(d), para: from })}`);

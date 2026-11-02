@@ -527,6 +527,8 @@ async function procesarWhatsApp(from, body, media = {}) {
     if (trab || await acceso.esTrabajadorActivo(from)) {
       return procesarTrabajador(from, body, media, trab || { userId: null, name: acceso.matchTrabajador(from) || '' }, responder);
     }
+    // ¿Le hemos pedido el DNI/NIF para su factura (datosCliente.js)? Lo que mande va a su ficha de StelOrder y a Álex.
+    try { const r = await require('./datosCliente').respuesta(from, body, media, { _bajar: url => _bajarMedia(url, 30000) }); if (r) return responder(r); } catch (e) { console.error('[DatosCliente] respuesta:', e.message); }
     // ¿Le hemos mandado papeles para firmar (enviar-firmar)? Lo que mande va a los documentos de esa obra.
     try { const r = await respuestaFirmante(from, body, media); if (r) return responder(r); } catch (e) { console.error('[Firmar] respuesta:', e.message); }
     // ¿Es un cliente contestando a un recordatorio de cobro? Se apunta en su factura y se pasa a Álex.

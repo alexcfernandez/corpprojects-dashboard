@@ -19,5 +19,5 @@ test('el CIF va como documento por el puente, con el enlace de pie', async () =>
   assert.equal(enviados.length, 1);
   assert.equal(enviados[0].a.mime, 'application/pdf'); assert.equal(enviados[0].a.nombre, 'CIF Corp Projects.pdf');
   assert.match(enviados[0].pie, /Si no se abre: https:\/\/x\/d\/tok/);
-  assert.match(r.reply, /Te lo mando aquí mismo/); assert.match(r.reply, /B09899253/);
+  assert.match(r.reply, /Te mando aquí mismo \*Escrituras \/ CIF\* de la empresa/); assert.match(r.reply, /B09899253/);
 });

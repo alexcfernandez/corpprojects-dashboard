@@ -372,6 +372,8 @@ function startScheduler() {
   // Documentación del personal y de empresa que caduca (reconocimientos, certificados…): aviso a oficina.
   // Documentos del alta pedidos por Corpy: a quien no los ha mandado en un día se le recuerda (máx. 2 veces).
   cron.schedule('30 10 * * 1-5', () => require('./docsAlta').recordar().catch(e => console.warn('[DocsAlta] recordar:', e.message)), { timezone: 'Europe/Madrid' });
+  // DNI/NIF pedido a un cliente para su factura: un recordatorio a los 2 días (datosCliente.js).
+  cron.schedule('35 10 * * 1-5', () => require('./datosCliente').recordar().catch(e => console.warn('[DatosCliente] recordar:', e.message)), { timezone: 'Europe/Madrid' });
   // Encargos a trabajadores: recordatorios y aviso a Álex si no contestan (encargos.js).
   // Cada lunes a las 8:30, «lo que falta» del equipo y de las obras de contratista (pendientesEquipo.js).
   cron.schedule('30 8 * * 1', () => require('./pendientesEquipo').avisoSemanal(), { timezone: 'Europe/Madrid' });
