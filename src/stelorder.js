@@ -255,7 +255,12 @@ async function getAllOrdinaryInvoices() {
       if (!o || o.deleted) return;
       // La emisión suele venir en `date`; dejamos alternativas por si acaso.
       const date = o.date || o['issue-date'] || o['emission-date'] || o['creation-date'] || o['utc-creation-date'] || null;
-      map[String(o.id)] = { date, pdfPath: o['pdf-path'] || null, number: o['full-reference'] || null, accountId: String(o['account-id'] || ''), ...importesDoc(o) };
+      // parentId / lineParents: el documento del que sale (p. ej. el pedido PDT si se generó desde él). Lo usa el tablero del ciclo.
+      const lineParents = [...new Set((o.lines || []).filter(l => !l.deleted && l['parent-document-id']).map(l => String(l['parent-document-id'])))];
+      const rem = o['remaining-total-amount'];
+      map[String(o.id)] = { date, pdfPath: o['pdf-path'] || null, number: o['full-reference'] || null, accountId: String(o['account-id'] || ''), ...importesDoc(o),
+        parentId: o['parent-document-id'] ? String(o['parent-document-id']) : null, lineParents,
+        pendiente: rem == null || rem === '' ? null : Number(rem), modificada: o['utc-last-modification-date'] || null };
       if (!sample) sample = { id: o.id, date, tienePdf: !!o['pdf-path'], camposFecha: Object.keys(o).filter(k => /date|fecha|pdf/i.test(k)) };
     });
     console.log(`[StelOrder] Facturas (ordinaryInvoices): ${Object.keys(map).length}` + (sample ? ` | muestra: ${JSON.stringify(sample)}` : ''));

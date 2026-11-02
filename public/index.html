@@ -89,6 +89,7 @@ function cpUpdateBanner(){
 </nav>
 <nav class="nav" id="subnav" style="display:none;background:var(--bg3)">
   <span class="subgrp" data-grp="obras" style="display:none">
+    <button class="nav-btn" onclick="showTab('ciclo',this)">🚦 Ciclo de trabajos</button>
     <button class="nav-btn" onclick="showTab('obras',this)">📊 Obras</button>
     <button class="nav-btn" onclick="showTab('pedidos',this)">🔧 Pedidos de trabajo</button>
     <button class="nav-btn" onclick="showTab('planning',this)">🗓 Planificación</button>
@@ -435,6 +436,9 @@ function cpUpdateBanner(){
     <div style="text-align:center;padding:40px;color:var(--text3)"><div style="font-size:32px;margin-bottom:10px">📋</div><div>Cargando módulo de partes...</div></div>
   </div>
 </div>
+
+<!-- CICLO DE TRABAJOS (tablero modo restaurante; modules/ciclo.js) -->
+<div id="tab-ciclo" class="panel"><div id="ciclo-container"></div></div>
 
 <!-- PEDIDOS DE TRABAJO -->
 <div id="tab-pedidos" class="panel">
@@ -1869,6 +1873,7 @@ function showTab(id, btn){
     comunidades: ['Comunidades', 'comunidades-container'],
     familias: ['FamiliasAdmin', 'familias-resp-container'],
     pedidos: ['PedidosAdmin', 'pedidos-container'],
+    ciclo: ['Ciclo', 'ciclo-container'],
     planning: ['Planning', 'planning-container'],
     actividad: ['Actividad', 'actividad-container'],
   };
@@ -1964,6 +1969,7 @@ window.addEventListener('load',()=>{
 <script src="/modules/emails-admin.js"></script>
 <script src="/modules/familias-admin.js"></script>
 <script src="/modules/pedidos-admin.js"></script>
+<script src="/modules/ciclo.js"></script>
 <script src="/modules/planning.js"></script>
 <script src="/modules/activity-admin.js"></script>
 <script>

@@ -160,6 +160,7 @@ textarea.obra-sel{resize:vertical;line-height:1.4}
     <h3>Tramos de hoy</h3>
     <div id="tramos-lista"></div>
   </div>
+  <div id="mis-trabajos"></div>
   <div id="km-aviso"></div>
   <button class="sec-btn" onclick="location.href='/compra'" style="border-color:rgba(34,196,135,.5)">📸 Subir una compra (albarán, factura, ticket)</button>
   <button class="sec-btn" id="btn-repostaje" onclick="abrirRepostaje()" style="display:none">⛽ He repostado</button>
@@ -346,7 +347,7 @@ async function cargar(){
   let r;try{r=await fetchT('/api/fichaje/estado',{headers:authH()},12000);}
   catch(e){_sinRed=true;render(estadoLocal());renderOffline();return;} // sin cobertura
   _sinRed=false;
-  try{const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');await cargarDia();pintar(d);cargarCorrecciones();avisoFirmaPendiente();cargarFirmas();avisoPush();menuTrabajador();vehiculosTrabajador();if(colaTodos().length)sincronizar();}catch(e){toast(e.message,'error');}}
+  try{const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');await cargarDia();pintar(d);cargarCorrecciones();avisoFirmaPendiente();cargarFirmas();avisoPush();menuTrabajador();vehiculosTrabajador();misTrabajos();if(colaTodos().length)sincronizar();}catch(e){toast(e.message,'error');}}
 let _estado=null,_obras=null;
 const escH=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function estadoDe(d){return d?(d.estado||(d.dentro?'dentro':'fuera')):'fuera';}
@@ -694,6 +695,28 @@ async function menuTrabajador(){if(_menuVisto)return;_menuVisto=true;
     const b=document.getElementById('btn-parte');if(!b)return;b.style.display=m.tieneParte?'':'none';
     b.textContent=['owner','oficina','encargado'].includes(m.rol)?'📋 Parte de trabajo':'📋 Parte de trabajo · tienes trabajo asignado hoy';
   }catch(e){}}
+// ── MIS TRABAJOS (2/11/2026): al fichar, los trabajos que tiene pendientes, con el mismo semáforo que el tablero
+// de la oficina. Verde: tiene día. Ámbar: sin día (queda con el cliente). Rojo: la cita ya pasó y falta el parte.
+async function misTrabajos(){
+  const box=document.getElementById('mis-trabajos');if(!box)return;
+  let l=[];try{const r=await fetchT('/api/workorders/mine',{headers:authH()},15000);if(!r.ok)return;l=(await r.json()).list||[];}catch(e){return;}
+  if(!l.length){box.innerHTML='';return;}
+  const hoy=new Date().toLocaleDateString('en-CA',{timeZone:'Europe/Madrid'});
+  const dif=f=>Math.round((Date.parse(f)-Date.parse(hoy))/86400000);
+  const D=['dom','lun','mar','mié','jue','vie','sáb'];
+  const cuando=c=>{const d=dif(c.fecha);const h=c.hora?' a las '+c.hora:'';if(d===0)return'Hoy'+h;if(d===1)return'Mañana'+h;const x=new Date(c.fecha+'T12:00:00');return D[x.getDay()]+' '+x.getDate()+'/'+(x.getMonth()+1)+h;};
+  const e=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const it=l.map(p=>{const c=p.cita||{};let col='var(--amber)',txt='Sin día: queda con el cliente',ord=1;
+    if(c.fecha){const d=dif(c.fecha);if(d<0){col='var(--red)';txt='Era '+cuando(c).toLowerCase()+' · falta el parte';ord=0;}else{col='var(--green)';txt=cuando(c);ord=d===0?0.5:2+d;}}
+    else if(!p.cita){col=p.alertLevel==='red'?'var(--red)':p.alertLevel==='amber'?'var(--amber)':'var(--green)';txt=(p.days||0)+' días abierto';ord=p.alertLevel==='red'?0:1.5;}
+    return{p,c,col,txt,ord};}).sort((a,b)=>a.ord-b.ord);
+  box.innerHTML=`<div class="tramos"><h3>🔧 Mis trabajos pendientes (${l.length})</h3>${it.map(({p,c,col,txt})=>`<div onclick="location.href='/parte'" style="cursor:pointer;background:var(--bg3);border:1px solid var(--border);border-left:5px solid ${col};border-radius:10px;padding:11px 14px;margin-bottom:7px">
+    <div style="font-size:13px;font-weight:700;color:${col}">📅 ${e(txt)}${p.deEquipo?' · vas de ayuda':''}</div>
+    <div style="font-weight:600;margin-top:2px">${e(p.client||'')}</div>
+    <div style="font-size:13.5px;color:var(--text2);margin-top:2px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${e(c.resumen||p.description||'')}</div>
+    ${c.direccion?`<div style="font-size:13px;color:var(--text2);margin-top:2px">📍 ${e(c.direccion)}</div>`:''}
+    <div style="font-size:12.5px;color:var(--blue);margin-top:5px;font-weight:600">Abrir y hacer el parte →</div></div>`).join('')}</div>`;
+}
 // ── VEHÍCULO: km una vez a la semana y al repostar (solo nombre y matrícula, sin dinero de la empresa) ──
 let _veh=null;
 async function vehiculosTrabajador(){

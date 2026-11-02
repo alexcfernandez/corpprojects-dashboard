@@ -1552,7 +1552,12 @@ app.get('/api/workorders/mine', async (req, res) => {
     const asig = require('./asignaciones');
     const list = await getWorkOrdersLive();
     await asig.attachAssignments(list);
-    const mine = list.filter(p => String(p.assignedUserId || '') === String(workerDoc.workerId) && p.workStatus !== 'done' && p.workStatus !== 'invoiced');
+    // También los trabajos en los que va de acompañante (cita.equipo guarda nombres: «Diego», «Diego Pérez»).
+    const nrm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+    const yo = nrm(workerDoc.workerName), yo1 = yo.split(/\s+/)[0];
+    const vaDeEquipo = p => !!yo1 && ((p.cita && p.cita.equipo) || []).some(e => { const x = nrm(e); return x === yo || x === yo1 || x.split(/\s+/)[0] === yo1; });
+    const mine = list.filter(p => (String(p.assignedUserId || '') === String(workerDoc.workerId) || vaDeEquipo(p)) && p.workStatus !== 'done' && p.workStatus !== 'invoiced');
+    mine.forEach(p => { p.deEquipo = String(p.assignedUserId || '') !== String(workerDoc.workerId); });
     // Adjuntar la sesión abierta (cronómetro) de cada pedido, si la hay
     const open = await asig.getOpenTimers(workerDoc.workerId);
     mine.forEach(p => { p.activeStartedAt = open[String(p.id)] || null; });
@@ -1658,6 +1663,18 @@ app.get('/api/informes/trabajos.pdf', requireAuthOficina, async (req, res) => {
   try { const P = require('./planificacionPdf'); const d = await P.datos(); const pdf = await P.generar(d);
     res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="Trabajos-y-presupuestos-${d.hoy}.pdf"` }).send(pdf); }
   catch (err) { res.status(500).json({ error: err.message }); }
+});
+// Tablero del ciclo: incidencia → técnico → cita → parte → factura → cobro (src/ciclo.js). Solo lee cachés.
+app.get('/api/ciclo', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./ciclo').datos()); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/ciclo/incidencia/:ref/estado', requireAuthOficina, express.json(), async (req, res) => {
+  try { res.json(await require('./ciclo').cerrarIncidencia(String(req.params.ref).toUpperCase(), (req.body || {}).estado, req.user?.name || req.user?.username)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/ciclo/ignorar', requireAuthOficina, express.json(), async (req, res) => {
+  try { const b = req.body || {}; res.json(await require('./ciclo').ignorar(b.id, b.motivo, req.user?.name || req.user?.username)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
 });
 // El operario pone en su app el día que ha quedado con el cliente (trabajos sin día; trabajosSeguimiento.js).
 app.post('/api/fichaje/trabajo/cita', express.json(), async (req, res) => {
