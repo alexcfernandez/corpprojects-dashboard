@@ -143,8 +143,23 @@ async function consultaClasica({ consulta } = {}, from) {
   return { respuestaDelAsistente: String(r || '').slice(0, 6000) };
 }
 
+// Memoria de Corpy (memoria.js): lo que sabemos de un sitio o persona. A un trabajador, solo lo de clientes.
+async function consultarMemoria(input, from) {
+  const M = require('./memoria');
+  const r = await M.consultar({ texto: String(input.que || ''), interno: require('./acceso').esOwner(from), limite: 40 });
+  if (!r.hechos.length && !r.notas.length && !r.presupuestos.length) return { nada: `No tengo nada guardado de «${input.que}».` };
+  return { memoria: M.resumen(r, { max: 9000 }) };
+}
+
 // ── ACCIONES ──
 async function ejecutar(name, input, from) {
+  if (name === 'corregir_dato') {
+    if (!require('./acceso').esOwner(from)) return { handled: true, reply: 'Eso me lo tiene que decir Álex.' };
+    try {
+      const r = await require('./memoria').corregir({ sobre: input.sobre, texto: input.texto, tipo: input.tipo || 'correccion', sitio: input.sitio || null, por: 'Álex' });
+      return { handled: true, reply: `🧠 Apuntado de *${r.sujeto}*${input.sitio ? ` (${input.sitio})` : ''}: ${input.texto}${r.arreglos.length ? `\n✔ ${r.arreglos.join('\n✔ ')}` : ''}\nNo lo vuelvo a olvidar.` };
+    } catch (e) { return { handled: true, reply: e.message }; }
+  }
   if (name === 'cerrar_pendientes') {
     const P = require('./pendientes');
     const nums = [...new Set((input.numeros || []).map(Number).filter(n => n >= 1 && n <= 99))].sort((a, b) => b - a);
@@ -375,9 +390,11 @@ const TOOLS = [
   { name: 'repostajes_sin_vehiculo', description: 'Lista de repostajes que aún no tienen vehículo («qué repostajes faltan», «repostajes sin vehículo»).', input_schema: { type: 'object', properties: {} } },
   { name: 'apuntar_pendiente', description: 'Apunta un PENDIENTE o recordatorio para Álex («apúntame para el lunes repasar el PRT00852», «recuérdame llamar a Caterina»). Si dice un día, resuélvelo a YYYY-MM-DD. El texto es lo que hay que hacer, tal cual (con números de documento si los dice).', input_schema: { type: 'object', properties: { texto: { type: 'string' }, fecha: { type: ['string', 'null'] } }, required: ['texto'] } },
   { name: 'cerrar_pendientes', description: 'Cierra uno o VARIOS pendientes de Álex por su número: «hecho el pendiente 1, 2 y 3».', input_schema: { type: 'object', properties: { numeros: { type: 'array', items: { type: 'integer' } } }, required: ['numeros'] } },
+  { name: 'consultar_memoria', description: 'Lo que RECORDAMOS de una comunidad, piso, obra o persona: contacto, averías y lo que se hizo (por orden), material puesto («¿qué fluorescente pusimos en el parking de Joan Maragall?»), presupuestos y su estado, si alguien está de alta, lo que Álex corrigió. «¿Qué sabemos de Joan Maragall 5º 3ª?», «¿quién es el contacto de…?», «¿qué se ha hecho en Cartagena?».', input_schema: { type: 'object', properties: { que: { type: 'string', description: 'Comunidad/piso/obra o persona tal cual (p. ej. «Joan Maragall 44 5º 3ª», «Javi»)' } }, required: ['que'] } },
+  { name: 'corregir_dato', description: 'Álex CORRIGE a Corpy o le pide que RECUERDE algo: «Javi sí está de alta», «el contacto del 5º 3ª de Joan Maragall es Josep Maria 600…», «en el parking de Illa Verda pusimos fluorescentes de 1,60», «Judit ya no trabaja con nosotros». Guarda el hecho (el nuevo sustituye al viejo) y arregla el origen (p. ej. cierra la ficha de alta).', input_schema: { type: 'object', properties: { sobre: { type: 'string', description: 'Persona o comunidad/obra de la que es (p. ej. «Javi», «Joan Maragall 44-46»)' }, sitio: { type: ['string', 'null'], description: 'Piso o zona si lo dice («5º 3ª», «parking»)' }, tipo: { type: 'string', enum: ['correccion', 'contacto', 'material', 'estado', 'trabajo', 'dato'], description: 'contacto = nombre/teléfono; material = lo que se puso; estado = situación (de alta, de baja, aceptado…); correccion = Corpy dijo algo mal' }, texto: { type: 'string', description: 'Lo correcto, en una frase' } }, required: ['sobre', 'texto'] } },
   { name: 'consulta_clasica', description: 'El asistente de siempre, SOLO PARA CONSULTAR: un documento por número («dime el 309», «conceptos del 509»), presupuestos por estado o cliente, pedidos de trabajo, el resumen del negocio, cobros y a quién reclamar, el PDF de lo pendiente de cobro, notas de una comunidad. Escribe la consulta clara y completa con el nombre exacto (p. ej. «pedidos de CTAT PROP RUTLLA, 200-202»). Nunca para crear, cambiar, enviar o borrar.', input_schema: { type: 'object', properties: { consulta: { type: 'string' } }, required: ['consulta'] } },
 ];
-const LECTURA = new Set(['facturas_cliente', 'buscar_compras', 'gasto_proveedor', 'documentos_vehiculo', 'consulta_clasica']);
-const LECTORES = { facturas_cliente: facturasCliente, buscar_compras: buscarCompras, gasto_proveedor: gastoProveedor, documentos_vehiculo: documentosVehiculo, consulta_clasica: consultaClasica };
+const LECTURA = new Set(['facturas_cliente', 'buscar_compras', 'gasto_proveedor', 'documentos_vehiculo', 'consulta_clasica', 'consultar_memoria']);
+const LECTORES = { consultar_memoria: consultarMemoria, facturas_cliente: facturasCliente, buscar_compras: buscarCompras, gasto_proveedor: gastoProveedor, documentos_vehiculo: documentosVehiculo, consulta_clasica: consultaClasica };
 
 module.exports = { DENTRO, TOOLS, LECTURA, LECTORES, ejecutar, contextoReciente, _puntos: puntos, _casaProveedor: casaProveedor, _terminosMaterial: terminosMaterial };

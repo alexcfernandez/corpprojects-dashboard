@@ -14,9 +14,12 @@ async function resumen() {
     Promise.race([require('./docsObra').pendientes(), new Promise(r => setTimeout(() => r([]), 8000))]).catch(() => []),
   ]);
   const activos = new Set(tallas.map(t => t.id));
-  const personas = res.trabajadores.filter(w => activos.has(String(w.id))).map(w => {
+  // Comprobar antes de avisar (2/11/2026): a los socios (Álex, Alfonso) no se les piden papeles de trabajador, y quien
+  // ya cobra nómina de la gestoría está de alta aunque no se haya subido el papel del alta.
+  const { esSocio } = require('./memoria');
+  const personas = res.trabajadores.filter(w => activos.has(String(w.id)) && !esSocio(w)).map(w => {
     const r = w.requisitos || {};
-    const faltan = Object.keys(NOM).filter(k => r[k] && r[k].estado !== 'ok' && r[k].estado !== 'pronto').map(k => NOM[k] + (r[k].estado === 'caducado' ? ' (caducado)' : ''));
+    const faltan = Object.keys(NOM).filter(k => r[k] && r[k].estado !== 'ok' && r[k].estado !== 'pronto' && !(k === 'alta_ss' && w.nominas > 0)).map(k => NOM[k] + (r[k].estado === 'caducado' ? ' (caducado)' : ''));
     const t = tallas.find(x => x.id === String(w.id));
     if (t && t.faltan.some(k => k !== 'nacimiento')) faltan.push('tallas');
     return { nombre: w.name, faltan };

@@ -70,6 +70,10 @@ async function datos(fecha = hoyMadrid()) {
   await w('correos', async () => (await db.collection('emails').find({ fecha: { $gte: ini, $lt: fin } }).project({ de: 1, asunto: 1, categoria: 1, urgencia: 1, compraId: 1, estado: 1, tieneAdjuntos: 1 }).sort({ fecha: 1 }).limit(200).toArray())
     .map(e => ({ de: corto(e.de, 60), asunto: corto(e.asunto, 120), categoria: e.categoria, urgencia: e.urgencia, adjuntos: !!e.tieneAdjuntos, compra: !!e.compraId, estado: e.estado || null })));
   // Altas de gente nueva abiertas: qué paso falta
+  // Antes de hablar de altas se cierran las de quien ya cobra nómina (memoria.js); y va lo que Álex ya corrigió o
+  // confirmó (2/11/2026: la revisión repetía «Javier lleva 13 días sin alta» aunque ya estaba de alta).
+  await w('altasCerradasPorNomina', async () => require('./memoria').cerrarAltasConNomina({ por: 'Corpy (revisión: ya tiene nómina)' }));
+  await w('memoria', async () => require('./memoria').vigentesRecientes());
   await w('altas', async () => (await require('./incorporaciones').lista({})).map(i => ({ id: i.id || String(i._id), nombre: i.nombre, inicio: i.fechaInicio, falta: (i.pasos || []).filter(p => !p.ok && p.antes).map(p => p.t + (p.nota ? ` (${p.nota})` : '')) })));
   // Lo que el dashboard ha escrito hoy en StelOrder
   await w('stel', async () => (await db.collection('stelWriteLog').find({ at: { $gte: ini, $lt: fin } }).project({ tipo: 1, doc: 1, tercero: 1, por: 1, hechos: 1 }).limit(100).toArray()).map(x => ({ tipo: x.tipo, doc: x.doc, tercero: x.tercero, por: x.por, n: (x.hechos || []).length })));
@@ -176,6 +180,7 @@ Qué buscar:
 - Lo estancado: encargos de 3 días o más o con 2 recordatorios sin respuesta; compras sin obra; altas con todo firmado que solo esperan «Enviado a la gestoría».
 - Compras: quién ha ido a comprar 3 veces o más hoy (viajes), y si la cola por revisar crece.
 - Correos que piden una acción (Administración/notificaciones oficiales con plazo, gestoría, clientes que reclaman o piden explicaciones, proveedores, médicos/prevención). Las notificaciones oficiales con plazo, lo primero.
+- memoria son cosas que Álex YA corrigió o confirmó (p. ej. «Javi de alta», un contacto, un presupuesto aceptado): mandan sobre lo demás; NUNCA digas lo contrario ni lo vuelvas a sacar como problema.
 - resueltosDeAntes son temas que Álex YA marcó como hechos o ignorados (con su nota, p. ej. «pagado», «ya se mandó el 15/10»): NO los vuelvas a poner salvo que HOY pase algo NUEVO sobre ese tema (un correo o mensaje nuevo), y entonces di solo lo nuevo.
 - pendientesDeAntes son puntos de revisiones anteriores que Álex aún no ha marcado: NO los repitas salvo que en los datos de HOY se vea claramente que siguen sin resolver (y entonces dilo una vez). Nunca repitas mejoras del programa de días anteriores.
 - No pongas cosas sin importancia (saludos, mensajes de prueba, avisos automáticos que ya se ven solos).

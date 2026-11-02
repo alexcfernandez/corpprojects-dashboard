@@ -152,7 +152,7 @@ const EXTRA = require('./agenteExtra');
 TOOLS.push(...EXTRA.TOOLS);
 for (const t of EXTRA.LECTURA) LECTURA.add(t);
 
-function systemPrompt(hoy, contexto = '') {
+function systemPrompt(hoy, contexto = '', memoria = '') {
   return `Eres el asistente del jefe de una empresa de mantenimiento de fincas, por WhatsApp. Hoy es ${hoy} (Europe/Madrid).
 REGLAS DURAS:
 - Si NO puedes resolver con confianza a qué/quién se refiere (comunidad, cliente, trabajador), haz una PREGUNTA corta de aclaración; NUNCA elijas "el más parecido".
@@ -176,22 +176,26 @@ REGLAS DURAS:
 - Documentos por número, presupuestos, pedidos, resumen, cobros, PDF de pendientes, notas de comunidad → consulta_clasica con la consulta reescrita clara (con el nombre exacto que hayas sacado de la conversación). Pasa su respuesta casi tal cual.
 - Respuestas cortas («era Rutlla 202», «el de Alfonso», «no, la otra»): entiéndelas con la CONVERSACIÓN RECIENTE de abajo y sigue con lo que se estaba hablando.
 - Si Álex pide CREAR o CAMBIAR algo que no está en tus herramientas (hacer o modificar un presupuesto, una factura, un pedido o una incidencia, cambiar importes…) contesta solo: NO_ES_MIO. Apuntar pendientes o recordatorios para Álex SÍ es tuyo (apuntar_pendiente); los de la agenda con hora, crear_evento_agenda.
+- MEMORIA (2/11/2026): lo que sabemos de una comunidad, piso, obra o persona (contacto, averías y lo que se hizo, material puesto, presupuestos, si alguien está de alta…) → consultar_memoria. Si abajo hay «LO QUE RECUERDAS», úsalo y NO preguntes ni digas lo contrario de lo que pone. «Recuerda que…», «apunta que en X pusimos…» o Álex te CORRIGE («Javi sí está de alta», «el contacto del 5º 3ª es Josep Maria», «eso no es así, …») → corregir_dato (guarda el hecho y arregla el origen para no repetirlo). «¿Cuánto nos debe / le debemos a <trabajador>?» es su saldo del cuadre de nóminas (memoria), NO facturas_cliente.
 - Al contestar con datos: breve, para WhatsApp (*negritas* para nombres y totales, una línea por persona u obra).
 - Formato de WhatsApp: negrita con UN asterisco a cada lado (*así*), NUNCA con dos (**así**), sin títulos con # ni líneas ---.
-- Responde en español y breve.${contexto ? `
+- Responde en español y breve.${memoria ? `
+
+LO QUE RECUERDAS (memoria de Corpy; manda sobre lo que creas tú):
+${memoria}` : ''}${contexto ? `
 
 CONVERSACIÓN RECIENTE (lo último que se han dicho; el mensaje a contestar es el siguiente):
 ${contexto}` : ''}`;
 }
 
 // Llama al modelo con tools. Devuelve {tipo:'tool',name,input} | {tipo:'texto',texto} | {tipo:'nada'}.
-async function llamarModelo(messages, hoy, { maxTokens = 500, contexto = '' } = {}) {
+async function llamarModelo(messages, hoy, { maxTokens = 500, contexto = '', memoria = '' } = {}) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return { tipo: 'nada' };
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: MODELO(), max_tokens: maxTokens, system: systemPrompt(hoy, contexto), tools: TOOLS, messages }),
+    body: JSON.stringify({ model: MODELO(), max_tokens: maxTokens, system: systemPrompt(hoy, contexto, memoria), tools: TOOLS, messages }),
   });
   if (!r.ok) { console.error('[Agente] IA HTTP', r.status); return { tipo: 'nada' }; }
   const data = await r.json();
@@ -314,9 +318,17 @@ async function pasarDocumento({ de, que } = {}, from) {
   let docs, quien;
   if (esEmpresa) { docs = await P.carpeta({ ambito: 'empresa' }); quien = 'la empresa'; }
   else {
-    const u = await _trabajador(de || '');
-    if (!u || u.varios) return { handled: true, reply: u && u.varios && u.varios.length ? `¿De quién? Hay varios: ${u.varios.join(', ')}.` : `No encuentro a «${de}».`, aclara: true };
-    docs = await P.carpeta({ userId: String(u._id) }); quien = u.name;
+    // También los que ya no están (Judit) y, si no es nadie de la plantilla o su carpeta no lo tiene, los papeles sin
+    // dueño que lo nombran (2/11/2026: «pásame el DNI de X» → «no lo tengo» con el papel subido sin asignar).
+    let u = await _trabajador(de || '');
+    if (!u || (u.varios && !u.varios.length)) u = await _trabajador(de || '', { inactivos: true });
+    if (u && u.varios && u.varios.length) return { handled: true, reply: `¿De quién? Hay varios: ${u.varios.join(', ')}.`, aclara: true };
+    docs = u && !u.varios ? await P.carpeta({ userId: String(u._id) }) : []; quien = u && !u.varios ? u.name : de;
+    const db = await require('./db').getDB();
+    const sueltos = (await db.collection('docsPersonal').find({ ambito: 'trabajador', $or: [{ userId: null }, { userId: { $exists: false } }, { estado: 'propuesta' }] }, { projection: { data: 0 } }).sort({ subido: -1 }).limit(300).toArray())
+      .filter(d => _casa([d.nombre, d.notas].join(' '), (u && !u.varios ? u.name : de) || '') || _casa([d.nombre, d.notas].join(' '), de || '')).map(d => ({ ...d, id: String(d._id) }));
+    docs = [...docs, ...sueltos.filter(x => !docs.some(d => String(d.id) === x.id))];
+    if (!docs.length && (!u || u.varios)) return { handled: true, reply: `No encuentro a «${de}» ni papeles suyos en Personal.`, aclara: true };
   }
   const nq = _n(que);
   const tipo = (SINONIMOS.find(([re]) => re.test(nq)) || [])[1];
@@ -348,8 +360,8 @@ async function pasarDocumento({ de, que } = {}, from) {
   return { handled: true, reply: `${lineas.join('\n\n')}${extra}\n\n_El enlace es solo para ti y caduca en ${E.HORAS} h._` };
 }
 
-async function _trabajador(nombre) {
-  const us = (await require('./users').getUsers(false)).filter(u => u.active !== false);
+async function _trabajador(nombre, { inactivos = false } = {}) {
+  const us = (await require('./users').getUsers(false)).filter(u => inactivos || u.active !== false);
   const c = us.filter(u => _casa(u.name, nombre)); if (c.length === 1) return c[0];
   const p = us.filter(u => _n(u.name).split(' ')[0] === _n(nombre).split(' ')[0]); if (p.length === 1) return p[0];
   return { varios: (c.length ? c : p).map(u => u.name) };
@@ -445,8 +457,12 @@ async function _intentar({ texto, from, imagenes = [], puerta = null, contexto =
       ]
     : [{ role: 'user', content: String(texto || '') }];
 
+  // Lo que Corpy recuerda de lo que se nombra (sitios, personas): a un trabajador, solo lo de clientes.
+  let memoria = '';
+  try { memoria = await require('./memoria').paraPrompt([enAclaracion ? prev.textoOriginal : '', texto].join(' '), { interno: require('./acceso').esOwner(from), limite: 25 }); } catch (e) {}
+
   let resp;
-  try { resp = await _impl.llamarModelo(messages, hoy, { contexto }); }
+  try { resp = await _impl.llamarModelo(messages, hoy, { contexto, memoria }); }
   catch (e) { console.error('[Agente] modelo:', e.message); return { handled: false }; }
 
   // Consultas: se leen los datos y el modelo redacta la respuesta con ellos (hasta 3 consultas encadenadas).
@@ -455,7 +471,7 @@ async function _intentar({ texto, from, imagenes = [], puerta = null, contexto =
     try { datos = await LECTORES[resp.name](resp.input || {}, from); } catch (e) { console.error('[Agente] lectura', resp.name, e.message); datos = { error: 'No he podido leer los datos ahora mismo.' }; }
     messages.push({ role: 'assistant', content: resp.blocks }, { role: 'user', content: [{ type: 'tool_result', tool_use_id: resp.id, content: JSON.stringify(datos).slice(0, 20000) }] });
     console.log(`[Agente] lectura=${resp.name} puerta=${puerta || '?'}`);
-    try { resp = await _impl.llamarModelo(messages, hoy, { maxTokens: 900, contexto }); } catch (e) { console.error('[Agente] modelo:', e.message); return { handled: false }; }
+    try { resp = await _impl.llamarModelo(messages, hoy, { maxTokens: 900, contexto, memoria }); } catch (e) { console.error('[Agente] modelo:', e.message); return { handled: false }; }
     if (resp.tipo === 'texto') { estado.delete(from); if (/^\s*NO_ES_MIO\b/.test(resp.texto)) return { handled: false }; return { handled: true, reply: resp.texto }; }
   }
 

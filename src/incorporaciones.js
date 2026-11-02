@@ -304,6 +304,9 @@ async function setConfig(c = {}) { const db = await getDB(); const v = { autoGes
 
 // Cada mañana: avanzar lo que se pueda y avisar a Álex de lo que va tarde (empieza en ≤ 3 días y falta algo de antes).
 async function revisarManana({ _avisar = null } = {}) {
+  // Quien ya cobra nómina de la gestoría está de alta: su ficha se cierra antes de avisar (2/11/2026: Javi y Norman
+  // salieron 14 días seguidos como «sin alta» cuando ya estaban en la nómina de Eduard).
+  if (!_avisar) { try { await require('./memoria').cerrarAltasConNomina({ por: 'Corpy (mañana: ya tiene nómina)' }); } catch (e) { console.warn('[Incorporaciones] nómina:', e.message); } }
   const l = await lista(); const avisos = [];
   for (const v0 of l) {
     let v = v0; try { v = (await avanzar(v0.id, 'Corpy (mañana)')) || v0; } catch (e) { console.warn('[Incorporaciones]', e.message); }

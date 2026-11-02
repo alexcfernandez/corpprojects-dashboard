@@ -91,7 +91,7 @@ async function _llamarIA(prompt, maxTokens = 8000) {
 
 // Analiza una tanda de mensajes [{ _id, fecha, quien, texto, fotoIds, nMedia }] de UN grupo.
 const NUESTROS = /alfonso|alex|álex|oficina corp|corpy|judit|paula/i;
-async function _tanda(db, { jid, grupo, msgs, fuente, cat, _llamar, extra = '', maxTokens = 8000, contexto = [] }) {
+async function _tanda(db, { jid, grupo, msgs, fuente, cat, _llamar, extra = '', maxTokens = 8000, contexto = [], memoria = '' }) {
   const abiertas = await db.collection(COL).find({ jid, estado: { $in: ['pendiente', 'archivo'] } }).sort({ fecha: -1 }).limit(fuente === 'historial' ? 80 : 40).toArray();
   const nuestros = [...new Set(msgs.map(m => m.quien).filter(q => NUESTROS.test(q || '')))];
   const lineas = msgs.map((m, n) => `[${n}] ${fmt(m.fecha)} ${m.quien}: ${corto(m.texto, 900) || '(sin texto)'}${m.nMedia ? ` (📷 ${m.nMedia} foto${m.nMedia > 1 ? 's' : ''})` : ''}`);
@@ -99,7 +99,7 @@ async function _tanda(db, { jid, grupo, msgs, fuente, cat, _llamar, extra = '', 
 
 GRUPO: ${grupo || jid}${nuestros.length ? `\nSON DE CORP (los demás son el administrador o vecinos): ${nuestros.join(', ')}` : ''}
 
-${contexto.length ? `CONVERSACIÓN ANTERIOR (ya analizada; solo para entender los mensajes nuevos, no saques peticiones de aquí):\n${contexto.join('\n')}\n\n` : ''}MENSAJES:
+${memoria ? `LO QUE YA SABEMOS DE ESTOS SITIOS (memoria de Corpy, solo de este grupo; úsalo: un contacto que ya está aquí NO se pide):\n${memoria}\n\n` : ''}${contexto.length ? `CONVERSACIÓN ANTERIOR (ya analizada; solo para entender los mensajes nuevos, no saques peticiones de aquí):\n${contexto.join('\n')}\n\n` : ''}MENSAJES:
 ${lineas.join('\n')}
 
 PETICIONES ABIERTAS (id · cliente · resumen · fecha · contacto):
@@ -215,6 +215,9 @@ async function _contexto(db, jid, desde, hasta) {
   return { contexto, corpy: deCorpy.filter(m => m.fecha >= new Date(desde)) };
 }
 
+// Cada petición creada o puesta al día deja su línea en la memoria del sitio (memoria.js). Sin esperar ni romper nada.
+function _memo(p) { if (p && p.jid) require('./memoria').dePeticion(p).catch(e => console.warn('[Peticiones] memoria:', e.message)); }
+
 // Cada media hora: lo nuevo de los grupos con peticiones:true.
 async function analizar({ avisar = true, _llamar = null, _cat = null } = {}) {
   const db = await getDB();
@@ -229,8 +232,11 @@ async function analizar({ avisar = true, _llamar = null, _cat = null } = {}) {
     const msgs = [...raw.map(m => ({ _id: m._id, fecha: m.ts, quien: m.quien, texto: m.texto, fotoIds: m.fotoIds || [], nMedia: (m.media || []).length })), ...corpy]
       .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
     const cat = _cat || await _catalogo();
-    const r = await _tanda(db, { jid: g._id, grupo: g.nombre, msgs, fuente: 'whatsapp', cat, _llamar, contexto });
+    // Memoria de Corpy de los sitios que se nombran, SOLO de este grupo (lo de otros clientes o lo interno no entra).
+    const memoria = await require('./memoria').paraPrompt(raw.map(m => m.texto || '').join(' '), { paraGrupo: g._id, limite: 40 }).catch(() => '');
+    const r = await _tanda(db, { jid: g._id, grupo: g.nombre, msgs, fuente: 'whatsapp', cat, _llamar, contexto, memoria });
     await db.collection('grupoMensajes').updateMany({ _id: { $in: raw.map(m => m._id) } }, { $set: { pet: true } });
+    for (const p of [...r.nuevas, ...r.actualizadas]) _memo(p);
     const mudas = r.nuevas.filter(sinAccion);
     if (mudas.length) await db.collection(COL).updateMany({ _id: { $in: mudas.map(p => p._id) } }, { $set: { estado: 'archivo', archivadoPor: 'sin acción' } });
     const nuevas = r.nuevas.filter(p => !sinAccion(p));
@@ -324,6 +330,7 @@ async function marcar(id, { estado, nota = '' }, por = '') {
   const db = await getDB();
   const r = await db.collection(COL).updateOne({ _id: new ObjectId(String(id)) }, { $set: { estado, nota: corto(nota, 300), marcadoPor: por, marcadoAt: new Date() } });
   if (!r.matchedCount) throw new Error('Petición no encontrada');
+  _memo(await db.collection(COL).findOne({ _id: new ObjectId(String(id)) }));
   return { ok: true };
 }
 
@@ -379,7 +386,7 @@ async function presupuestoDevuelto({ jid, grupo = null, ref = null, nombre = nul
   const f = data ? await db.collection('grupoFotos').insertOne({ jid, grupo, msgId, from: null, quien, texto: `${r || 'Presupuesto'} devuelto con sello o firma`, obraId: null, obraRef: null, mimetype, bytes: data.length, data, ts }) : null;
   const pets = r ? await db.collection(COL).find({ jid, $or: [{ presupuesto: r }, { 'presupuestoEnviado.ref': r }] }).toArray() : [];
   const queHacer = `${r} devuelto con sello/firma por ${quien} el ${fmt(ts)}: parece aceptado. Marcarlo como aceptado en StelOrder y programar el trabajo.`;
-  for (const p of pets) await db.collection(COL).updateOne({ _id: p._id }, { $set: { estado: 'pendiente', queHacer, presupuestoFirmado: { ref: r, at: ts, por: quien }, actualizado: new Date() }, ...(f ? { $addToSet: { fotoIds: String(f.insertedId) } } : {}) });
+  for (const p of pets) { await db.collection(COL).updateOne({ _id: p._id }, { $set: { estado: 'pendiente', queHacer, presupuestoFirmado: { ref: r, at: ts, por: quien }, actualizado: new Date() }, ...(f ? { $addToSet: { fotoIds: String(f.insertedId) } } : {}) }); _memo({ ...p, estado: 'pendiente', queHacer, presupuestoFirmado: { ref: r, at: ts, por: quien } }); }
   await _avisar(`📝 *${quien || 'El cliente'}* ha devuelto en el grupo «${grupo || 'WhatsApp'}» el *${r || 'presupuesto'}* con sello o firma: parece que lo aceptan.\n→ Míralo y, si es así, márcalo como aceptado en StelOrder.`);
   return { ref: r, firmado: true, peticiones: pets.length };
 }
