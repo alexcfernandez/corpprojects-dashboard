@@ -1653,6 +1653,12 @@ app.post('/api/fichaje/obra-dia', async (req, res) => {
     res.json(await require('./obraDelDia').guardar(w.workerId, w.workerName, require('./fichajeMarcas').fechaHoy(), { obraId: b.obraId, nombreLibre: b.nombreLibre, companeros: b.companeros, partes: !!b.partes })); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+// PDF de trabajos (Gantt) y presupuestos pendientes, al momento (planificacionPdf.js).
+app.get('/api/informes/trabajos.pdf', requireAuthOficina, async (req, res) => {
+  try { const P = require('./planificacionPdf'); const d = await P.datos(); const pdf = await P.generar(d);
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="Trabajos-y-presupuestos-${d.hoy}.pdf"` }).send(pdf); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
 // El operario pone en su app el día que ha quedado con el cliente (trabajos sin día; trabajosSeguimiento.js).
 app.post('/api/fichaje/trabajo/cita', express.json(), async (req, res) => {
   try { const w = await _worker(req, res); if (!w) return; const b = req.body || {};
