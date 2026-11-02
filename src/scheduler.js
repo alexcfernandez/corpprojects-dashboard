@@ -398,6 +398,8 @@ function startScheduler() {
   // Pagos a proveedores de los próximos días (los lunes, las 2 próximas semanas) por WhatsApp a Álex y oficina.
   cron.schedule('45 8 * * 1-5', () => { if (process.env.AVISO_VENCIMIENTOS !== 'off') require('./vencimientos').avisoManana().catch(e => console.warn('[Vencimientos]', e.message)); }, { timezone: 'Europe/Madrid' });
   // Cobros (8/10/2026): quién dijo que paga hoy, promesas incumplidas y recordatorios por revisar en /cobrar.
+  // Cobros del tablero del ciclo: aviso a Álex cuando una factura de trabajo pasa a ámbar (30 d) y a rojo (60 d), una vez (cicloCobro.js).
+  cron.schedule('5 10 * * 1-5', () => { if (process.env.AVISO_COBRO_CICLO !== 'off') require('./cicloCobro').avisar().then(r => { if (r.enviado) console.log(`[CicloCobro] ámbar ${r.ambar}, rojo ${r.rojo}`); }).catch(e => console.warn('[CicloCobro]', e.message)); }, { timezone: 'Europe/Madrid' });
   cron.schedule('10 9 * * 1-5', () => { if (process.env.AVISO_COBROS !== 'off') require('./recordatoriosCobro').avisoManana().catch(e => console.warn('[Cobros]', e.message)); }, { timezone: 'Europe/Madrid' });
   // Altas de gente nueva: avanzar lo que se pueda y avisar de lo que va tarde (incorporaciones.js).
   // 21:05 cada día: la revisión del día la hace el propio dashboard con la IA (revision.automatica, 19/10/2026).

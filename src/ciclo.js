@@ -141,7 +141,7 @@ async function datos({ _S = null, _db = null } = {}) {
     (col === 'porHacer' ? presupuestos : tarjetas).push({
       id: 'wo:' + id, col, dias, semaforo, etiqueta, cerrable: !!(inc && INC_ABIERTA.test(inc.estado) && (col === 'porHacer' || col === 'asignar')),
       ref: w['full-reference'], incRef: inc && inc.ref, incId: inc && inc.id, woId: id,
-      facturas: facs.map(f => ({ ref: f.number, total: r2(f.total), pendiente: f.pendiente == null ? null : r2(f.pendiente), fecha: ymd(f.date) })),
+      facturas: facs.map(f => ({ id: f.id, ref: f.number, total: r2(f.total), pendiente: f.pendiente == null ? null : r2(f.pendiente), fecha: ymd(f.date) })),
       cliente: (a && a.cliente) || cliente(w['account-id']) || (inc && inc.cliente) || '',
       que: corto(que, 160), direccion: (a && a.direccion) || (pet && pet.direccion) || '',
       operario, equipo: (a && a.equipo) || [], urgente: !!(a && a.priority === 'urgent') || !!(pet && pet.urgente),

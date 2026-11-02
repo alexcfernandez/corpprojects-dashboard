@@ -190,10 +190,12 @@
       acc.push(`<button onclick="CP.Ciclo.peticion('${esc(t.peticionId)}','hecho',this,'${esc(t.id)}')">✓ Ya está hecho</button>`);
       acc.push(`<button onclick="CP.Ciclo.peticion('${esc(t.peticionId)}','descartado',this,'${esc(t.id)}')">✕ Descartar</button>`);
     }
+    if (t.col === 'cobrar') acc.push(`<button onclick="location.href='/cobrar'" style="background:var(--amber);border-color:var(--amber);color:#111;font-weight:700">💬 Recordatorio al cliente</button>`);
     if (t.col === 'facturar' && t.woId) acc.push(`<button onclick="CP.Ciclo.facturar('${esc(t.woId)}')" style="background:var(--blue);border-color:var(--blue);color:#fff;font-weight:700">🧾 Facturar</button>`);
     if (t.col === 'facturar') acc.push(`<button onclick="CP.Ciclo.ignorar('${esc(t.id)}',this)">Ya está facturado / no se factura</button>`);
     const ayuda = t.col === 'asignar' ? 'Para mandarlo a un técnico: contesta a Corpy «David» cuando te pregunte «¿Quién va?», o desde Inicio → Peticiones.'
       : t.col === 'facturar' ? '«Facturar» monta la factura con el parte (horas, material y desplazamiento); la revisas, se pasa al pedido y se crea en StelOrder enlazada a él. La tarjeta pasa sola a «Por cobrar».'
+      : t.col === 'cobrar' ? 'Al pasar a ámbar (30 días) y a rojo (60) te llega un WhatsApp. El recordatorio para el cliente está preparado en /cobrar.'
       : t.col === 'cita' ? 'El técnico pone el día en su app o contesta en el grupo; tú también: «David ha quedado con … el jueves».' : '';
     const m = document.createElement('div');
     m.className = 'cy-modal'; m.id = 'cy-modal';
