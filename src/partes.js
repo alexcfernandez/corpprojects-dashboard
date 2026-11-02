@@ -30,9 +30,15 @@ async function workerLogin(workerId, pin) {
 async function verifyWorkerToken(token) {
   if (!token || !token.startsWith('w_')) return null;
   const db = await getDB();
-  return db.collection('worker_tokens').findOne({
+  const t = await db.collection('worker_tokens').findOne({
     token, expiresAt: { $gt: new Date() }
   });
+  // Quien se da de baja en Usuarios no sigue entrando con un enlace o PIN de antes (2/11/2026, baja de Judit).
+  if (t && ObjectId.isValid(String(t.workerId))) {
+    const u = await db.collection('users').findOne({ _id: new ObjectId(String(t.workerId)) }, { projection: { active: 1 } });
+    if (u && u.active === false) return null;
+  }
+  return t;
 }
 
 async function createParte(data, workerInfo) {
@@ -83,6 +89,8 @@ async function createParte(data, workerInfo) {
   parte._id = result.insertedId;
   parte.id  = result.insertedId;
   console.log(`[Partes] Nuevo parte: ${result.insertedId} — ${workerInfo.workerName} — ${data.clientName}`);
+  // El material puesto queda en la memoria del sitio (memoria.js, 2/11/2026): «en el parking pusimos un fluorescente de 1,60».
+  require('./memoria').deParte(parte).catch(e => console.warn('[Partes] memoria:', e.message));
   return parte;
 }
 
