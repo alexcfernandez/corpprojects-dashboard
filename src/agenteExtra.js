@@ -132,6 +132,7 @@ async function _vehiculo(q) {
 async function respuestaRepostaje(texto, from) {
   const t = _n(texto);
   if (!t || t.length > 50) return null;
+  if (/^(crea|crealo|creala|crear|da(lo|la)? de alta|dar de alta|alta|no es|ninguno|ninguna)\b/.test(t)) return null;   // eso es una orden: la lleva el agente (crear_vehiculo…)
   let h; try { h = await require('./waLog').hilo(from, { dias: 1 }); } catch (e) { return null; }
   const preg = (h.mensajes || []).filter(m => m.dir !== 'in' && Date.now() - new Date(m.ts) < 6 * 3600e3 && /ref\. repostaje [a-f0-9]{24}/.test(m.texto || '')).pop();
   if (!preg) return null;
@@ -143,7 +144,20 @@ async function respuestaRepostaje(texto, from) {
   if (!q) return null;
   const db = await getDB();
   const vs = await db.collection('vehiculos').find({ estado: { $ne: 'baja' } }).project({ nombre: 1, marca: 1, modelo: 1, matricula: 1, aliasEsclat: 1 }).toArray();
-  const c = vs.map(v => ({ v, p: puntos([v.nombre, v.marca, v.modelo, v.matricula, ...(v.aliasEsclat || [])].join(' '), q) })).filter(x => x.p >= 1).sort((a, b) => b.p - a.p);
+  // «coche», «furgo», «moto»… no dicen cuál: con «Coche de Kate» casaba con «Coche Alfonso» (2/11/2026). Cuentan las
+  // otras palabras, y TODAS tienen que estar en el vehículo; si no hay ninguno así, se pregunta en vez de adivinar.
+  const GEN = /^(coche|cotxe|cotche|furgo|furgoneta|furgona|moto|vehiculo|vehicle|auto|carro|turismo)$/;
+  const claves = palabras(q).filter(w => !GEN.test(w));
+  const txtV = v => ' ' + _n([v.nombre, v.marca, v.modelo, v.matricula, ...(v.aliasEsclat || [])].join(' ')) + ' ';
+  const tiene = (v, w) => /^\d+$/.test(w) ? new RegExp(`(^|[^0-9])${w}([^0-9]|$)`).test(txtV(v)) : txtV(v).includes(w);
+  const c = vs.map(v => ({ v, p: puntos(txtV(v), q) })).filter(x => x.p >= 1 && (claves.length ? claves.every(w => tiene(x.v, w)) : true)).sort((a, b) => b.p - a.p);
+  if (claves.length && !c.length && !vs.some(v => claves.some(w => tiene(v, w)))) {
+    // Nada de lo que dice está en Flota («Kate»): no es un trabajador → se pregunta si se da de alta.
+    const us = (await require('./users').getUsers(false)).filter(u => u.active !== false);
+    if (us.some(u => puntos(u.name, q) > 0)) return null;
+    const dicho = String(texto).trim().replace(/^\d+\s+/, '');
+    return `⛽ No tengo «${dicho}» en Flota. ¿Lo doy de alta? Dime «créalo como ${dicho}» (con la matrícula si la sabes), o dime de qué vehículo es.\n\n(ref. repostaje ${id})`;
+  }
   if (!c.length || (c[1] && c[1].p === c[0].p)) return null;
   // Si lo que dice es también un trabajador («1 Diego»), no es esto.
   const us = (await require('./users').getUsers(false)).filter(u => u.active !== false);
