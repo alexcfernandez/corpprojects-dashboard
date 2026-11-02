@@ -1951,6 +1951,11 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
     }
   }
 
+  // A0.43) Respuesta corta a «🔧 ¿Quién va?» («David», «vale», «no va nadie»): crea el pedido y avisa al operario.
+  if (!imagenes.length && acceso.esOwner(from)) {
+    try { const r = await require('./trabajosSeguimiento').respuestaQuien(texto, from); if (r) { pendiente.delete(from); return r; } } catch (e) { console.error('[Trabajos] quién va:', e.message); }
+  }
+
   // A0.44) Respuesta corta a «⛽ ¿De qué vehículo es?» («motoreta», «1 motoreta»): antes que la del banco.
   if (!imagenes.length && acceso.esOwner(from)) {
     try { const r = await require('./agenteExtra').respuestaRepostaje(texto, from); if (r) { pendiente.delete(from); return r; } } catch (e) { console.error('[Repostajes] respuesta:', e.message); }

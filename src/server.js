@@ -1653,6 +1653,17 @@ app.post('/api/fichaje/obra-dia', async (req, res) => {
     res.json(await require('./obraDelDia').guardar(w.workerId, w.workerName, require('./fichajeMarcas').fechaHoy(), { obraId: b.obraId, nombreLibre: b.nombreLibre, companeros: b.companeros, partes: !!b.partes })); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+// El operario pone en su app el día que ha quedado con el cliente (trabajos sin día; trabajosSeguimiento.js).
+app.post('/api/fichaje/trabajo/cita', express.json(), async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return; const b = req.body || {};
+    const db = await require('./db').getDB();
+    const a = await db.collection('workOrderAssignments').findOne({ workOrderId: String(b.workOrderId || ''), userId: String(w.workerId) });
+    if (!a) return res.status(404).json({ error: 'Ese trabajo no es tuyo' });
+    const r = await require('./trabajos').fijarCita(a.workOrderId, { fecha: b.fecha, hora: b.hora || null }, w.workerName);
+    require('./notifications').sendWhatsApp(`📅 ${w.workerName} ${r.cambiada ? 'ha cambiado' : 'ha quedado'} (app): *${r.cliente}* el ${r.fechaTxt}${r.hora ? ' a las ' + r.hora : ''} (${r.pedido}).`).catch(() => {});
+    res.json(r); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 // Vehículos en la app de fichar: repostajes y km (solo nombre y matrícula, nada de dinero de la empresa).
 app.get('/api/fichaje/vehiculos', async (req, res) => {
   try { const w = await _worker(req, res); if (!w) return; res.json(await require('./repostajes').paraTrabajador(w.workerId)); }

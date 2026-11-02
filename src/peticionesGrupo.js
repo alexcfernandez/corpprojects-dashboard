@@ -157,7 +157,7 @@ function _textoAviso(grupo, nuevas, actualizadas, auto = {}) {
     return ['', a.incidencia ? `   ✅ Incidencia creada: *${a.incidencia}*` : a.error ? `   ⚠️ No he podido crear la incidencia: ${a.error}` : '',
       a.yaContestado ? '   💬 Ya contestó alguien de Corp en el grupo: no propongo operario ni pido contacto.' : '',
       a.sinOperario ? `   👷 ${a.sinOperario}` : '',
-      a.propuesta ? `   👷 Propongo a *${a.propuesta.nombre}* el ${a.propuesta.fechaTxt} a las ${a.propuesta.hora} (${a.propuesta.motivo}). Dime a quién o confírmalo en Inicio → Peticiones.` : '',
+      a.preguntado ? '   👷 Te pregunto aparte quién va.' : a.propuesta ? `   👷 Propongo a *${a.propuesta.nombre}* el ${a.propuesta.fechaTxt} a las ${a.propuesta.hora} (${a.propuesta.motivo}). Dime a quién o confírmalo en Inicio → Peticiones.` : '',
       a.pedidoContacto ? '   📨 He pedido en el grupo un teléfono de contacto.' : ''].filter((x, i) => !i || x).join('\n'); };
   const l = [...nuevas, ...actualizadas.filter(importa)];
   const cab = /^Correo · /.test(grupo || '') ? `📧 *${grupo}*` : `📋 *Grupo «${grupo}»*`;
@@ -186,6 +186,8 @@ async function _autoIncidencias(db, g, nuevas, { _crear = null, _propuesta = nul
     // Corpy pidió contacto y día para Joan Maragall 5º 3ª cuando Alfonso ya había dicho que lo miraban, colgados allí mismo).
     if (p.respondimos) { r.yaContestado = true; continue; }
     try { const pr = await (_propuesta || require('./trabajos').propuesta)(String(p._id)); r.propuesta = pr.propuesta; if (!pr.propuesta && pr.motivo) r.sinOperario = pr.motivo; } catch (e) {}
+    // A Álex: «¿Quién va?» con la propuesta; su respuesta crea el pedido y se lo manda al operario (trabajosSeguimiento.js).
+    if (!_crear && p.tipo !== 'presupuesto') { try { r.preguntado = await require('./trabajosSeguimiento').preguntarQuien({ ...p, incidencia: r.incidencia || p.incidencia }, r.propuesta); } catch (e) { console.warn('[Peticiones] quién va:', e.message); } }
     if (!p.contacto && g.corpyResponde && p.pedirContacto) {
       const txt = `Hola, soy Corpy, de la oficina de Corp Projects. Para lo de ${p.cliente}${p.direccion ? ' (' + p.direccion + ')' : ''}: ¿nos pasáis un nombre y teléfono de contacto y cuándo se puede entrar? Gracias.`;
       try { r.pedidoContacto = (await (_enviar || require('./notifications').sendWhatsAppTo)(g._id, txt, { sinTraducir: true, importante: true })) !== false; } catch (e) {}

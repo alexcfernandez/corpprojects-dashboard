@@ -11,6 +11,7 @@
 //   y cierre de incidencia y petición.
 'use strict';
 const { ObjectId } = require('mongodb');
+const corto = (t, n) => String(t || '').replace(/\s+/g, ' ').trim().slice(0, n);
 async function getDB() { return require('./db').getDB(); }
 const TZ = 'Europe/Madrid';
 const hoyISO = (d = new Date()) => d.toLocaleDateString('en-CA', { timeZone: TZ });
@@ -102,13 +103,16 @@ async function propuesta(peticionId, { ahora = new Date() } = {}) {
 }
 
 // Crea el trabajo: incidencia (si falta) → pedido → asignación con día → planificación → aviso al operario.
-async function crear(peticionId, { userId, fecha, hora = '09:00', urgente = null, nota = '', clienteId = null } = {}, por = '', { _stel = null, _enviar = null } = {}) {
+// Sin día (2/11/2026, Álex: «David queda con el cliente»): fecha null → el pedido sale igual y el seguimiento
+// (trabajosSeguimiento.js) le pregunta cada día hasta que diga cuándo ha quedado. `acompanan`: nombres de quien va con él.
+async function crear(peticionId, { userId, fecha = null, hora = null, urgente = null, nota = '', clienteId = null, acompanan = [] } = {}, por = '', { _stel = null, _enviar = null } = {}) {
   const db = await getDB();
   const S = _stel || require('./stelorder');
   const p = await _peticion(db, peticionId);
   if (p.pedido && p.pedido.id) throw new Error(`Ya tiene el pedido ${p.pedido.ref}`);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fecha || ''))) throw new Error('Pon el día');
-  if (!/^\d{1,2}:\d{2}$/.test(String(hora || ''))) throw new Error('Pon la hora');
+  if (fecha && !/^\d{4}-\d{2}-\d{2}$/.test(String(fecha))) throw new Error('El día no se entiende');
+  if (hora && !/^\d{1,2}:\d{2}$/.test(String(hora))) throw new Error('La hora no se entiende');
+  if (!fecha) { fecha = null; hora = null; }
   const u = await require('./users').getUser(String(userId || '')).catch(() => null);
   if (!u) throw new Error('Elige el operario');
   if (clienteId && /^\d+$/.test(String(clienteId)) && String(clienteId) !== String(p.clienteId || '')) {
@@ -148,22 +152,51 @@ async function crear(peticionId, { userId, fecha, hora = '09:00', urgente = null
   const urg = urgente == null ? !!p.urgente : !!urgente;
   await require('./asignaciones').setAssignment(ped.id, String(u._id), por || null, urg ? 'urgent' : 'normal');
   let obraId = null; try { obraId = (await require('./parteExtra').obra({ clientName: cliente }, { _db: db })).obraId; } catch (e) {}
-  await db.collection('workOrderAssignments').updateOne({ workOrderId: String(ped.id) }, { $set: { obraId, fecha, hora, nota: String(nota || '').slice(0, 300), direccion: p.direccion || null, contacto: p.contacto || null, cliente, resumen: p.resumen, peticionId: String(p._id), incidenciaRef: incidencia.ref, pedidoRef: ped.ref, fotoIds: p.fotoIds || [], tipo: p.tipo } });
-  // 4) Planificación (y Google Calendar)
-  try { await require('./planning').createPlanning({ date: fecha, workerId: String(u._id), workerName: u.name, tipo: p.tipo === 'presupuesto' ? 'visita' : 'trabajo', client: cliente, address: p.direccion || '', workOrderId: String(ped.id), workOrderNumber: ped.ref, nota: p.resumen, horaInicio: hora }); }
+  const equipo = (acompanan || []).map(x => String(x).trim()).filter(Boolean).slice(0, 4);
+  await db.collection('workOrderAssignments').updateOne({ workOrderId: String(ped.id) }, { $set: { obraId, fecha, hora, citaPendiente: !fecha, equipo, nota: String(nota || '').slice(0, 300), direccion: p.direccion || null, contacto: p.contacto || null, cliente, resumen: p.resumen, peticionId: String(p._id), incidenciaRef: incidencia.ref, pedidoRef: ped.ref, fotoIds: p.fotoIds || [], tipo: p.tipo } });
+  // 4) Planificación (y Google Calendar), si ya hay día
+  if (fecha) try { await require('./planning').createPlanning({ date: fecha, workerId: String(u._id), workerName: u.name, tipo: p.tipo === 'presupuesto' ? 'visita' : 'trabajo', client: cliente, address: p.direccion || '', workOrderId: String(ped.id), workOrderNumber: ped.ref, nota: p.resumen, horaInicio: hora }); }
   catch (e) { console.warn('[Trabajos] planificación:', e.message); }
   // 5) Petición
-  await db.collection('peticionesGrupo').updateOne({ _id: p._id }, { $set: { incidencia: incidencia.ref, incidenciaId: incidencia.id, situacion: 'ya_hay_incidencia', pedido: { id: String(ped.id), ref: ped.ref }, asignado: { userId: String(u._id), nombre: u.name, fecha, hora }, asignadoPor: por, asignadoAt: new Date() } });
-  // 6) Aviso al operario
-  let avisado = false;
+  await db.collection('peticionesGrupo').updateOne({ _id: p._id }, { $set: { incidencia: incidencia.ref, incidenciaId: incidencia.id, situacion: 'ya_hay_incidencia', pedido: { id: String(ped.id), ref: ped.ref }, asignado: { userId: String(u._id), nombre: u.name, fecha, hora, equipo }, asignadoPor: por, asignadoAt: new Date() } });
+  // 6) Aviso al operario: en SU grupo de trabajos si lo tiene (bridgeGrupos.trabajosDe, «Reparaciones David Valencia»;
+  // 2/11/2026, Álex: «que se vayan acumulando ahí»), si no por privado. Con las fotos del aviso.
+  let avisado = false, enGrupo = null;
   try {
     const url = (await require('./fichajeAvisos').enlacePersonal(String(u._id))) + '&ir=parte';
-    const txt = `🔧 *Trabajo nuevo* para el *${fechaTxt(fecha)} a las ${hora}*${urg ? ' (URGENTE)' : ''}\n*${cliente}*${p.direccion ? ' · ' + p.direccion : ''}\n${p.resumen}${p.contacto ? `\nContacto: ${p.contacto}` : ''}${nota ? `\nNota: ${nota}` : ''}\n\nLo tienes en tu app, con las fotos, en «Mis trabajos»:\n${url}`;
+    const cuando = fecha ? `para el *${fechaTxt(fecha)}${hora ? ' a las ' + hora : ''}*` : '— *queda tú con el cliente*';
+    const txt = `🔧 *Trabajo nuevo* ${cuando}${urg ? ' (URGENTE)' : ''}\n*${cliente}*${p.direccion ? ' · ' + p.direccion : ''}\n${p.resumen}${p.contacto ? `\nContacto: ${p.contacto}` : ''}${equipo.length ? `\nVas con: ${equipo.join(', ')}` : ''}${nota ? `\nNota: ${nota}` : ''}\nPedido ${ped.ref} · ${incidencia.ref}\n\n${fecha ? '' : 'Cuando quedes, contesta aquí el día y la hora (p. ej. «' + corto(cliente, 25) + ' el jueves a las 10») o ponlo en la app.\n'}En tu app, con las fotos, en «Mis trabajos»:\n${url}`;
+    const enviar = _enviar || require('./notifications').sendWhatsAppTo;
+    const g = await db.collection('bridgeGrupos').findOne({ trabajosDe: String(u._id), activo: true });
     const tel = u.whatsapp || u.telefono;
-    if (tel) avisado = (await (_enviar || require('./notifications').sendWhatsAppTo)(tel, txt, { importante: true })) !== false;
-    try { await require('./push').sendToWorker(String(u._id), { title: 'Trabajo nuevo', body: `${fechaTxt(fecha)} ${hora} · ${cliente}`, url: '/parte' }); } catch (e) {}
+    if (g) { enGrupo = g.nombre || g._id; avisado = (await enviar(g._id, txt, { importante: true, sinTraducir: true })) !== false; }
+    else if (tel) avisado = (await enviar(tel, txt, { importante: true })) !== false;
+    if (avisado && !_enviar) {
+      const fotos = await db.collection('grupoFotos').find({ _id: { $in: (p.fotoIds || []).filter(f => ObjectId.isValid(f)).slice(0, 3).map(f => new ObjectId(f)) } }).toArray();
+      for (const f of fotos) { try { await require('./canalWhatsapp').enviarArchivo(g ? g._id : tel, `📷 ${corto(cliente, 40)}`, { data: Buffer.from(f.data.buffer || f.data), mime: f.mimetype || 'image/jpeg', nombre: 'aviso.jpg' }); } catch (e) {} }
+    }
+    try { await require('./push').sendToWorker(String(u._id), { title: 'Trabajo nuevo', body: `${fecha ? fechaTxt(fecha) + (hora ? ' ' + hora : '') : 'Sin día'} · ${cliente}`, url: '/parte' }); } catch (e) {}
   } catch (e) { console.warn('[Trabajos] aviso:', e.message); }
-  return { ok: true, incidencia: incidencia.ref, pedido: ped.ref, pedidoId: String(ped.id), operario: u.name, fecha, hora, fechaTxt: fechaTxt(fecha), avisado };
+  return { ok: true, incidencia: incidencia.ref, pedido: ped.ref, pedidoId: String(ped.id), operario: u.name, equipo, fecha, hora, fechaTxt: fecha ? fechaTxt(fecha) : null, avisado, enGrupo };
+}
+
+// El operario dice cuándo ha quedado (grupo, app o Álex por Corpy): día y hora en la asignación, en Planificación
+// (Google Calendar) y en la petición. A partir de aquí el seguimiento avisa el día antes y el mismo día.
+async function fijarCita(workOrderId, { fecha, hora = null, nota = null } = {}, por = '') {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fecha || ''))) throw new Error('Falta el día');
+  if (hora && !/^\d{1,2}:\d{2}$/.test(String(hora))) throw new Error('La hora no se entiende');
+  const db = await getDB();
+  const a = await db.collection('workOrderAssignments').findOne({ workOrderId: String(workOrderId) });
+  if (!a) throw new Error('No encuentro ese trabajo');
+  const antes = a.fecha ? { fecha: a.fecha, hora: a.hora || null } : null;
+  await db.collection('workOrderAssignments').updateOne({ _id: a._id }, { $set: { fecha, hora: hora || null, citaPendiente: false, citaPor: por, citaAt: new Date(), ...(nota ? { notaCita: String(nota).slice(0, 200) } : {}) }, ...(antes ? { $push: { citasAnteriores: { ...antes, cambiada: new Date(), por } } } : {}) });
+  if (a.peticionId && ObjectId.isValid(a.peticionId)) await db.collection('peticionesGrupo').updateOne({ _id: new ObjectId(a.peticionId) }, { $set: { 'asignado.fecha': fecha, 'asignado.hora': hora || null } });
+  try {
+    const pl = await db.collection('planning').findOne({ workOrderId: String(workOrderId) });
+    if (pl) await require('./planning').updatePlanning(String(pl._id), { date: fecha, horaInicio: hora || '' });
+    else await require('./planning').createPlanning({ date: fecha, workerId: a.userId, workerName: a.userName, tipo: a.tipo === 'presupuesto' ? 'visita' : 'trabajo', client: a.cliente || '', address: a.direccion || '', workOrderId: String(workOrderId), workOrderNumber: a.pedidoRef || '', nota: a.resumen || '', horaInicio: hora || '' });
+  } catch (e) { console.warn('[Trabajos] planificación cita:', e.message); }
+  return { ok: true, cliente: a.cliente, pedido: a.pedidoRef, fecha, hora: hora || null, fechaTxt: fechaTxt(fecha), cambiada: !!antes };
 }
 
 // Foto de la petición para el operario que tiene ese trabajo.
@@ -174,4 +207,4 @@ async function fotoParaOperario(fotoId, workerId) {
   return require('./grupoWhatsapp').foto(fotoId);
 }
 
-module.exports = { propuesta, crear, operarios, diaPropuesto, fotoParaOperario, _palabras: palabras, _fechaTxt: fechaTxt, _ocupadoEn: ocupadoEn };
+module.exports = { propuesta, crear, fijarCita, operarios, diaPropuesto, fotoParaOperario, _palabras: palabras, _fechaTxt: fechaTxt, _ocupadoEn: ocupadoEn };

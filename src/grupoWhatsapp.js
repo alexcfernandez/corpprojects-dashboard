@@ -116,6 +116,8 @@ async function procesar(p) {
   if (fotoIds.length) await d.collection(MSG).updateOne({ _id: ins.insertedId }, { $set: { fotoIds } });
   await d.collection(COL).updateOne({ _id: jid }, { $inc: { nMensajes: 1, nCompras, nFotos: fotoIds.length }, $set: { ultimoMsgAt: new Date(), ...(p.groupName ? { nombre: p.groupName } : {}) } });
   if (docs.length) console.log(`[Grupo] ${doc.grupo}: ${quien.name} mandó ${docs.length} archivo(s) → ${nCompras} a Compras, ${fotoIds.length} fotos de obra`);
+  // Grupo de trabajos de un operario («Reparaciones David Valencia»): lo que dice de sus trabajos (cita, hecho, fotos).
+  if (g.trabajosDe && (texto || fotoIds.length)) require('./trabajosSeguimiento').respuestaGrupo({ g, quien, texto, fotoIds }).then(r => { if (r && r.accion !== 'nada') console.log('[Trabajos] grupo:', JSON.stringify(r)); }).catch(e => console.warn('[Trabajos] grupo:', e.message));
   return { ok: true, nCompras, nFotos: fotoIds.length };
 }
 

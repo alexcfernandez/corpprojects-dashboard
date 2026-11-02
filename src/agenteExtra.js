@@ -267,6 +267,33 @@ async function ejecutar(name, input, from) {
     return { handled: true, reply: p.length ? `⛽ Repostajes sin vehículo (${p.length}):\n${p.slice(0, 10).map((x, i) => `${i + 1}. ${dm(x.fecha)}${x.hora ? ' ' + x.hora : ''} · ${eur(x.importe)} · ${x.establecimiento || 'Esclat'}`).join('\n')}\n\n${p.length === 1 ? `Dime de qué vehículo es («la Berlingo»).\n\n(ref. repostaje ${p[0].id})` : 'Dime «el 2 es de la Berlingo».'}` : '✅ No hay repostajes sin vehículo.' };
   }
   // «PRT00874 aceptado» (2/11/2026: para que Álex conteste a los avisos de Alfonso «¿lo marco aceptado?»).
+  // «¿Quién va?» (trabajosSeguimiento.preguntarQuien): Álex dice quién, con quién y, si lo sabe, el día.
+  if (name === 'asignar_trabajo') {
+    if (!require('./acceso').esOwner(from)) return { handled: true, reply: 'Los trabajos los asigna Álex.' };
+    const TS = require('./trabajosSeguimiento');
+    const db = await getDB();
+    let p = null;
+    if (input.peticionId && /^[a-f0-9]{24}$/.test(String(input.peticionId))) p = await db.collection('peticionesGrupo').findOne({ _id: new (require('mongodb').ObjectId)(String(input.peticionId)) });
+    if (!p) p = await TS._ultimaPregunta(from);
+    if (!p) return { handled: true, reply: '¿De qué trabajo hablas? No tengo ninguno esperando a que digas quién va.', aclara: true };
+    if (input.nadie) { await db.collection('peticionesGrupo').updateOne({ _id: p._id }, { $set: { quienRespuesta: 'nadie', quienRespuestaAt: new Date() } }); return { handled: true, reply: `👍 No mando a nadie para *${p.clienteStel || p.cliente}*.` }; }
+    const N = require('./nombres');
+    const users = (await require('./users').getUsers(false)).filter(x => x.active !== false);
+    const alias = await N.aliasDeTrabajadores(db);
+    const u = N.casarTrabajador(input.operario || '', users, alias);
+    if (!u || u.varios) return { handled: true, reply: u ? `¿Cuál? ${u.varios.join(' · ')}\n\n(ref. trabajo ${p._id})` : `No encuentro a «${input.operario}».\n\n(ref. trabajo ${p._id})`, aclara: true };
+    const acompanan = (input.acompanan || []).map(n => { const x = N.casarTrabajador(n, users, alias); return x && !x.varios ? x.name : n; });
+    return { handled: true, reply: await TS.asignar(p, { userId: String(u._id), fecha: /^\d{4}-\d{2}-\d{2}$/.test(String(input.fecha || '')) ? input.fecha : null, hora: /^\d{1,2}:\d{2}$/.test(String(input.hora || '')) ? input.hora : null, acompanan, nota: input.nota || '' }, 'Álex (Corpy)') };
+  }
+  // «David ha quedado con Bellpuig el jueves a las 10» (o lo cambia): día y hora del trabajo ya mandado.
+  if (name === 'fijar_cita_trabajo') {
+    if (!require('./acceso').esOwner(from)) return { handled: true, reply: 'Solo para Álex.' };
+    const ab = await require('./trabajosSeguimiento').abiertos();
+    const c = ab.map(a => ({ a, p: puntos([a.cliente, a.direccion, a.pedidoRef, a.userName].join(' '), input.trabajo || '') })).filter(x => x.p >= 1).sort((x, y) => y.p - x.p);
+    if (!c.length || (c[1] && c[1].p === c[0].p)) return { handled: true, reply: c.length ? `¿Cuál? ${c.slice(0, 5).map(x => `${x.a.cliente} (${x.a.pedidoRef}, ${x.a.userName})`).join(' · ')}` : `No encuentro un trabajo abierto de «${input.trabajo}».`, aclara: true };
+    try { const r = await require('./trabajos').fijarCita(c[0].a.workOrderId, { fecha: input.fecha, hora: input.hora || null }, 'Álex (Corpy)'); return { handled: true, reply: `📅 Apuntado: *${r.cliente}* (${r.pedido}, ${c[0].a.userName}) el ${r.fechaTxt}${r.hora ? ' a las ' + r.hora : ''}. Se lo recuerdo el día antes y ese día.` }; }
+    catch (e) { return { handled: true, reply: e.message }; }
+  }
   // Cerrar o mover una incidencia desde WhatsApp: el aviso diario de incidencias abiertas (incidenciasDia.js) deja de sacarla.
   if (name === 'estado_incidencia') {
     if (!require('./acceso').esOwner(from)) return { handled: true, reply: 'El estado de las incidencias solo lo cambia Álex.' };
@@ -450,6 +477,8 @@ const TOOLS = [
   { name: 'buscar_compras', description: 'Qué MATERIAL se ha comprado, dónde y para qué obra (líneas de las facturas y tickets de Compras): «qué suelo compramos para el piso de Claudia», «cuánta pintura llevamos en Rahola», «qué compró David en Obramat la semana pasada».', input_schema: { type: 'object', properties: { que: { type: 'string', description: 'Material o artículo (suelo, pintura, cable…); vacío si pregunta por todo.' }, obra: { type: 'string' }, proveedor: { type: 'string' }, desde: { type: ['string', 'null'] }, hasta: { type: ['string', 'null'] } } } },
   { name: 'gasto_proveedor', description: 'Cuánto GASTAMOS en un proveedor (facturas de proveedor de StelOrder), total y por meses: «cuánto gastamos en Obramat» (Obramat = Bricoman en StelOrder), «gasto en Saltoki este año».', input_schema: { type: 'object', properties: { proveedor: { type: 'string' }, desde: { type: ['string', 'null'] }, hasta: { type: ['string', 'null'] } }, required: ['proveedor'] } },
   { name: 'documentos_vehiculo', description: 'Qué papeles tenemos de un vehículo (ficha técnica, permiso de circulación, seguro, ITV) — solo mirar. Para MANDARLO usa pasar_documento_vehiculo.', input_schema: { type: 'object', properties: { vehiculo: { type: 'string', description: 'Nombre, marca/modelo, matrícula o quién lo lleva («el coche de Alfonso»).' } }, required: ['vehiculo'] } },
+  { name: 'asignar_trabajo', description: 'Álex contesta a «🔧 ¿Quién va?» (lleva «ref. trabajo ID»): quién va, con quién y, si lo dice, el día. «David», «David y Diego el jueves a las 10», «que vaya Javi mañana», «no va nadie». Crea la incidencia (si falta) y el pedido y se lo manda al operario. Sin día = queda él con el cliente.', input_schema: { type: 'object', properties: { peticionId: { type: ['string', 'null'], description: 'El ID de «ref. trabajo ID» del mensaje de Corpy.' }, operario: { type: 'string', description: 'Quien lleva el trabajo (el primero que nombra).' }, acompanan: { type: 'array', items: { type: 'string' }, description: 'Los demás que van con él.' }, fecha: { type: ['string', 'null'], description: 'YYYY-MM-DD si dice día.' }, hora: { type: ['string', 'null'], description: 'HH:MM si dice hora.' }, nota: { type: ['string', 'null'] }, nadie: { type: ['boolean', 'null'], description: 'true si dice que no va nadie / lo lleva él.' } }, required: ['operario'] } },
+  { name: 'fijar_cita_trabajo', description: 'Día y hora de un trabajo YA mandado a un operario: «David ha quedado con Bellpuig el jueves a las 10», «lo de Solterra pásalo al lunes».', input_schema: { type: 'object', properties: { trabajo: { type: 'string', description: 'Cliente, calle o PDT.' }, fecha: { type: 'string', description: 'YYYY-MM-DD' }, hora: { type: ['string', 'null'], description: 'HH:MM' } }, required: ['trabajo', 'fecha'] } },
   { name: 'estado_incidencia', description: 'Cambia el estado de una INCIDENCIA de StelOrder: «INC00432 cerrada», «la 653 ya está hecha», «la 471 presupuesto hecho», «la 448 programada». Solo Álex. Hecha = cerrada.', input_schema: { type: 'object', properties: { ref: { type: 'string', description: 'INC o número' }, estado: { type: 'string', enum: ['cerrada', 'hecha', 'presupuesto_hecho', 'programada', 'en_proceso', 'pendiente', 'rechazada'] } }, required: ['ref', 'estado'] } },
   { name: 'estado_presupuesto', description: 'Cambia el estado de un presupuesto de StelOrder: «PRT00874 aceptado», «el 875 rechazado». Solo Álex.', input_schema: { type: 'object', properties: { ref: { type: 'string', description: 'PRT o número' }, estado: { type: 'string', enum: ['aceptado', 'rechazado', 'pendiente'] } }, required: ['ref', 'estado'] } },
   { name: 'apuntar_jornada', description: 'Apunta la JORNADA (presencia) de TRABAJADORES en una obra un día: «hoy han trabajado David y Diego en el bar de Claudia de 9 a 14», «Ramón y Diego estuvieron ayer en Arenys». NO es para Álex ni Alfonso (eso es apuntar_tiempo_socio).', input_schema: { type: 'object', properties: { trabajadores: { type: 'array', items: { type: 'string' }, description: 'Nombres tal como los dice.' }, obra: { type: 'string', description: 'Obra tal como la dice («Claudia bar», «Arenys»).' }, fecha: { type: ['string', 'null'], description: 'YYYY-MM-DD; hoy si no dice.' }, desde: { type: ['string', 'null'], description: 'HH:MM' }, hasta: { type: ['string', 'null'], description: 'HH:MM' }, horas: { type: ['number', 'null'], description: 'Horas de cada uno si las dice.' } }, required: ['trabajadores', 'obra'] } },
