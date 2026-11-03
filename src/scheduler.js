@@ -406,6 +406,8 @@ function startScheduler() {
   cron.schedule('5 21 * * *', () => { if (process.env.REVISION_AUTO !== 'off') require('./revision').automatica().then(r => console.log('[Revisión] automática:', JSON.stringify(r))).catch(e => console.warn('[Revisión] automática:', e.message)); }, { timezone: 'Europe/Madrid' });
   // Cada media hora (8-21 h): lo que piden en los grupos de clientes, separado y cruzado con StelOrder (peticionesGrupo.js, 20/10/2026).
   cron.schedule('*/30 8-21 * * *', () => { if (process.env.PETICIONES_GRUPO !== 'off') require('./peticionesGrupo').analizar().then(r => { if (r.length) console.log('[Peticiones]', JSON.stringify(r)); }).catch(e => console.warn('[Peticiones]', e.message)); }, { timezone: 'Europe/Madrid' });
+  // Y las citas con día que se fijan en los demás grupos de Corpy (citasGrupos.js, 3/11/2026) → a la agenda de Álex.
+  cron.schedule('5,35 8-21 * * *', () => { require('./citasGrupos').revisar().then(r => { if (r.length) console.log('[Citas]', JSON.stringify(r)); }).catch(e => console.warn('[Citas]', e.message)); }, { timezone: 'Europe/Madrid' });
   // 20:30 cada día: correo con el resumen de los grupos de clientes (lo nuevo de hoy y lo que sigue abierto).
   // Trabajos de cada operario en su grupo: por la mañana hoy / sin día / falta el parte; por la tarde lo de mañana.
   cron.schedule('30 8 * * 1-6', () => { if (process.env.SEGUIMIENTO_TRABAJOS !== 'off') require('./trabajosSeguimiento').seguimiento({ momento: 'manana' }).then(r => r.length && console.log('[Trabajos] seguimiento:', JSON.stringify(r))).catch(e => console.warn('[Trabajos] seguimiento:', e.message)); }, { timezone: 'Europe/Madrid' });
