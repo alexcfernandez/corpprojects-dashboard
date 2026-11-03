@@ -50,3 +50,11 @@ test('se apaga con CORPY_SOCIO=off', async () => {
   try { assert.strictEqual(await S.intentar({ texto: 'hola', from: '1', trab, _llamar: ia({ tipo: 'texto', texto: 'x' }) }), null); }
   finally { delete process.env.CORPY_SOCIO; }
 });
+
+test('«el 880 lo han aceptado» → aceptado en StelOrder', async () => {
+  const cambios = [];
+  const stel = { getWorkEstimates: async () => [{ id: 9, 'full-reference': 'PRT00880', title: 'Can Bells 30', 'total-amount': 3170.06, 'account-id': 1 }], setWorkEstimateState: async (id, st) => { cambios.push([id, st]); } };
+  const r = await S.ejecutar('estado_presupuesto', { ref: '880', estado: 'aceptado' }, { from: 'x', trab, _stel: stel });
+  assert.deepStrictEqual(cambios, [[9, 1120656]]);
+  assert.match(r.reply, /PRT00880.*aceptado/);
+});

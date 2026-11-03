@@ -49,19 +49,22 @@ function tools() {
       texto: { type: 'string', description: 'Qué hay que recordarle, claro y corto.' } }, required: ['fecha', 'texto'] } },
     { name: 'crear_cita', description: 'Alfonso pide apuntar una CITA o reunión en el calendario («apunta el jueves a las 10 visita con Madrenas en Vilobí»). Va al calendario de Corp y Corpy le avisa antes por WhatsApp.', input_schema: esquema('crear_evento_agenda') },
     { name: 'recordar_dato', description: 'Alfonso pide que RECUERDES un dato o corrige algo: «recuerda que el presidente de Bellpuig 41 es Jordi», «el contacto de… es…», «en Carme 60 los buzones son antracita». Queda en la memoria de Corpy para todos.', input_schema: esquema('corregir_dato') },
+    { name: 'estado_presupuesto', description: 'Alfonso dice que un presupuesto está ACEPTADO o RECHAZADO («el PRT00880 lo han aceptado», «el 874 no lo quieren»). Se cambia en StelOrder y se avisa a Álex.', input_schema: { type: 'object', properties: {
+      ref: { type: 'string', description: 'Número del presupuesto (PRT00880, 880…)' },
+      estado: { type: 'string', enum: ['aceptado', 'rechazado'] } }, required: ['ref', 'estado'] } },
     { name: 'mis_recordatorios', description: 'Alfonso pregunta qué tiene pendiente que le recuerdes («¿qué me tienes que recordar?», «¿qué tengo apuntado?»).', input_schema: { type: 'object', properties: {} } },
   ];
 }
 
 function prompt(hoy, contexto, memoria) {
   return `Eres Corpy, el asistente por WhatsApp de ALFONSO, socio de Corp Projects (empresa de reformas y mantenimiento de fincas de Girona; el otro socio es Álex). Hoy es ${hoy} (Europe/Madrid).
-Le ayudas con: apuntar sus VISITAS (registrar_visita) y su tiempo (apuntar_tiempo_socio), RECORDARLE cosas a una hora (recordatorio), apuntar CITAS en el calendario (crear_cita), guardar DATOS que te pide recordar (recordar_dato) y decirle qué le tienes que recordar (mis_recordatorios).
+Le ayudas con: marcar PRESUPUESTOS aceptados o rechazados (estado_presupuesto), apuntar sus VISITAS (registrar_visita) y su tiempo (apuntar_tiempo_socio), RECORDARLE cosas a una hora (recordatorio), apuntar CITAS en el calendario (crear_cita), guardar DATOS que te pide recordar (recordar_dato) y decirle qué le tienes que recordar (mis_recordatorios).
 REGLAS:
 - «Yo» y «me» son Alfonso. Si dice «con Álex» o «hemos ido Álex y yo», van los dos.
 - Si cuenta una visita y no dice cuánto rato fue, PREGUNTA cuánto (de qué hora a qué hora). Si no queda claro el sitio, pregunta.
 - Resuelve fechas relativas a YYYY-MM-DD. Hora ambigua («a las 5» sin mañana/tarde) en citas o recordatorios: pregunta «¿mañana o tarde?». Pero si cuenta una visita que YA ha hecho «a las 5», es por la tarde (17:00).
 - NUNCA inventes datos. Si falta algo, pregunta corto.
-- recordar_dato es SOLO cuando pide expresamente que recuerdes o apuntes un dato («recuerda que…», «apunta que…», «el contacto de… es…») o corrige algo que sabes. Que un presupuesto (PRT…) esté aceptado o rechazado, que una incidencia esté hecha, que un cliente haya pagado o que haya que facturar NO es recordar_dato: es para Álex → NO_ES_MIO.
+- recordar_dato es SOLO cuando pide expresamente que recuerdes o apuntes un dato («recuerda que…», «apunta que…», «el contacto de… es…») o corrige algo que sabes. Que un presupuesto (PRT…) esté aceptado o rechazado → estado_presupuesto (si no dice el número, pregúntalo). Que una incidencia esté hecha, que un cliente haya pagado o que haya que facturar NO es recordar_dato: es para Álex → NO_ES_MIO.
 - Si pide algo que no está en tus herramientas (presupuestos, facturas, cobros, dinero, nóminas, StelOrder, mandar mensajes a clientes o trabajadores…) o solo comenta algo para Álex, contesta solo: NO_ES_MIO (se lo pasamos a Álex).
 - Si pregunta qué sabes hacer, explícaselo en pocas líneas con ejemplos.
 - Formato WhatsApp: *negrita* con UN asterisco, sin títulos #. Responde en español, breve y cercano.${memoria ? `
@@ -92,7 +95,7 @@ async function llamar(messages, hoy, contexto, memoria) {
 
 async function aAlex(msg) { try { await require('./notifications').sendWhatsApp(msg); } catch (e) { console.warn('[CorpySocio] aviso a Álex:', e.message); } }
 
-async function ejecutar(name, input, { from, trab, _prog = null, _cal = null }) {
+async function ejecutar(name, input, { from, trab, _prog = null, _cal = null, _stel = null }) {
   const P = _prog || require('./programados');
   const userId = trab.userId;
   if (name === 'registrar_visita') {
@@ -137,6 +140,19 @@ async function ejecutar(name, input, { from, trab, _prog = null, _cal = null }) 
       await aAlex(`🧠 *Alfonso* le ha dicho a Corpy que recuerde, de *${r.sujeto}*: ${input.texto}`);
       return { reply: `🧠 Apuntado de *${r.sujeto}*${input.sitio ? ` (${input.sitio})` : ''}: ${input.texto}\nNo se me olvida.` };
     } catch (e) { return { reply: e.message, aclara: true }; }
+  }
+  if (name === 'estado_presupuesto') {
+    const ref = 'PRT' + String((String(input.ref || '').match(/\d{3,5}/) || [''])[0]).padStart(5, '0');
+    const E = { aceptado: 1120656, rechazado: 1120642 };
+    if (!/PRT\d{5}/.test(ref) || !E[input.estado]) return { reply: '¿Qué presupuesto y cómo lo dejo? Ej.: «PRT00880 aceptado».', aclara: true };
+    const S = _stel || require('./stelorder');
+    const p = (await S.getWorkEstimates()).find(e => e['full-reference'] === ref);
+    if (!p) return { reply: `No encuentro el ${ref} en StelOrder. ¿Es otro número?`, aclara: true };
+    try { await S.setWorkEstimateState(p.id, E[input.estado], { requestedBy: 'Alfonso (Corpy)' }); } catch (e) { return { reply: `No he podido cambiar el ${ref}: ${e.message}. Se lo paso a Álex.` }; }
+    try { await require('./memoria').apuntar({ sujeto: { tipo: 'cliente', id: String(p['account-id']), nombre: p.title || ref }, tipo: 'presupuesto', unico: ref, texto: `${ref} ${input.estado} (Alfonso)`, ambito: 'cliente', fuente: { tipo: 'correccion', ref } }); } catch (e) {}
+    const imp = Number(p['total-amount']) ? ` · ${Number(p['total-amount']).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €` : '';
+    await aAlex(`🤝 *Alfonso*: ${ref}${p.title ? ` (${p.title})` : ''}${imp} → *${input.estado}*. Ya está cambiado en StelOrder.`);
+    return { reply: `✅ ${ref}${p.title ? ` (${p.title})` : ''} marcado como *${input.estado}* en StelOrder. Se lo he dicho a Álex.` };
   }
   if (name === 'mis_recordatorios') {
     const l = (await P.lista()).filter(x => x.estado === 'pendiente' && String(x.userId || '') === String(userId) && /Alfonso/.test(x.por || ''));
