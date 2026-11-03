@@ -770,6 +770,29 @@ async function procesarTrabajador(from, body, media, trab, responder) {
     return responder(`Gracias por avisar, ${nombreCap} 🙏. Lo estamos mirando y te los vuelvo a mandar.`);
   }
 
+  // Alfonso es SOCIO: Corpy también es su asistente (corpySocio.js, 4/11/2026). Fotos justo después de contar una
+  // visita (o con el relato en el pie de foto) van a esa visita, no a Compras.
+  let socio = false; try { socio = require('./memoria').esSocio(trab); } catch (e) {}
+  const fotosSocio = socio && !media.pdf ? (media.fotos || []) : [];
+  if (fotosSocio.length) {
+    const V = require('./visitas');
+    const relato = texto && V.esRelato(texto);
+    if (V.visitaReciente(from) || relato) {
+      try {
+        const imgs = (await Promise.all(fotosSocio.map(f => descargarFoto(f.url, f.type)))).filter(Boolean);
+        if (relato) {
+          V.guardarFotosPendientes(from, imgs);
+          const r = await require('./corpySocio').intentar({ texto, from, trab });
+          if (r) return responder(r);
+        } else {
+          const r = await V.anadirFotos(from, imgs);
+          if (r) return responder(r);
+          if (r === '') return;   // siguientes fotos de la misma tanda: silencio
+        }
+      } catch (e) { console.error('[CorpySocio] fotos:', e.message); }
+    }
+  }
+
   // Fotos / PDF → Compras si son documentos de compra
   const docs = [...(media.fotos || []), ...(media.pdf ? [media.pdf] : [])];
   if (docs.length) {
@@ -872,13 +895,18 @@ async function procesarTrabajador(from, body, media, trab, responder) {
     catch (e) { console.error('[Encargos] respuesta:', e.message); }
   }
 
+  // Alfonso (socio): su asistente entiende visitas, recordatorios, citas y «recuerda que…». Lo que no es suyo sigue abajo.
+  if (socio) {
+    try { const r = await require('./corpySocio').intentar({ texto, from, trab }); if (r) return responder(r); }
+    catch (e) { console.error('[CorpySocio]', e.message); }
+  }
+
   // Memoria: si deja algo pendiente («tengo que devolver…», «no encuentro el ticket»), se apunta y Corpy se lo vuelve a preguntar.
   let pend = null;
   if (trab.userId && !PALABRAS_FICHAJE.test(texto)) { try { pend = await require('./encargos').apuntarDeTrabajador(trab.userId, trab.name, texto); } catch (e) { console.warn('[Encargos] memoria:', e.message); } }
 
   // Alfonso es SOCIO (2/11/2026): lo que escribe le llega también a Álex y, si confirma algo («ya está aceptado y
   // programado para el lunes»), como acción. Antes solo iba a la oficina y Álex no se enteraba.
-  let socio = false; try { socio = require('./memoria').esSocio(trab); } catch (e) {}
   if (socio) {
     try { await require('./notifications').sendWhatsApp(require('./acceso').avisoDeSocio(trab.name, texto)); } catch (e) { console.warn('[Socio] aviso:', e.message); }
   }
