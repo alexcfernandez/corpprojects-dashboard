@@ -78,6 +78,9 @@ app.use(cors({
 // Fuerza el dominio propio (solo si CANONICAL_HOST está definido). No toca
 // /health, /api, /auth ni peticiones que no sean GET. Ver src/canonical.js.
 app.use(canonicalHostRedirect);
+// Avisos de Nuvo Voz (la centralita): sin login, con firma HMAC; va antes del express.json global porque la firma se
+// comprueba sobre el cuerpo tal cual llega (src/nuvoVoz.js).
+app.post('/api/nuvo-voz/eventos', express.raw({ type: () => true, limit: '256kb' }), (req, res) => require('./nuvoVoz').manejar(req, res));
 app.use(express.json({ limit: '5mb' }));
 
 const UPLOADS_DIR = path.join(__dirname, '../uploads');

@@ -415,6 +415,8 @@ function startScheduler() {
   // PDF de trabajos (Gantt por operario) y presupuestos, cada mañana (L-S) por WhatsApp a Álex y oficina.
   cron.schedule('20 8 * * 1-6', () => { if (process.env.PDF_TRABAJOS !== 'off') require('./planificacionPdf').avisar().then(r => console.log('[PlanificacionPdf]', JSON.stringify(r))).catch(e => console.warn('[PlanificacionPdf]', e.message)); }, { timezone: 'Europe/Madrid' });
   // Incidencias abiertas cada mañana (L-S) a Álex y oficina: presupuestos por hacer y trabajos a los que ir, hasta que se cierran.
+  // Recados de Nuvo Voz que quedaron a medias (la IA o StelOrder fallaron, o un reinicio): se reintentan (src/nuvoVoz.js).
+  cron.schedule('*/10 * * * *', () => { require('./nuvoVoz').reintentar().then(n => { if (n) console.log('[NuvoVoz] reintentados:', n); }).catch(e => console.warn('[NuvoVoz] reintentar:', e.message)); }, { timezone: 'Europe/Madrid' });
   cron.schedule('15 8 * * 1-6', () => { if (process.env.AVISO_INCIDENCIAS !== 'off') require('./incidenciasDia').avisar().then(r => console.log('[IncidenciasDia]', r.enviado ? `enviado a ${r.destinos}` : 'nada')).catch(e => console.warn('[IncidenciasDia]', e.message)); }, { timezone: 'Europe/Madrid' });
   cron.schedule('30 20 * * *', () => { if (process.env.RESUMEN_GRUPOS !== 'off') require('./peticionesGrupo').resumenDiario().then(r => { if (r.enviado) console.log('[Peticiones] resumen:', r.subject); }).catch(e => console.warn('[Peticiones] resumen:', e.message)); }, { timezone: 'Europe/Madrid' });
   // 9:40 L-V: facturas de proveedor mal pasadas a StelOrder (descuento que suma, total que no cuadra con la foto) → aviso (facturasProveedorCheck.js).

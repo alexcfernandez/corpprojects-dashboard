@@ -325,6 +325,54 @@ async function deCorreo({ gmailId, de, asunto, cuerpo, fecha = new Date(), avisa
   return { jid, nuevas: nuevas.map(p => ({ id: String(p._id), cliente: p.cliente, resumen: p.resumen, incidencia: (auto[String(p._id)] || {}).incidencia || p.incidencia || null })), actualizadas: r.actualizadas.map(p => String(p._id)), avisado };
 }
 
+// ── Recados de SecretarIA por teléfono (3/11/2026, Álex: «que los recados creen solos la incidencia, como los correos»):
+// cuando nadie coge una llamada de Corp en Nuvo Voz la atiende SecretarIA y Nuvo Voz nos manda el recado (nuvoVoz.js).
+// Entra como un correo más, en su propio «grupo» voz:corp: petición, incidencia en StelOrder con operario propuesto y
+// «¿Quién va?» a Álex. El cliente viene por externalId (= account-id de StelOrder, de la caché: no gasta cupo). Del
+// teléfono solo llegan las 3 últimas cifras. Si es URGENTE sale al momento un WhatsApp a Álex y a la oficina; si no,
+// sin aviso suelto (sale en el de las 8:15 y en la pregunta de quién va).
+const EXTRA_RECADO = `Esto es un RECADO que un cliente dejó por TELÉFONO a SecretarIA (la IA que coge las llamadas de Corp cuando nadie puede). Casi siempre es una sola petición. Si dice que ya llamó antes, que no hemos ido o que vuelve a pasar, es seguimiento. No hay teléfono completo: no lo inventes.`;
+const JID_VOZ = 'voz:corp', GRUPO_VOZ = 'Llamadas · SecretarIA';
+async function deRecado({ llamada, fecha = new Date(), urgente = false, resumen, contacto = null, final = '', _llamar = null, _cat = null, _enviar = null, _auto = null } = {}) {
+  const db = await getDB();
+  if (llamada && await db.collection(COL).findOne({ llamadas: String(llamada) })) return { ya: true };
+  urgente = !!urgente || /^\s*URGENTE\b/i.test(resumen || '');
+  const cat = _cat || await _catalogo();
+  const ext = contacto && String(contacto.externalId || '').trim();
+  const accId = ext && /^\d+$/.test(ext) && cat.nombre(ext) ? ext : null;
+  const quien = `${corto(contacto && contacto.nombre, 60) || 'Cliente sin identificar'} (teléfono acabado en ${String(final || '').slice(-3) || '¿?'})`;
+  const extra = EXTRA_RECADO + (accId ? `\nEl número que llamó es del cliente de StelOrder ${accId} · ${cat.nombre(accId)}: usa ese cliente_id salvo que el recado hable claramente de otra comunidad.` : '');
+  const texto = corto(resumen, 2500);
+  const msgs = [{ fecha: new Date(fecha), quien, texto, fotoIds: [], nMedia: 0 }];
+  const memoria = await require('./memoria').paraPrompt(texto, { paraGrupo: JID_VOZ, limite: 40 }).catch(() => '');
+  const r = await _tanda(db, { jid: JID_VOZ, grupo: GRUPO_VOZ, msgs, fuente: 'llamada', cat, _llamar, extra, memoria });
+  for (const p of r.nuevas) {
+    const set = { canal: 'llamada' };
+    if (!p.clienteId && accId) Object.assign(set, { clienteId: accId, clienteStel: cat.nombre(accId) || null });
+    if (urgente) set.urgente = true;
+    Object.assign(p, set);
+    await db.collection(COL).updateOne({ _id: p._id }, { $set: set, $addToSet: { llamadas: String(llamada || '') } });
+  }
+  for (const p of r.actualizadas) {
+    await db.collection(COL).updateOne({ _id: p._id }, { $set: urgente ? { urgente: true } : {}, $addToSet: { llamadas: String(llamada || '') } });
+    if (urgente) p.urgente = true;
+  }
+  for (const p of [...r.nuevas, ...r.actualizadas]) _memo(p);
+  const nuevas = r.nuevas.filter(p => !sinAccion(p));
+  let auto = {};
+  try { auto = await (_auto || _autoIncidencias)(db, { _id: JID_VOZ, autoIncidencia: true }, nuevas); } catch (e) { console.warn('[Peticiones] recado incidencias:', e.message); }
+  let avisado = false;
+  if (urgente) {
+    const lista = [...nuevas, ...r.actualizadas];
+    const txt = `🚨 *URGENTE · recado de SecretarIA* (${fmt(fecha)})\n${quien}\n\n` + (lista.length ? _textoAviso(GRUPO_VOZ, nuevas, r.actualizadas, auto) : `${texto}\n\nNo he sacado ninguna petición de esto: míralo tú.`);
+    const N = require('./notifications');
+    for (const to of [...new Set([N.destinoDueno(), process.env.OFICINA_TELEFONO || '+34674013723'].filter(Boolean))]) {
+      try { if (await (_enviar || N.sendWhatsAppTo)(to, txt, { importante: true }) !== false) avisado = true; } catch (e) { console.warn('[Peticiones] recado urgente:', e.message); }
+    }
+  }
+  return { jid: JID_VOZ, urgente, avisado, nuevas: nuevas.map(p => ({ id: String(p._id), cliente: p.clienteStel || p.cliente, resumen: p.resumen, incidencia: (auto[String(p._id)] || {}).incidencia || p.incidencia || null, error: (auto[String(p._id)] || {}).error || null })), actualizadas: r.actualizadas.map(p => String(p._id)) };
+}
+
 // ── Historial: chat exportado de WhatsApp (.txt) ──
 // Android: «20/10/26, 15:07 - Nombre: texto» · iPhone: «[20/10/26, 15:07:12] Nombre: texto». Las líneas sin fecha siguen
 // el mensaje anterior. «<Multimedia omitido>», «imagen omitida», «‎image omitted»… cuentan como foto.
@@ -496,8 +544,8 @@ async function resumenDiario({ hoy = new Date(), enviar = true, _enviar = null }
   const jids = grupos.map(g => g._id);
   const [nMsgs, nuevas, pend] = await Promise.all([
     db.collection('grupoMensajes').countDocuments({ jid: { $in: jids }, ts: { $gte: ini } }),
-    db.collection(COL).find({ $or: [{ jid: { $in: jids } }, { canal: 'correo' }], creado: { $gte: ini }, fuente: { $ne: 'historial' } }).sort({ urgente: -1, fecha: 1 }).toArray(),
-    db.collection(COL).find({ $or: [{ jid: { $in: jids } }, { canal: 'correo' }], estado: 'pendiente' }).sort({ urgente: -1, fecha: 1 }).toArray(),
+    db.collection(COL).find({ $or: [{ jid: { $in: jids } }, { canal: { $in: ['correo', 'llamada'] } }], creado: { $gte: ini }, fuente: { $ne: 'historial' } }).sort({ urgente: -1, fecha: 1 }).toArray(),
+    db.collection(COL).find({ $or: [{ jid: { $in: jids } }, { canal: { $in: ['correo', 'llamada'] } }], estado: 'pendiente' }).sort({ urgente: -1, fecha: 1 }).toArray(),
   ]);
   if (!nMsgs && !nuevas.length && !pend.length) return { enviado: false, motivo: 'nada' };
   const et = { presupuesto: 'Presupuesto', trabajo: 'Trabajo', queja: 'Queja', consulta: 'Consulta', aviso: 'Aviso' };
@@ -522,4 +570,4 @@ ${pend.length ? `<h3 style="margin:16px 0 4px">Sigue abierto</h3>${tabla(pend.fi
   return { enviado: !!ok, to, subject, nuevas: nuevas.length, abiertas: pend.length };
 }
 
-module.exports = { _citaAlCalendario, deCorreo, _limpiaCorreo, _jidCorreo, presupuestoEnviado, presupuestoDevuelto, refDePdf, crearIncidencia, resumenDiario, _ventana, analizar, importarChat, analizarHistorial, parsearChat, lista, marcar, marcarGrupo, _tanda, _textoAviso, _autoIncidencias, _sinAccion: sinAccion, _contexto, TIPOS };
+module.exports = { _citaAlCalendario, deCorreo, deRecado, JID_VOZ, _limpiaCorreo, _jidCorreo, presupuestoEnviado, presupuestoDevuelto, refDePdf, crearIncidencia, resumenDiario, _ventana, analizar, importarChat, analizarHistorial, parsearChat, lista, marcar, marcarGrupo, _tanda, _textoAviso, _autoIncidencias, _sinAccion: sinAccion, _contexto, TIPOS };

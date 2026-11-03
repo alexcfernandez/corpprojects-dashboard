@@ -76,6 +76,10 @@ async function datos(fecha = hoyMadrid()) {
   await w('altasCerradasPorAltaSS', async () => require('./incorporaciones').cerrarConAltaSS({ por: 'Corpy (revisión: ya está el alta)' }));
   await w('memoria', async () => require('./memoria').vigentesRecientes());
   await w('altas', async () => (await require('./incorporaciones').lista({})).map(i => ({ id: i.id || String(i._id), nombre: i.nombre, inicio: i.fechaInicio, falta: (i.pasos || []).filter(p => !p.ok && p.antes).map(p => p.t + (p.nota ? ` (${p.nota})` : '')) })));
+  // Llamadas de la centralita (Nuvo Voz): cifras del día, recados de SecretarIA y perdidas sin recado (nuvoVoz.js).
+  await w('llamadas', async () => { const v = await require('./nuvoVoz').datosDia(fecha);
+    return { resumen: v.resumen && { ...v.resumen, _id: undefined }, recados: v.recados.map(r => ({ hora: new Date(r.fecha).toLocaleTimeString('es-ES', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }), quien: r.contacto && r.contacto.nombre, final: r.final, urgente: r.urgente, resumen: corto(r.resumen, 300), estado: r.estado, incidencias: ((r.resultado && r.resultado.nuevas) || []).map(n => n.incidencia).filter(Boolean) })),
+      perdidasSinRecado: v.perdidasSinRecado.map(p => ({ hora: new Date(p.fecha).toLocaleTimeString('es-ES', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }), quien: p.contacto && p.contacto.nombre, final: p.final, motivo: p.motivo })) }; });
   // Lo que el dashboard ha escrito hoy en StelOrder
   await w('stel', async () => (await db.collection('stelWriteLog').find({ at: { $gte: ini, $lt: fin } }).project({ tipo: 1, doc: 1, tercero: 1, por: 1, hechos: 1 }).limit(100).toArray()).map(x => ({ tipo: x.tipo, doc: x.doc, tercero: x.tercero, por: x.por, n: (x.hechos || []).length })));
   // Revisiones anteriores: lo que Álex ya resolvió (con su nota) y lo que sigue sin marcar. Un tema resuelto un día ya no
@@ -112,10 +116,11 @@ async function guardar(rev = {}, por = 'Claude') {
   const fecha = /^\d{4}-\d{2}-\d{2}$/.test(String(rev.fecha || '')) ? rev.fecha : hoyMadrid();
   const items = (Array.isArray(rev.items) ? rev.items : []).slice(0, 40).map(limpiarItem).filter(i => i.titulo);
   const doc = { fecha, resumen: corto(rev.resumen, 2500), items, por, creadoAt: new Date() };
+  if (rev.llamadas) doc.llamadas = corto(rev.llamadas, 1500);
   await db.collection(COL).updateOne({ fecha }, { $set: doc }, { upsert: true });
   if (rev.avisar) {
     const dec = items.filter(i => i.tipo === 'decidir').length, arr = items.filter(i => i.tipo === 'arreglado').length;
-    const txt = `🌙 *Revisión del día ${fecha.split('-').reverse().slice(0, 2).join('/')}*\n\n${doc.resumen}\n\n${arr ? `✔ Arreglado: ${arr}. ` : ''}${dec ? `👉 Para decidir: ${dec} (en el inicio del dashboard, con botones).` : ''}\nhttps://dashboard.corpprojects.es/`;
+    const txt = `🌙 *Revisión del día ${fecha.split('-').reverse().slice(0, 2).join('/')}*\n\n${doc.resumen}\n\n${arr ? `✔ Arreglado: ${arr}. ` : ''}${dec ? `👉 Para decidir: ${dec} (en el inicio del dashboard, con botones).` : ''}${doc.llamadas ? `\n\n${String(rev.llamadas).slice(0, 1500)}` : ''}\nhttps://dashboard.corpprojects.es/`;
     try { const N = require('./notifications'); await N.sendWhatsAppTo(N.destinoDueno(), txt.slice(0, 3500)); } catch (e) { console.warn('[Revisión] aviso:', e.message); }
   }
   return { ok: true, fecha, items: items.length };
@@ -174,12 +179,13 @@ async function ejecutar(revId, itemId, n, por) {
 // permiso. Ahora la hace el propio dashboard cada noche: junta los datos del día, se los da a la IA con las mismas
 // instrucciones y guarda la revisión (sale en el inicio y le llega a Álex por WhatsApp). La IA no toca nada: lo que
 // haya que arreglar lo propone con botones.
-const INSTRUCCIONES = `Eres el revisor nocturno de Corp Projects Holding SL (empresa de reformas de Álex Castro, Girona). Te paso TODO lo del día en JSON: conversaciones de Corpy (el bot de WhatsApp) con la gente, grupos, encargos abiertos, compras, pagos en tiendas por persona, papeles subidos, correos, altas de gente nueva y lo que el dashboard escribió en StelOrder. Escribe SIEMPRE en castellano llano, frases cortas, sin tecnicismos ni nombres de código.
+const INSTRUCCIONES = `Eres el revisor nocturno de Corp Projects Holding SL (empresa de reformas de Álex Castro, Girona). Te paso TODO lo del día en JSON: conversaciones de Corpy (el bot de WhatsApp) con la gente, grupos, encargos abiertos, compras, pagos en tiendas por persona, papeles subidos, correos, llamadas de la centralita, altas de gente nueva y lo que el dashboard escribió en StelOrder. Escribe SIEMPRE en castellano llano, frases cortas, sin tecnicismos ni nombres de código.
 
 Qué buscar:
 - Corpy: malentendidos (una foto o una respuesta apuntada donde no era, preguntas repetidas, cosas que el trabajador no entendió o que dijo y nadie recogió), papeles personales que acabaron en Compras, mensajes raros o vacíos, conversaciones con otros bots.
 - Lo estancado: encargos de 3 días o más o con 2 recordatorios sin respuesta; compras sin obra; altas con todo firmado que solo esperan «Enviado a la gestoría».
 - Compras: quién ha ido a comprar 3 veces o más hoy (viajes), y si la cola por revisar crece.
+- Llamadas (centralita Nuvo Voz): el bloque con las cifras ya sale aparte, NO lo repitas. Saca punto solo si hace falta: un recado en estado error o sin incidencia, perdidas sin recado de clientes que hay que devolver, muchas perdidas para lo normal.
 - Correos que piden una acción (Administración/notificaciones oficiales con plazo, gestoría, clientes que reclaman o piden explicaciones, proveedores, médicos/prevención). Las notificaciones oficiales con plazo, lo primero.
 - memoria son cosas que Álex YA corrigió o confirmó (p. ej. «Javi de alta», un contacto, un presupuesto aceptado): mandan sobre lo demás; NUNCA digas lo contrario ni lo vuelvas a sacar como problema.
 - resueltosDeAntes son temas que Álex YA marcó como hechos o ignorados (con su nota, p. ej. «pagado», «ya se mandó el 15/10»): NO los vuelvas a poner salvo que HOY pase algo NUEVO sobre ese tema (un correo o mensaje nuevo), y entonces di solo lo nuevo.
@@ -237,7 +243,10 @@ async function automatica({ fecha = hoyMadrid(), avisar = true, _llamar = null }
     out = tu && tu.input;
   }
   if (!out || !Array.isArray(out.items)) throw new Error('La IA no devolvió la revisión');
-  return guardar({ fecha, avisar, resumen: out.resumen, items: out.items }, 'Corpy (revisión automática)');
+  // El bloque de llamadas va tal cual (las cifras no pasan por la IA).
+  let llamadas = null;
+  try { llamadas = d.llamadas && !d.llamadas.error ? require('./nuvoVoz').textoDia(await require('./nuvoVoz').datosDia(fecha)) : null; } catch (e) { console.warn('[Revisión] llamadas:', e.message); }
+  return guardar({ fecha, avisar, resumen: out.resumen, items: out.items, llamadas }, 'Corpy (revisión automática)');
 }
 
 module.exports = { _temaDe: temaDe, datos, guardar, automatica, paraInicio, marcar, ejecutar, limpiarItem, limites, ACCIONES, _compacto };

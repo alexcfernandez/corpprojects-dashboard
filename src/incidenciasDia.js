@@ -3,6 +3,7 @@
 // Cada mañana (L-S) a Álex y a la oficina: presupuestos por hacer y trabajos a los que hay que ir, con cliente, qué es y
 // cuántos días lleva. Vuelve a salir cada día hasta que la incidencia cambia de estado en StelOrder («INC00432 cerrada»
 // por WhatsApp a Corpy, o en StelOrder). También las peticiones de grupos y correos que aún no tienen incidencia.
+// También las llamadas perdidas de la centralita (Nuvo Voz) que no dejaron recado a SecretarIA, para devolverlas.
 // «Presupuesto hecho» no sale: eso ya espera al cliente (lo sigue el correo de los lunes / la página /pr).
 
 const ABIERTA = /pendiente|en proceso|programado|parte de trabajo/i;
@@ -23,11 +24,13 @@ async function datos({ _S = null, _db = null } = {}) {
   const trabajos = abiertas.filter(i => !/presupuesto/i.test(i.tipo));
   const db = _db || await require('./db').getDB();
   const sinInc = await db.collection('peticionesGrupo').find({ estado: 'pendiente', incidencia: null, tipo: { $in: ['trabajo', 'queja', 'presupuesto'] } }).sort({ urgente: -1, fecha: -1 }).limit(30).toArray();
-  return { presupuestos, trabajos, sinInc };
+  // Llamadas perdidas sin recado desde el aviso anterior (Nuvo Voz, 3/11/2026): hay que devolverlas.
+  const perdidas = await require('./nuvoVoz').perdidasParaAviso({ _db: db }).catch(() => []);
+  return { presupuestos, trabajos, sinInc, perdidas };
 }
 
-function texto({ presupuestos, trabajos, sinInc }) {
-  if (!presupuestos.length && !trabajos.length && !sinInc.length) return null;
+function texto({ presupuestos, trabajos, sinInc, perdidas = [] }) {
+  if (!presupuestos.length && !trabajos.length && !sinInc.length && !perdidas.length) return null;
   const linea = i => `• *${i.ref}* · ${corto(i.cliente || '¿cliente?', 32)} · ${corto(i.que, 70)} · ${i.dias === 0 ? 'hoy' : i.dias === 1 ? 'ayer' : `${i.dias} días`}${i.dias >= 30 ? ' ⏰' : ''}${/programado|en proceso/i.test(i.estado) ? ` (${String(i.estado).trim().toLowerCase()})` : ''}`;
   const seccion = (tit, l) => {
     if (!l.length) return '';
@@ -40,6 +43,7 @@ function texto({ presupuestos, trabajos, sinInc }) {
     seccion('📝 *Presupuestos por hacer*', presupuestos),
     seccion('🔨 *Trabajos: hay que ir*', trabajos),
     sinInc.length ? `📬 *Pedidos por grupo o correo sin incidencia todavía* (${sinInc.length})\n${sinInc.slice(0, 6).map(p => `• ${p.urgente ? '🚨 ' : ''}${corto(p.cliente, 32)}${p.direccion ? ' ' + corto(p.direccion, 25) : ''} · ${corto(p.resumen, 70)} · ${p.grupo ? corto(p.grupo, 28) : ''}`).join('\n')}` : '',
+    perdidas.length ? `📞 *Llamadas perdidas sin recado: devolverlas* (${perdidas.length})\n${perdidas.slice(0, 8).map(p => `• ${p.quien} · ${p.cuando}${p.motivo ? ` · ${p.motivo.toLowerCase()}` : ''}`).join('\n')}${perdidas.length > 8 ? `\n…y ${perdidas.length - 8} más (en Nuvo Voz)` : ''}` : '',
     `Cuando esté hecha, dime «INC00432 cerrada» (o «hecha», «presupuesto hecho», «programada») y deja de salir.${viejas ? ` Hay ${viejas} con más de un mes (⏰): si ya no van, ciérralas y limpiamos la lista.` : ''}`,
   ];
   return partes.filter(Boolean).join('\n\n');
