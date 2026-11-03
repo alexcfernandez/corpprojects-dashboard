@@ -166,6 +166,40 @@ async function subirStel({ ids = null, max = 50 } = {}, por, { _db: d = null, _S
   return { subidos: hechos.length, hechos, fallos, quedan: Math.max(0, (await pendientesStel({ _db: db })).length) };
 }
 
+// ── Con los grupos (peticionesGrupo.js) ──
+// «6º 3a», «6è 3ª», «sexto tercera» no, pero sí las cifras y bajos/ático/local: «6-3», «bx-2», «atic».
+const clavePiso = s => (norm(s).replace(/baix(os)?|bajos?|bxs?\.?/g, ' bx ').replace(/atic(o)?/g, ' atic ').match(/\d+|bx|atic|local/g) || []).join('-');
+
+// El contacto que ya tenemos para una petición: el de ese piso; si es zona común (sin piso), el presidente.
+async function paraPeticion({ clienteId, direccion = null }, { _db: d = null } = {}) {
+  if (!clienteId) return null;
+  const db = await _db(d);
+  const l = (await db.collection(COL).find({ clienteId: String(clienteId), activo: { $ne: false }, 'telefonos.0': { $exists: true } }).toArray());
+  const cp = clavePiso(direccion);
+  const c = cp && /\d/.test(cp) ? l.find(x => x.piso && clavePiso(x.piso) === cp)
+    : l.find(x => x.rol === 'presidente') || l.find(x => x.rol === 'vicepresidente');
+  return c ? { nombre: c.nombre, rol: c.rol, piso: c.piso || '', telefono: telBonito(c.telefonos[0]), texto: `${c.nombre} ${telBonito(c.telefonos[0])}${c.piso ? ` (${c.piso})` : c.rol === 'presidente' ? ' (presidente)' : ''}` } : null;
+}
+
+// Lo que da el grupo («Nuria 666 020 704 (6º 3a)», «ALBERT-649911570») → a la lista de contactos de ese cliente.
+function deTexto(texto) {
+  const t = String(texto || ''); const out = [];
+  const re = /(?:\+?34[\s.]?)?[6789]\d{2}[\s.-]?\d{2,3}[\s.-]?\d{2,3}(?:[\s.-]?\d{1,3})?/g; let m, ini = 0;
+  while ((m = re.exec(t))) {
+    const tl = tel(m[0]); if (!tl) continue;
+    const antes = t.slice(ini, m.index).replace(/[-–:,;·|]+\s*$/, '').trim(); ini = m.index + m[0].length;
+    const piso = (t.slice(ini).match(/^\s*\(([^)]{1,30})\)/) || [])[1] || '';
+    const nombre = antes.split(/[,;·|]|\by\b/).pop().replace(/^(el|la|contacto|tel(efono)?|presi(dente|denta)?)\b[:\s-]*/i, '').trim();
+    out.push({ nombre: nombre ? nombre.replace(/\b\w/g, c => c.toUpperCase()).replace(/\B\w+/g, w => w.toLowerCase()) : 'Contacto', telefonos: [tl], piso, rol: /presi/i.test(antes) ? 'presidente' : 'vecino' });
+  }
+  return out;
+}
+async function desdePeticion(p, { _db: d = null, _S = null } = {}) {
+  if (!p || !p.clienteId || !p.contacto) return null;
+  const l = deTexto(p.contacto).map(c => ({ ...c, piso: c.piso || p.direccion || '', clienteId: p.clienteId, fuente: { grupo: p.grupo || null, peticion: String(p._id || '') } }));
+  return l.length ? importar(l, 'Corpy (grupo)', { origen: 'grupo', _db: d, _S }) : null;
+}
+
 async function resumen({ _db: d = null } = {}) {
   const db = await _db(d);
   const [total, enStel, pend] = await Promise.all([
@@ -175,4 +209,4 @@ async function resumen({ _db: d = null } = {}) {
   return { total, enStel, pendientesStel: pend };
 }
 
-module.exports = { ROLES, lista, guardar, borrar, importar, subirStel, pendientesStel, resumen, idDeNombre, tel, telBonito, _limpio };
+module.exports = { ROLES, paraPeticion, deTexto, desdePeticion, clavePiso, lista, guardar, borrar, importar, subirStel, pendientesStel, resumen, idDeNombre, tel, telBonito, _limpio };

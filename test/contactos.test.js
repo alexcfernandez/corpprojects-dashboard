@@ -18,7 +18,7 @@ function fakeDb() {
     return Array.isArray(val) ? val.includes(v) : val === v;
   });
   const col = { rows,
-    find: q => ({ sort: () => ({ limit: () => ({ toArray: async () => rows.filter(r => match(r, q)) }), toArray: async () => rows.filter(r => match(r, q)) }) }),
+    find: q => ({ toArray: async () => rows.filter(r => match(r, q)), sort: () => ({ limit: () => ({ toArray: async () => rows.filter(r => match(r, q)) }), toArray: async () => rows.filter(r => match(r, q)) }) }),
     findOne: async q => rows.find(r => match(r, q)) || null,
     insertOne: async d => { const _id = new (require('mongodb').ObjectId)(); rows.push({ ...d, _id }); n++; return { insertedId: _id }; },
     updateOne: async (q, u) => { const r = rows.find(x => match(x, q)); if (r) for (const [k, v] of Object.entries(u.$set)) r[k] = v; },
@@ -60,4 +60,18 @@ test('pasar a StelOrder: una vez por contacto y para en el primer fallo', async 
   assert.strictEqual(r.subidos, 0); assert.strictEqual(r.fallos.length, 1);
   assert.strictEqual(r.quedan, 0);   // el que no contestó queda «revisar», no se repite solo
   assert.strictEqual(db.rows.find(x => x.nombre === 'B').stel.estado, 'revisar');
+});
+
+test('para una petición: el contacto de ese piso; en zona común, el presidente', async () => {
+  const db = fakeDb();
+  await C.importar([{ nombre: 'Nuria', rol: 'vecino', clienteId: '12043730', telefonos: ['666020704'], piso: '6º 3a' }, { nombre: 'Lluís', rol: 'presidente', clienteId: '12043730', telefonos: ['619983122'] }], 't', { _db: db, _S: S });
+  assert.strictEqual((await C.paraPeticion({ clienteId: '12043730', direccion: '6è 3ª' }, { _db: db })).texto, 'Nuria 666 02 07 04 (6º 3a)');
+  assert.strictEqual((await C.paraPeticion({ clienteId: '12043730', direccion: 'cubierta' }, { _db: db })).nombre, 'Lluís');
+  assert.strictEqual(await C.paraPeticion({ clienteId: '12043730', direccion: '2º 1ª' }, { _db: db }), null);
+});
+
+test('el contacto que dan en el grupo se lee bien', () => {
+  assert.deepStrictEqual(C.deTexto('Nuria 666 020 704 (6º 3a)'), [{ nombre: 'Nuria', telefonos: ['666020704'], piso: '6º 3a', rol: 'vecino' }]);
+  assert.deepStrictEqual(C.deTexto('ALBERT-649911570')[0].nombre, 'Albert');
+  assert.deepStrictEqual(C.deTexto('LLAMAR PRIMERO A JUAN CARLOS, el presidente 629 36 15 23')[0].rol, 'presidente');
 });

@@ -326,13 +326,14 @@ async function pullChanges() {
 // Agenda personal dictada por WhatsApp (Fase 1 del agente). NO es planificación de
 // operarios: se etiqueta cpSource:'agenda' para que applyEvent la ignore (arriba).
 // date: 'YYYY-MM-DD'. hora: 'HH:MM' (opcional; sin ella = día completo).
-async function crearEventoPersonal({ date, hora, titulo }) {
+async function crearEventoPersonal({ date, hora, titulo, lugar = null, nota = null }) {
   const cal = getCalendar();
   const calendarId = targetCalendarId();
   const summary = `🗓️ ${String(titulo || 'Recordatorio').trim()}`;
   const body = {
     summary,
-    description: 'Agenda personal — vía asistente de WhatsApp',
+    description: [nota, 'Agenda personal — vía asistente de WhatsApp'].filter(Boolean).join('\n\n'),
+    ...(lugar ? { location: String(lugar).slice(0, 200) } : {}),
     extendedProperties: { private: { cpSource: 'agenda', cpAgenda: '1' } },
   };
   if (/^\d{1,2}:\d{2}$/.test(String(hora || ''))) {

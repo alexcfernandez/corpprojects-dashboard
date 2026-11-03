@@ -62,6 +62,11 @@ const TOOLS = [
     input_schema: { type: 'object', properties: { trabajador: { type: ['string', 'null'], description: 'null o «todos» = a todos.' } } },
   },
   {
+    name: 'consultar_tallas',
+    description: 'DICE las tallas que ya están guardadas en la ficha de los trabajadores (camiseta, pantalón, calzado): «dime las tallas de pantalón de los chicos», «tallas de Javi», «qué número calza Melvin». Para comprar ropa o EPIs. Si a alguno le faltan, lo dice (y se le pueden pedir con pedir_tallas).',
+    input_schema: { type: 'object', properties: { trabajador: { type: ['string', 'null'], description: 'null o «todos» = todos.' }, prenda: { type: ['string', 'null'], enum: ['ropa', 'pantalon', 'calzado', null], description: 'Solo esa prenda si la pide (camiseta/sudadera = ropa; botas/zapatos = calzado).' } } },
+  },
+  {
     name: 'apuntar_ausencia',
     description: 'Apunta una AUSENCIA LARGA de un trabajador con su fecha de fin (maternidad/paternidad, baja médica, accidente, lactancia, excedencia): así esos días no salen como «sin apuntar» y la gestoría recibe el tipo bien. P. ej. «Paula está de maternidad hasta el 12 de febrero», «Judit de baja hasta el lunes».',
     input_schema: {
@@ -130,6 +135,9 @@ const TOOLS = [
         fecha: { type: 'string', description: 'Fecha absoluta YYYY-MM-DD (resuelve "mañana"/"el lunes"/"el 19" respecto a HOY).' },
         hora: { type: ['string', 'null'], description: 'Hora HH:MM en 24h, o null si no la dice.' },
         titulo: { type: 'string', description: 'Qué es (breve).' },
+        lugar: { type: ['string', 'null'], description: 'Dirección o sitio, si lo dice.' },
+        nota: { type: ['string', 'null'], description: 'Detalles útiles (nº de expediente, qué llevar, con quién…), si los dice.' },
+        avisar_dias_antes: { type: ['integer', 'null'], description: 'Si es algo importante y lejano (juicio, notaría, ITV…) y no dice otra cosa: 7. Si no, null.' },
       },
       required: ['fecha', 'titulo'],
     },
@@ -160,7 +168,7 @@ REGLAS DURAS:
 - Distingue: "en el calendario / en la agenda" + fecha/hora = evento personal → crear_evento_agenda. "en <comunidad> que <hecho>" = nota de comunidad → anadir_nota_comunidad. Si es ambiguo, pregunta.
 - Resuelve fechas relativas ("mañana", "el lunes", "el 19") a YYYY-MM-DD respecto a hoy.
 - HORA: si es INEQUÍVOCA ("19:30", "a las 19", "a las 8 de la mañana", "mediodía") → HH:MM en 24h. Si es AMBIGUA mañana/tarde ("las 7.30", "a las 8", "a las 5" sin "de la mañana/tarde" ni formato 24h) → NO la asumas: PREGUNTA "¿mañana o tarde? (p. ej. 07:30 o 19:30)" antes de crear el evento. Si no dice hora → null.
-- Tallas de ropa/calzado y cumpleaños → pedir_tallas. «Pídele / dile / pregúntale / recuérdale a X que…» (también «acuérdate de preguntarle a X el lunes…») → encargar_a_trabajador (redacta el mensaje para el trabajador en tú, breve). «X ya lo ha hecho / ya me lo dio / olvida lo de…» → cerrar_encargo.
+- «Dime / pásame las tallas de…» (las que YA hay) → consultar_tallas. PEDIR tallas a un trabajador o a todos → pedir_tallas. Cumpleaños → pedir_tallas. «Pídele / dile / pregúntale / recuérdale a X que…» (también «acuérdate de preguntarle a X el lunes…») → encargar_a_trabajador (redacta el mensaje para el trabajador en tú, breve). «X ya lo ha hecho / ya me lo dio / olvida lo de…» → cerrar_encargo.
 - Presencia, horas, quién trabajó/vino/faltó, vacaciones, bajas → consultar_presencia. Para «cuántos días faltó/trabajó/lleva X» usa resumenPorPersona: «faltó» = faltaInjustificada + faltaJustificada + sinApuntar (días laborables sin nada apuntado); dilo desglosado y con las fechas si son pocas. Si preguntan «cuántos días lleva» sin decir de qué, da días trabajados (y vacaciones/baja si hay). Horas o coste de una obra → horas_obra. Contesta SOLO con lo que devuelvan (si no hay datos, dilo). «Esta semana» = desde el lunes.
 - «Empieza / entra a trabajar X el día…», «da de alta a…» → nueva_incorporacion.
 - Datos o documentos de NUESTRA empresa (CIF, razón social, domicilio, certificados) → datos_empresa. «Pásame / mándame / necesito / envíame <documento>» de la empresa o de un trabajador → pasar_documento (NO digas que no tienes acceso: búscalo).
@@ -427,12 +435,32 @@ async function ejecutarTool(name, input, from) {
       return { handled: true, reply: `📅 Apuntado: *${x.nombre}* — ${require('./ausencias').TIPOS[x.tipo].toLowerCase()} desde el ${f(x.desde)}${x.hasta ? ` hasta el ${f(x.hasta)}` : ' (sin fecha de fin)'}. Esos días ya no saldrán como «sin apuntar» y la gestoría lo recibirá así.` };
     } catch (e) { return { handled: true, reply: e.message }; }
   }
+  if (name === 'consultar_tallas') {
+    const F = require('./fichaDatos');
+    let l = await F.todas();
+    if (input.trabajador && !/^tod/i.test(input.trabajador)) {
+      const u = await _trabajador(input.trabajador); if (!u || u.varios) return { handled: true, reply: `¿De quién? No tengo claro «${input.trabajador}».` };
+      l = l.filter(x => x.id === String(u._id));
+      if (!l.length) return { handled: true, reply: `${u.name} no está en la lista de tallas (solo técnicos y encargados).` };
+    }
+    const N = { ropa: 'camiseta', pantalon: 'pantalón', calzado: 'calzado' };
+    const ks = input.prenda && N[input.prenda] ? [input.prenda] : ['ropa', 'pantalon', 'calzado'];
+    const con = l.filter(x => ks.some(k => x.tallas[k])), sin = l.filter(x => !ks.some(k => x.tallas[k]));
+    const lin = con.map(x => `• *${x.nombre}*: ${ks.map(k => `${ks.length > 1 ? N[k] + ' ' : ''}${x.tallas[k] || '¿?'}`).join(' · ')}`);
+    return { handled: true, reply: `👕 *Tallas${ks.length === 1 ? ' de ' + N[ks[0]] : ''}*\n${lin.join('\n') || '(ninguna guardada)'}${sin.length ? `\n\nSin tallas: ${sin.map(x => x.nombre.split(' ')[0]).join(', ')}. Dime «pide las tallas a ${sin.length > 1 ? 'todos' : sin[0].nombre.split(' ')[0]}» y se las pido.` : ''}` };
+  }
   if (name === 'crear_evento_agenda') {
-    const { fecha, hora, titulo } = input || {};
+    const { fecha, hora, titulo, lugar, nota, avisar_dias_antes: antes } = input || {};
     if (!fecha || !titulo) return { handled: true, reply: '¿Qué apunto y para qué día?' };
     try {
-      await require('./calendar').crearEventoPersonal({ date: fecha, hora: hora || null, titulo });
-      return { handled: true, reply: `🗓️ Apuntado en tu agenda: *${titulo}* — ${hora ? `${fecha} a las ${hora}` : fecha}.` };
+      const Cal = require('./calendar');
+      await Cal.crearEventoPersonal({ date: fecha, hora: hora || null, titulo, lugar: lugar || null, nota: nota || null });
+      let aviso = '';
+      if (antes > 0) {
+        const d = new Date(new Date(fecha + 'T12:00:00Z').getTime() - antes * 86400000).toISOString().slice(0, 10);
+        if (d > hoyMadridISO()) { await Cal.crearEventoPersonal({ date: d, hora: null, titulo: `En ${antes} días: ${titulo}`, nota: [nota, lugar].filter(Boolean).join(' · ') || null }); aviso = `\n⏰ Y un aviso ${antes} días antes (${d.split('-').reverse().join('/')}).`; }
+      }
+      return { handled: true, reply: `🗓️ Apuntado en tu agenda: *${titulo}* — ${hora ? `${fecha.split('-').reverse().join('/')} a las ${hora}` : fecha.split('-').reverse().join('/')}${lugar ? ` · ${lugar}` : ''}.${aviso}` };
     } catch (e) { console.error('[Agente] crearEvento:', e.message); return { handled: true, reply: 'No he podido crear el evento en el calendario, inténtalo de nuevo.' }; }
   }
   if (name === 'anadir_nota_comunidad') {
@@ -506,4 +534,4 @@ async function _intentar({ texto, from, imagenes = [], puerta = null, contexto =
   return { handled: false };
 }
 
-module.exports = { intentar, TOOLS, _impl, _consultarPresencia: consultarPresencia, _horasObra: horasObra, _pasarDocumento: pasarDocumento, _datosEmpresa: datosEmpresa };
+module.exports = { intentar, TOOLS, _impl, _ejecutarTool: ejecutarTool, _consultarPresencia: consultarPresencia, _horasObra: horasObra, _pasarDocumento: pasarDocumento, _datosEmpresa: datosEmpresa };

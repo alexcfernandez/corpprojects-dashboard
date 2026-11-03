@@ -44,6 +44,8 @@ const HERRAMIENTA = {
       actualiza: { type: ['string', 'null'], description: 'id de una petición anterior (lista PETICIONES ABIERTAS) si esto es la misma cosa' },
       respondimos: { type: 'boolean', description: 'Alguien de Corp contestó en el chat a esta petición' },
       hecho_en_chat: { type: 'boolean', description: 'En el chat se ve que se hizo, se mandó el presupuesto o se cerró (fotos de acabado, «ya está», «enviado»…)' },
+      cita: { type: ['object', 'null'], description: 'SOLO si en estos mensajes queda fijado un día para ir (lo dice alguien de Corp, el administrador o un vecino: «vamos mañana a las 10», «os espera el jueves a las 9», «habíamos quedado el miércoles»). Fecha absoluta. null si no hay día concreto.', properties: {
+        fecha: { type: 'string', description: 'YYYY-MM-DD' }, hora: { type: ['string', 'null'], description: 'HH:MM en 24 h, o null' }, con: { type: ['string', 'null'], description: 'Con quién se queda (nombre/teléfono), si se dice' } } },
       pedir_contacto: { type: 'boolean', description: 'true SOLO si para ir a hacerlo nos falta un contacto o cómo entrar y nadie lo ha dado. false si ya estamos trabajando en ese edificio, si alguien de Corp ya contestó que se encarga («sí miramos», «vamos»), si el contacto ya salió (en la conversación anterior o en la petición abierta), si es zona común con acceso o si no hay que ir a ningún sitio' },
     }, required: ['msgs', 'tipo', 'cliente', 'resumen', 'que_hacer', 'urgente', 'situacion'] } },
   }, required: ['peticiones'] },
@@ -123,16 +125,19 @@ ${cat.clientes.join('\n')}`;
     const set = { tipo: TIPOS.includes(p.tipo) ? p.tipo : 'consulta', clienteId: p.cliente_id && /^\d+$/.test(String(p.cliente_id)) ? String(p.cliente_id) : null,
       cliente: corto(p.cliente, 120), direccion: corto(p.direccion, 120) || null, contacto: corto(p.contacto, 120) || null, resumen: corto(p.resumen, 400), queHacer: corto(p.que_hacer, 300),
       urgente: !!p.urgente, respondimos: p.respondimos == null ? null : !!p.respondimos, hechoEnChat: p.hecho_en_chat == null ? null : !!p.hecho_en_chat, situacion: SITUACIONES.includes(p.situacion) ? p.situacion : 'nuevo', incidencia: corto(p.incidencia, 12) || null, presupuesto: corto(p.presupuesto, 12) || null, pedirContacto: p.pedir_contacto === true, actualizado: new Date() };
+    if (p.cita && /^\d{4}-\d{2}-\d{2}$/.test(p.cita.fecha || '')) set.cita = { fecha: p.cita.fecha, hora: /^\d{1,2}:\d{2}$/.test(p.cita.hora || '') ? p.cita.hora : null, con: corto(p.cita.con, 80) || null };
     if (set.clienteId) set.clienteStel = cat.nombre(set.clienteId) || null;
     const prev = p.actualiza && ObjectId.isValid(String(p.actualiza)) ? abiertas.find(a => String(a._id) === String(p.actualiza)) : null;
     if (prev) {
       // Una queja, una urgencia o que insistan sobre algo ya archivado lo vuelve a poner a la vista (2/11/2026: lo de
       // Cartagena siguió archivado mientras CINC pedía que llamáramos al presidente).
       // Lo que ya sabíamos (contacto, piso, cliente, INC/PRT) no se borra porque el mensaje nuevo no lo repita.
-      for (const k of ['contacto', 'direccion', 'clienteId', 'clienteStel', 'incidencia', 'presupuesto']) if (set[k] == null && prev[k] != null) delete set[k];
+      for (const k of ['contacto', 'direccion', 'clienteId', 'clienteStel', 'incidencia', 'presupuesto', 'cita']) if (set[k] == null && prev[k] != null) delete set[k];
+      const junta = { ...prev, ...set };
+      if (fuente !== 'historial') await _citaAlCalendario(db, junta, prev.cita);
       if (prev.estado === 'archivo' && importa(set) && ms.some(m => !NUESTROS.test(m.quien || ''))) Object.assign(set, { estado: 'pendiente', reabiertaAt: new Date() });
       await db.collection(COL).updateOne({ _id: prev._id }, { $set: set, $push: { mensajes: { $each: mensajes } }, $addToSet: { fotoIds: { $each: fotoIds }, archivos: { $each: ms.flatMap(m => m.archivos || []) } } });
-      actualizadas.push({ ...prev, ...set });
+      actualizadas.push(junta);
     } else {
       // Del historial solo quedan a la vista (pendiente) las de los últimos 90 días que no se ven hechas; el resto, al archivo
       // para el informe de lo que se nos escapó.
@@ -141,14 +146,33 @@ ${cat.clientes.join('\n')}`;
       const archivos = ms.flatMap(m => m.archivos || []);
       const doc = { jid, grupo: grupo || null, ...set, quien: ms[0].quien, mensajes, fotoIds, archivos, fuente, fecha: ms[0].fecha, estado, creado: new Date() };
       const r = await db.collection(COL).insertOne(doc);
-      nuevas.push({ ...doc, _id: r.insertedId });
+      const nueva = { ...doc, _id: r.insertedId };
+      if (fuente !== 'historial') await _citaAlCalendario(db, nueva, null);
+      nuevas.push(nueva);
     }
   }
   return { nuevas, actualizadas };
 }
 
+// Una cita que se fija en el grupo («vamos el jueves a las 10», «habíais quedado el miércoles») va a la agenda de Álex
+// (3/11/2026: el propietario de Santiago Sobrequés 5 esperó a alguien que no fue y la cita no estaba en ningún calendario).
+// Solo citas de hoy en adelante y una vez por fecha/hora; queda en p.citaCal y sale en el aviso.
+async function _citaAlCalendario(db, p, antes, { _crear = null } = {}) {
+  const c = p.cita; if (!c || !c.fecha) return null;
+  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
+  if (c.fecha < hoy || (antes && antes.fecha === c.fecha && antes.hora === c.hora && p.citaCal)) return null;
+  const titulo = `Visita ${p.clienteStel || p.cliente}${p.direccion ? ' ' + p.direccion : ''}${c.con ? ' · ' + c.con : p.contacto ? ' · ' + p.contacto : ''}`;
+  try {
+    const id = await (_crear || require('./calendar').crearEventoPersonal)({ date: c.fecha, hora: c.hora, titulo: corto(titulo, 140), nota: `${p.resumen}${p.incidencia ? '\n' + p.incidencia : ''}\nGrupo «${p.grupo || 'WhatsApp'}»` });
+    const citaCal = { id, fecha: c.fecha, hora: c.hora, at: new Date() };
+    await db.collection(COL).updateOne({ _id: p._id }, { $set: { citaCal } });
+    p.citaCal = citaCal; p.citaNueva = true;
+    return citaCal;
+  } catch (e) { console.warn('[Peticiones] cita al calendario:', e.message); return null; }
+}
+
 // Lo de una petición que ya existía que merece aviso: urgente, insisten, o una queja que nadie de Corp ha contestado.
-const importa = p => !!(p.urgente || p.situacion === 'seguimiento' || (p.tipo === 'queja' && !p.respondimos));
+const importa = p => !!(p.urgente || p.situacion === 'seguimiento' || (p.tipo === 'queja' && !p.respondimos) || p.citaNueva);
 
 function _textoAviso(grupo, nuevas, actualizadas, auto = {}) {
   const et = { presupuesto: '💶 Presupuesto', trabajo: '🔧 Trabajo', queja: '⚠️ Queja', consulta: '❓ Consulta', aviso: 'ℹ️ Aviso' };
@@ -158,11 +182,12 @@ function _textoAviso(grupo, nuevas, actualizadas, auto = {}) {
       a.yaContestado ? '   💬 Ya contestó alguien de Corp en el grupo: no propongo operario ni pido contacto.' : '',
       a.sinOperario ? `   👷 ${a.sinOperario}` : '',
       a.preguntado ? (p.tipo === 'presupuesto' ? '   📝 Presupuesto para ti (te lo paso aparte).' : '   👷 Te pregunto aparte quién va.') : a.propuesta ? `   👷 Propongo a *${a.propuesta.nombre}* el ${a.propuesta.fechaTxt} a las ${a.propuesta.hora} (${a.propuesta.motivo}). Dime a quién o confírmalo en Inicio → Peticiones.` : '',
+      a.contactoFicha ? `   📇 Contacto de la ficha: ${a.contactoFicha}` : '',
       a.pedidoContacto ? '   📨 He pedido en el grupo un teléfono de contacto.' : ''].filter((x, i) => !i || x).join('\n'); };
   const l = [...nuevas, ...actualizadas.filter(importa)];
   const cab = /^Correo · /.test(grupo || '') ? `📧 *${grupo}*` : `📋 *Grupo «${grupo}»*`;
   return `${cab}: ${l.length} cosa${l.length > 1 ? 's' : ''} que nos piden\n\n` +
-    l.map(p => `${p.urgente ? '🚨 ' : ''}${et[p.tipo] || p.tipo} · *${p.cliente}*${p.direccion ? ' ' + p.direccion : ''}: ${p.resumen}${sit(p)}\n   → ${p.queHacer}${hecho(p)}`).join('\n\n') +
+    l.map(p => `${p.urgente ? '🚨 ' : ''}${et[p.tipo] || p.tipo} · *${p.cliente}*${p.direccion ? ' ' + p.direccion : ''}: ${p.resumen}${sit(p)}\n   → ${p.queHacer}${p.citaNueva && p.citaCal ? `\n   📅 Cita apuntada en tu calendario: *${p.citaCal.fecha.split('-').reverse().join('/')}${p.citaCal.hora ? ' a las ' + p.citaCal.hora : ''}*` : ''}${hecho(p)}`).join('\n\n') +
     `\n\nLas tienes en el inicio del dashboard (Peticiones de los grupos).`;
 }
 
@@ -190,6 +215,11 @@ async function _autoIncidencias(db, g, nuevas, { _crear = null, _propuesta = nul
     try { const pr = await (_propuesta || require('./trabajos').propuesta)(String(p._id)); r.propuesta = pr.propuesta; if (!pr.propuesta && pr.motivo) r.sinOperario = pr.motivo; } catch (e) {}
     // A Álex: «¿Quién va?» con la propuesta; su respuesta crea el pedido y se lo manda al operario (trabajosSeguimiento.js).
     if (!_crear) { try { r.preguntado = await require('./trabajosSeguimiento').preguntarQuien({ ...p, incidencia: r.incidencia || p.incidencia }, r.propuesta); } catch (e) { console.warn('[Peticiones] quién va:', e.message); } }
+    // Antes de pedirlo, la lista de contactos de la comunidad (contactos.js): el de ese piso o, si es zona común, el presi.
+    if (!p.contacto && p.pedirContacto) {
+      const c = await require('./contactos').paraPeticion(p, { _db: db }).catch(() => null);
+      if (c) { r.contactoFicha = c.texto; p.contacto = c.texto; await db.collection(COL).updateOne({ _id: p._id }, { $set: { contacto: c.texto, contactoDeFicha: true } }); }
+    }
     if (!p.contacto && g.corpyResponde && p.pedirContacto) {
       const txt = `Hola, soy Corpy, de la oficina de Corp Projects. Para lo de ${p.cliente}${p.direccion ? ' (' + p.direccion + ')' : ''}: ¿nos pasáis un nombre y teléfono de contacto y cuándo se puede entrar? Gracias.`;
       try { r.pedidoContacto = (await (_enviar || require('./notifications').sendWhatsAppTo)(g._id, txt, { sinTraducir: true, importante: true })) !== false; } catch (e) {}
@@ -222,7 +252,11 @@ async function _contexto(db, jid, desde, hasta) {
 }
 
 // Cada petición creada o puesta al día deja su línea en la memoria del sitio (memoria.js). Sin esperar ni romper nada.
-function _memo(p) { if (p && p.jid) require('./memoria').dePeticion(p).catch(e => console.warn('[Peticiones] memoria:', e.message)); }
+function _memo(p) {
+  if (p && p.jid) require('./memoria').dePeticion(p).catch(e => console.warn('[Peticiones] memoria:', e.message));
+  // Y el teléfono que den, a los contactos de la comunidad (sin duplicar).
+  if (p && p.jid && p.contacto && !p.contactoDeFicha) require('./contactos').desdePeticion(p).catch(e => console.warn('[Peticiones] contactos:', e.message));
+}
 
 // Cada media hora: lo nuevo de los grupos con peticiones:true.
 async function analizar({ avisar = true, _llamar = null, _cat = null } = {}) {
@@ -488,4 +522,4 @@ ${pend.length ? `<h3 style="margin:16px 0 4px">Sigue abierto</h3>${tabla(pend.fi
   return { enviado: !!ok, to, subject, nuevas: nuevas.length, abiertas: pend.length };
 }
 
-module.exports = { deCorreo, _limpiaCorreo, _jidCorreo, presupuestoEnviado, presupuestoDevuelto, refDePdf, crearIncidencia, resumenDiario, _ventana, analizar, importarChat, analizarHistorial, parsearChat, lista, marcar, marcarGrupo, _tanda, _textoAviso, _autoIncidencias, _sinAccion: sinAccion, _contexto, TIPOS };
+module.exports = { _citaAlCalendario, deCorreo, _limpiaCorreo, _jidCorreo, presupuestoEnviado, presupuestoDevuelto, refDePdf, crearIncidencia, resumenDiario, _ventana, analizar, importarChat, analizarHistorial, parsearChat, lista, marcar, marcarGrupo, _tanda, _textoAviso, _autoIncidencias, _sinAccion: sinAccion, _contexto, TIPOS };
