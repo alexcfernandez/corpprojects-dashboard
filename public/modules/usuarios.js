@@ -333,6 +333,7 @@
             </div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;flex-shrink:0">
               ${ROLES_FIELD.includes(r)?`<button class="btn bgh" style="padding:5px 10px;font-size:11px" onclick="enlaceMagico('${u._id}','${String(u.name).replace(/'/g,"\\'")}')">🔗 Acceso</button>`:''}
+              ${u.active!==false&&esDueno()?`<button class="btn bgh" style="padding:5px 10px;font-size:11px" onclick="CP.Usuarios.verComo('${u._id}',this)" title="Ver su app del móvil tal como la ve, sin poder cambiar nada">👁 Ver como</button>`:''}
               <button class="btn bgh" style="padding:5px 10px;font-size:11px" onclick="CP.Usuarios.editUser('${u._id}')">✏️ Editar</button>
               ${u.active!==false
                 ? `<button class="btn bgh" style="padding:5px 10px;font-size:11px;color:var(--red);border-color:var(--red)" onclick="CP.Usuarios.deactivateUser('${u._id}','${u.name}')" title="Desactivar">⏸️</button>`
@@ -539,6 +540,18 @@
     finally { btn.disabled = false; btn.textContent = old; }
   };
 
-  CP.Usuarios = { render, showTab, loadUsers, editUser, deactivateUser, reactivateUser, submitUser, resetForm, onRoleChange, onAutChange };
+  // «Ver como…» (3/11/2026): abre su app del móvil (/fichar) en esta misma pestaña con un pase de 30 min de SOLO LECTURA.
+  // El servidor no deja guardar nada con ese pase y le aplica su rol (un técnico no ve dinero). Ver public/vercomo.js.
+  function esDueno() { try { return (typeof cpRole === 'function' ? cpRole() : 'owner') === 'owner'; } catch (e) { return false; } }
+  async function verComo(userId, btn) {
+    const t = btn && btn.textContent; if (btn) { btn.disabled = true; btn.textContent = 'Abriendo…'; }
+    try {
+      const r = await api('/api/ver-como', { method: 'POST', body: JSON.stringify({ workerId: userId }) });
+      if (!r || !r.token) throw new Error((r && r.error) || 'No se pudo abrir');
+      location.href = `/fichar#vc=${r.token}&n=${encodeURIComponent(r.workerName || '')}`;
+    } catch (e) { alert(e.message); if (btn) { btn.disabled = false; btn.textContent = t; } }
+  }
+
+  CP.Usuarios = { render, showTab, loadUsers, editUser, deactivateUser, reactivateUser, submitUser, resetForm, onRoleChange, onAutChange, verComo };
 
 })(window.CP = window.CP || {});

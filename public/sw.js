@@ -1,5 +1,5 @@
 // Service Worker — Corp Projects Dashboard
-const CACHE = 'cp-v276';
+const CACHE = 'cp-v277';
 const STATIC = [
   '/',
   '/parte',
@@ -14,6 +14,7 @@ const STATIC = [
   '/medir',
   '/catalogo',
   '/push-client.js',
+  '/vercomo.js',
   '/obra-picker.js',
   '/modules/hoy.js',
   '/tool-theme.css',

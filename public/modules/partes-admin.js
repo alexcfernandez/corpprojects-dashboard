@@ -160,8 +160,10 @@
 
   // ── TABS ────────────────────────────────────────────────────────
   function showTab(id, btn) {
-    document.querySelectorAll('#presencia-container .p-tab').forEach(p => { p.style.display='none'; p.classList.remove('active'); });
-    document.querySelectorAll('#presencia-container .btab').forEach(b => b.classList.remove('active'));
+    // Antes buscaba en #presencia-container (copiado de presencia.js) y no escondía nada: las pestañas se
+    // apilaban una debajo de otra (3/11/2026).
+    document.querySelectorAll('#partes-container .p-tab').forEach(p => { p.style.display='none'; p.classList.remove('active'); });
+    document.querySelectorAll('#partes-container .btab').forEach(b => b.classList.remove('active'));
     const tab = document.getElementById('pa-tab-' + id);
     if (tab) { tab.style.display='block'; tab.classList.add('active'); }
     if (btn) btn.classList.add('active');
@@ -757,7 +759,7 @@
   async function verExpediente(id) {
     try {
       const exp = await api(`/api/expedientes/${id}`);
-      showTab('expedientes', document.querySelector('#presencia-container .btab:nth-child(3)'));
+      showTab('expedientes', document.querySelector('#partes-container .btab:nth-child(3)'));
       document.getElementById('exp-lista').innerHTML = `
         <button class="btn bgh" style="margin-bottom:14px" onclick="CP.PartesAdmin.loadExpedientes()">← Volver</button>
         <div class="card">

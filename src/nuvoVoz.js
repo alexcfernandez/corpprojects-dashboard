@@ -105,7 +105,38 @@ async function perdidasSinRecado(desde, hasta, { _db = null } = {}) {
   const perdidas = await db.collection(COL).find({ evento: 'llamada.perdida', fecha: { $gte: desde, $lt: hasta } }).sort({ fecha: 1 }).limit(200).toArray();
   if (!perdidas.length) return [];
   const conRecado = new Set((await db.collection(COL).find({ evento: 'recado.nuevo', llamada: { $in: perdidas.map(p => p.llamada) } }).project({ llamada: 1 }).toArray()).map(r => r.llamada));
-  return perdidas.filter(p => !conRecado.has(p.llamada));
+  return perdidas.filter(p => !conRecado.has(p.llamada) && !p.devuelta);   // «Ya la he devuelto» en 📞 Llamadas
+}
+
+// ── Pantalla «📞 Llamadas» del panel (3/11/2026): lo de los últimos días, de un vistazo y sin gastar StelOrder ──
+async function panel({ dias = 7, ahora = new Date(), _db = null } = {}) {
+  const db = _db || await getDB();
+  const desde = new Date(ahora.getTime() - dias * 24 * 3600 * 1000);
+  const hoy = new Date(ahora).toLocaleDateString('sv-SE', { timeZone: TZ });
+  const [perdidas, recados, resumenHoy, ultimo] = await Promise.all([
+    perdidasSinRecado(desde, ahora, { _db: db }),
+    db.collection(COL).find({ evento: 'recado.nuevo', fecha: { $gte: desde } }).sort({ fecha: -1 }).limit(60).toArray(),
+    db.collection(DIA).findOne({ _id: hoy }),
+    db.collection(COL).find({}).sort({ recibido: -1 }).limit(1).toArray(),
+  ]);
+  const quien = p => ({ nombre: (p.contacto && p.contacto.nombre) || null, final: p.final || null });
+  return {
+    dias, hoy,
+    perdidas: perdidas.sort((a, b) => b.fecha - a.fecha).map(p => ({ id: p._id, fecha: p.fecha, ...quien(p), motivo: p.motivo || null })),
+    recados: recados.map(r => ({ id: r._id, fecha: r.fecha, ...quien(r), urgente: !!r.urgente, titulo: r.titulo || null, resumen: r.resumen || '', estado: r.estado,
+      error: r.estado === 'error' ? (r.error || null) : null,
+      peticiones: ((r.resultado && r.resultado.nuevas) || []).map(n => ({ id: n.id, porConfirmar: n.porConfirmar || null, incidencia: n.incidencia || null })) })),
+    resumenHoy: resumenHoy || null,
+    ultimoAviso: (ultimo[0] && ultimo[0].recibido) || null,
+  };
+}
+
+// «Ya la he devuelto»: la perdida deja de salir aquí, en la revisión y en el aviso de las 8:15.
+async function marcarDevuelta(id, por = '', { _db = null } = {}) {
+  const db = _db || await getDB();
+  const r = await db.collection(COL).updateOne({ _id: String(id), evento: 'llamada.perdida' }, { $set: { devuelta: true, devueltaPor: corto(por, 60), devueltaAt: new Date() } });
+  if (!r.matchedCount) throw new Error('Llamada no encontrada');
+  return { ok: true };
 }
 
 async function datosDia(fecha, { _db = null } = {}) {
@@ -144,4 +175,4 @@ async function perdidasParaAviso({ ahora = new Date(), _db = null } = {}) {
     .map(p => ({ quien: _quien(p), cuando: diaHora(p.fecha), motivo: p.motivo || null }));
 }
 
-module.exports = { firmaValida, recibir, procesar, reintentar, manejar, perdidasSinRecado, datosDia, textoDia, perdidasParaAviso, COL, DIA };
+module.exports = { firmaValida, recibir, procesar, reintentar, manejar, perdidasSinRecado, datosDia, textoDia, perdidasParaAviso, panel, marcarDevuelta, COL, DIA };

@@ -246,3 +246,24 @@ test('verificación por número: solo es automático si el recado es del cliente
     await assert.rejects(PG.confirmar(String(p._id), {}, 'Álex'), /no está por confirmar/);
   } finally { dbm.getDB = real; process.env.WHATSAPP_TO = prevW; if (prevW === undefined) delete process.env.WHATSAPP_TO; }
 });
+
+test('pantalla 📞 Llamadas: perdidas sin recado, recados con su incidencia y «ya la he devuelto» la quita de todo', async () => {
+  const db = fakeDB();
+  const ahora = new Date('2026-11-03T20:00:00Z');
+  await V.recibir({ evento: 'recado.nuevo', empresa: 'corp', llamada: 'R1', fecha: '2026-11-03T10:00:00Z', resumen: 'Goteras en el 3º', contacto: { nombre: 'Ctat. X', externalId: '9' }, final: '333' }, { _db: db });
+  db.collection('llamadasVoz')._l[0].resultado = { nuevas: [{ id: 'p1', porConfirmar: null, incidencia: 'INC00100' }] };
+  db.collection('llamadasVoz')._l[0].estado = 'hecho';
+  await V.recibir({ evento: 'llamada.perdida', empresa: 'corp', llamada: 'R1', fecha: '2026-11-03T09:59:00Z', motivo: 'SecretarIA' }, { _db: db });
+  await V.recibir({ evento: 'llamada.perdida', empresa: 'corp', llamada: 'P1', fecha: '2026-11-03T18:00:00Z', motivo: 'Nadie libre', final: '444' }, { _db: db });
+  await V.recibir({ evento: 'llamada.perdida', empresa: 'corp', llamada: 'VIEJA', fecha: '2026-10-20T18:00:00Z', final: '555' }, { _db: db });
+  let d = await V.panel({ ahora, _db: db });
+  assert.deepStrictEqual(d.perdidas.map(p => p.final), ['444']);
+  assert.strictEqual(d.recados.length, 1);
+  assert.deepStrictEqual(d.recados[0].peticiones, [{ id: 'p1', porConfirmar: null, incidencia: 'INC00100' }]);
+  assert.strictEqual(d.recados[0].nombre, 'Ctat. X');
+  await V.marcarDevuelta('llamada.perdida:P1', 'Álex', { _db: db });
+  d = await V.panel({ ahora, _db: db });
+  assert.deepStrictEqual(d.perdidas, []);
+  assert.deepStrictEqual(await V.perdidasParaAviso({ ahora, _db: db }), []);
+  await assert.rejects(V.marcarDevuelta('recado.nuevo:R1', 'Álex', { _db: db }), /no encontrada/);
+});

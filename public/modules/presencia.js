@@ -160,8 +160,8 @@
   let sumMonth2 = new Date().getMonth() + 1;
 
   function showTab(id, btn) {
-    document.querySelectorAll('.p-tab').forEach(p => { p.style.display='none'; p.classList.remove('active'); });
-    document.querySelectorAll('.btab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('#presencia-container .p-tab').forEach(p => { p.style.display='none'; p.classList.remove('active'); });
+    document.querySelectorAll('#presencia-container .btab').forEach(b => b.classList.remove('active'));
     const tab = document.getElementById('p-tab-' + id);
     if (tab) { tab.style.display='block'; tab.classList.add('active'); }
     if (btn) btn.classList.add('active');

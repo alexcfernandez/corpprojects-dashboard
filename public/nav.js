@@ -8,6 +8,7 @@
   // [texto, enlace, permiso]: el permiso es el mismo que usa la portada (CP_ROLE_CAPS); sin permiso, para todos.
   const MENU = [
     { t: 'Inicio', i: '🏠', href: '/' },
+    { t: 'Llamadas', i: '📞', href: '/?tab=llamadas', cap: 'clientes' },
     { t: 'Obras', i: '🏗️', items: [
       ['Obras', '/?tab=obras', 'facturas'], ['Pedidos de trabajo', '/?tab=pedidos'], ['Planificación', '/?tab=planning'], ['Partes', '/?tab=partes'],
       ['Comunidades', '/?tab=comunidades', 'facturas'], ['Mediciones', '/medir'], ['Presupuestos', '/presupuestos', 'presupuestos'], ['Catálogo de precios', '/catalogo', 'catalogo'],
@@ -39,6 +40,7 @@
   let rol = 'owner'; try { rol = (JSON.parse(localStorage.getItem('cp_user') || '{}').role) || 'owner'; } catch (e) {}
   const puede = cap => !cap || (CAPS[rol] || CAPS.owner).includes(cap);
   MENU.forEach(sc => { if (sc.items) sc.items = sc.items.filter(([, , cap]) => puede(cap)); });
+  for (let k = MENU.length - 1; k >= 0; k--) if (MENU[k].href && !puede(MENU[k].cap)) MENU.splice(k, 1);
   for (let k = MENU.length - 1; k >= 0; k--) if (MENU[k].items && !MENU[k].items.length) MENU.splice(k, 1);
   const actual = location.pathname + location.hash;
   const seccionActiva = enDashboard ? null : MENU.find(s => s.items && s.items.some(([, h]) => h === actual || h === location.pathname));

@@ -120,3 +120,57 @@ body.light .cp-kpi { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 
 .ini-caja .k-v { font-family: var(--font-display); font-size: 26px; font-weight: 800; margin-top: 4px; line-height: 1.1; }
 .ini-caja .k-s { font-size: 12px; color: var(--text3); margin-top: 4px; line-height: 1.45; }
 @media (max-width: 760px) { .ini-caja { grid-template-columns: 1fr; gap: 12px; } .ini-caja .k-v { font-size: 22px; } }
+
+/* ── 📞 Llamadas ── */
+.ll-fila { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid var(--border); }
+.ll-resumen { font-size: 13px; color: var(--text2); line-height: 1.5; margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.ll-fila .btn { flex-shrink: 0; }
+
+/* ── MÓVIL (3/11/2026, public/movil.js): barra de pantalla con ← Volver, cada apartado en su pantalla, 🔔 y bloques plegables ── */
+.mv-barra, .mv-menu, .cpnav .mv-campana, .mv-sheet, .mv-pliegue { display: none; }
+@media (max-width: 760px) {
+  body.mv-en-tab .mv-barra { display: flex; }
+  .mv-barra { position: sticky; top: 48px; z-index: 1500; align-items: center; gap: 6px; margin: -14px -14px 14px; padding: 6px 8px; min-height: 52px;
+    background: var(--bg); border-bottom: 1px solid var(--border); }
+  .mv-barra .mv-atras { display: flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 12px 0 6px; border: 0; border-radius: 12px; background: none;
+    color: var(--blue); font: 600 15px/1 'Inter', sans-serif; cursor: pointer; max-width: 45%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mv-barra .mv-atras:active { background: rgba(77,156,248,.12); }
+  .mv-barra .mv-tit { flex: 1; min-width: 0; font: 700 17px/1.2 var(--font-display, 'Inter'); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px; }
+  /* Apartados: menú de botones grandes y una pantalla cada uno */
+  .mv-caja > .mv-fila { display: none !important; }
+  .mv-caja.mv-hub > .mv-menu { display: grid; }
+  .mv-caja.mv-hub > :not(.mv-menu) { display: none !important; }
+  .mv-menu { grid-template-columns: 1fr; gap: 10px; margin-bottom: 14px; }
+  .mv-menu button { display: flex; align-items: center; gap: 12px; min-height: 58px; padding: 12px 16px; border-radius: 14px; border: 1px solid var(--border);
+    background: var(--bg2); color: var(--text); font: 600 15.5px/1.25 'Inter', sans-serif; text-align: left; cursor: pointer; }
+  .mv-menu button::after { content: '›'; margin-left: auto; font-size: 22px; color: var(--text3); font-weight: 400; }
+  .mv-menu button:active { transform: scale(.985); border-color: var(--blue); }
+  body.light .mv-menu button { background: #fff; }
+  /* 🔔 en la barra de arriba */
+  .cpnav .mv-campana { display: flex; position: relative; align-items: center; justify-content: center; width: 44px; height: 40px; margin-right: 2px; border: 0; border-radius: 10px;
+    background: none; color: var(--text, #eef0f2); font-size: 19px; cursor: pointer; }
+  .cpnav .mv-campana[hidden] { display: none; }
+  .cpnav .mv-campana .mv-n { position: absolute; top: 2px; right: 0; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 10px; background: var(--red, #f05252); color: #fff;
+    font: 700 11px/19px 'Inter', sans-serif; text-align: center; border: 2px solid var(--bg, #0d0f12); }
+  .cpnav .mv-campana .mv-n.ambar { background: var(--amber, #f59e0b); color: #1a1200; }
+  .mv-sheet.abierta { display: block; position: fixed; top: 48px; left: 0; right: 0; bottom: 0; z-index: 1999; background: rgba(0,0,0,.45); }
+  .mv-sheet .mv-panel { background: var(--bg2); border-bottom: 1px solid var(--border2); border-radius: 0 0 18px 18px; max-height: 75vh; overflow: auto; padding: 8px 10px 12px; box-shadow: 0 18px 40px rgba(0,0,0,.35); }
+  .mv-sheet .mv-cab { display: flex; align-items: center; padding: 8px 6px 6px; font: 700 13px/1 'Inter', sans-serif; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; }
+  .mv-sheet .mv-aviso { display: flex !important; align-items: center; gap: 10px; width: 100%; min-height: 50px; margin: 0 !important; padding: 10px 8px !important; border: 0 !important;
+    border-top: 1px solid var(--border) !important; border-radius: 0 !important; background: none !important; font-size: 15px !important; text-align: left; white-space: normal; }
+  .mv-sheet .mv-aviso b { order: 2; margin-left: auto; font-size: 17px; }
+  .mv-sheet .mv-aviso::after { content: '›'; order: 3; color: var(--text3); font-size: 20px; }
+  .mv-sheet .mv-nada { padding: 16px 8px; color: var(--green); font-size: 14.5px; }
+  body.light .mv-sheet .mv-panel { background: #fff; }
+  #ini-hoytoca { display: none !important; }
+  .mv-sheet .mv-aviso { color: var(--text) !important; font-family: 'Inter', sans-serif !important; font-weight: 500; }
+  /* Dentro de una pantalla manda la barra «‹ Volver»: fuera la fila de Actualizar/Salir (sigue en Inicio) */
+  body.mv-en-tab #app > .header { display: none !important; }
+  .ll-titulo-g { display: none; }
+  .ll-n { white-space: nowrap; }
+  /* Portada: bloques largos plegados (título y cifra a la vista; se abren al tocar) */
+  .mv-plegable:not(.abierto) > .card > :not(:first-child) { display: none !important; }
+  .mv-plegable > .card > :first-child { cursor: pointer; min-height: 32px; }
+  .mv-plegable .mv-pliegue { display: inline-block; margin-left: 6px; color: var(--text3); font-size: 18px; line-height: 1; transition: transform .2s ease; }
+  .mv-plegable.abierto .mv-pliegue { transform: rotate(90deg); }
+}

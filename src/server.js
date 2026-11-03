@@ -132,6 +132,8 @@ const limiter = rateLimit({
   },
 });
 app.use('/api/', limiter);
+// «Ver como…»: con un token w_vc_ solo se puede leer, en todas las rutas (src/verComo.js).
+app.use('/api/', require('./verComo').soloLectura);
 const loginLimiter = rateLimit({ windowMs: 15*60*1000, max: parseInt(process.env.LOGIN_RATE_MAX || 60), skipSuccessfulRequests: true, message: { error: 'Demasiados intentos de acceso fallidos. Espera unos minutos y vuelve a probar.' } });
 
 function requireAuth(req, res, next) {
@@ -2539,6 +2541,32 @@ app.post('/api/peticiones/:id/incidencia', requireAuthOficina, async (req, res) 
 });
 app.post('/api/peticiones/:id', requireAuthOficina, express.json(), async (req, res) => {
   try { const q = (await _quienPush(req)) || {}; res.json(await require('./peticionesGrupo').marcar(req.params.id, req.body || {}, q.name || req.user?.name || 'Oficina')); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+// ── «Ver como…»: token de solo lectura para ver la app del móvil tal como la ve un trabajador (solo el dueño) ──
+app.post('/api/ver-como', requireAuth, express.json(), async (req, res) => {
+  try {
+    if (users.normalizeRole(req.user.role || 'owner') !== 'owner') return res.status(403).json({ error: 'Solo el dueño' });
+    const workerId = String((req.body || {}).workerId || '');
+    const u = (await users.getUsers(false)).find(x => String(x._id) === workerId);
+    if (!u) return res.status(404).json({ error: 'Trabajador no encontrado' });
+    if (u.active === false) return res.status(400).json({ error: 'Está dado de baja' });
+    const VC = require('./verComo'), doc = VC.nuevoToken(u, req.user.name || 'Dueño');
+    const db = await require('./db').getDB();
+    await db.collection('worker_tokens').insertOne(doc);
+    require('./activity').registrar({ actor: req.user.name || 'Dueño', actorRole: 'owner', kind: 'ver_como', entidad: 'usuario', ref: String(u._id), detalle: `Ha mirado la app del móvil como ${u.name} (solo lectura)` });
+    res.json({ token: doc.token, workerName: u.name, role: users.normalizeRole(u.role || 'tecnico'), minutos: VC.MINUTOS });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+// ── 📞 Llamadas (Nuvo Voz): recados, perdidas sin devolver y resumen, para dueño y oficina (3/11/2026) ──
+app.get('/api/llamadas', requireAuthOficina, async (req, res) => {
+  try {
+    const V = require('./nuvoVoz'), P = require('./peticionesGrupo');
+    const [d, abiertas] = await Promise.all([V.panel({ dias: Math.min(31, Math.max(1, parseInt(req.query.dias) || 7)) }), P.lista({ estado: 'pendiente', jid: P.JID_VOZ })]);
+    res.json({ ...d, peticiones: abiertas });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/llamadas/:id/devuelta', requireAuthOficina, async (req, res) => {
+  try { const q = (await _quienPush(req)) || {}; res.json(await require('./nuvoVoz').marcarDevuelta(req.params.id, q.name || req.user?.name || 'Oficina')); } catch (err) { res.status(400).json({ error: err.message }); }
 });
 // ── Revisión del día (revision.js): los datos del día, la revisión escrita y sus botones en el inicio ──
 app.get('/api/revision/datos', requireAuthOficina, async (req, res) => {

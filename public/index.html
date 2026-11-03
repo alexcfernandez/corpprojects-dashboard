@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="/dashboard.css">
 <link rel="stylesheet" href="/cp-ui.css">
 <script src="/nav.js" defer></script>
+<script src="/movil.js" defer></script>
 <!-- PWA -->
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#4d9cf8">
@@ -79,6 +80,7 @@ function cpUpdateBanner(){
 </header>
 <nav class="nav" id="nav-grupos" style="gap:4px">
   <button class="nav-btn active" onclick="showTab('inicio',this)" style="font-weight:700">🏠 Inicio</button>
+  <button class="nav-btn" onclick="showTab('llamadas',this)">📞 Llamadas <span id="badge-llamadas" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:2px">0</span></button>
   <button class="nav-grp" onclick="showGrupo('obras',this)">🏗️ Obras ▾</button>
   <button class="nav-grp" onclick="showGrupo('dinero',this)">💰 Dinero ▾</button>
   <button class="nav-grp" onclick="showGrupo('compras',this)">🧾 Compras ▾</button>
@@ -437,6 +439,9 @@ function cpUpdateBanner(){
   </div>
 </div>
 
+<!-- LLAMADAS (Nuvo Voz): por confirmar, perdidas sin devolver, recados de SecretarIA y resumen del día -->
+<div id="tab-llamadas" class="panel"><div id="llamadas-container"></div></div>
+
 <!-- CICLO DE TRABAJOS (tablero modo restaurante; modules/ciclo.js) -->
 <div id="tab-ciclo" class="panel"><div id="ciclo-container"></div></div>
 
@@ -663,7 +668,7 @@ const CP_ROLE_CAPS={
 };
 const CP_ROLE_LABEL={owner:'Dueño',oficina:'Oficina',encargado:'Encargado',tecnico:'Técnico'};
 // Qué capacidad exige cada pestaña / enlace. Lo no listado es visible para todos.
-const CP_TAB_CAP={informes:'facturas',facturas:'facturas',pendientes:'facturas',cobros:'facturas',banco:'facturas',pagos:'facturas',obras:'facturas',comunidades:'facturas',alertas:'facturas',presupuestos:'presupuestos',familias:'clientes',emails:'clientes',usuarios:'usuarios',actividad:'registro'};
+const CP_TAB_CAP={llamadas:'clientes',informes:'facturas',facturas:'facturas',pendientes:'facturas',cobros:'facturas',banco:'facturas',pagos:'facturas',obras:'facturas',comunidades:'facturas',alertas:'facturas',presupuestos:'presupuestos',familias:'clientes',emails:'clientes',usuarios:'usuarios',actividad:'registro'};
 const CP_TOOL_CAP={'/diag':'usuarios','/compras':'facturas','/compra':'facturas','/asignar-facturas':'facturas','/catalogo':'catalogo','/presupuestos':'presupuestos','/competencia':'facturas'};
 function cpUser(){ try{ return JSON.parse(localStorage.getItem('cp_user')||'{}'); }catch(e){ return {}; } }
 function cpRole(){ return cpUser().role || 'owner'; }  // sin cuenta (clave general) = Dueño
@@ -989,8 +994,8 @@ function rAge(list){
 
 // ── BANCO ─────────────────────────────────────────────────────────
 function showBTab(id,btn){
-  document.querySelectorAll('.bpanel').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('.btab').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('#tab-banco .bpanel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('#tab-banco .btab').forEach(b=>b.classList.remove('active'));
   document.getElementById('btab-'+id).classList.add('active');
   if(btn)btn.classList.add('active');
   if(id==='resumen'){rOv();rMCells();}
@@ -1582,16 +1587,12 @@ async function cargarFacturarAparte(){
 }
 async function facturadoAparte(i,b){ const g=(window._factAparte||[])[i]; if(!g) return; b.disabled=true; try{ const r=await apiCall('/api/presencia/facturar-aparte/hecho','POST',{fecha:g.fecha,obraId:g.obraId||null,obra:g.obra||''}); if(r&&r.error) throw new Error(r.error); cargarFacturarAparte(); }catch(err){ alert(err.message); b.disabled=false; } }
 // Peticiones de los grupos de clientes (grupo de SYNC): lo que piden, cruzado con StelOrder (peticionesGrupo.js). 20/10/2026.
-async function cargarPeticiones(){
-  const el=document.getElementById('ini-peticiones'); if(!el) return;
-  let r; try{ r=await apiCall('/api/peticiones'); }catch(e){ el.innerHTML=''; return; }
-  const l=(r&&r.lista)||[]; if(!l.length){ el.innerHTML=''; return; }
+// Una petición con sus botones (inicio y 📞 Llamadas).
+function petFila(p){
   const e=s=>String(s==null?'':s).replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
   const et={presupuesto:'💶 Presupuesto',trabajo:'🔧 Trabajo',queja:'⚠️ Queja',consulta:'❓ Consulta',aviso:'ℹ️ Aviso'};
   const sit=p=>p.situacion==='ya_hay_incidencia'?`ya está en ${p.incidencia||'una incidencia'}`:p.situacion==='ya_hay_presupuesto'?`ya hay ${p.presupuesto||'presupuesto'}`:p.situacion==='seguimiento'?'insisten':'nuevo, no está en StelOrder';
-  const orden=['queja','trabajo','presupuesto','consulta','aviso'];
-  l.sort((a,b)=>(b.urgente-a.urgente)||(orden.indexOf(a.tipo)-orden.indexOf(b.tipo))||String(b.fecha).localeCompare(String(a.fecha)));
-  const fila=p=>`<div style="padding:9px 0;border-top:1px solid var(--border)">
+  return `<div style="padding:9px 0;border-top:1px solid var(--border)">
       <div style="font-weight:600;font-size:13.5px">${p.urgente?'🚨 ':''}${et[p.tipo]||e(p.tipo)} · ${e(p.cliente)}${p.direccion?' · '+e(p.direccion):''} <span style="color:var(--text3);font-weight:400;font-size:12px">· ${e(new Date(p.fecha).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'2-digit'}))}${p.fuente==='historial'?' · historial':''}</span></div>
       <div style="font-size:12.5px;color:var(--text2);margin-top:2px;line-height:1.5">${e(p.resumen)}${p.contacto?' · '+e(p.contacto):''}</div>
       <div style="font-size:12.5px;margin-top:2px"><span style="color:${p.situacion==='nuevo'?'var(--danger,#d33)':'var(--text3)'}">${e(sit(p))}</span> → ${e(p.queHacer)}</div>
@@ -1602,12 +1603,72 @@ async function cargarPeticiones(){
         <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center"><button class="btn btn-sm btn-primary" onclick="petConfirmar('${p.id}',this)">Confirmar${p.clienteId?' · '+e(p.clienteStel||p.cliente):''}</button><input id="pc-q-${p.id}" list="trab-cl-${p.id}" placeholder="…o es de otro cliente" oninput="trabClientes('${p.id}',this.value)" style="flex:1;min-width:160px;padding:6px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text)"><datalist id="trab-cl-${p.id}"></datalist></div></div>`:''}
       <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">${!p.porConfirmar&&!p.pedido&&(p.tipo==='presupuesto'||p.tipo==='trabajo'||p.tipo==='queja')?`<button class="btn btn-sm btn-primary" onclick="trabAbrir('${p.id}',this)">Crear trabajo</button>`:''}${!p.porConfirmar&&!p.incidencia&&!p.pedido&&p.clienteId&&(p.tipo==='presupuesto'||p.tipo==='trabajo'||p.tipo==='queja')?`<button class="btn btn-sm" onclick="petIncidencia('${p.id}',this)">Solo incidencia</button>`:''}<button class="btn btn-sm" onclick="petMarcar('${p.id}','hecho',this)">Hecho</button><button class="btn btn-sm" onclick="petMarcar('${p.id}','descartado',this)">Descartar</button></div>
     </div>`;
+}
+async function cargarPeticiones(){
+  const el=document.getElementById('ini-peticiones'); if(!el) return;
+  let r; try{ r=await apiCall('/api/peticiones'); }catch(e){ el.innerHTML=''; return; }
+  const l=(r&&r.lista)||[]; if(!l.length){ el.innerHTML=''; _refrLlamadas(); return; }
+  const orden=['queja','trabajo','presupuesto','consulta','aviso'];
+  l.sort((a,b)=>(b.urgente-a.urgente)||(orden.indexOf(a.tipo)-orden.indexOf(b.tipo))||String(b.fecha).localeCompare(String(a.fecha)));
+  const fila=petFila;
   const nuevos=l.filter(p=>p.situacion==='nuevo').length;
   el.innerHTML=`<div class="card" style="margin:0 0 14px">
     <div style="display:flex;align-items:center;gap:8px"><div class="card-title" style="margin:0">📋 Peticiones de los grupos</div><span style="margin-left:auto;font-size:12px;color:var(--text3)">${l.length} abiertas · ${nuevos} sin incidencia ni presupuesto</span></div>
     ${l.slice(0,8).map(fila).join('')}
     ${l.length>8?`<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;color:var(--text3)">Ver las otras ${l.length-8}</summary>${l.slice(8).map(fila).join('')}</details>`:''}
   </div>`;
+  _refrLlamadas();
+}
+// Los botones de las peticiones (Confirmar, Hecho, Descartar…) recargan con cargarPeticiones(): si 📞 Llamadas está a la vista, también.
+function _refrLlamadas(){ if(document.getElementById('tab-llamadas')?.classList.contains('active')) cargarLlamadas(); }
+// ── 📞 LLAMADAS (Nuvo Voz, 3/11/2026): su propio apartado para que no se pierdan entre las peticiones de los grupos ──
+const _llE=s=>String(s==null?'':s).replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+const _llQuien=x=>`${_llE(x.nombre||'Sin identificar')}${x.final?` <span style="color:var(--text3)">…${_llE(x.final)}</span>`:''}`;
+const _llCuando=d=>{const f=new Date(d),h=new Date();const mismo=f.toDateString()===h.toDateString();const ay=new Date(h.getTime()-864e5).toDateString()===f.toDateString();
+  return (mismo?'hoy':ay?'ayer':f.toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'numeric'}))+' '+f.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});};
+function _llBadge(n){const b=document.getElementById('badge-llamadas');if(b){b.textContent=n;b.style.display=n?'':'none';}}
+async function cargarLlamadas(){
+  const c=document.getElementById('llamadas-container'); if(!c) return;
+  if(!c.innerHTML) c.innerHTML='<div style="text-align:center;padding:40px;color:var(--text3)">Cargando llamadas…</div>';
+  let d; try{ d=await apiCall('/api/llamadas'); }catch(e){ d=null; }
+  if(!d||d.error){ c.innerHTML=`<div class="card" style="color:var(--red)">No se han podido cargar las llamadas${d&&d.error?': '+_llE(d.error):''}.</div>`; return; }
+  const pet=d.peticiones||[], porConf=pet.filter(p=>p.porConfirmar), abiertas=pet.filter(p=>!p.porConfirmar);
+  _llBadge(porConf.length+d.perdidas.length);
+  const r=d.resumenHoy;
+  const tile=(l,v,col)=>`<div class="cp-kpi" style="cursor:default"><div class="l">${l}</div><div class="n" style="color:${col||'var(--text)'}">${v}</div></div>`;
+  const sec=(titulo,n,cuerpo,vacio)=>`<div class="card" style="margin:0 0 14px"><div style="display:flex;align-items:center;gap:8px"><div class="card-title" style="margin:0">${titulo}</div><span class="ll-n" style="margin-left:auto;font-size:12px;color:var(--text3)">${n}</span></div>${cuerpo||`<div style="color:var(--text3);font-size:13px;padding:10px 0 2px">${vacio}</div>`}</div>`;
+  const perd=d.perdidas.map(p=>`<div class="ll-fila"><div style="flex:1;min-width:0"><div style="font-weight:600;font-size:14px">${_llQuien(p)}</div><div style="font-size:12.5px;color:var(--text3)">${_llCuando(p.fecha)}${p.motivo?' · '+_llE(p.motivo.toLowerCase()):''}</div></div><button class="btn btn-sm" onclick="llDevuelta('${_llE(p.id)}',this)">Ya la he devuelto</button></div>`).join('');
+  const est=x=>x.estado==='error'?`<span style="color:var(--red)">⚠️ no se pudo pasar a petición${x.error?': '+_llE(x.error):''}</span>`
+    :x.estado!=='hecho'?`<span style="color:var(--text3)">⏳ procesando…</span>`
+    :(x.peticiones||[]).map(n=>n.porConfirmar?`<span style="color:var(--amber)">⚠️ por confirmar</span>`:n.incidencia?`<span style="color:var(--green)">✔ ${_llE(n.incidencia)}</span>`:`<span style="color:var(--text3)">petición creada</span>`).join(' · ')||'<span style="color:var(--text3)">sin petición (ya estaba)</span>';
+  const rec=d.recados.map(x=>`<div class="ll-fila" style="display:block"><div style="display:flex;gap:8px;align-items:baseline"><div style="font-weight:600;font-size:14px;flex:1;min-width:0">${x.urgente?'🚨 ':''}${_llQuien(x)}</div><span style="font-size:12px;color:var(--text3);white-space:nowrap">${_llCuando(x.fecha)}</span></div>
+    ${x.titulo?`<div style="font-size:13px;margin-top:2px">${_llE(x.titulo)}</div>`:''}<div class="ll-resumen">${_llE(String(x.resumen||'').replace(/^\s*URGENTE\s*·\s*/i,''))}</div><div style="font-size:12.5px;margin-top:4px">${est(x)}</div></div>`).join('');
+  c.innerHTML=`
+    <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin:2px 0 14px">
+      <div><div class="ll-titulo-g" style="font-family:var(--font-display);font-size:24px;font-weight:800">📞 Llamadas</div><div style="font-size:12.5px;color:var(--text3)">Lo que llega de la centralita Nuvo Voz: recados de SecretarIA y llamadas perdidas${d.ultimoAviso?` · último aviso ${_llCuando(d.ultimoAviso)}`:''}</div></div>
+      <a href="https://voz.nuvoialabs.com" target="_blank" rel="noopener" style="margin-left:auto;font-size:13px;color:var(--blue);text-decoration:none">Abrir Nuvo Voz ↗</a>
+    </div>
+    ${r?`<div class="cp-kpis">${tile('Entrantes hoy',r.entrantes)}${tile('Atendidas',r.atendidas,'var(--green)')}${tile('Perdidas',r.perdidas,r.perdidas?'var(--red)':'')}${tile('Recados SecretarIA',r.recados,'var(--blue)')}</div>`:`<div style="font-size:12.5px;color:var(--text3);margin:-4px 0 14px">El resumen de hoy (entrantes, atendidas, minutos…) llega de la centralita a las 20:30.</div>`}
+    ${sec('⚠️ Por confirmar',porConf.length?`${porConf.length}`:'',porConf.map(petFila).join(''),'Nada por confirmar. Aquí salen los recados de un número desconocido o que no cuadra con el cliente que dicen ser.')}
+    ${sec('📵 Perdidas sin devolver',d.perdidas.length?`${d.perdidas.length} · últimos ${d.dias} días`:'',perd,'Ninguna. Las que no dejaron recado salen aquí hasta que marques que ya las has devuelto.')}
+    ${abiertas.length?sec('📋 Peticiones de llamadas abiertas',`${abiertas.length}`,abiertas.slice(0,6).map(petFila).join('')+(abiertas.length>6?`<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;color:var(--text3)">Ver las otras ${abiertas.length-6}</summary>${abiertas.slice(6).map(petFila).join('')}</details>`:''),''):''}
+    ${sec('🤖 Recados de SecretarIA',d.recados.length?`${d.recados.length} · últimos ${d.dias} días`:'',rec,'Todavía no ha llegado ningún recado de la centralita.')}`;
+}
+async function llDevuelta(id,b){ b.disabled=true; b.textContent='…'; try{ const r=await apiCall(`/api/llamadas/${encodeURIComponent(id)}/devuelta`,'POST'); if(r&&r.error) throw new Error(r.error); cargarLlamadas(); cargarAvisoLlamadas(); }catch(e){ alert(e.message); b.disabled=false; b.textContent='Ya la he devuelto'; } }
+// En la portada (y en la 🔔 del móvil): «N llamadas por confirmar» y «N perdidas sin devolver», que llevan a 📞 Llamadas.
+async function cargarAvisoLlamadas(){
+  if(!cpCan('clientes')) return;
+  let d; try{ d=await apiCall('/api/llamadas'); }catch(e){ return; }
+  if(!d||d.error) return;
+  const nConf=(d.peticiones||[]).filter(p=>p.porConfirmar).length, nPer=(d.perdidas||[]).length;
+  _llBadge(nConf+nPer);
+  const box=document.getElementById('ini-hoytoca'); if(!box) return;
+  box.querySelectorAll('.ll-chip').forEach(x=>x.remove());
+  const chip=(n,txt,col)=>`<button class="cp-chip ll-chip" style="cursor:pointer;background:var(--bg2);font-size:13px;padding:7px 12px;border-color:${col}55;color:var(--text)" onclick="irA('','llamadas')">📞 <b style="color:${col}">${n}</b> ${txt}</button>`;
+  const html=(nConf?chip(nConf,`llamada${nConf>1?'s':''} por confirmar`,'var(--red)'):'')+(nPer?chip(nPer,`perdida${nPer>1?'s':''} sin devolver`,'var(--amber)'):'');
+  if(!html) return;
+  if(box.dataset.vacio){ box.removeAttribute('data-vacio'); box.style.color=''; box.innerHTML=`<span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:700;align-self:center;margin-right:4px">Hoy toca</span>`; }
+  const lab=box.querySelector('span'); if(lab) lab.insertAdjacentHTML('afterend',html); else box.insertAdjacentHTML('afterbegin',html);
 }
 // «Crear trabajo»: Corpy propone operario y día; la oficina confirma o cambia (trabajos.js). 21/10/2026.
 async function trabAbrir(id,b){
@@ -1766,7 +1827,7 @@ async function renderInicio(){
       <div style="margin-left:auto;font-size:11.5px;color:var(--text3)">Actualizado ${new Date(d.lastUpdated).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}</div>
     </div>
     ${d.stel&&d.stel.enPausa?`<div class="card" style="margin:0 0 14px;border-color:rgba(245,158,11,.5);font-size:13.5px;line-height:1.5">⏸️ ${d.stel.cupoAgotado?`<b>Cupo de StelOrder de hoy gastado</b> (${d.stel.usoHoy}/${d.stel.cupoDia} peticiones). Hasta mañana se enseñan los últimos datos buenos; marcar cobros y crear cosas sigue funcionando.`:`<b>StelOrder nos tiene bloqueados</b> (se ha gastado el cupo de 1.000 peticiones al día de la cuenta). Le volvemos a probar a las <b>${new Date(d.stel.hasta).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}</b>; mientras, se enseñan los últimos datos buenos.`}</div>`:''}
-    ${urg.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"><span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:700;align-self:center;margin-right:4px">Hoy toca</span>${urg.join('')}</div>`:`<div style="font-size:13px;color:var(--green);margin-bottom:14px">✔ Nada urgente pendiente</div>`}
+    ${urg.length?`<div id="ini-hoytoca" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"><span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:700;align-self:center;margin-right:4px">Hoy toca</span>${urg.join('')}</div>`:`<div id="ini-hoytoca" data-vacio="1" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;font-size:13px;color:var(--green)">✔ Nada urgente pendiente</div>`}
     ${enc.length?`<div id="enc-det" style="display:none;margin:-6px 0 14px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--bg2);font-size:13px;line-height:1.6">${enc.map(e=>`<div>📨 <b>${String(e.nombre||'').replace(/[<>&"]/g,'')}</b>: ${String(e.que||'').replace(/[<>&"]/g,'')} <span style="color:var(--text3)">· hace ${e.dias} día${e.dias===1?'':'s'}${e.recordatorios?` · recordado ${e.recordatorios}×`:''}${e.ultimaRespuesta&&e.ultimaRespuesta.texto?` · dijo «${String(e.ultimaRespuesta.texto).slice(0,60).replace(/[<>&"]/g,'')}»`:''}</span></div>`).join('')}<div style="color:var(--text3);font-size:12px;margin-top:4px">Para pedir algo: díselo a Corpy («pídele a Javi la talla de botas»). Para cerrar uno: «Javi ya lo ha hecho».</div></div>`:''}
     <div id="ini-revision"></div>
     <div id="ini-peticiones"></div>
@@ -1801,6 +1862,7 @@ async function renderInicio(){
   try{cargarSubidasPrecio();}catch(e){}
   try{cargarRevision();}catch(e){}
   try{cargarPeticiones();}catch(e){}
+  try{cargarAvisoLlamadas();}catch(e){}
   try{cargarNotifOficiales();}catch(e){}
   try{cargarDescuentosNomina();}catch(e){}
   try{cargarFacturarAparte();}catch(e){}
@@ -1841,7 +1903,7 @@ function irA(grupo, tab){
     if(target) target.style.display='contents';
   }
   // clic en la pestaña exacta
-  const tabBtn=document.querySelector(`.subgrp[data-grp="${grupo}"] .nav-btn[onclick*="'${tab}'"]`);
+  const tabBtn=document.querySelector(`.subgrp[data-grp="${grupo}"] .nav-btn[onclick*="'${tab}'"]`)||document.querySelector(`#nav-grupos .nav-btn[onclick*="showTab('${tab}'"]`);
   if(tabBtn) tabBtn.click();
 }
 
@@ -1859,8 +1921,9 @@ function showTab(id, btn){
     renderInicio();
     return;
   }
-  if(id==='banco'){ showBTab('resumen', document.querySelector('.btab')); loadBanco(); }
+  if(id==='banco'){ showBTab('resumen', document.querySelector('#tab-banco .btab')); loadBanco(); }
   if(id==='informes'){ renderInformes(); }
+  if(id==='llamadas'){ cargarLlamadas(); }
   startAutoRefresh(id);
   if(id==='emails'){
     if(window.initEmails) window.initEmails();
@@ -2026,7 +2089,7 @@ window.addEventListener('load',()=>{
 // Enlaces del menú común (nav.js): /?tab=<id> abre esa pestaña con su grupo.
 (function(){const t=new URLSearchParams(location.search).get('tab');if(!t)return;
   const ir=()=>{const b=document.querySelector(`.nav-btn[onclick*="showTab('${t}'"]`);if(!b)return false;const g=b.closest('.subgrp');
-    if(g&&window.showGrupo){const gb=document.querySelector(`.nav-grp[onclick*="'${g.dataset.grp}'"]`);showGrupo(g.dataset.grp,gb);}b.click();history.replaceState(null,'','/');return true;};
+    if(g&&window.showGrupo){const gb=document.querySelector(`.nav-grp[onclick*="'${g.dataset.grp}'"]`);showGrupo(g.dataset.grp,gb);}b.click();history.replaceState(history.state,'','/');return true;};
   let n=0;const iv=setInterval(()=>{if(ir()||++n>40)clearInterval(iv);},250);})();
 </script>
 </body>
