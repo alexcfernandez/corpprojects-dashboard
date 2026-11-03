@@ -267,3 +267,61 @@ test('pantalla 📞 Llamadas: perdidas sin recado, recados con su incidencia y �
   assert.deepStrictEqual(await V.perdidasParaAviso({ ahora, _db: db }), []);
   await assert.rejects(V.marcarDevuelta('recado.nuevo:R1', 'Álex', { _db: db }), /no encontrada/);
 });
+
+test('cada llamada es su propia petición: solo se junta con un recado del mismo número de hace pocos minutos', async () => {
+  const dbm = require('../src/db'); const real = dbm.getDB; const db = fakeDB(); dbm.getDB = async () => db;
+  const PG = require('../src/peticionesGrupo');
+  const cm = { 555: { name: 'ILLA VERDA', family: 'CINC' } };
+  const cat = { clientes: [], incidencias: [], presupuestos: [], nombre: id => (cm[String(id)] || {}).name || '' };
+  const prompts = [];
+  const nueva = resumen => async p => { prompts.push(p); return { peticiones: [{ msgs: [0], tipo: 'trabajo', cliente: '¿?', resumen, que_hacer: 'Ir', urgente: false, situacion: 'nuevo' }] }; };
+  const base = { _cat: cat, _clientMap: cm, _auto: async () => ({}), _enviar: async () => true };
+  try {
+    // Lo de la prueba del 3/11: 20:38 ILLA VERDA (…489) y 21:17 otra persona (…108) → dos peticiones.
+    await PG.deRecado({ ...base, llamada: 'A', fecha: new Date('2026-11-03T19:38:00Z'), resumen: 'Fuga en Bellpuig 41', contacto: { nombre: 'Alex', externalId: '555' }, final: '489', _llamar: nueva('Fuga en Bellpuig 41') });
+    const r2 = await PG.deRecado({ ...base, llamada: 'B', fecha: new Date('2026-11-03T20:17:00Z'), resumen: 'Fuga en Ronda Pellús', contacto: { nombre: 'Caterin Cardona' }, final: '108', _llamar: nueva('Fuga en Ronda Pellús') });
+    assert.match(prompts[1], /PETICIONES ABIERTAS[^\n]*\n\(ninguna\)/, 'la IA no ve la petición de otra llamada');
+    assert.strictEqual(db.cols.peticionesGrupo.length, 2);
+    assert.strictEqual(r2.nuevas.length, 1);
+    // El mismo número vuelve a llamar a los 5 minutos: la IA sí ve su petición y puede juntarlas.
+    await PG.deRecado({ ...base, llamada: 'C', fecha: new Date('2026-11-03T20:22:00Z'), resumen: 'Sigue saliendo agua', contacto: { nombre: 'Caterin Cardona' }, final: '108',
+      _llamar: async p => { prompts.push(p); return { peticiones: [{ msgs: [0], actualiza: String(db.cols.peticionesGrupo[1]._id), tipo: 'trabajo', cliente: '¿?', resumen: 'Sigue saliendo agua', situacion: 'seguimiento' }] }; } });
+    assert.match(prompts[2], /Fuga en Ronda Pellús/);
+    assert.doesNotMatch(prompts[2], /Fuga en Bellpuig 41/);
+    assert.deepStrictEqual(db.cols.peticionesGrupo[1].llamadas, ['B', 'C']);
+    // Una hora después, aunque sea el mismo número, ya es otra petición.
+    await PG.deRecado({ ...base, llamada: 'D', fecha: new Date('2026-11-03T21:30:00Z'), resumen: 'Otra cosa', contacto: { nombre: 'Caterin Cardona' }, final: '108', _llamar: nueva('Otra cosa') });
+    assert.match(prompts[3], /PETICIONES ABIERTAS[^\n]*\n\(ninguna\)/);
+    assert.strictEqual(db.cols.peticionesGrupo.length, 3);
+  } finally { dbm.getDB = real; }
+});
+
+test('nombre de oído: «Caterin Cardona» propone a Katerin Cardona cuando el número no es de nadie', async () => {
+  const PG = require('../src/peticionesGrupo');
+  const cm = { 1: { name: 'KATERIN CARDONA', phone: '' }, 2: { name: 'Carmen Cardona Ruiz', phone: '' }, 3: { name: 'Ctat. Bellpuig 41', phone: '' } };
+  assert.deepStrictEqual(PG.porNombre('Caterin Cardona', cm), { id: '1', nombre: 'KATERIN CARDONA' });
+  assert.deepStrictEqual(PG.porNombre('Katherine Cardona', cm), { id: '1', nombre: 'KATERIN CARDONA' }, 'h muda y una letra de más');
+  assert.deepStrictEqual(PG.porNombre('Caterín Cardona (vecina)', cm), { id: '1', nombre: 'KATERIN CARDONA' }, 'acentos y paréntesis');
+  assert.strictEqual(PG.porNombre('Cardona', cm), null, 'una sola palabra no basta');
+  assert.strictEqual(PG.porNombre('Pedro Cardona', cm), null);
+  // Dos que casan: desempata el teléfono de la ficha con las 3 últimas cifras.
+  const dos = { 1: { name: 'Katerin Cardona', phone: '+34 600 111 108' }, 4: { name: 'Katerin Cardona Pons', phone: '600222333' } };
+  assert.strictEqual(PG.porNombre('Caterin Cardona', dos), null);
+  assert.deepStrictEqual(PG.porNombre('Caterin Cardona', dos, '108'), { id: '1', nombre: 'Katerin Cardona' });
+
+  const dbm = require('../src/db'); const real = dbm.getDB; const db = fakeDB(); dbm.getDB = async () => db;
+  const cat = { clientes: [], incidencias: [], presupuestos: [], nombre: id => (cm[String(id)] || {}).name || '' };
+  let prompt = ''; const enviados = [];
+  const prevW = process.env.WHATSAPP_TO; process.env.WHATSAPP_TO = '+34600000001';
+  try {
+    const r = await PG.deRecado({ llamada: 'K1', fecha: new Date('2026-11-03T20:17:00Z'), urgente: true, resumen: 'URGENTE · Fuga de agua en casa', contacto: { nombre: 'Caterin Cardona' }, final: '108', _cat: cat, _clientMap: cm,
+      _llamar: async p => { prompt = p; return { peticiones: [{ msgs: [0], tipo: 'trabajo', cliente: 'Caterin Cardona', resumen: 'Fuga de agua', que_hacer: 'Ir', urgente: true, situacion: 'nuevo' }] }; },
+      _auto: async () => ({}), _enviar: async (to, txt) => { enviados.push(txt); return true; } });
+    assert.match(prompt, /puede ser el cliente 1 · KATERIN CARDONA/);
+    const p = db.cols.peticionesGrupo[0];
+    assert.strictEqual(r.nuevas[0].porConfirmar, 'número desconocido u oculto', 'el nombre no basta: sigue por confirmar');
+    assert.strictEqual(p.clienteId, '1');
+    assert.deepStrictEqual(p.porConfirmar.propuesto, { id: '1', nombre: 'KATERIN CARDONA' });
+    assert.match(enviados[0], /un número desconocido \(por el nombre parece \*KATERIN CARDONA\*\)/);
+  } finally { dbm.getDB = real; process.env.WHATSAPP_TO = prevW; if (prevW === undefined) delete process.env.WHATSAPP_TO; }
+});

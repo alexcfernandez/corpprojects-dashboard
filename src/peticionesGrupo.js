@@ -94,8 +94,8 @@ async function _llamarIA(prompt, maxTokens = 8000) {
 
 // Analiza una tanda de mensajes [{ _id, fecha, quien, texto, fotoIds, nMedia }] de UN grupo.
 const NUESTROS = /alfonso|alex|álex|oficina corp|corpy|judit|paula/i;
-async function _tanda(db, { jid, grupo, msgs, fuente, cat, _llamar, extra = '', maxTokens = 8000, contexto = [], memoria = '' }) {
-  const abiertas = await db.collection(COL).find({ jid, estado: { $in: ['pendiente', 'archivo'] } }).sort({ fecha: -1 }).limit(fuente === 'historial' ? 80 : 40).toArray();
+async function _tanda(db, { jid, grupo, msgs, fuente, cat, _llamar, extra = '', maxTokens = 8000, contexto = [], memoria = '', filtro = {} }) {
+  const abiertas = await db.collection(COL).find({ jid, estado: { $in: ['pendiente', 'archivo'] }, ...filtro }).sort({ fecha: -1 }).limit(fuente === 'historial' ? 80 : 40).toArray();
   const nuestros = [...new Set(msgs.map(m => m.quien).filter(q => NUESTROS.test(q || '')))];
   const lineas = msgs.map((m, n) => `[${n}] ${fmt(m.fecha)} ${m.quien}: ${corto(m.texto, 900) || '(sin texto)'}${m.nMedia ? ` (📷 ${m.nMedia} foto${m.nMedia > 1 ? 's' : ''})` : ''}`);
   const prompt = `${INSTRUCCIONES}${extra ? '\n' + extra : ''}
@@ -346,6 +346,29 @@ function verificar(clienteId, accIdNumero, clientMap = {}) {
   if (fam(clienteId) && fam(clienteId) === fam(accIdNumero)) return { ok: true, familia: fam(clienteId) };
   return { ok: false, motivo: 'el número es de otro cliente' };
 }
+// Si el número no es de ningún cliente, el nombre que da propone uno para «por confirmar». SecretarIA lo escribe de oído
+// (3/11/2026: «Caterin Cardona» era Katerin Cardona): sin acentos, C/K/QU, V/B, Y/I/LL y Z/S iguales, sin H ni letras dobles
+// y una letra de diferencia por palabra. Solo si casan todas las palabras (dos o más) con un único cliente; si hay varios,
+// desempata el teléfono de la ficha acabado en las mismas 3 cifras.
+function _son(s) {
+  return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\(.*?\)/g, ' ')
+    .replace(/ch/g, 'x').replace(/qu/g, 'k').replace(/c(?=[eiy])/g, 's').replace(/c/g, 'k').replace(/z/g, 's').replace(/v/g, 'b')
+    .replace(/h/g, '').replace(/ll/g, 'i').replace(/y/g, 'i').replace(/(.)\1+/g, '$1').split(/[^a-z0-9]+/).filter(w => w.length >= 3);
+}
+function _casi(a, b) {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1 || Math.min(a.length, b.length) < 4) return false;
+  let i = 0; while (i < a.length && a[i] === b[i]) i++;
+  return a.slice(i + 1) === b.slice(i + 1) || a.slice(i) === b.slice(i + 1) || a.slice(i + 1) === b.slice(i);
+}
+function porNombre(nombre, clientMap = {}, final = null) {
+  const t = _son(nombre);
+  if (t.length < 2) return null;
+  const c = Object.entries(clientMap).filter(([, x]) => { const w = _son(x.name); return t.every(a => w.some(b => _casi(a, b))); });
+  const tel = final ? c.filter(([, x]) => String(x.phone || '').replace(/\D/g, '').endsWith(String(final))) : [];
+  const [id, x] = c.length === 1 ? c[0] : tel.length === 1 ? tel[0] : [];
+  return id ? { id: String(id), nombre: x.name } : null;
+}
 async function deRecado({ llamada, fecha = new Date(), urgente = false, resumen, titulo = null, contacto = null, final = '', _llamar = null, _cat = null, _enviar = null, _auto = null, _clientMap = null } = {}) {
   const db = await getDB();
   if (llamada && await db.collection(COL).findOne({ llamadas: String(llamada) })) return { ya: true };
@@ -354,19 +377,27 @@ async function deRecado({ llamada, fecha = new Date(), urgente = false, resumen,
   const ext = contacto && String(contacto.externalId || '').trim();
   const accId = ext && /^\d+$/.test(ext) && cat.nombre(ext) ? ext : null;
   const quien = `${corto(contacto && contacto.nombre, 60) || 'Cliente sin identificar'} (teléfono acabado en ${String(final || '').slice(-3) || '¿?'})`;
-  const extra = EXTRA_RECADO + (accId ? `\nSegún su número, quien llama es el cliente de StelOrder ${accId} · ${cat.nombre(accId)}. Si el recado es de ese cliente usa ese cliente_id; si habla claramente de otra comunidad, pon la de la que habla.` : '\nEl número que llamó no es de ningún cliente conocido.');
+  const fin = String(final || '').slice(-3) || null;
   const clientMap = _clientMap || ((await require('./stelorder').getClients().catch(() => null)) || {}).clientMap || {};
+  const propuesto = accId ? null : porNombre(contacto && contacto.nombre, clientMap, fin);
+  const extra = EXTRA_RECADO + (accId ? `\nSegún su número, quien llama es el cliente de StelOrder ${accId} · ${cat.nombre(accId)}. Si el recado es de ese cliente usa ese cliente_id; si habla claramente de otra comunidad, pon la de la que habla.` : '\nEl número que llamó no es de ningún cliente conocido.'
+    + (propuesto ? ` Por el nombre que da puede ser el cliente ${propuesto.id} · ${propuesto.nombre} (SecretarIA escribe los nombres de oído); si el recado es suyo, usa ese cliente_id.` : ''));
+  // Cada llamada es su propia petición (3/11/2026: el recado de «Caterin Cardona» de las 21:17 se juntó con la prueba de
+  // ILLA VERDA de las 20:38 porque la IA veía abiertas todas las del grupo voz:corp, como en un grupo de WhatsApp). Solo
+  // puede juntarse con un recado del mismo número (mismas 3 cifras y mismo cliente por número) de los últimos 15 minutos.
+  const filtro = fin ? { 'recado.final': fin, 'recado.llama': accId, 'recado.fecha': { $gte: new Date(new Date(fecha).getTime() - 15 * 60000) } } : { _id: { $in: [] } };
   const texto = corto(resumen, 2500);
   const msgs = [{ fecha: new Date(fecha), quien, texto, fotoIds: [], nMedia: 0 }];
   const memoria = await require('./memoria').paraPrompt(texto, { paraGrupo: JID_VOZ, limite: 40 }).catch(() => '');
-  const r = await _tanda(db, { jid: JID_VOZ, grupo: GRUPO_VOZ, msgs, fuente: 'llamada', cat, _llamar, extra, memoria });
+  const r = await _tanda(db, { jid: JID_VOZ, grupo: GRUPO_VOZ, msgs, fuente: 'llamada', cat, _llamar, extra, memoria, filtro });
   for (const p of r.nuevas) {
-    const set = { canal: 'llamada', recado: { nombre: corto(contacto && contacto.nombre, 60) || null, final: String(final || '').slice(-3) || null, fecha: new Date(fecha), texto } };
+    const set = { canal: 'llamada', recado: { nombre: corto(contacto && contacto.nombre, 60) || null, final: fin, llama: accId, fecha: new Date(fecha), texto } };
     if (corto(titulo, 60)) set.titulo = corto(titulo, 60);
     if (!p.clienteId && accId) Object.assign(set, { clienteId: accId, clienteStel: cat.nombre(accId) || null });
+    if (!p.clienteId && propuesto) Object.assign(set, { clienteId: propuesto.id, clienteStel: propuesto.nombre });
     if (urgente) set.urgente = true;
     const v = verificar(set.clienteId || p.clienteId, accId, clientMap);
-    if (!v.ok) set.porConfirmar = { motivo: v.motivo, llama: accId ? { id: accId, nombre: cat.nombre(accId) || null } : null, at: new Date() };
+    if (!v.ok) set.porConfirmar = { motivo: v.motivo, llama: accId ? { id: accId, nombre: cat.nombre(accId) || null } : null, propuesto, at: new Date() };
     Object.assign(p, set);
     await db.collection(COL).updateOne({ _id: p._id }, { $set: set, $addToSet: { llamadas: String(llamada || '') } });
   }
@@ -381,7 +412,7 @@ async function deRecado({ llamada, fecha = new Date(), urgente = false, resumen,
   let avisado = false;
   if (urgente) {
     const lista = [...nuevas, ...r.actualizadas];
-    const dudas = nuevas.filter(p => p.porConfirmar).map(p => `⚠️ *Por confirmar*: llama ${p.porConfirmar.llama ? `*${p.porConfirmar.llama.nombre}* (por su número)` : 'un número desconocido'} y dice ser de *${p.clienteStel || p.cliente}*. No he creado incidencia ni he preguntado quién va: confírmalo o cambia el cliente en Inicio → Peticiones.`);
+    const dudas = nuevas.filter(p => p.porConfirmar).map(p => `⚠️ *Por confirmar*: llama ${p.porConfirmar.llama ? `*${p.porConfirmar.llama.nombre}* (por su número)` : `un número desconocido${propuesto ? ` (por el nombre parece *${propuesto.nombre}*)` : ''}`} y dice ser de *${p.clienteStel || p.cliente}*. No he creado incidencia ni he preguntado quién va: confírmalo o cambia el cliente en Inicio → Peticiones.`);
     const txt = `🚨 *URGENTE · recado de SecretarIA* (${fmt(fecha)})\n${quien}\n\n` + (lista.length ? _textoAviso(GRUPO_VOZ, nuevas, r.actualizadas, auto) : `${texto}\n\nNo he sacado ninguna petición de esto: míralo tú.`) + (dudas.length ? '\n\n' + dudas.join('\n') : '');
     const N = require('./notifications');
     for (const to of [...new Set([N.destinoDueno(), process.env.OFICINA_TELEFONO || '+34674013723'].filter(Boolean))]) {
@@ -641,4 +672,4 @@ ${pend.length ? `<h3 style="margin:16px 0 4px">Sigue abierto</h3>${tabla(pend.fi
   return { enviado: !!ok, to, subject, nuevas: nuevas.length, abiertas: pend.length };
 }
 
-module.exports = { _citaAlCalendario, deCorreo, deRecado, confirmar, verificar, JID_VOZ, tituloPeticion, detalle, original, _limpiaCorreo, _jidCorreo, presupuestoEnviado, presupuestoDevuelto, refDePdf, crearIncidencia, resumenDiario, _ventana, analizar, importarChat, analizarHistorial, parsearChat, lista, marcar, marcarGrupo, _tanda, _textoAviso, _autoIncidencias, _sinAccion: sinAccion, _contexto, TIPOS };
+module.exports = { _citaAlCalendario, deCorreo, deRecado, confirmar, verificar, porNombre, JID_VOZ, tituloPeticion, detalle, original, _limpiaCorreo, _jidCorreo, presupuestoEnviado, presupuestoDevuelto, refDePdf, crearIncidencia, resumenDiario, _ventana, analizar, importarChat, analizarHistorial, parsearChat, lista, marcar, marcarGrupo, _tanda, _textoAviso, _autoIncidencias, _sinAccion: sinAccion, _contexto, TIPOS };
