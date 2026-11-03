@@ -25,7 +25,7 @@ function conduce(u, vehiculos = []) {
 }
 
 async function _activos(db) {
-  return db.collection('vehiculos').find({ estado: 'activo' }).project({ nombre: 1, matricula: 1, conductor: 1, plazas: 1, parada: 1 }).sort({ nombre: 1 }).toArray();
+  return db.collection('vehiculos').find({ estado: 'activo' }).project({ nombre: 1, matricula: 1, conductor: 1, plazas: 1, parada: 1, tipo: 1 }).sort({ nombre: 1 }).toArray();
 }
 
 // Lo que necesita la tarjeta de /fichar.
@@ -46,7 +46,8 @@ async function paraTrabajador(workerId, { hoy = hoyISO(), _db = null } = {}) {
     conduce: true,
     elegido: elegido ? { vehiculoId: elegido.vehiculoId } : null,
     propuesta,
-    vehiculos: vs.map(v => {
+    // Solo furgonetas en uso (no coches ni motos, ni las paradas), salvo la que ya es suya o eligió hoy.
+    vehiculos: vs.filter(v => ((v.tipo || 'furgoneta') === 'furgoneta' && !v.parada) || String(v._id) === propuesta).map(v => {
       const otro = deHoy.find(d => d.vehiculoId === String(v._id) && d.workerId !== id);
       return { id: String(v._id), nombre: v.nombre, matricula: v.matricula || '', plazas: v.plazas || null, parada: !!v.parada,
         habitual: v.conductor ? nombreCorto(v.conductor.name) : null, hoyLaLleva: otro ? nombreCorto(otro.workerName) : null };

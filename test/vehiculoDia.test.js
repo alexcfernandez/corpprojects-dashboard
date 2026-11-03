@@ -39,7 +39,9 @@ function base() {
     { _id: uJC, name: 'Juan Carlos', conduce: false, docs: { carnet: 'EE. UU.' } });
   db.collection('vehiculos')._l.push(
     { _id: vPartner, nombre: 'Peugeot Partner', matricula: '1111AAA', plazas: 5, estado: 'activo', conductor: { userId: String(uDavid), name: 'David Taladros' } },
-    { _id: vBerlingo, nombre: 'Citroën Berlingo', matricula: '2222BBB', plazas: 2, estado: 'activo', conductor: null });
+    { _id: vBerlingo, nombre: 'Citroën Berlingo', matricula: '2222BBB', plazas: 2, estado: 'activo', conductor: null },
+    { _id: new ObjectId(), nombre: 'Coche Alfonso', tipo: 'coche', estado: 'activo', conductor: null },
+    { _id: new ObjectId(), nombre: 'Ford Transit', tipo: 'furgoneta', parada: { desde: '2026-10-16' }, estado: 'activo', conductor: null });
   return db;
 }
 
@@ -52,7 +54,7 @@ test('a quién le sale: carnet o conductor (auto), y lo marcado a mano manda', a
   assert.strictEqual(d.conduce, true);
   assert.strictEqual(d.propuesta, String(vPartner));   // su habitual
   assert.strictEqual(d.elegido, null);
-  assert.deepStrictEqual(d.vehiculos.map(v => [v.nombre, v.plazas, v.habitual]), [['Citroën Berlingo', 2, null], ['Peugeot Partner', 5, 'David']]);
+  assert.deepStrictEqual(d.vehiculos.map(v => [v.nombre, v.plazas, v.habitual]), [['Citroën Berlingo', 2, null], ['Peugeot Partner', 5, 'David']]);   // sin coches ni la parada
   assert.strictEqual(VD.conduce(null), false);
 });
 
