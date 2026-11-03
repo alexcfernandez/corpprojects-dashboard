@@ -439,6 +439,10 @@ function startScheduler() {
   cron.schedule('15 9 1-7 * 1-5', () => require('./cierreMes').avisoDia5()
     .then(r => r.enviado && console.log(`[CierreMes] aviso ${r.mes} → ${r.n}`))
     .catch(e => console.warn('[CierreMes] aviso:', e.message)), { timezone: 'Europe/Madrid' });
+  // Correos de clientes, administradores y gestoría sin contestar (>24 h laborables): 9:15 y 16:15 L-V a Álex y oficina.
+  cron.schedule('15 9,16 * * 1-5', () => require('./sinContestar').aviso()
+    .then(r => r.enviado && console.log(`[SinContestar] aviso → ${r.n}`))
+    .catch(e => console.warn('[SinContestar] aviso:', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('0 18 * * 1-5', () => require('./compras').resumenPendientes().catch(e => console.warn('[Compras] resumen:', e.message)), { timezone: 'Europe/Madrid' });
 
   // Resumen diario INTERNO (al admin) 08:30 lun–vie

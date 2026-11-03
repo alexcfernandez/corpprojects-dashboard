@@ -4716,6 +4716,11 @@ app.put('/api/emails/:id/archive', requireAuth, async (req, res) => {
   }
 });
 
+// «No necesita respuesta»: deja de salir en el aviso de correos sin contestar (sinContestar.js).
+app.post('/api/emails/:id/sin-respuesta', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./sinContestar').marcarSinRespuesta(req.params.id, _porDe(req))); } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 app.put('/api/emails/:id/nota', requireAuth, async (req, res) => {
   try {
     const { db, client } = await getDB();

@@ -133,6 +133,15 @@ async function marcarImportante(id) {
   mostrarToast(nuevoValor ? '⭐ Marcado como importante' : 'Desmarcado como importante');
 }
 
+// Aviso de correos sin contestar (9:15 y 16:15): este no hace falta contestarlo.
+async function marcarSinRespuesta(id) {
+  await apiCall(`/api/emails/${id}/sin-respuesta`, 'POST');
+  const email = emailsState.emails.find(e => e._id === id);
+  if (email) email.sinRespuesta = { at: new Date().toISOString() };
+  if (emailsState.emailAbierto?._id === id) renderDetalle();
+  mostrarToast('🔕 Ya no avisará de este correo');
+}
+
 async function archivarEmail(id) {
   if (!confirm('¿Archivar este email?')) return;
   await apiCall(`/api/emails/${id}/archive`, 'PUT');
@@ -502,6 +511,10 @@ function renderDetalle() {
           style="background:var(--bg3);border:1.5px solid ${email.importante ? '#f59e0b' : 'var(--border2)'};border-radius:8px;padding:8px 14px;color:${email.importante ? '#f59e0b' : 'var(--text2)'};font-size:13px;font-weight:600;cursor:pointer">
           ${email.importante ? '⭐ Importante' : '☆ Marcar importante'}
         </button>
+        ${email.sinRespuesta || email.contestado ? '' : `<button onclick="marcarSinRespuesta('${email._id}')" title="Deja de salir en el aviso de correos sin contestar"
+          style="background:var(--bg3);border:1.5px solid var(--border2);border-radius:8px;padding:8px 14px;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer">
+          🔕 No necesita respuesta
+        </button>`}
         <button onclick="archivarEmail('${email._id}')"
           style="background:var(--bg3);border:1.5px solid var(--border2);border-radius:8px;padding:8px 14px;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer">
           📁 Archivar
@@ -644,6 +657,7 @@ window.forzarPoll      = forzarPoll;
 window.abrirEmail      = abrirEmail;
 window.cerrarDetalle   = cerrarDetalle;
 window.archivarEmail   = archivarEmail;
+window.marcarSinRespuesta = marcarSinRespuesta;
 window.eliminarEmail   = eliminarEmail;
 window.responderEmail  = responderEmail;
 window.reenviarEmail   = reenviarEmail;
