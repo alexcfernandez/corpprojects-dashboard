@@ -585,8 +585,18 @@ async function procesarWhatsApp(from, body, media = {}) {
   // CASO A: llegan SOLO fotos (sin instrucción) -> al buffer, sin procesar.
   // Acuse solo en la primera para no gastar mensajes ni spamear.
   if (!texto && fotosMsg.length) {
+    // Justo después de contar una visita (10 min): las fotos van a esa visita (visitas.js, 3/11/2026).
+    const V = require('./visitas');
+    if (V.visitaReciente(from)) {
+      try {
+        const imgs = (await Promise.all(fotosMsg.map(f => descargarFoto(f.url, f.type)))).filter(Boolean);
+        const r = await V.anadirFotos(from, imgs);
+        if (r) return responder(r);
+        if (r === '') return;   // siguientes fotos de la misma tanda: silencio
+      } catch (e) { console.error('[Visitas] fotos:', e.message); }
+    }
     const primera = bufferGuardarFotos(from, fotosMsg);
-    if (primera) return responder('📸 Foto(s) recibida(s). Dime qué hago: *"factura"* (la subo a StelOrder) o *"hazme un presupuesto de esto para Illa Verda"*.');
+    if (primera) return responder('📸 Foto(s) recibida(s). Dime qué hago: *"factura"* (la subo a StelOrder), *"hazme un presupuesto de esto para Illa Verda"* o cuéntame la visita (de qué obra son y qué has visto) y las guardo allí.');
     return; // siguientes fotos: silencio
   }
 

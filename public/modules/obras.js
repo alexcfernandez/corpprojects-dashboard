@@ -514,6 +514,16 @@
           <div style="font-size:11px;color:var(--text3);margin-bottom:14px">Todo sin IVA. ${prev?'Aún no hay nada facturado: el beneficio se calcula con el presupuesto. ':''}${rent.partes?rent.partes+' partes · ':''}Compras y proveedores no se cuentan dos veces si una factura está en los dos sitios.</div>`;
           })()}
 
+          ${(rent.visitas||[]).length ? (()=>{ const esc = s => String(s==null?'':s).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); return `
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-title">📍 Visitas</div>
+            ${rent.visitas.map(v=>`<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
+              <div><b>${String(v.fecha||'').split('-').reverse().join('/')}</b> · ${(v.quienes||[]).join(' y ')}${(v.acompanan||[]).length?' (con '+v.acompanan.join(', ')+')':''}${v.minutos?' · '+Math.round(v.minutos)+' min':''}${(v.fotos||[]).length?' · 📸 '+v.fotos.length:''}${v.incidencia?' · '+v.incidencia:''}</div>
+              ${v.que?`<div style="color:var(--text2);margin-top:2px">${esc(v.que)}</div>`:''}
+              ${(v.siguientes||[]).length?`<div style="color:var(--text3);margin-top:2px">➡️ ${v.siguientes.map(x=>esc(x.que)+(x.fecha?' ('+x.fecha.split('-').reverse().join('/')+')':'')).join(' · ')}</div>`:''}
+            </div>`).join('')}
+          </div>`; })() : ''}
+
           ${rent.byWorker?.length ? `
           <div class="card" style="margin-bottom:12px">
             <div class="card-title">Personal en esta obra</div>

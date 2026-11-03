@@ -1968,6 +1968,18 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
     if (!otro) { try { const r = await require('./adelantos').responder(texto, { por: 'Álex' }); if (r) return r; } catch (e) { console.error('[Adelantos] respuesta:', e.message); } }
   }
 
+  // A0.48) VISITA contada (audio, texto o notas pegadas), con o sin fotos (visitas.js, 3/11/2026): las fotos esperan
+  // y el agente la apunta con registrar_visita. Antes, «estoy en Can Bells 30 haciendo presupuesto…» + fotos iba a
+  // hacer un presupuesto y las fotos de una visita se perdían.
+  if (!ctx.desdeAgente && acceso.esOwner(from) && require('./visitas').esRelato(texto)) {
+    try {
+      require('./visitas').guardarFotosPendientes(from, imagenes);
+      const contexto = await require('./agenteExtra').contextoReciente(from);
+      const res = await require('./agente').intentar({ texto, from, puerta: 'visita', contexto });
+      if (res && res.handled) return res.reply;
+    } catch (e) { console.error('[Agente] visita:', e.message); }
+  }
+
   // A0.5) EL AGENTE PRIMERO para el dueño (17/10/2026: «las cosas que le pregunto no se entera de nada»). La IA, con la
   // conversación reciente y herramientas que leen datos reales, entiende lo que se pide; las reglas de palabras quedan
   // para las órdenes exactas (crear presupuestos, cambios de dinero con PIN, confirmaciones en curso) y de respaldo.

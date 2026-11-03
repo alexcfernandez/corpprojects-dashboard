@@ -23,7 +23,7 @@ function kmDe(texto) {
 }
 const aMin = h => { const m = String(h || '').match(/^(\d{1,2})[:.h]?(\d{2})?$/); return m ? Number(m[1]) * 60 + Number(m[2] || 0) : null; };
 
-async function apuntar({ quienes = [], obra = '', cliente = '', que = '', tipo = 'otro', fecha = null, desde = null, hasta = null, minutos = null, km = null, facturable = false, nota = '' } = {}, por = '', { _db = null, _obraDeTexto = null } = {}) {
+async function apuntar({ quienes = [], obra = '', cliente = '', que = '', tipo = 'otro', fecha = null, desde = null, hasta = null, minutos = null, km = null, facturable = false, nota = '', obraId = null, sinObra = false } = {}, por = '', { _db = null, _obraDeTexto = null } = {}) {
   const db = _db || await getDB();
   const entrada = (Array.isArray(quienes) ? quienes : [quienes]).map(q => String(q || '').trim()).filter(Boolean);
   const socio = q => /alfons/i.test(q) ? 'Alfonso' : /(^|\s)(alex|álex|yo)(\s|$)/i.test(q) ? 'Álex' : null;
@@ -38,9 +38,12 @@ async function apuntar({ quienes = [], obra = '', cliente = '', que = '', tipo =
   if (!min && d0 != null && d1 != null) min = d1 > d0 ? d1 - d0 : null;
   if (!(min > 0)) throw new Error('¿Cuánto rato fue? Dime de qué hora a qué hora o los minutos.');
   const texto = [obra, cliente].filter(Boolean).join(' ');
-  let o = null; try { o = texto ? await (_obraDeTexto || require('./comprasVigilancia').obraDeTexto)(texto) : null; } catch (e) {}
+  // La visita ya resolvió la obra (visitas.js: «Can Bells 30» no es la obra «can bells 20») o dijo que no hay obra.
+  let o = null;
+  if (/^[a-f0-9]{24}$/.test(String(obraId || ''))) { try { o = await db.collection('obras').findOne({ _id: new (require('mongodb').ObjectId)(String(obraId)) }, { projection: { reference: 1, address: 1 } }); } catch (e) {} }
+  else if (!sinObra) try { o = texto ? await (_obraDeTexto || require('./comprasVigilancia').obraDeTexto)(texto) : null; } catch (e) {}
   // Dos obras del mismo cliente (piso y bar de Claudia) → obraDeTexto no elige; vale la única cuyo nombre lo contiene entero.
-  if (!o && texto) try {
+  if (!o && texto && !obraId && !sinObra) try {
     const t = norm(texto), l = await db.collection('obras').find({ status: { $ne: 'descartada' } }).project({ reference: 1, aliases: 1, address: 1 }).toArray();
     const c = l.filter(x => [x.reference, ...(x.aliases || [])].some(n => norm(n) && norm(n).includes(t)));
     if (c.length === 1) o = c[0];

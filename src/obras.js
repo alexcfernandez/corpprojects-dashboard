@@ -780,6 +780,9 @@ async function getRentabilidad(obraId) {
   // Tiempo de Álex y Alfonso en esta obra (visitas, presupuestos, compras: tiempoSocios.js), con la gasolina.
   let socios = { total: 0, minutos: 0, km: 0, ratos: [] };
   try { socios = await require('./tiempoSocios').deObra(String(obra._id)); } catch (e) {}
+  // Las visitas que Álex le contó a Corpy (visitas.js): qué se vio y qué falta, con sus fotos.
+  let visitas = [];
+  try { visitas = await require('./visitas').deObra(String(obra._id)); } catch (e) {}
   // Va APARTE como horas de gestión/administrativas (Álex: «no como horas de obra, sino administrativas nuestras»):
   // no entra en el coste de la obra; se enseña y se resta en «beneficio tras gestión».
   const totalCoste = totalCostePersonal + totalMateriales + totalProveedores + totalCompras + (almacen.importe || 0);
@@ -845,6 +848,7 @@ async function getRentabilidad(obraId) {
     totalCompras, compras,                     // compras por foto (Paso 4), con `cuenta`/`motivo`
     almacen,                                  // material del almacén sacado para la obra
     socios,                                   // horas de gestión de Álex y Alfonso (y sus km) en la obra
+    visitas,                                  // visitas contadas a Corpy (visitas.js)
     beneficioTrasGestion: Math.round((facturado - totalCoste - socios.total) * 100) / 100,
     porFacturar,                              // ¿está todo facturado? lo hecho a precio mínimo vs lo facturado
 
