@@ -197,7 +197,7 @@
 
   // ── Todo esto se repite cuando los módulos pintan (innerHTML) ──
   let pendiente = false;
-  const repasar = () => { if (pendiente) return; pendiente = true; requestAnimationFrame(() => { pendiente = false; preparar(); plegar(); contarCampana(); pintarBarra(); }); };
+  const repasar = () => { if (pendiente) return; pendiente = true; setTimeout(() => { pendiente = false; preparar(); plegar(); contarCampana(); pintarBarra(); }, 0); };
   new MutationObserver(repasar).observe(main, { childList: true, subtree: true });
   mq.addEventListener ? mq.addEventListener('change', () => { cerrar(); repasar(); }) : mq.addListener(repasar);
   repasar();

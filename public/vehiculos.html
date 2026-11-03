@@ -139,7 +139,7 @@ async function abrir(id){
   const el=document.getElementById('v-ficha');el.innerHTML='<div class="vacio">Cargando…</div>';
   if(!workers.length){try{workers=await (await fetch('/api/partes/workers')).json();}catch(e){workers=[];}}
   try{cur=await api('GET','/api/vehiculos/'+id);}catch(e){el.innerHTML='<div class="vacio" style="color:var(--red)">'+esc(e.message)+'</div>';return;}
-  pintarFicha();cargarKm(id);cargarCoste(id);
+  pintarFicha();cargarKm(id);cargarCoste(id);cargarQuien(id);
 }
 // Lo que cuesta: compra + gastos − venta, por año y de media al año (para ver si sale a cuenta o mejor un renting).
 async function cargarCoste(id){const el=document.getElementById('coste-blq');if(!el)return;let d;try{d=await api('GET','/api/vehiculos/'+id+'/coste');}catch(e){el.innerHTML='<div style="color:var(--red)">'+esc(e.message)+'</div>';return;}
@@ -149,6 +149,11 @@ async function cargarCoste(id){const el=document.getElementById('coste-blq');if(
     <div style="overflow:auto"><table style="width:100%;font-size:13px;border-collapse:collapse"><tr style="color:var(--text3)"><th style="text-align:left;padding:4px">Año</th>${cats.map(c=>`<th style="text-align:right;padding:4px">${esc(d.categorias[c]||c)}</th>`).join('')}<th style="text-align:right;padding:4px">Total</th></tr>
     ${d.porAnio.map(a=>`<tr style="border-top:1px solid var(--border)"><td style="padding:4px">${a.anio}</td>${cats.map(c=>`<td style="text-align:right;padding:4px">${a.porCategoria[c]?eur(a.porCategoria[c]):'—'}</td>`).join('')}<td style="text-align:right;padding:4px"><b>${eur(a.total)}</b></td></tr>`).join('')}</table></div>
     <div style="font-size:12px;color:var(--text3);margin-top:6px">Compra (o cuotas) + taller, neumáticos, seguro, combustible, ITV… − venta. Compáralo con lo que costaría un renting al año.</div>`;}
+// Quién la ha llevado cada día (lo que apuntan al fichar: src/vehiculoDia.js). Para las multas y para saber dónde está.
+async function cargarQuien(id){const el=document.getElementById('quien-blq');if(!el)return;let d;try{d=await api('GET','/api/vehiculos/'+id+'/quien');}catch(e){return;}
+  const l=d.lista||[];if(!l.length){el.innerHTML='<div class="nota" style="margin-top:0">Aún nadie ha dicho al fichar que la llevaba.</div>';return;}
+  const dias={};l.forEach(x=>{(dias[x.fecha]=dias[x.fecha]||[]).push(x.workerName);});
+  el.innerHTML=`<details${l.length<=10?' open':''}><summary>Quién la ha llevado, día a día (${Object.keys(dias).length} días)</summary><table>${Object.entries(dias).map(([f,ns])=>`<tr><td style="color:var(--text3);white-space:nowrap">${fmtF(f)}</td><td>${ns.map(esc).join(' y ')}${ns.length>1?' <span style="color:var(--amber)">⚠️ dos a la vez</span>':''}</td></tr>`).join('')}</table></details>`;}
 async function cargarKm(id){const el=document.getElementById('km-blq');if(!el)return;let d;try{d=await api('GET','/api/vehiculos/'+id+'/km');}catch(e){el.innerHTML='<div style="color:var(--red)">'+esc(e.message)+'</div>';return;}
   const v=cur.vehiculo,n=x=>Number(x).toLocaleString('es-ES');
   el.innerHTML=(d.km?`<div class="chips" style="margin-top:0"><span class="chip">${n(d.km)} km del ${fmtF(d.desde)} al ${fmtF(d.hasta)}</span><span class="chip ok">${String(d.eurKm.toFixed(2)).replace('.',',')} €/km</span>${d.l100?`<span class="chip">${String(d.l100).replace('.',',')} L/100 km</span>`:''}<span class="chip">gasto ${eur(d.gasto)} (combustible ${eur(d.combustible)})</span></div>`
@@ -172,13 +177,14 @@ function pintarFicha(){
   <h3>Quién lo lleva</h3>
   <div class="card"><div class="bar" style="margin:0"><select id="c-user"><option value="">— Nadie (en la nave) —</option>${workers.map(w=>`<option value="${esc(w.id)}" ${v.conductor&&v.conductor.userId===w.id?'selected':''}>${esc(w.name)}</option>`).join('')}</select><input id="c-fecha" type="date" value="${new Date().toISOString().slice(0,10)}"><button class="btn" onclick="cambiarConductor()">Cambiar</button></div>
    ${(v.historialConductor||[]).length?`<table>${v.historialConductor.slice().reverse().map(h=>`<tr><td>${esc(h.name)}</td><td style="color:var(--text3)">${fmtF(h.desde)} → ${h.hasta?fmtF(h.hasta):'ahora'}</td></tr>`).join('')}</table>`:''}
-   <div class="nota">El conductor recibe por WhatsApp los avisos de ITV y revisión de su vehículo.</div></div>
+   <div class="nota">El conductor recibe por WhatsApp los avisos de ITV y revisión de su vehículo. Si alguien la coge 3 días seguidos al fichar, pasa a ser su conductor solo.</div>
+   <div id="quien-blq" style="margin-top:10px"></div></div>
 
   <h3>Datos</h3>
   <div class="card"><div class="grid">
     ${campo('Nombre',inp('f-nombre',v.nombre))}${campo('Matrícula',inp('f-matricula',v.matricula))}${campo('Tipo',sel('f-tipo',cur.tipos,v.tipo))}
     ${campo('Marca',inp('f-marca',v.marca))}${campo('Modelo',inp('f-modelo',v.modelo))}${campo('Combustible',sel('f-combustible',comb,v.combustible,'—'))}
-    ${campo('Nº de bastidor',inp('f-bastidor',v.bastidor))}${campo('Fecha de matriculación',inp('f-fechaMatriculacion',v.fechaMatriculacion,'date'))}${campo('Km actuales',inp('f-km',v.km,'number'))}
+    ${campo('Nº de bastidor',inp('f-bastidor',v.bastidor))}${campo('Fecha de matriculación',inp('f-fechaMatriculacion',v.fechaMatriculacion,'date'))}${campo('Km actuales',inp('f-km',v.km,'number'))}${campo('Plazas',inp('f-plazas',v.plazas,'number'))}
     ${campo('Impuesto circulación (€/año)',inp('f-ivtm',v.ivtm,'number'))}${campo('Id en Quartix (GPS)',inp('f-quartixId',v.quartixId,'text','se enlaza solo por matrícula'))}${campo('Nombre en la app Esclat',inp('f-aliasEsclat',(v.aliasEsclat||[]).join(', '),'text','p. ej. Citroën berlingo'))}
   </div></div>
 
@@ -221,7 +227,7 @@ function pintarFicha(){
 }
 const V=id=>{const e=document.getElementById(id);return e?e.value:undefined;};
 async function guardar(){
-  const b={};['nombre','matricula','tipo','marca','modelo','combustible','bastidor','fechaMatriculacion','km','ivtm','quartixId','formaCompra','fechaAlta','precioCompra','cuotaMensual','finContrato','proveedorCompra','notas','aliasEsclat'].forEach(k=>b[k]=V('f-'+k));
+  const b={};['nombre','matricula','tipo','marca','modelo','combustible','bastidor','fechaMatriculacion','km','plazas','ivtm','quartixId','formaCompra','fechaAlta','precioCompra','cuotaMensual','finContrato','proveedorCompra','notas','aliasEsclat'].forEach(k=>b[k]=V('f-'+k));
   b.itv={proxima:V('f-itv-proxima'),ultima:V('f-itv-ultima'),notas:V('f-itv-notas')};
   b.seguro={};['compania','poliza','modalidad','precioAnual','vencimiento','telefonoAsistencia'].forEach(k=>b.seguro[k]=V('f-se-'+k));
   b.revision={proximaFecha:V('f-rv-proximaFecha'),proximaKm:V('f-rv-proximaKm'),notas:V('f-rv-notas')};

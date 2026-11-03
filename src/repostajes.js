@@ -135,7 +135,10 @@ async function paraTrabajador(workerId) {
   const db = await getDB();
   const vs = await db.collection('vehiculos').find({ estado: 'activo' }).project({ nombre: 1, matricula: 1, conductor: 1, km: 1, kmFecha: 1 }).sort({ nombre: 1 }).toArray();
   const h = hoy();
-  const lista = vs.map(v => ({ id: String(v._id), nombre: v.nombre, matricula: v.matricula || '', mio: !!(v.conductor && String(v.conductor.userId) === String(workerId)), km: v.km || null, kmFecha: v.kmFecha || null }));
+  // La furgoneta que dijo llevar HOY al fichar manda sobre la habitual (src/vehiculoDia.js, 4/11/2026).
+  const dia = await db.collection('vehiculoDia').findOne({ _id: `${h}:${String(workerId)}` });
+  const esMio = v => dia ? dia.vehiculoId === String(v._id) : !!(v.conductor && String(v.conductor.userId) === String(workerId));
+  const lista = vs.map(v => ({ id: String(v._id), nombre: v.nombre, matricula: v.matricula || '', mio: esMio(v), km: v.km || null, kmFecha: v.kmFecha || null }));
   const mios = lista.filter(v => v.mio).map(v => v.id);
   const sinKm = mios.length ? await db.collection('repostajes').find({ vehiculoId: { $in: mios }, km: null, fecha: { $gte: addDias(h, -3) } }).sort({ fecha: -1 }).limit(3).toArray() : [];
   const pideKm = lista.filter(v => v.mio && (!v.kmFecha || dias(v.kmFecha, h) >= 7 || sinKm.some(r => r.vehiculoId === v.id && (!v.kmFecha || v.kmFecha < r.fecha))))

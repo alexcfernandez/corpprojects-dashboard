@@ -63,6 +63,7 @@ function limpiar(d = {}) {
   if ('cuotaMensual' in d) o.cuotaMensual = num(d.cuotaMensual);
   if ('finContrato' in d) o.finContrato = fechaOk(d.finContrato);
   if ('km' in d) o.km = num(d.km) != null ? Math.round(num(d.km)) : null;
+  if ('plazas' in d) { const n = Math.round(num(d.plazas) || 0); o.plazas = n >= 1 && n <= 9 ? n : null; }   // al elegir la furgoneta del día
   // Parada (sin usar, esperando reparación…): no salen sus avisos de ITV/seguro hasta que vuelva a usarse (16/10/2026, Ford Transit).
   if ('parada' in d) o.parada = d.parada ? { desde: fechaOk(d.parada.desde) || new Date().toISOString().slice(0, 10), motivo: txt(d.parada.motivo, 200) } : null;
   if (d.itv && typeof d.itv === 'object') o.itv = { proxima: fechaOk(d.itv.proxima), ultima: fechaOk(d.itv.ultima), notas: txt(d.itv.notas, 300) };
@@ -405,4 +406,4 @@ async function revisarVencimientos({ dryRun = false, hoy = new Date() } = {}) {
   return { avisos: hechos, dryRun };
 }
 
-module.exports = { _gastosCompra, costeTotal, CATEGORIAS, TIPOS, FORMAS, MOTIVOS_BAJA, DOCS, sugerirCategoria, limpiar, crear, editar, asignarConductor, darDeBaja, reactivar, subirDocumento, documentos, documento, borrarDocumento, lista, flota, ficha, gastos, resumen, diasHasta, claveAviso, avisosPendientes, revisarVencimientos, matNorm, proximaItv, registrarItv };
+module.exports = { _oficinaTo: _oficina, _gastosCompra, costeTotal, CATEGORIAS, TIPOS, FORMAS, MOTIVOS_BAJA, DOCS, sugerirCategoria, limpiar, crear, editar, asignarConductor, darDeBaja, reactivar, subirDocumento, documentos, documento, borrarDocumento, lista, flota, ficha, gastos, resumen, diasHasta, claveAviso, avisosPendientes, revisarVencimientos, matNorm, proximaItv, registrarItv };

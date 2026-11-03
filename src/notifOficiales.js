@@ -74,6 +74,17 @@ async function conductorEn(matricula, fecha, { _db = null } = {}) {
   if (!v) return { vehiculo: null, nota: `La matrícula ${mat} no está en Vehículos` };
   const vh = { id: String(v._id), nombre: v.nombre || '', matricula: mat };
   const f = fecha || hoyISO();
+  // Lo que apuntaron al fichar ese día (src/vehiculoDia.js) va por delante del conductor habitual.
+  const delDia = fecha ? await require('./vehiculoDia').enFecha(String(v._id), fecha, { _db: db }).catch(() => []) : [];
+  const conCoche = delDia.filter(d => d.workerId);
+  if (conCoche.length === 1) {
+    const d = conCoche[0];
+    return { vehiculo: vh, conductor: { userId: d.workerId, name: d.workerName || '' }, trabajo: true, aprox: false, nota: 'lo apuntó al fichar ese día' };
+  }
+  if (conCoche.length > 1) {
+    const d = conCoche[0];
+    return { vehiculo: vh, conductor: { userId: d.workerId, name: d.workerName || '' }, trabajo: true, aprox: true, nota: `ojo: ese día dijeron llevarla ${conCoche.map(x => x.workerName).join(' y ')}` };
+  }
   const hist = v.historialConductor || [];
   let h = hist.filter(x => x.userId && (!x.desde || x.desde <= f) && (!x.hasta || x.hasta >= f)).pop();
   // El historial empezó en oct 2026: si la multa es de antes de que hubiera nada apuntado, se propone quien la llevó primero.

@@ -1730,6 +1730,18 @@ app.post('/api/fichaje/trabajo/cita', express.json(), async (req, res) => {
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 // Vehículos en la app de fichar: repostajes y km (solo nombre y matrícula, nada de dinero de la empresa).
+// Furgoneta del día (src/vehiculoDia.js): solo a quien conduce le sale la tarjeta «🚐 Hoy llevas…».
+app.get('/api/fichaje/vehiculo-dia', async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return; res.json(await require('./vehiculoDia').paraTrabajador(w.workerId)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/fichaje/vehiculo-dia', async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return;
+    const VD = require('./vehiculoDia');
+    if (!(await VD.paraTrabajador(w.workerId)).conduce) return res.status(403).json({ error: 'No tienes marcado que lleves furgoneta' });
+    res.json(await VD.elegir({ workerId: w.workerId, workerName: w.workerName }, (req.body || {}).vehiculoId || null)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/fichaje/vehiculos', async (req, res) => {
   try { const w = await _worker(req, res); if (!w) return; res.json(await require('./repostajes').paraTrabajador(w.workerId)); }
   catch (err) { res.status(500).json({ error: err.message }); }
@@ -2825,6 +2837,9 @@ const _porVeh = async (req) => { const q = (await _quienPush(req)) || {}; return
 app.get('/api/vehiculos', requireAuth, async (req, res) => {
   try { const v = require('./vehiculos'); res.json({ vehiculos: await v.lista(), categorias: v.CATEGORIAS, sugerida: req.query.texto ? v.sugerirCategoria(req.query.texto) : null }); }
   catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/vehiculos/:id/quien', requireAuthOficina, async (req, res) => {
+  try { res.json({ lista: await require('./vehiculoDia').historial(req.params.id) }); } catch (err) { res.status(500).json({ error: err.message }); }
 });
 app.get('/api/vehiculos/flota', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./vehiculos').flota({ anio: req.query.anio })); } catch (err) { res.status(500).json({ error: err.message }); }

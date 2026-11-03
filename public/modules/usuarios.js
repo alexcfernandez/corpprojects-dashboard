@@ -262,6 +262,12 @@
           <div style="font-size:10px;color:var(--text3);margin-bottom:4px">Carnet de conducir</div>
           <input type="text" id="u-carnet" value="${user.docs?.carnet||''}" placeholder="Categoría y número" style="width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--rs);padding:8px 10px;color:var(--text);font-size:13px">
         </div>
+        <div>
+          <div style="font-size:10px;color:var(--text3);margin-bottom:4px">🚐 ¿Lleva furgoneta?</div>
+          <select id="u-conduce" title="Al fichar le pregunta qué furgoneta lleva ese día" style="width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--rs);padding:8px 10px;color:var(--text);font-size:13px">
+            <option value="">Automático (sí, si tiene carnet apuntado)</option><option value="si">Sí, puede llevar furgoneta</option><option value="no">No (sin carnet válido aquí)</option>
+          </select>
+        </div>
       </div>
       <div>
         <div style="font-size:10px;color:var(--text3);margin-bottom:4px">Contacto de emergencia</div>
@@ -388,6 +394,7 @@
       set('u-notes', u.notes||'');
       set('u-dni', u.docs?.dni||'');
       set('u-carnet', u.docs?.carnet||'');
+      set('u-conduce', u.conduce===true?'si':u.conduce===false?'no':'');
       set('u-emergency', u.docs?.emergency||'');
       { const cp=document.getElementById('u-partes'); if (cp) cp.checked=!!u.porPartes; }
       const ua=u.autonomo&&u.autonomo.activo?u.autonomo:null;
@@ -457,6 +464,7 @@
     notes:     document.getElementById('u-notes')?.value?.trim(),
     autonomo: autData(),
     porPartes: !!document.getElementById('u-partes')?.checked,
+    conduce: document.getElementById('u-conduce')?.value || '',
     docs: {
       dni:       document.getElementById('u-dni')?.value?.trim(),
       carnet:    document.getElementById('u-carnet')?.value?.trim(),
@@ -494,7 +502,7 @@
   }
 
   function resetForm() {
-    ['u-name','u-pass','u-pin','u-coste-hora','u-telefono','u-nombre-completo','u-fecha-inicio','u-email','u-notes','u-dni','u-carnet','u-emergency','u-aut-tarifa','u-aut-nif','u-aut-nombre'].forEach(id => {
+    ['u-name','u-pass','u-pin','u-coste-hora','u-telefono','u-nombre-completo','u-fecha-inicio','u-email','u-notes','u-dni','u-carnet','u-conduce','u-emergency','u-aut-tarifa','u-aut-nif','u-aut-nombre'].forEach(id => {
       const e = document.getElementById(id); if(e) e.value='';
     });
     { const ck = document.getElementById('u-aut'); if (ck) ck.checked = false; onAutChange(); const cp = document.getElementById('u-partes'); if (cp) cp.checked = false; }

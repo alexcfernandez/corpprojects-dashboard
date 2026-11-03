@@ -166,6 +166,7 @@ async function createUser(data) {
   };
   // Autónomo: no ficha; su coste/hora en las obras es su tarifa.
   user.porPartes = !!data.porPartes;
+  user.conduce = data.conduce === true || data.conduce === 'si' ? true : data.conduce === false || data.conduce === 'no' ? false : null;
   // Nombre con apellidos (para distinguir a la gente en presencia) y día que empieza: antes de esa fecha no ficha ni cuenta.
   user.nombreCompleto = String(data.nombreCompleto || '').trim().slice(0, 120);
   user.fechaInicio = /^\d{4}-\d{2}-\d{2}$/.test(String(data.fechaInicio || '')) ? data.fechaInicio : '';
@@ -194,7 +195,7 @@ async function createUser(data) {
 
 async function updateUser(id, data) {
   const db      = await getDB();
-  const allowed = ['name','role','pin','color','costeHora','nota','active','notes','docs','telefono','email','username','porPartes','nombreCompleto','fechaInicio','idioma','avisosWa'];
+  const allowed = ['name','role','pin','color','costeHora','nota','active','notes','docs','telefono','email','username','porPartes','nombreCompleto','fechaInicio','idioma','avisosWa','conduce'];
   const set     = { updatedAt: new Date() };
   allowed.forEach(k => { if (data[k] !== undefined) set[k] = data[k]; });
   if ('avisosWa' in set) { set.avisosWa = ['importante', 'ninguno'].includes(set.avisosWa) ? set.avisosWa : 'todos'; try { require('./canalWhatsapp')._olvidarSilenciados(); } catch (e) {} }
@@ -202,7 +203,9 @@ async function updateUser(id, data) {
 
   // Parsear costeHora como número
   if (set.costeHora !== undefined) set.costeHora = parseFloat(set.costeHora || 0);
-  if (set.porPartes !== undefined) set.porPartes = !!set.porPartes;   // varios sitios al día: se le pregunta por WhatsApp al acabar
+  if (set.porPartes !== undefined) set.porPartes = !!set.porPartes;
+  // ¿Lleva furgoneta? true/false a mano; null = automático (si tiene el carnet apuntado). src/vehiculoDia.js
+  if ('conduce' in set) set.conduce = set.conduce === true || set.conduce === 'si' ? true : set.conduce === false || set.conduce === 'no' ? false : null;   // varios sitios al día: se le pregunta por WhatsApp al acabar
   // Autónomo (o dejar de serlo). Su tarifa pasa a ser su coste/hora en las obras.
   if (data.autonomo !== undefined) {
     const aut = require('./autonomos');
