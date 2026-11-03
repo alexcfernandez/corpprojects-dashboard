@@ -58,6 +58,36 @@ async function _ultimaPregunta(from) {
   return p && !(p.pedido && p.pedido.id) ? p : null;
 }
 
+// «Lo hace Álex», «va Javi», «voy yo» (3/11/2026: Álex contestó «lo hace Álex» y el pedido acabó en David). Puede ir
+// cualquiera de la plantilla activa, también el dueño o un socio, no solo los técnicos. Si la frase es de asignar y no se
+// reconoce a nadie, se vuelve a preguntar: nunca se pone al propuesto si Álex no lo ha nombrado ni ha dicho «vale».
+const ACEPTA = /^(vale|si|ok|okey|perfecto|de acuerdo|adelante|venga)$/;
+function _quitaVerbo(t) {
+  const s = t.replace(/^(que )?(lo |la )?(hace|hara|haga|lleva|llevara|lleve|hago|llevo)\s+/, '').replace(/^(que )?(va|vaya|ira|voy|vas|iras)\s+/, '');
+  return { s, verbo: s !== t };
+}
+// «Yo»: el usuario con el número que escribe; si no lo tiene apuntado, el único dueño.
+function _yo(from, users) {
+  const A = require('./acceso'), dig = A.ultimos9(A.normalizarNumero(from));
+  const l = users.filter(u => dig && [u.whatsapp, u.telefono, u.phone].some(n => n && A.ultimos9(A.normalizarNumero(n)) === dig));
+  if (l.length === 1) return l[0];
+  const o = users.filter(u => require('./users').normalizeRole(u.role) === 'owner');
+  return o.length === 1 ? o[0] : null;
+}
+const _repregunta = (p, que) => `${que} ¿Quién va a *${p.clienteStel || p.cliente}*? Dime el nombre como sale en la app (o «no va nadie»).\n\n(ref. trabajo ${p._id})`;
+// El agente (IA) solo puede asignar a quien Álex ha nombrado en su último mensaje, a él mismo si dice «yo/voy», o al
+// propuesto si ha dicho «vale». Si no se puede leer el hilo, no se bloquea.
+async function nombrado(u, p, from, { users = [], alias = [] } = {}) {
+  let h; try { h = await require('./waLog').hilo(from, { dias: 2 }); } catch (e) { return true; }
+  const m = (h.mensajes || []).filter(x => x.dir === 'in' && x.texto).pop();
+  if (!m) return true;
+  const N = require('./nombres'), t = ' ' + N.norm(m.texto) + ' ';
+  const ws = [u.name, u.nombreCompleto, ...alias.filter(a => String(a.workerId) === String(u._id)).map(a => a.alias)].flatMap(n => N.norm(n).split(' ')).filter(w => w.length >= 3);
+  if (ws.some(w => t.includes(' ' + w + ' '))) return true;
+  if (/ (yo|voy) /.test(t)) { const y = _yo(from, users); if (y && String(y._id) === String(u._id)) return true; }
+  return !!(p.propuestaQuien && String(p.propuestaQuien.userId) === String(u._id) && / (vale|si|ok|okey|perfecto|de acuerdo|adelante|venga) /.test(t));
+}
+
 // Respuesta corta de Álex sin pasar por la IA: «David», «vale», «no va nadie». Lo que lleve día, hora o varios nombres
 // lo resuelve el agente con asignar_trabajo (que ve la misma «ref. trabajo»).
 async function respuestaQuien(texto, from) {
@@ -76,12 +106,16 @@ async function respuestaQuien(texto, from) {
     return `👍 Vale, no mando a nadie para *${p.clienteStel || p.cliente}*. Sigue en la lista de incidencias.`;
   }
   let u = null;
-  if (/^(vale|si|ok|okey|perfecto|de acuerdo|adelante|venga)$/.test(t)) u = p.propuestaQuien ? { _id: p.propuestaQuien.userId, name: p.propuestaQuien.nombre } : null;
-  else {
+  if (ACEPTA.test(t)) {
+    if (!p.propuestaQuien) return _repregunta(p, 'No te había propuesto a nadie.');
+    u = { _id: p.propuestaQuien.userId, name: p.propuestaQuien.nombre };
+  } else {
+    const { s, verbo } = _quitaVerbo(t);
     const db = await getDB();
     const users = (await require('./users').getUsers(false)).filter(x => x.active !== false);
-    const r = require('./nombres').casarTrabajador(t, users, await require('./nombres').aliasDeTrabajadores(db));
+    const r = /^yo( mismo)?$/.test(s) ? _yo(from, users) : require('./nombres').casarTrabajador(s, users, await require('./nombres').aliasDeTrabajadores(db));
     if (r && r.varios) return `¿Cuál? ${r.varios.join(' · ')}\n\n(ref. trabajo ${p._id})`;
+    if (!r && (verbo || /^yo( mismo)?$/.test(s))) return _repregunta(p, `No sé quién es «${s}».`);
     u = r;
   }
   if (!u) return null;
@@ -284,4 +318,4 @@ async function alParte(workOrderId, parte, { _enviar = null, _avisar = null, _st
   return { cerrado: false, motivo };
 }
 
-module.exports = { preguntarQuien, respuestaQuien, asignar, abiertos, respuestaGrupo, seguimiento, alParte, precioSalida, _ultimaPregunta, REF };
+module.exports = { preguntarQuien, respuestaQuien, nombrado, asignar, abiertos, respuestaGrupo, seguimiento, alParte, precioSalida, _ultimaPregunta, REF };

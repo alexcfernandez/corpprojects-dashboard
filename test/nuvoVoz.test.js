@@ -325,3 +325,61 @@ test('nombre de oído: «Caterin Cardona» propone a Katerin Cardona cuando el n
     assert.match(enviados[0], /un número desconocido \(por el nombre parece \*KATERIN CARDONA\*\)/);
   } finally { dbm.getDB = real; process.env.WHATSAPP_TO = prevW; if (prevW === undefined) delete process.env.WHATSAPP_TO; }
 });
+
+test('«¿Quién va?»: «lo hace Álex» o «voy yo» asigna a Álex; lo que no se entiende se vuelve a preguntar, nunca al propuesto', async () => {
+  const { ObjectId } = require('mongodb');
+  const dbm = require('../src/db'); const real = dbm.getDB; const db = fakeDB(); dbm.getDB = async () => db;
+  const W = require('../src/waLog'), U = require('../src/users'), T = require('../src/trabajos');
+  const realHilo = W.hilo, realUsers = U.getUsers, realCrear = T.crear;
+  const pid = new ObjectId();
+  await db.collection('peticionesGrupo').insertOne({ _id: pid, cliente: 'ILLA VERDA', tipo: 'trabajo', propuestaQuien: { userId: 'd1', nombre: 'David Taladros' } });
+  const users = [{ _id: 'a1', name: 'Álex', nombreCompleto: 'Alex Castro', role: 'owner', whatsapp: '+34600000001' }, { _id: 'd1', name: 'David Taladros', nombreCompleto: 'David Valencia Roca', role: 'tecnico' }, { _id: 's1', name: 'Diego', role: 'tecnico' }];
+  let ultimoIn = '';
+  W.hilo = async () => ({ mensajes: [{ dir: 'out', texto: `🔧 *Trabajo: ¿quién va?* ILLA VERDA\n\n(ref. trabajo ${pid})` }, { dir: 'in', texto: ultimoIn }] });
+  U.getUsers = async () => users;
+  const asignados = []; T.crear = async (id, o) => { asignados.push(o.userId); return { pedido: 'PDT1', incidencia: 'INC1', operario: users.find(u => u._id === o.userId).name, equipo: [], avisado: true }; };
+  const TS = require('../src/trabajosSeguimiento');
+  try {
+    assert.match(await TS.respuestaQuien('lo hace Álex', '+34600000001'), /para \*Álex\*/);
+    assert.match(await TS.respuestaQuien('voy yo', '+34600000001'), /para \*Álex\*/);
+    assert.match(await TS.respuestaQuien('que vaya Diego', '+34600000001'), /para \*Diego\*/);
+    assert.deepStrictEqual(asignados, ['a1', 'a1', 's1']);
+    asignados.length = 0;
+    const r = await TS.respuestaQuien('lo hace Pepito', '+34600000001');
+    assert.match(r, /No sé quién es «pepito»[\s\S]*¿Quién va a \*ILLA VERDA\*[\s\S]*ref\. trabajo/);
+    assert.deepStrictEqual(asignados, [], 'no asigna a nadie, y menos al propuesto');
+    assert.match(await TS.respuestaQuien('vale', '+34600000001'), /para \*David Taladros\*/, '«vale» sí es el propuesto');
+    assert.strictEqual(await TS.respuestaQuien('gracias', '+34600000001'), null, 'lo que no es de asignar sigue al agente');
+    // El agente (IA) no puede poner al propuesto si Álex no lo ha nombrado.
+    const p = await db.collection('peticionesGrupo').findOne({ _id: pid });
+    ultimoIn = 'lo hace Álex';
+    assert.strictEqual(await TS.nombrado(users[1], p, '+34600000001', { users }), false);
+    assert.strictEqual(await TS.nombrado(users[0], p, '+34600000001', { users }), true);
+    ultimoIn = 'voy yo mañana';
+    assert.strictEqual(await TS.nombrado(users[0], p, '+34600000001', { users }), true);
+    ultimoIn = 'vale, el jueves';
+    assert.strictEqual(await TS.nombrado(users[1], p, '+34600000001', { users }), true);
+    ultimoIn = 'que vaya David Valencia el jueves';
+    assert.strictEqual(await TS.nombrado(users[1], p, '+34600000001', { users }), true, 'por el nombre completo');
+  } finally { dbm.getDB = real; W.hilo = realHilo; U.getUsers = realUsers; T.crear = realCrear; }
+});
+
+test('recado urgente nuevo de «seguimiento» sin incidencia: crea la suya y pregunta quién va', async () => {
+  const dbm = require('../src/db'); const real = dbm.getDB; const db = fakeDB(); dbm.getDB = async () => db;
+  const PG = require('../src/peticionesGrupo');
+  const cm = { 1: { name: 'KATERIN CARDONA', family: 'Particulares' } };
+  const cat = { clientes: [], incidencias: [], presupuestos: [], nombre: id => (cm[String(id)] || {}).name || '' };
+  let paraAuto = [];
+  try {
+    await PG.deRecado({ llamada: 'K2', fecha: new Date('2026-11-03T20:17:00Z'), urgente: true, resumen: 'URGENTE · Ya llamé antes: sigue la fuga', contacto: { nombre: 'Katerin Cardona', externalId: '1' }, final: '108', _cat: cat, _clientMap: cm,
+      _llamar: async () => ({ peticiones: [{ msgs: [0], tipo: 'trabajo', cliente_id: '1', cliente: 'Katerin Cardona', resumen: 'Fuga', que_hacer: 'Ir', urgente: true, situacion: 'seguimiento' }] }),
+      _auto: async (d, g, l) => { paraAuto = l; return {}; }, _enviar: async () => true });
+    assert.strictEqual(paraAuto.length, 1);
+    assert.strictEqual(paraAuto[0].situacion, 'nuevo', '_autoIncidencias solo actúa sobre «nuevo»: crea INC y pregunta quién va');
+    // Con incidencia ya enlazada no se toca.
+    await PG.deRecado({ llamada: 'K3', fecha: new Date('2026-11-03T22:00:00Z'), resumen: 'Sigue la fuga', contacto: { nombre: 'Katerin Cardona', externalId: '1' }, final: '108', _cat: cat, _clientMap: cm,
+      _llamar: async () => ({ peticiones: [{ msgs: [0], tipo: 'trabajo', cliente_id: '1', cliente: 'Katerin Cardona', resumen: 'Fuga', que_hacer: 'Ir', urgente: false, situacion: 'seguimiento', incidencia: 'INC00660' }] }),
+      _auto: async (d, g, l) => { paraAuto = l; return {}; }, _enviar: async () => true });
+    assert.strictEqual(paraAuto[0].situacion, 'seguimiento');
+  } finally { dbm.getDB = real; }
+});

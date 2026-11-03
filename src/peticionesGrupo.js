@@ -369,6 +369,9 @@ function porNombre(nombre, clientMap = {}, final = null) {
   const [id, x] = c.length === 1 ? c[0] : tel.length === 1 ? tel[0] : [];
   return id ? { id: String(id), nombre: x.name } : null;
 }
+// Un recado urgente de seguimiento («ya llamé», «vuelve a pasar») sin incidencia enlazada es un aviso nuevo para
+// _autoIncidencias: incidencia y «¿Quién va?» (3/11/2026: el de Katerin Cardona salió «seguimiento» y no preguntó quién iba).
+const _paraAuto = p => (!p.incidencia && p.situacion === 'seguimiento' ? { ...p, situacion: 'nuevo' } : p);
 async function deRecado({ llamada, fecha = new Date(), urgente = false, resumen, titulo = null, contacto = null, final = '', _llamar = null, _cat = null, _enviar = null, _auto = null, _clientMap = null } = {}) {
   const db = await getDB();
   if (llamada && await db.collection(COL).findOne({ llamadas: String(llamada) })) return { ya: true };
@@ -408,7 +411,7 @@ async function deRecado({ llamada, fecha = new Date(), urgente = false, resumen,
   for (const p of [...r.nuevas, ...r.actualizadas]) _memo(p);
   const nuevas = r.nuevas.filter(p => !sinAccion(p));
   let auto = {};
-  try { auto = await (_auto || _autoIncidencias)(db, { _id: JID_VOZ, autoIncidencia: true }, nuevas.filter(p => !p.porConfirmar)); } catch (e) { console.warn('[Peticiones] recado incidencias:', e.message); }
+  try { auto = await (_auto || _autoIncidencias)(db, { _id: JID_VOZ, autoIncidencia: true }, nuevas.filter(p => !p.porConfirmar).map(_paraAuto)); } catch (e) { console.warn('[Peticiones] recado incidencias:', e.message); }
   let avisado = false;
   if (urgente) {
     const lista = [...nuevas, ...r.actualizadas];
@@ -439,7 +442,7 @@ async function confirmar(id, { clienteId = null } = {}, por = '', { _auto = null
   }
   if (!(set.clienteId || p.clienteId)) throw new Error('Elige el cliente de StelOrder');
   await db.collection(COL).updateOne({ _id: p._id }, { $set: set, $unset: { porConfirmar: '' } });
-  const q = { ...p, ...set }; delete q.porConfirmar;
+  const q = _paraAuto({ ...p, ...set }); delete q.porConfirmar;
   const auto = (await (_auto || _autoIncidencias)(db, { _id: p.jid, autoIncidencia: true }, [q]))[String(p._id)] || {};
   return { ok: true, incidencia: auto.incidencia || null, error: auto.error || null };
 }
