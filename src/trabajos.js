@@ -183,6 +183,10 @@ async function crear(peticionId, { userId, fecha = null, hora = null, urgente = 
       const fotos = await db.collection('grupoFotos').find({ _id: { $in: (p.fotoIds || []).filter(f => ObjectId.isValid(f)).slice(0, 3).map(f => new ObjectId(f)) } }).toArray();
       for (const f of fotos) { try { await require('./canalWhatsapp').enviarArchivo(g ? g._id : tel, `📷 ${corto(cliente, 40)}`, { data: Buffer.from(f.data.buffer || f.data), mime: f.mimetype || 'image/jpeg', nombre: 'aviso.jpg' }); } catch (e) {} }
     }
+    // Trabajo de un presupuesto aceptado con su lista de materiales: el PDF del parte con las instrucciones (materialesObra.js).
+    if (avisado && !_enviar && p.origen === 'materiales') {
+      try { const f = await require('./materialesObra').pdfParaPeticion(String(p._id)); if (f) await require('./canalWhatsapp').enviarArchivo(g ? g._id : tel, `📋 Parte e instrucciones · ${corto(cliente, 40)}`, { data: f.data, mime: 'application/pdf', nombre: f.nombre }); } catch (e) { console.warn('[Trabajos] PDF del parte:', e.message); }
+    }
     try { await require('./push').sendToWorker(String(u._id), { title: 'Trabajo nuevo', body: `${fecha ? fechaTxt(fecha) + (hora ? ' ' + hora : '') : 'Sin día'} · ${cliente}`, url: '/parte' }); } catch (e) {}
   } catch (e) { console.warn('[Trabajos] aviso:', e.message); }
   return { ok: true, incidencia: incidencia.ref, pedido: ped.ref, pedidoId: String(ped.id), operario: u.name, equipo, fecha, hora, fechaTxt: fecha ? fechaTxt(fecha) : null, avisado, enGrupo };

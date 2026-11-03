@@ -152,7 +152,8 @@ async function ejecutar(name, input, { from, trab, _prog = null, _cal = null, _s
     try { await require('./memoria').apuntar({ sujeto: { tipo: 'cliente', id: String(p['account-id']), nombre: p.title || ref }, tipo: 'presupuesto', unico: ref, texto: `${ref} ${input.estado} (Alfonso)`, ambito: 'cliente', fuente: { tipo: 'correccion', ref } }); } catch (e) {}
     const imp = Number(p['total-amount']) ? ` · ${Number(p['total-amount']).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €` : '';
     await aAlex(`🤝 *Alfonso*: ${ref}${p.title ? ` (${p.title})` : ''}${imp} → *${input.estado}*. Ya está cambiado en StelOrder.`);
-    return { reply: `✅ ${ref}${p.title ? ` (${p.title})` : ''} marcado como *${input.estado}* en StelOrder. Se lo he dicho a Álex.` };
+    if (input.estado === 'aceptado' && !_stel) require('./materialesObra').alAceptar(ref, 'Alfonso (Corpy)').catch(e => console.warn('[Materiales] alAceptar:', e.message));
+    return { reply: `✅ ${ref}${p.title ? ` (${p.title})` : ''} marcado como *${input.estado}* en StelOrder. Se lo he dicho a Álex${input.estado === 'aceptado' ? ' y le paso la lista de materiales' : ''}.` };
   }
   if (name === 'mis_recordatorios') {
     const l = (await P.lista()).filter(x => x.estado === 'pendiente' && String(x.userId || '') === String(userId) && /Alfonso/.test(x.por || ''));

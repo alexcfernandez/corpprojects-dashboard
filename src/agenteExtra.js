@@ -340,7 +340,9 @@ async function ejecutar(name, input, from) {
     if (!p) return { handled: true, reply: `No encuentro el ${ref} en StelOrder.` };
     try { await S.setWorkEstimateState(p.id, E[input.estado], { requestedBy: 'Álex (Corpy)' }); } catch (e) { return { handled: true, reply: `No he podido cambiar el ${ref}: ${e.message}` }; }
     try { require('./memoria').apuntar({ sujeto: { tipo: 'cliente', id: String(p['account-id']), nombre: p.title || ref }, tipo: 'presupuesto', unico: ref, texto: `${ref} ${input.estado} (Álex)`, ambito: 'cliente', fuente: { tipo: 'correccion', ref } }).catch(() => {}); } catch (e) {}
-    return { handled: true, reply: `✅ ${ref}${p.title ? ` (${p.title})` : ''} marcado como *${input.estado}* en StelOrder.` };
+    // Aceptado → lista de materiales de la obra (materialesObra.js): llega aparte con su PDF.
+    if (input.estado === 'aceptado') require('./materialesObra').alAceptar(ref, 'Álex (Corpy)').catch(e => console.warn('[Materiales] alAceptar:', e.message));
+    return { handled: true, reply: `✅ ${ref}${p.title ? ` (${p.title})` : ''} marcado como *${input.estado}* en StelOrder.${input.estado === 'aceptado' ? '\n🧱 Ahora te paso la lista de materiales.' : ''}` };
   }
   // La jornada de trabajadores en una obra: «hoy han trabajado David y Diego en Claudia de 9 a 14» (attendance.apuntarJornada).
   if (name === 'apuntar_jornada') {

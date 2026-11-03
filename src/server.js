@@ -3077,6 +3077,24 @@ app.post('/api/personal/firma-externa', requireAuthOficina, express.json(), asyn
 });
 app.get('/docs-obra', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'docs-obra.html')));
 // ── Ausencias largas (maternidad, baja, lactancia, excedencia…) con fecha de fin (ausencias.js) ──
+// Listas de materiales de los presupuestos aceptados (materialesObra.js, 4/11/2026): tachar, PDF y generar desde un PRT.
+app.post('/api/materiales/:id/item/:itemId', requireAuthOficina, express.json(), async (req, res) => {
+  try { const b = req.body || {}; res.json(await require('./materialesObra').marcar(req.params.id, req.params.itemId, { ok: b.ok == null ? null : !!b.ok, tenemos: b.tenemos == null ? null : Number(b.tenemos) }, req.user?.name || 'Oficina')); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/materiales/:id/pdf', requireAuthOficina, async (req, res) => {
+  try {
+    const M = require('./materialesObra'); const db = await require('./db').getDB();
+    const l = await db.collection(M.COL).findOne({ _id: new (require('mongodb').ObjectId)(String(req.params.id)) });
+    if (!l) return res.status(404).json({ error: 'No encuentro la lista' });
+    const buf = await M.pdf(l, { parte: req.query.parte === '1' });
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${encodeURIComponent((req.query.parte === '1' ? 'Parte ' : 'Lista de compra ') + l.obraRef)}.pdf"` }).send(buf);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/materiales/generar', requireAuthOficina, express.json(), async (req, res) => {
+  try { const M = require('./materialesObra'); const l = await M.generar({ prt: String((req.body || {}).prt || ''), regenerar: !!(req.body || {}).regenerar }, req.user?.name || 'Oficina'); res.json(await M.cruzar(String(l._id), { avisar: true })); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/ausencias', requireAuthOficina, async (req, res) => {
   try { const A = require('./ausencias'); res.json({ lista: await A.lista(), tipos: A.TIPOS }); } catch (err) { res.status(500).json({ error: err.message }); }
 });

@@ -524,6 +524,8 @@
             </div>`).join('')}
           </div>`; })() : ''}
 
+          ${cardMateriales(rent)}
+
           ${rent.byWorker?.length ? `
           <div class="card" style="margin-bottom:12px">
             <div class="card-title">Personal en esta obra</div>
@@ -814,6 +816,57 @@
     try { await api(`/api/obras/${id}/certificacion`, { method: 'POST', body: JSON.stringify({ concepto, importe, medicion: { partida: l.nombre, cantidad: cant, unidad: l.unidad, precio: l.precio } }) }); openObra(id); loadResumen(); }
     catch (err) { alert('Error: ' + err.message); }
   }
+  // ── Materiales de los presupuestos aceptados (materialesObra.js): se tachan solos con las compras y aquí a mano ──
+  const _escM = s => String(s==null?'':s).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const _numM = n => { const v = Math.round((Number(n)||0)*100)/100; return String(v).replace('.',','); };
+  function cardMateriales(rent) {
+    const ls = rent.materialesLista || [];
+    const aceptados = (rent.presupuestosStel || []).filter(p => /acept/i.test(p.estado || ''));
+    if (!ls.length && !aceptados.length) return '';
+    const hecho = i => i.ok || (i.tenemos||0) >= i.cantidad;
+    const una = l => `<div style="margin-bottom:10px" id="mat-${l._id}">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <div style="font-size:12px"><b>${_escM(l.prt.numero)}</b> · ${_escM(l.resumen||'')} <span id="mat-cnt-${l._id}" style="color:var(--text3)">(${l.items.filter(hecho).length} de ${l.items.length})</span>
+          ${l.estado==='completa'?'<span style="color:var(--green);font-weight:600"> · material completo</span>':''}${l.peticionId?' · <span style="color:var(--blue)">trabajo pedido</span>':''}</div>
+        <div style="display:flex;gap:6px"><button class="btn bgh" style="padding:4px 10px;font-size:11px" onclick="CP.Obras.matPdf('${l._id}',0)">📄 Lista de compra</button><button class="btn bgh" style="padding:4px 10px;font-size:11px" onclick="CP.Obras.matPdf('${l._id}',1)">📋 Parte</button></div>
+      </div>
+      ${l.items.map(i => `<label style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;cursor:pointer">
+        <input type="checkbox" ${hecho(i)?'checked':''} onchange="CP.Obras.matMarcar('${l._id}','${i.id}',this.checked)" style="margin-top:2px">
+        <span style="flex:1;${hecho(i)?'color:var(--text3);text-decoration:line-through':''}">${_escM(i.material)}${i.critico?' ⚠️':''}${i.calculo?`<span style="display:block;font-size:10px;color:var(--text3);text-decoration:none">${_escM(i.calculo)}</span>`:''}</span>
+        <span style="white-space:nowrap">${_numM(i.cantidad)} ${_escM(i.unidad)}</span>
+        <span style="white-space:nowrap;width:70px;text-align:right;color:${hecho(i)?'var(--green)':'var(--text3)'}">${i.ok?'✔':i.tenemos?_numM(i.tenemos):'—'}</span></label>`).join('')}
+      ${(l.medios||[]).length?`<div style="font-size:11px;color:var(--text3);margin-top:6px">Medios: ${l.medios.map(_escM).join(' · ')}</div>`:''}
+      ${(l.avisos||[]).length?`<div style="font-size:11px;color:var(--amber);margin-top:4px">Ojo: ${l.avisos.map(_escM).join(' ')}</div>`:''}
+    </div>`;
+    const sin = aceptados.filter(p => !ls.some(l => l.prt.numero === p.numero));
+    return `<div class="card" style="margin-bottom:12px"><div class="card-title">🧱 Materiales</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:8px">Se tachan solos con las compras de esta obra; marca a mano lo que ya tengáis. Cuando esté todo, Corpy pregunta quién va y le manda el parte con las instrucciones.</div>
+      ${ls.map(una).join('')}
+      ${sin.map(p => `<button class="btn bp" style="font-size:12px;margin-top:4px" onclick="CP.Obras.matGenerar('${_escM(p.numero)}',this)">🧱 Sacar la lista de materiales del ${_escM(p.numero)}</button>`).join(' ')}
+    </div>`;
+  }
+  async function matMarcar(listaId, itemId, ok) {
+    try {
+      const l = await api(`/api/materiales/${listaId}/item/${itemId}`, { method: 'POST', body: JSON.stringify({ ok }) });
+      if (l && l.error) throw new Error(l.error);
+      const c = document.getElementById('mat-cnt-' + listaId);
+      if (c && l.items) c.textContent = `(${l.items.filter(i => i.ok || (i.tenemos||0) >= i.cantidad).length} de ${l.items.length})`;
+      if (l && l.estado === 'completa') alert('Material completo ✅ Corpy le pregunta a Álex quién va.');
+    } catch (e) { alert(e.message || 'No se pudo guardar'); }
+  }
+  async function matPdf(listaId, parte) {
+    try {
+      const r = await fetch(`/api/materiales/${listaId}/pdf${parte ? '?parte=1' : ''}`, { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('cp_token') } });
+      if (!r.ok) throw new Error('No se pudo sacar el PDF');
+      window.open(URL.createObjectURL(await r.blob()), '_blank');
+    } catch (e) { alert(e.message); }
+  }
+  async function matGenerar(prt, b) {
+    if (b) { b.disabled = true; b.textContent = 'Leyendo el presupuesto… (unos segundos)'; }
+    try { const r = await api('/api/materiales/generar', { method: 'POST', body: JSON.stringify({ prt }) }); if (r && r.error) throw new Error(r.error); if (b) b.textContent = '✅ Hecha: vuelve a abrir la obra'; }
+    catch (e) { alert(e.message); if (b) { b.disabled = false; b.textContent = 'Reintentar'; } }
+  }
+
   function quitarPresuStel(i) { _presuSel = (_presuSel || []).filter((_, j) => j !== i); pintarPresuStel(); }
 
   async function saveObraChanges(id) {
@@ -1155,6 +1208,6 @@ ${pago}
     } catch (err) { alert('No se pudo borrar: ' + err.message); }
   }
 
-  CP.Obras = { formFase, crearFase, decidirSug, buscarFactStel, enlazarFactStel, quitarFactStel, ponerCliente, guardarCliente, buscarPresuStel, anadirPresuStel, quitarPresuStel, partidasPresuStel, certMedicion, render, showTab, loadResumen, loadLista, loadEstudio, nuevaEstudio, estadoEstudio, openObra, saveObraChanges, ubicacion, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, addCert, certRapida, certEstado, conciliarCert, _ccPick, delCert, reciboCert, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick, _fpBack, _fpToggleAll, _fpSum, _fpAsignar };
+  CP.Obras = { matMarcar, matPdf, matGenerar, formFase, crearFase, decidirSug, buscarFactStel, enlazarFactStel, quitarFactStel, ponerCliente, guardarCliente, buscarPresuStel, anadirPresuStel, quitarPresuStel, partidasPresuStel, certMedicion, render, showTab, loadResumen, loadLista, loadEstudio, nuevaEstudio, estadoEstudio, openObra, saveObraChanges, ubicacion, submitObra, resetForm, sugerirRef, addMaterial, delMaterial, addCert, certRapida, certEstado, conciliarCert, _ccPick, delCert, reciboCert, eliminarObra, quitarFactura, quitarReparto, abrirPickerFacturas, _fpFilter, _fpPick, _fpBack, _fpToggleAll, _fpSum, _fpAsignar };
 
 })(window.CP = window.CP || {});
