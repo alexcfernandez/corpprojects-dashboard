@@ -4209,6 +4209,21 @@ const partes = require('./partes');
 // Freno a probar PINs (4 cifras): 10 intentos fallidos cada 15 min por IP y trabajador.
 const pinLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, skipSuccessfulRequests: true, standardHeaders: true, legacyHeaders: false,
   keyGenerator: (req) => `${req.ip}|${(req.body && req.body.workerId) || ''}`, message: { error: 'Demasiados intentos. Espera 15 minutos.' } });
+// ── Entrar a fichar con el móvil o el email: código de 6 cifras y, si quiere, su propio PIN (src/accesoCodigo.js) ──
+const codigoLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 12, standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Demasiados intentos desde este móvil. Espera unos minutos y vuelve a probar.' } });
+app.post('/api/fichaje/codigo', codigoLimiter, async (req, res) => {
+  try { res.json(await require('./accesoCodigo').pedir((req.body || {}).contacto)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/fichaje/codigo/verificar', pinLimiter, async (req, res) => {
+  try { const b = req.body || {}; res.json(await require('./accesoCodigo').verificar(b.contacto, b.codigo)); }
+  catch (err) { res.status(401).json({ error: err.message }); }
+});
+app.post('/api/fichaje/mi-pin', async (req, res) => {
+  try { const w = await _worker(req, res); if (!w) return; res.json(await require('./accesoCodigo').ponerPin(w.workerId, (req.body || {}).pin)); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.post('/api/partes/worker-login', pinLimiter, async (req, res) => {
   try {
     const { workerId, pin } = req.body;

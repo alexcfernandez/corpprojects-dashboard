@@ -25,6 +25,9 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .container{padding:20px;max-width:520px;margin:0 auto}
 .card{background:var(--bg2);border:1px solid var(--border2);border-radius:18px;padding:24px;margin-top:20px}
 .login-title{font-size:18px;font-weight:600;text-align:center}.login-sub{font-size:13px;color:var(--text3);text-align:center;margin:4px 0 22px}
+.lg-input{width:100%;background:var(--bg3);border:2px solid var(--border2);border-radius:var(--rs);padding:14px;color:var(--text);font-size:18px;font-family:inherit;text-align:center}
+.lg-link{display:block;width:100%;margin-top:12px;background:none;border:0;color:var(--text3);font:inherit;font-size:14px;text-decoration:underline;cursor:pointer;min-height:40px}
+.lg-nota{font-size:12.5px;color:var(--text3);text-align:center;line-height:1.5;margin-top:14px}
 .worker-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
 .worker-btn{background:var(--bg3);border:2px solid var(--border);border-radius:var(--r);padding:14px 10px;text-align:center;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;color:var(--text)}
 .worker-btn.selected{border-color:var(--blue);background:rgba(77,156,248,.1)}
@@ -118,10 +121,34 @@ textarea.obra-sel{resize:vertical;line-height:1.4}
 <!-- LOGIN -->
 <div class="page active" id="page-cargando"><div class="container" style="text-align:center;padding-top:30vh;color:var(--text3)"><span class="spinner"></span><div style="margin-top:12px;font-size:15px">Entrando…</div></div></div>
 <div class="page" id="page-login"><div class="container"><div class="card">
-  <div class="login-title">Fichar jornada</div><div class="login-sub">Elige tu nombre e introduce el PIN</div>
-  <div class="worker-grid" id="worker-selector"></div>
-  <input type="tel" inputmode="numeric" id="pin-input" class="pin-input" placeholder="••••" maxlength="6" onkeydown="if(event.key==='Enter')doLogin()">
-  <div style="height:16px"></div><button class="btn" id="login-btn" onclick="doLogin()">Entrar →</button>
+  <!-- 4/11/2026: sin la lista de nombres. Con tu móvil o tu email te llega un código; si te pones PIN, el móvil te recuerda. -->
+  <div id="lg-pin" style="display:none">
+    <div class="login-title" id="lg-hola">Hola</div><div class="login-sub">Escribe tu PIN</div>
+    <input type="tel" inputmode="numeric" id="pin-input" class="pin-input" placeholder="••••" maxlength="6" autocomplete="off" onkeydown="if(event.key==='Enter')doLogin()">
+    <div style="height:16px"></div><button class="btn" id="login-btn" onclick="doLogin()">Entrar →</button>
+    <button class="lg-link" onclick="pasoContacto()">He olvidado el PIN · entrar con un código</button>
+    <button class="lg-link" id="lg-nosoy" onclick="noSoyYo()">No soy yo</button>
+  </div>
+  <div id="lg-contacto" style="display:none">
+    <div class="login-title">Fichar jornada</div><div class="login-sub">Escribe tu móvil o tu email y te mandamos un código para entrar</div>
+    <input type="text" id="lg-c" class="lg-input" placeholder="Móvil o email" autocomplete="username" autocapitalize="off" spellcheck="false" onkeydown="if(event.key==='Enter')pedirCodigo()">
+    <div style="height:14px"></div><button class="btn" id="lg-pedir" onclick="pedirCodigo()">Recibir el código</button>
+    <div class="lg-nota">El móvil o el email que tiene la oficina en tu ficha. ¿No te llega? Pide a la oficina tu enlace de acceso.</div>
+  </div>
+  <div id="lg-codigo" style="display:none">
+    <div class="login-title">Escribe el código</div><div class="login-sub" id="lg-donde">Te lo hemos mandado</div>
+    <input type="tel" inputmode="numeric" id="lg-cod" class="pin-input" placeholder="••••••" maxlength="6" autocomplete="one-time-code" onkeydown="if(event.key==='Enter')verificarCodigo()" oninput="if(this.value.replace(/\D/g,'').length===6)verificarCodigo()">
+    <div style="height:16px"></div><button class="btn" id="lg-entrar" onclick="verificarCodigo()">Entrar →</button>
+    <button class="lg-link" id="lg-reenviar" onclick="pedirCodigo(true)">Mandar otro código</button>
+    <button class="lg-link" onclick="pasoContacto()">Cambiar el móvil o el email</button>
+  </div>
+</div></div></div>
+<!-- PIN PROPIO (después de entrar con código, si aún no tiene) -->
+<div class="page" id="page-pin"><div class="container"><div class="card">
+  <div class="login-title">🔒 Ponte tu PIN</div><div class="login-sub">4 cifras que solo sepas tú. Si se cierra la sesión, entras con él sin esperar ningún código.</div>
+  <input type="tel" inputmode="numeric" id="mi-pin" class="pin-input" placeholder="••••" maxlength="6" autocomplete="new-password" onkeydown="if(event.key==='Enter')guardarMiPin()">
+  <div style="height:16px"></div><button class="btn" id="mi-pin-btn" onclick="guardarMiPin()">Guardar mi PIN</button>
+  <button class="lg-link" onclick="sinPin()">Ahora no</button>
 </div></div></div>
 
 <!-- CONSENTIMIENTO GPS -->
@@ -269,16 +296,48 @@ function hm(mins){mins=Math.max(0,Math.round(mins||0));const h=Math.floor(mins/6
 function hora(ts){return ts?new Date(ts).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}):'';}
 
 // ── LOGIN ──
-async function loadWorkers(){try{const r=await fetch('/api/partes/workers');todosWorkers=await r.json();
-  document.getElementById('worker-selector').innerHTML=todosWorkers.map(w=>`<button class="worker-btn" data-id="${w.id}" onclick="selW(this)">${esc(w.name)}</button>`).join('');
-  if(preW){const b=document.querySelector(`.worker-btn[data-id="${preW}"]`);if(b){selW(b);document.getElementById('pin-input').focus();}}
-}catch(e){}}
-function selW(b){document.querySelectorAll('.worker-btn').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');document.getElementById('pin-input').focus();}
-async function doLogin(){const sel=document.querySelector('.worker-btn.selected');if(!sel){toast('Selecciona tu nombre','warn');return;}const pin=document.getElementById('pin-input').value;if(pin.length<4){toast('Introduce el PIN','warn');return;}
+// Entrada sin lista de nombres (4/11/2026). El móvil recuerda quién eres (cpWID/cpWHola) aunque salgas.
+let _lgContacto='';
+const _volver=(()=>{const v=new URLSearchParams(location.search).get('volver')||'';return /^\/(parte|compra|almacen)(\?|$)/.test(v)?v:'';})();
+function _recordar(d){localStorage.setItem('cpWT',d.token);localStorage.setItem('cpWN',d.workerName||'');if(d.workerId){localStorage.setItem('cpWID',d.workerId);localStorage.setItem('cpWHola',d.workerName||'');}}
+async function loadWorkers(){   // pinta la pantalla de entrada que toca
+  const id=preW||localStorage.getItem('cpWID');let nombre=localStorage.getItem('cpWHola')||'';
+  if(preW&&!nombre){try{const l=await (await fetch('/api/partes/workers')).json();nombre=((l.find(w=>String(w.id)===String(preW))||{}).name)||'';}catch(e){}}
+  if(id&&nombre)pasoPin(id,nombre);else pasoContacto();}
+function _lgVer(p){['lg-pin','lg-contacto','lg-codigo'].forEach(x=>document.getElementById(x).style.display=x===p?'block':'none');}
+function pasoPin(id,nombre){_lgVer('lg-pin');document.getElementById('lg-hola').textContent='Hola, '+String(nombre).split(' ')[0];document.getElementById('lg-pin').dataset.id=id;document.getElementById('lg-nosoy').textContent='No soy '+String(nombre).split(' ')[0];setTimeout(()=>document.getElementById('pin-input').focus(),50);}
+function pasoContacto(){_lgVer('lg-contacto');setTimeout(()=>document.getElementById('lg-c').focus(),50);}
+function noSoyYo(){['cpWID','cpWHola'].forEach(k=>localStorage.removeItem(k));preW=null;pasoContacto();}
+async function pedirCodigo(otra){
+  const c=otra?_lgContacto:document.getElementById('lg-c').value.trim();if(!c){toast('Escribe tu móvil o tu email','warn');return;}
+  const b=document.getElementById(otra?'lg-reenviar':'lg-pedir');b.disabled=true;const t=b.innerHTML;b.innerHTML='<span class="spinner"></span>';
+  try{const r=await fetch('/api/fichaje/codigo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contacto:c})});const d=await r.json();if(!r.ok)throw new Error(d.error||'No se pudo mandar');
+    _lgContacto=c;_lgVer('lg-codigo');document.getElementById('lg-cod').value='';
+    document.getElementById('lg-donde').textContent=d.via==='email'?`Si ${c} está en tu ficha, te llega al correo en unos segundos (mira también en spam)`:`Si este móvil está en tu ficha, te llega por WhatsApp en unos segundos`;
+    if(otra)toast('Código nuevo enviado','ok');setTimeout(()=>document.getElementById('lg-cod').focus(),50);}
+  catch(e){toast(e.message,'error');}
+  finally{b.disabled=false;b.innerHTML=t;}}
+let _verificando=false;
+async function verificarCodigo(){if(_verificando)return;const c=document.getElementById('lg-cod').value.replace(/\D/g,'');if(c.length!==6){toast('Son 6 cifras','warn');return;}
+  _verificando=true;const b=document.getElementById('lg-entrar');b.disabled=true;b.innerHTML='<span class="spinner"></span>';
+  try{const r=await fetch('/api/fichaje/codigo/verificar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contacto:_lgContacto,codigo:c})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Código incorrecto');
+    workerToken=d.token;_recordar(d);
+    if(!d.tienePin){showPage('pin');setTimeout(()=>document.getElementById('mi-pin').focus(),50);return;}
+    trasEntrar(d.workerName);}
+  catch(e){toast(e.message,'error');document.getElementById('lg-cod').value='';}
+  finally{_verificando=false;b.disabled=false;b.innerHTML='Entrar →';}}
+async function guardarMiPin(){const p=document.getElementById('mi-pin').value.trim();const b=document.getElementById('mi-pin-btn');b.disabled=true;
+  try{const r=await fetch('/api/fichaje/mi-pin',{method:'POST',headers:authH({'Content-Type':'application/json'}),body:JSON.stringify({pin:p})});const d=await r.json();if(!r.ok)throw new Error(d.error||'No se pudo guardar');
+    toast('🔒 PIN guardado','ok');trasEntrar(localStorage.getItem('cpWN'));}
+  catch(e){toast(e.message,'error');document.getElementById('mi-pin').value='';}
+  finally{b.disabled=false;}}
+function sinPin(){trasEntrar(localStorage.getItem('cpWN'));}
+function trasEntrar(nombre){if(_volver){location.replace(_volver);return;}entrar(nombre);}
+async function doLogin(){const id=document.getElementById('lg-pin').dataset.id;if(!id){pasoContacto();return;}const pin=document.getElementById('pin-input').value;if(pin.length<4){toast('Introduce el PIN','warn');return;}
   const b=document.getElementById('login-btn');b.disabled=true;b.innerHTML='<span class="spinner"></span>';
-  try{const r=await fetch('/api/partes/worker-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workerId:sel.dataset.id,pin})});const d=await r.json();if(!r.ok)throw new Error(d.error||'PIN incorrecto');
-    workerToken=d.token;localStorage.setItem('cpWT',d.token);localStorage.setItem('cpWN',d.workerName||'');
-    entrar(d.workerName);}
+  try{const r=await fetch('/api/partes/worker-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workerId:id,pin})});const d=await r.json();if(!r.ok)throw new Error(d.error||'PIN incorrecto');
+    workerToken=d.token;_recordar({...d,workerId:d.workerId||id});
+    trasEntrar(d.workerName);}
   catch(e){toast(e.message,'error');document.getElementById('pin-input').value='';}
   finally{b.disabled=false;b.innerHTML='Entrar →';}}
 async function tryRestore(){const t=localStorage.getItem('cpWT');if(!t)return false;
@@ -322,7 +381,7 @@ async function aceptarConsent(){
     showPage('fichar');cargar();
   }catch(e){toast('No se pudo guardar','error');btn.disabled=false;btn.textContent='Firmar y aceptar';}
 }
-function logout(){workerToken=null;localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');document.getElementById('logout-btn').style.display='none';showPage('login');}
+function logout(){workerToken=null;localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');document.getElementById('logout-btn').style.display='none';loadWorkers();showPage('login');}   // el móvil sigue recordando quién eres (cpWID): «Hola, David · tu PIN»
 
 // ── FICHAJE ──
 // ── Firmas pendientes (contratos, nóminas, entrega de EPIs) ──
@@ -844,7 +903,7 @@ setInterval(()=>{if(document.hidden)return;if(colaTodos().length)sincronizar();i
 // ── ENLACE MÁGICO (login sin PIN) ──
 async function magicLogin(t){
   try{const r=await fetch('/api/fichaje/magic-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Enlace no válido');
-    workerToken=d.token;localStorage.setItem('cpWT',d.token);localStorage.setItem('cpWN',d.workerName||'');
+    workerToken=d.token;_recordar(d);
     history.replaceState(null,'',location.pathname);
     entrar(d.workerName);
     if(d.primeraVez)mostrarBienvenida(d.workerName);
@@ -868,9 +927,9 @@ function mostrarBienvenida(nombre){const ov=document.createElement('div');ov.sty
 (async function(){
   const t=new URLSearchParams(location.search).get('t');
   const ir=new URLSearchParams(location.search).get('ir');
-  if(t){const ok=await magicLogin(t);if(ok){if(ir==='parte'){location.replace('/parte');return;}loadWorkers();return;}}
+  if(t){const ok=await magicLogin(t);if(ok){if(ir==='parte'){location.replace('/parte');return;}return;}}
   const ok=await tryRestore();
-  if(ok)loadWorkers();else{await loadWorkers();showPage('login');}
+  if(ok){if(_volver){location.replace(_volver);return;}}else{await loadWorkers();showPage('login');}
   sincronizar();})();
 </script>
 <script>

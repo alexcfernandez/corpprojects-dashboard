@@ -128,8 +128,9 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 <div id="page-login" class="page active">
   <div class="container">
     <div class="login-card">
-      <div class="login-title">Identificación</div>
-      <div class="login-sub">Selecciona tu nombre e introduce tu PIN</div>
+      <div class="login-title">Entrando…</div>
+      <div class="login-sub">Un momento</div>
+      <div style="display:none">
       <div style="margin-bottom:16px">
         <label style="display:block;font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">¿Quién eres?</label>
         <div class="worker-grid" id="worker-selector"></div>
@@ -140,6 +141,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       </div>
       <button class="btn-primary" id="login-btn" onclick="doLogin()">Entrar →</button>
       <div class="msg" id="login-msg"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -373,14 +375,15 @@ let expedienteActivo = null;
 
 // ── INIT ─────────────────────────────────────────────────────────
 window.onload = async function() {
-  const urlW = new URLSearchParams(location.search).get('w');
-  if (urlW) await loadSingleWorker(urlW);
-  else       await loadWorkers(null);
   getGPS();
   const hoy = new Date().toISOString().slice(0,10);
   document.getElementById('f-date').value = hoy;
   detectarJornada();
-  await tryRestoreSession();   // si hay sesión guardada válida, entra sin PIN
+  // Sin sesión guardada se entra por /fichar (móvil o email + código, o su PIN; sin lista de nombres, 4/11/2026) y vuelve aquí.
+  if (!(await tryRestoreSession())) {
+    const urlW = new URLSearchParams(location.search).get('w');
+    location.replace('/fichar?volver=' + encodeURIComponent('/parte') + (urlW ? '&w=' + encodeURIComponent(urlW) : ''));
+  }
 };
 
 // ── LOGIN ─────────────────────────────────────────────────────────
@@ -504,10 +507,7 @@ async function doLogin() {
 function logout() {
   workerToken = null; workerInfo = null;
   localStorage.removeItem('cpWT'); localStorage.removeItem('cpWN'); localStorage.removeItem('cpWI');
-  document.getElementById('pin-input').value = '';
-  // Con enlace directo, el trabajador queda seleccionado para volver a entrar sin el bug
-  if (!workerDirect) document.querySelectorAll('.worker-btn').forEach(b => b.classList.remove('selected'));
-  showPage('login');
+  location.replace('/fichar');   // la entrada es la de fichar (sin lista de nombres)
 }
 
 function newParte() { try { resetForm(); } catch(e) { console.warn('[Parte] resetForm:', e.message); } showPage('form'); }

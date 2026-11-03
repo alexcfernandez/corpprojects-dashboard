@@ -160,6 +160,7 @@ async function _esRepetido(to, body) {
 
 let _silCache = null, _silAt = 0;
 async function _silenciado(to, opts = {}) {
+  if (opts.siempre) return false;   // códigos de acceso (accesoCodigo.js): le llegan aunque tenga los avisos apagados
   const d = String(to || '').replace(/\D/g, '').slice(-9);
   if (!d) return false;
   if (!_silCache || Date.now() - _silAt > 5 * 60 * 1000) {

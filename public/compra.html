@@ -136,7 +136,7 @@ async function tryRestore(){
     try{const r=await fetch('/api/compras/mias',{headers:{'Authorization':'Bearer '+t}});if(!r.ok)continue;workerToken=t;esAdmin=adm;entrar(adm?'Oficina':(localStorage.getItem('cpWN')||''));return true;}catch(e){}}
   return false;}
 function entrar(nombre){cargarQuien();document.getElementById('cargando').style.display='none';document.getElementById('header-sub').textContent=nombre||'';const lb=document.getElementById('logout-btn');lb.textContent=esAdmin?'← Dashboard':'Salir';lb.style.display='block';showPage('nueva');cargarObras();cargarTickets();}
-function logout(){if(esAdmin){location.href='/';return;}workerToken=null;localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');document.getElementById('logout-btn').style.display='none';showPage('login');}
+function logout(){if(esAdmin){location.href='/';return;}workerToken=null;localStorage.removeItem('cpWT');localStorage.removeItem('cpWN');location.replace('/fichar');}
 
 // ── OBRA ──
 async function cargarObras(){
@@ -242,7 +242,8 @@ async function abrirMias(){showPage('mias');const el=document.getElementById('mi
     el.innerHTML=l.length?l.map(c=>`<div class="mia"><div class="t">${esc(c.tipoTxt)}${c.proveedor?' · '+esc(c.proveedor):''}<span class="est ${esc(c.estado)}">${E[c.estado]||c.estado}</span></div>${c.motivoDescarte?`<div class="s" style="color:var(--red)">Motivo: ${esc(c.motivoDescarte)}</div>`:''}${c.repetir?`<div class="s" style="color:var(--amber)">📸 Hay que repetir la foto <a href="#" onclick="event.preventDefault();showPage('nueva');document.getElementById('resultado').innerHTML='<div class=&quot;res warn&quot;>'+guiaFoto()+'</div>';window.scrollTo(0,0)" style="color:var(--blue)">ver cómo</a></div>`:''}<div class="s">${c.numero?'nº '+esc(c.numero)+' · ':''}${new Date(c.createdAt).toLocaleDateString('es-ES',{day:'numeric',month:'short'})} ${new Date(c.createdAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})} · ${c.obraRef?'🏗️ '+esc(c.obraRef):c.destino&&c.destino!=='obra'?esc(c.destinoTxt)+(c.paraWorker?' · '+esc(c.paraWorker.name):''):'sin obra'}${c.nLineas?' · '+c.nLineas+' líneas':''}${!c.leida?' · la IA no pudo leerla':''}</div></div>`).join(''):'<div style="color:var(--text3);text-align:center;padding:20px">Todavía no has enviado ninguna compra.</div>';
   }catch(e){el.innerHTML='<div style="color:var(--red)">'+esc(e.message)+'</div>';}}
 
-(async function(){await loadWorkers();const mt=new URLSearchParams(location.search).get('t');const ok=(mt&&await magicLogin(mt))||await tryRestore();if(!ok){document.getElementById('cargando').style.display='none';showPage('login');}})();
+// Sin sesión: se entra por /fichar (móvil o email + código, o su PIN; sin lista de nombres, 4/11/2026) y vuelve aquí.
+(async function(){const mt=new URLSearchParams(location.search).get('t');const ok=(mt&&await magicLogin(mt))||await tryRestore();if(!ok){location.replace('/fichar?volver='+encodeURIComponent('/compra'));}})();
 </script>
 </body>
 </html>
