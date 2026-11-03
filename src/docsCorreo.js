@@ -41,7 +41,7 @@ async function obraDeContratista(db, nombre) {
   return os.find(o => { const c = norm(o.clientName + ' ' + o.reference); return pal.some(w => c.includes(w)); }) || null;
 }
 
-async function desdeCorreo(messageId, adjuntos, { de, asunto, fecha } = {}, { _clasificar = null, _bajar = null, _avisar = null } = {}) {
+async function desdeCorreo(messageId, adjuntos, { de, asunto, fecha } = {}, { _clasificar = null, _bajar = null, _avisar = null, _contratos = null } = {}) {
   const db = await getDB();
   if (await db.collection('docsPersonal').findOne({ 'origen.gmailId': messageId }, { projection: { _id: 1 } })) return { yaEstaba: true };
   const PD = require('./personalDocs');
@@ -49,7 +49,7 @@ async function desdeCorreo(messageId, adjuntos, { de, asunto, fecha } = {}, { _c
   const dia = new Date(fecha || Date.now()).toISOString().slice(0, 10);
   const quien = String(de || '').replace(/<.*>/, '').replace(/"/g, '').trim() || String(de || '');
   const plantilla = await PD._plantilla();
-  const guardados = [], propuestas = [], sinLeer = [];
+  const guardados = [], propuestas = [], sinLeer = [], contratos = [];
   const pdfs = (adjuntos || []).filter(esPdf).filter(a => !/^image0/i.test(a.filename || '')).slice(0, 10);
   for (const a of pdfs) {
     const buf = await (_bajar || ((id, att) => require('./email-intelligence').getAttachment(id, att)))(messageId, a.attachmentId);
@@ -78,6 +78,8 @@ async function desdeCorreo(messageId, adjuntos, { de, asunto, fecha } = {}, { _c
       const doc = await PD.subir({ ambito, userId, obraId, tipo, archivo: { ...archivo, buffer: b, size: b.length, originalname: nombre }, fecha: d.fecha || dia, caduca: d.caduca, mes: d.mes,
         notas: `${String(d.resumen || '').slice(0, 160)} — llegó por correo de ${quien.slice(0, 50)} el ${dia.split('-').reverse().join('/')}`.trim(), estado: seguro ? 'ok' : 'propuesta' }, 'correo');
       await db.collection('docsPersonal').updateOne({ _id: require('mongodb').ObjectId.createFromHexString(doc.id) }, { $set: { origen: { gmailId: messageId, archivo: a.filename, de: String(de || '').slice(0, 120) } } });
+      // Contrato de un trabajador de la gestoría: se pide la firma (Alfonso → trabajador; contratosFirma.js).
+      if (seguro && tipo === 'contrato' && userId) contratos.push({ tipo, userId, id: doc.id, nombre: (PD._matchTrabajador(plantilla, d.trabajador, d.dni) || {}).name || d.trabajador || '' });
       const nom = ((ambito === 'obra' ? PD.TIPOS_OBRA : ambito === 'empresa' ? PD.TIPOS_EMPRESA : PD.TIPOS)[tipo] || {}).nombre || tipo;
       (seguro ? guardados : propuestas).push(nom + para);
     }
@@ -89,6 +91,7 @@ async function desdeCorreo(messageId, adjuntos, { de, asunto, fecha } = {}, { _c
     if (sinLeer.length) t.push('No he sabido qué es: ' + sinLeer.join(', ') + ' (sigue en el correo).');
     try { await (_avisar || require('./notifications').sendWhatsApp)(t.join('\n\n')); } catch (e) {}
   }
+  if (contratos.length) { try { await (_contratos || ((o) => require('./contratosFirma').desdeCorreo(o)))({ de, asunto, adjuntos: [], guardados: contratos }); } catch (e) { console.warn('[Docs] contratos a firmar:', e.message); } }
   return { guardados: guardados.length, propuestas: propuestas.length, sinLeer: sinLeer.length };
 }
 

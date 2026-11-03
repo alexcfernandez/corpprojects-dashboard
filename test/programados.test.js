@@ -34,3 +34,18 @@ test('manda a su hora (borrador, WhatsApp a móvil y al dueño), no antes ni dos
   assert.equal(dueno[0], 'Recordatorio'); assert.match(dueno[1], /No he podido enviar el WhatsApp programado a Judit: Judit no tiene móvil/);
   assert.equal(cols.enviosProgramados.filter(x => x.estado === 'error').length, 1);
 });
+
+test('resumen de firmas a su hora: quién ha firmado y quién no (EPIs 4/11/2026)', async () => {
+  const t13 = new Date('2026-11-04T12:00:00Z');
+  await assert.rejects(P.crear({ at: t13, tipo: 'resumen_firmas' }), /clave/);
+  await P.crear({ at: t13, tipo: 'resumen_firmas', clave: 'epis-2026-11-04' });
+  const dueno = [];
+  const lotes = [{ nombre: 'Ramón', items: [{ estado: 'firmado' }, { estado: 'firmado' }] }, { nombre: 'Melvin', items: [{ estado: 'firmado' }, { estado: 'pendiente', nombre: 'Autorización de maquinaria Melvin (SIN FIRMAR).pdf' }] }, { nombre: 'David', items: [{ estado: 'pendiente', nombre: 'EPIs David.pdf' }, { estado: 'pendiente', nombre: 'Maquinaria David.pdf' }] }];
+  const FE = require(path.join(root, 'src/firmaExterna.js'));
+  const _db = { collection: () => ({ find: () => ({ toArray: async () => lotes }) }) };
+  const r = await P.tick({ ahora: t13, _enviarDueno: async t => { dueno.push(t); return true; }, _resumen: clave => FE.resumenClave(clave, { _db }) });
+  assert.equal(r.enviados, 1);
+  assert.match(dueno[0], /1 de 3 completas/);
+  assert.match(dueno[0], /Han firmado: Ramón/);
+  assert.match(dueno[0], /• Melvin \(1 de 2\) — Autorización de maquinaria Melvin\n• David — EPIs David, Maquinaria David/);
+});

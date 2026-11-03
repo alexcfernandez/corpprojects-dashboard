@@ -26,7 +26,9 @@ const hoyIso = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/
 const _sitios = a => (Array.isArray(a) ? a : []).slice(0, 40).map(f => ({ pag: f.pag === 'todas' ? 'todas' : Math.max(1, parseInt(f.pag, 10) || 1), x: +f.x || 0, y: +f.y || 0, w: Math.max(20, Math.min(400, +f.w || 160)), h: Math.max(10, Math.min(200, +f.h || 50)), sello: ['abajo', 'derecha', 'mini'].includes(f.sello) ? f.sello : false }));
 
 // `clave`: qué lote sustituye a cuál (por defecto, la obra); las incorporaciones usan la suya para no pisarse entre ellas.
-async function crear({ nombre, telefono, dni = '', cargo = 'Administrador único', docs = [], obraId = null, mensaje = '', sello = true, luego = null, clave = null }, por, { _enviar = null } = {}) {
+// `importante`: sale aunque el firmante tenga los mensajes de Corpy en «solo lo importante» (Alfonso, 30/10/2026).
+// `alFinal`: qué hacer cuando la cadena queda firmada entera (p. ej. { tipo: 'contrato_gestoria' } → borrador a Eduard).
+async function crear({ nombre, telefono, dni = '', cargo = 'Administrador único', docs = [], obraId = null, mensaje = '', sello = true, luego = null, clave = null, importante = false, alFinal = null }, por, { _enviar = null } = {}) {
   const db = await getDB();
   const movil = require('./recordatoriosCobro')._movil(telefono);
   if (!movil) throw new Error('Teléfono no válido');
@@ -48,14 +50,14 @@ async function crear({ nombre, telefono, dni = '', cargo = 'Administrador único
       docs: (luego.docs || []).map(d => ({ docId: orden[Number(d.n)] || null, firmaEn: _sitios(d.firmaEn) })).filter(d => d.docId) };
     if (!sig.nombre || !sig.docs.length) sig = null;
   }
-  const lote = { nombre: ansi(nombre).slice(0, 80), movil, dni: ansi(dni).slice(0, 20), cargo: ansi(cargo).slice(0, 60), sello: sello !== false, obraId: obraId || items[0].obraId || null, items, luego: sig, por: por || '', at: new Date(), estado: 'pendiente', clave: clave != null ? String(clave) : (obraId || items[0].obraId || null) };
+  const lote = { nombre: ansi(nombre).slice(0, 80), movil, dni: ansi(dni).slice(0, 20), cargo: ansi(cargo).slice(0, 60), sello: sello !== false, obraId: obraId || items[0].obraId || null, items, luego: sig, por: por || '', at: new Date(), estado: 'pendiente', clave: clave != null ? String(clave) : (obraId || items[0].obraId || null), ...(alFinal && alFinal.tipo ? { alFinal } : {}) };
   const r = await db.collection(COL).insertOne(lote);
   // El enlace nuevo sustituye a los pendientes del mismo móvil y obra.
   try { await db.collection(COL).updateMany({ movil, ...(clave != null ? { clave: lote.clave } : { obraId: lote.obraId, clave: { $in: [null, lote.obraId] } }), estado: 'pendiente', _id: { $ne: r.insertedId } }, { $set: { estado: 'sustituido', sustituidoPor: String(r.insertedId) } }); } catch (e) {}
   const token = require('./enlaceDoc').crear(String(r.insertedId), { dias: 7, uso: 'firma' });
   const url = `${process.env.DASHBOARD_URL || 'https://dashboard.corpprojects.es'}/firmar/${token}`;
   const txt = `${String(mensaje || '').trim() ? String(mensaje).trim() + '\n\n' : ''}Hola ${lote.nombre.split(/\s+/)[0]} 👋 Tienes ${items.length} documento${items.length > 1 ? 's' : ''} de Corp Projects para firmar con el dedo desde el móvil (se pueden leer antes):\n${url}\n\n(El enlace vale 7 días.)`;
-  const ok = await (_enviar || require('./notifications').sendWhatsAppTo)(movil, txt);
+  const ok = await (_enviar || require('./notifications').sendWhatsAppTo)(movil, txt, importante ? { importante: true } : {});
   if (ok === false) throw new Error('No se pudo enviar el WhatsApp');
   return { ok: true, id: String(r.insertedId), url, a: movil };
 }
@@ -167,11 +169,18 @@ async function firmar(token, { firmaDataUrl, n = null, notas = {}, ip = '', ua =
       if (!tel && s.userId) { const u = await db.collection('users').findOne({ _id: new ObjectId(s.userId) }, { projection: { whatsapp: 1, telefono: 1 } }); tel = u && (u.whatsapp || u.telefono); }
       const docs = s.docs.map(d => { const it = ya.items.find(i => i.docId === d.docId); return it && it.firmadoId ? { docId: it.firmadoId, tipoDestino: it.tipoDestino, firmaEn: d.firmaEn } : null; }).filter(Boolean);
       if (tel && docs.length) {
-        siguiente = await crear({ nombre: s.nombre, telefono: tel, dni: s.dni, cargo: s.cargo, docs, obraId: ya.obraId, mensaje: s.mensaje, sello: false, clave: ya.clave || null }, `${l.nombre} (cadena de firma)`);
+        siguiente = await crear({ nombre: s.nombre, telefono: tel, dni: s.dni, cargo: s.cargo, docs, obraId: ya.obraId, mensaje: s.mensaje, sello: false, clave: ya.clave || null, alFinal: ya.alFinal || null }, `${l.nombre} (cadena de firma)`);
         await db.collection(COL).updateOne({ _id: l._id }, { $set: { luegoId: siguiente.id, estado: 'firmado' } });
       }
     } catch (e) { console.error('[firma-externa] siguiente firmante:', e.message); }
-  } else if (ya && ya.items.every(i => i.estado === 'firmado')) await db.collection(COL).updateOne({ _id: l._id }, { $set: { estado: 'firmado' } });
+  } else if (ya && ya.items.every(i => i.estado === 'firmado')) {
+    await db.collection(COL).updateOne({ _id: l._id }, { $set: { estado: 'firmado' } });
+    // Último firmante de la cadena: lo que toque al acabar (una sola vez).
+    if (ya.alFinal && ya.alFinal.tipo === 'contrato_gestoria' && !ya.alFinalHecho) {
+      try { await db.collection(COL).updateOne({ _id: l._id }, { $set: { alFinalHecho: new Date() } }); await require('./contratosFirma').alFirmar(ya); }
+      catch (e) { console.error('[firma-externa] al acabar:', e.message); }
+    }
+  }
   try { await require('./notifications').sendWhatsApp(`✍️ *${l.nombre}* ha firmado ${hechos.length} documento${hechos.length > 1 ? 's' : ''}:\n${hechos.map(h => '• ' + h).join('\n')}${l.obraId ? `\n\nhttps://dashboard.corpprojects.es/docs-obra?obra=${l.obraId}` : ''}`); } catch (e) {}
   return { ok: true, firmados: hechos.length, siguiente: siguiente ? siguiente.a : null };
 }
@@ -199,4 +208,22 @@ async function recordarPendientes({ dias = 30, dryRun = false, soloMovil = null,
   return { enviados: out.filter(x => x.ok).length, lista: out };
 }
 
-module.exports = { crear, ver, documento, firmar, recordarPendientes, _estampar };
+// Quién ha firmado y quién no de una tanda de lotes con la misma `clave` (4/11/2026: EPIs y maquinaria de toda la
+// plantilla; a las 13:00 le llega a Álex). Los sustituidos no cuentan (cuenta el último enlace de cada uno).
+// `clave` puede llevar varias separadas por «|» (EPIs + contratos + elementos esenciales del mismo día). De lo que falta
+// se dice qué papel es, para saber si lo tiene el trabajador o Alfonso.
+async function resumenClave(clave, { _db = null } = {}) {
+  const db = _db || await getDB();
+  const claves = String(clave).split('|').map(s => s.trim()).filter(Boolean);
+  const ls = await db.collection(COL).find({ clave: { $in: claves }, estado: { $ne: 'sustituido' } }, { projection: { nombre: 1, items: 1 } }).toArray();
+  const doc = i => String(i.nombre || '').replace(/\s*\((SIN FIRMAR|sin firmar)\)/g, '').replace(/\.pdf$/i, '').trim();
+  const ok = [], no = [];
+  for (const l of ls) {
+    const pend = (l.items || []).filter(i => i.estado !== 'firmado'), total = (l.items || []).length;
+    if (total && !pend.length) ok.push(l.nombre);
+    else no.push(`${l.nombre}${total > 1 && pend.length < total ? ` (${total - pend.length} de ${total})` : ''}${pend.length ? ' — ' + pend.map(doc).join(', ') : ''}`);
+  }
+  return { ok, no, texto: `✍️ *Firmas pendientes* (${claves.join(', ')}): ${ok.length} de ${ls.length} completas\n${ok.length ? `\n✅ Han firmado: ${[...new Set(ok)].join(', ')}` : ''}${no.length ? `\n⏳ Faltan:\n${no.map(x => '• ' + x).join('\n')}` : '\n\nYa han firmado todos.'}` };
+}
+
+module.exports = { crear, ver, documento, firmar, recordarPendientes, resumenClave, _estampar };

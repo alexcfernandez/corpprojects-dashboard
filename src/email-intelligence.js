@@ -500,6 +500,13 @@ async function procesarEmail(gmail, messageId) {
       if (process.env.DOCS_CORREO !== 'off' && !NC.esCorreoNominas({ de, asunto, adjuntos }) && DC.esCorreoDocs({ de, asunto, adjuntos, clasificacion })) console.log(`[Email] papeles: ${JSON.stringify(await DC.desdeCorreo(messageId, adjuntos, { de, asunto, fecha }))}`);
     } catch (e) { console.warn('[Email] papeles:', e.message); }
 
+    // Contratos de trabajo en Word de la gestoría: no se pueden firmar con el dedo → aviso a Álex (los PDF los coge
+    // docsCorreo y piden la firma Alfonso → trabajador; contratosFirma.js).
+    try {
+      const CF = require('./contratosFirma');
+      if (CF.contratosWord(adjuntos).length) console.log(`[Email] contratos en Word: ${JSON.stringify(await CF.desdeCorreo({ de, asunto, adjuntos, guardados: [] }))}`);
+    } catch (e) { console.warn('[Email] contratos:', e.message); }
+
     // Incidencias que nos piden por correo (administradores, clientes): entran en el flujo de peticiones como un grupo más
     // (petición → incidencia en StelOrder → operario propuesto; si insisten, se junta y se avisa). Ver peticionesGrupo.deCorreo.
     // Los «PRESUPUESTO» solo si el remitente es cliente nuestro (los demás suelen ser ofertas de proveedores).

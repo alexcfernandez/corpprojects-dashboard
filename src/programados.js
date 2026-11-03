@@ -10,16 +10,18 @@ const { ObjectId } = require('mongodb');
 async function getDB() { return require('./db').getDB(); }
 const COL = 'enviosProgramados';
 
-async function crear({ at, tipo, msgId = null, a = null, userId = null, nombre = '', texto = '', nota = '' } = {}, por = '') {
+async function crear({ at, tipo, msgId = null, a = null, userId = null, nombre = '', texto = '', nota = '', clave = null, importante = false } = {}, por = '') {
   const cuando = new Date(at);
   if (isNaN(cuando)) throw new Error('¿Cuándo? Fecha y hora no válidas');
   if (tipo === 'borrador') { if (!/^[a-f0-9]{10,24}$/i.test(String(msgId || ''))) throw new Error('Falta el id del borrador (el «compose=…» del enlace)'); }
+  // 'resumen_firmas': a esa hora se le manda al dueño quién ha firmado y quién no de una tanda de firmas (`clave`).
+  else if (tipo === 'resumen_firmas') { if (!String(clave || '').trim()) throw new Error('Falta la clave de las firmas'); }
   else if (tipo === 'whatsapp') {
     if (!String(texto || '').trim()) throw new Error('Falta el texto');
     if (a !== 'dueno' && !userId && !require('./recordatoriosCobro')._movil(a)) throw new Error('¿A quién? Móvil no válido');
     if (userId && !/^[a-f0-9]{24}$/.test(String(userId))) throw new Error('Usuario no válido');
   } else throw new Error('Tipo no válido (borrador o whatsapp)');
-  const d = { at: cuando, tipo, msgId, a, userId: userId ? String(userId) : null, nombre: String(nombre || '').slice(0, 80), texto: String(texto || '').slice(0, 4000), nota: String(nota || '').slice(0, 200), estado: 'pendiente', por, creado: new Date() };
+  const d = { at: cuando, tipo, msgId, a, userId: userId ? String(userId) : null, nombre: String(nombre || '').slice(0, 80), texto: String(texto || '').slice(0, 4000), nota: String(nota || '').slice(0, 200), ...(tipo === 'resumen_firmas' ? { clave: String(clave).slice(0, 80) } : {}), ...(importante ? { importante: true } : {}), estado: 'pendiente', por, creado: new Date() };
   const r = await (await getDB()).collection(COL).insertOne(d);
   return { ok: true, id: String(r.insertedId), ...d };
 }
@@ -47,8 +49,14 @@ async function enviarBorrador(msgId) {
   throw new Error('El borrador ya no está en Gmail (¿se envió o se borró a mano?)');
 }
 
-async function enviarUno(x, { _enviarWA = null, _enviarDueno = null, _enviarBorrador = null } = {}) {
+async function enviarUno(x, { _enviarWA = null, _enviarDueno = null, _enviarBorrador = null, _resumen = null } = {}) {
   if (x.tipo === 'borrador') return (_enviarBorrador || enviarBorrador)(x.msgId);
+  if (x.tipo === 'resumen_firmas') {
+    const r = await (_resumen || require('./firmaExterna').resumenClave)(x.clave);
+    const ok = await (_enviarDueno || require('./notifications').sendWhatsApp)(r.texto);
+    if (!ok) throw new Error('El WhatsApp no salió');
+    return { a: 'dueño', firmados: r.ok.length, faltan: r.no.length };
+  }
   if (x.a === 'dueno') { const ok = await (_enviarDueno || require('./notifications').sendWhatsApp)(x.texto); if (!ok) throw new Error('El WhatsApp no salió'); return { a: 'dueño' }; }
   let movil = x.a ? require('./recordatoriosCobro')._movil(x.a) : null;
   if (!movil && x.userId) {
@@ -56,7 +64,8 @@ async function enviarUno(x, { _enviarWA = null, _enviarDueno = null, _enviarBorr
     movil = u && require('./recordatoriosCobro')._movil(u.whatsapp || u.telefono);
     if (!movil) throw new Error(`${(u && u.name) || x.nombre || 'Esa persona'} no tiene móvil en su ficha`);
   }
-  const ok = await (_enviarWA || require('./notifications').sendWhatsAppTo)(movil, x.texto);
+  // `importante`: sale aunque la persona tenga los mensajes de Corpy en «solo lo importante» (canalWhatsapp._silenciado).
+  const ok = await (_enviarWA || require('./notifications').sendWhatsAppTo)(movil, x.texto, x.importante ? { importante: true } : {});
   if (!ok) throw new Error('El WhatsApp no salió');
   return { a: movil };
 }
