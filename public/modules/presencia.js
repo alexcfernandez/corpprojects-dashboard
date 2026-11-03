@@ -11,6 +11,7 @@
   let calMonth = new Date().getMonth() + 1;
   let calData  = {};
   let festivos = {};   // { 'AAAA-MM-DD': 'nombre' } del año que se ve (src/festivos.js)
+  let ausLargas = [];  // maternidad, bajas largas, lactancia… con fecha de fin (Personal → src/ausencias.js)
   let selectedEstado   = null;
   let modalWorker = null, modalDate = null;
   let _equipoPresencia = [];
@@ -197,6 +198,7 @@
     calData = {};
     buildGrid();
     api(`/api/festivos?anio=${calYear}`).then(f => { if (f && typeof f === 'object') { festivos = f; buildGrid(); } }).catch(() => {});
+    api('/api/ausencias').then(r => { if (r && Array.isArray(r.lista)) { ausLargas = r.lista; buildGrid(); } }).catch(() => {});
     try {
       const data = await api(`/api/attendance?from=${from}&to=${to}`);
       if (Array.isArray(data)) {
@@ -251,6 +253,17 @@
         }
         const empieza = ini && date === ini;
         const entry       = calData[w.id + '_' + date];
+        // Ausencia larga (maternidad, baja…) en un laborable sin nada apuntado: se pinta sola, sin ponerla a mano.
+        // Lo apuntado en Presencia manda; al hacer clic se puede cambiar como cualquier otro día.
+        const aus = !entry && !weekend && !fest ? ausLargas.find(x => String(x.userId) === String(w.id) && x.desde <= date && (!x.hasta || x.hasta >= date)) : null;
+        if (aus) {
+          const fin = aus.hasta ? ' hasta el ' + aus.hasta.split('-').reverse().join('/') : ' (sin fecha de fin)';
+          const emo = aus.tipo === 'maternidad' ? '🍼' : aus.tipo === 'lactancia' ? '🤱' : aus.tipo === 'excedencia' ? '⏸️' : '🏥';
+          const tit = (aus.tipo === 'maternidad' ? 'Maternidad / paternidad' : aus.tipo === 'lactancia' ? 'Lactancia' : aus.tipo === 'excedencia' ? 'Excedencia' : aus.tipo === 'accidente' ? 'Baja por accidente laboral' : aus.tipo === 'baja' ? 'Baja médica' : 'Ausencia') + fin + ' (puesta sola)';
+          html += `<div data-wid="${w.id}" data-wname="${w.name}" data-date="${date}" data-clickable="true" title="${tit.replace(/"/g,'&quot;')}"
+            style="min-height:36px;display:flex;align-items:center;justify-content:center;background:${ESTADOS.baja.color}18;border:1px dashed ${ESTADOS.baja.color}55;border-radius:3px;cursor:pointer;font-size:11px">${emo}</div>`;
+          return;
+        }
         const est         = entry ? ESTADOS[entry.estado] : null;
         const tieneEquipo = entry?.equipo?.length > 0;
         const numObras    = (entry?.obras?.length) || 0;

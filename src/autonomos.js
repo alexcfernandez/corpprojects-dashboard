@@ -43,9 +43,10 @@ function costeHora(u) {
   return u.autonomo.tarifaHora || (u.autonomo.tarifaDia ? r2(u.autonomo.tarifaDia / HORAS_JORNADA) : null);
 }
 
-async function lista() {
+// conPausa: también los desactivados (autónomos «en pausa»: fuera del panel, pero sus meses se siguen cuadrando).
+async function lista(conPausa = false) {
   const { getUsers } = require('./users');
-  return (await getUsers(false)).filter(esAutonomo);
+  return (await getUsers(conPausa)).filter(esAutonomo);
 }
 
 function rangoMes(mes) {
@@ -90,7 +91,7 @@ async function facturasSuyas(db, a, nombre, desde, hasta) {
 async function cuadre(mes) {
   const { from, to, y, m } = rangoMes(mes);
   const db = await getDB();
-  const auts = await lista();
+  const auts = await lista(true);
   const sig = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}`;
   const hastaFact = `${sig}-${String(new Date(Date.UTC(m === 12 ? y + 1 : y, m === 12 ? 1 : m + 1, 0)).getUTCDate()).padStart(2, '0')}`;
   const out = [];
@@ -113,7 +114,7 @@ async function cuadre(mes) {
     const obras = Object.values(porObra).map(p => ({ ...p, horas: r2(p.horas), coste: r2(p.horas * (costeHora(u) || 0)) })).sort((x, z) => z.horas - x.horas);
     const facturado = guardado && guardado.facturado != null ? r2(guardado.facturado) : null;
     out.push({
-      userId: id, nombre: u.name, telefono: u.telefono || null,
+      userId: id, nombre: u.name, telefono: u.telefono || null, enPausa: u.active === false,
       tarifa: { tipo: a.tarifaTipo, dia: a.tarifaDia, hora: a.tarifaHora }, nif: a.nif, nombreFiscal: a.nombreFiscal,
       iva: a.iva != null ? a.iva : 21, irpf: a.irpf || 0,
       dias, nDias: dias.length, nRevisar: dias.filter(d => d.revisar).length, jornadas, horas: r2(horas), esperado, esperadoImportes: importes(esperado, a), obras,

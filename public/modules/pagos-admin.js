@@ -187,7 +187,7 @@
     const k = a.userId;
     return `<div class="card" style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
-        <div><div style="font-weight:700;font-size:15px">${escA(a.nombre)} ${a.estado==='cuadrado'?'<span style="font-size:11px;color:var(--green);font-weight:600">· cuadrado</span>':''}</div>
+        <div><div style="font-weight:700;font-size:15px">${escA(a.nombre)} ${a.enPausa?'<span style="font-size:11px;color:var(--text3);font-weight:600" title="Desactivado en Usuarios: no sale en Presencia ni recibe avisos">· en pausa</span> ':''}${a.estado==='cuadrado'?'<span style="font-size:11px;color:var(--green);font-weight:600">· cuadrado</span>':''}</div>
           <div style="font-size:12px;color:var(--text3)">${a.sinTarifa?'<span style="color:var(--red)">Sin tarifa: ponla en Usuarios</span>':tar}${a.nif?' · NIF '+escA(a.nif):''}${a.nombreFiscal?' · '+escA(a.nombreFiscal):''}</div></div>
         <div style="text-align:right">${difTxt}</div>
       </div>
