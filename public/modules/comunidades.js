@@ -31,6 +31,11 @@
         </select>
         <button class="cb-btn" onclick="CP.Comunidades.verSel()">Ver ficha</button>
       </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
+        <input id="com-buscar" placeholder="👥 Buscar contacto: nombre, teléfono, piso…" style="flex:1;min-width:240px;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--card2);color:var(--text)" onkeydown="if(event.key==='Enter')CP.Comunidades.buscar()">
+        <button class="cb-btn" onclick="CP.Comunidades.buscar()">Buscar</button>
+        <span id="com-stel"></span>
+      </div>
       ${_conFicha.length ? `<div style="margin-top:12px"><div style="font-size:12px;color:var(--muted);margin-bottom:4px">Con ficha:</div>${chips}</div>` : ''}
       <div id="com-ficha" style="margin-top:18px"></div>`;
   }
@@ -38,7 +43,7 @@
   function render(containerId) {
     _c = document.getElementById(containerId);
     _c.innerHTML = `<p style="color:var(--muted)">Cargando…</p>`;
-    loadIndex().then(() => { _c.innerHTML = header(); }).catch(e => { _c.innerHTML = `<p style="color:var(--red)">Error: ${esc(e.message)}</p>`; });
+    loadIndex().then(() => { _c.innerHTML = header(); api('/api/contactos?clienteId=0').then(d => stelBoton(d.resumen)).catch(() => {}); }).catch(e => { _c.innerHTML = `<p style="color:var(--red)">Error: ${esc(e.message)}</p>`; });
   }
 
   function verSel() {
@@ -58,6 +63,7 @@
       notas.forEach((nt, i) => { const cat = _cats[nt.cat] ? nt.cat : 'otros'; (porCat[cat] = porCat[cat] || []).push({ n: i + 1, texto: nt.texto }); });
       let html = `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <h3 style="margin:0">${esc(comunidad)}</h3></div>`;
+      html += `<div id="com-contactos" style="margin-top:12px"></div><h3 style="margin:18px 0 0">📝 Notas de mantenimiento</h3>`;
       if (!notas.length) {
         html += `<p style="color:var(--muted)">Sin datos todavía. Añade la primera nota abajo.</p>`;
       } else {
@@ -84,8 +90,93 @@
         </div>
         <div id="com-cuentas" style="margin-top:22px"><p style="color:var(--muted)">Cargando cuentas del cliente…</p></div>`;
       cont.innerHTML = html;
+      contactos(comunidad);
       cuentas(comunidad);
     } catch (e) { cont.innerHTML = `<p style="color:var(--red)">Error: ${esc(e.message)}</p>`; }
+  }
+
+  // 👥 Personas de contacto (src/contactos.js): presidentes, vecinos, administración… con llamar / WhatsApp de un toque.
+  let _roles = {};
+  const filaContacto = (c, conCliente) => `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="min-width:0">
+        <div><b>${esc(c.nombre)}</b> <span style="font-size:12px;color:var(--muted)">${esc(c.rolTxt)}${c.piso ? ' · ' + esc(c.piso) : ''}</span>
+          ${c.stel && c.stel.id ? '<span title="Ya está en la ficha del cliente en StelOrder" style="font-size:11px;color:var(--green,#22c487)"> ✓ StelOrder</span>' : ''}
+          ${c.stel && c.stel.estado === 'revisar' ? '<span title="StelOrder no contestó: mira si se creó" style="font-size:11px;color:var(--amber,#f59e0b)"> ¿StelOrder?</span>' : ''}</div>
+        ${conCliente ? `<div style="font-size:12px"><a href="#" onclick='CP.Comunidades.ver(${JSON.stringify(c.cliente)});return false'>${esc(c.cliente || '—')}</a></div>` : ''}
+        <div style="font-size:13px;margin-top:2px">${c.telefonos.map(t => `<a href="tel:${t.t.replace(/^00/, '+')}" style="margin-right:6px">📞 ${esc(t.txt)}</a><a href="https://wa.me/${t.wa}" target="_blank" rel="noopener" style="margin-right:10px">💬</a>`).join('')}${c.emails.map(e => `<a href="mailto:${esc(e)}" style="margin-right:10px">✉️ ${esc(e)}</a>`).join('')}${!c.telefonos.length && !c.emails.length ? '<span style="color:var(--muted)">sin teléfono</span>' : ''}</div>
+        ${c.nota ? `<div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(c.nota)}</div>` : ''}
+      </div>
+      <div style="display:flex;gap:4px;flex-shrink:0">
+        <button class="cb-btn" title="Editar" onclick='CP.Comunidades.editarContacto(${JSON.stringify(c.id)})'>✏️</button>
+        <button class="cb-btn" title="Quitar" onclick='CP.Comunidades.borrarContacto(${JSON.stringify(c.id)})'>🗑️</button>
+      </div>
+    </div>`;
+  let _vistos = {};
+  async function contactos(comunidad) {
+    const el = document.getElementById('com-contactos'); if (!el) return;
+    let d; try { d = await api('/api/contactos?cliente=' + encodeURIComponent(comunidad)); } catch (e) { el.innerHTML = ''; return; }
+    if (_sel !== comunidad) return;
+    _roles = d.roles || {}; d.contactos.forEach(c => { _vistos[c.id] = c; });
+    el.innerHTML = `<h3 style="margin:0 0 4px">👥 Contactos (${d.contactos.length})</h3>
+      ${d.contactos.length ? d.contactos.map(c => filaContacto(c, false)).join('') : '<div style="font-size:12.5px;color:var(--muted)">Ninguno todavía.</div>'}
+      <div id="com-form-contacto" style="margin-top:8px"><button class="cb-btn" onclick='CP.Comunidades.editarContacto(null)'>+ Añadir contacto</button></div>`;
+    stelBoton(d.resumen);
+  }
+  function stelBoton(r) {
+    const el = document.getElementById('com-stel'); if (!el || !r) return;
+    el.innerHTML = `<span style="font-size:12px;color:var(--muted)">${r.total} contactos · ${r.enStel} en StelOrder</span>${r.pendientesStel ? ` <button class="cb-btn" onclick="CP.Comunidades.subirStel(${r.pendientesStel})">⬆️ Pasar ${r.pendientesStel} a StelOrder</button>` : ''}`;
+  }
+  async function buscar() {
+    const q = (document.getElementById('com-buscar') || {}).value || '';
+    const cont = document.getElementById('com-ficha'); if (!cont) return;
+    _sel = '';
+    cont.innerHTML = `<p style="color:var(--muted)">Buscando…</p>`;
+    try {
+      const d = await api('/api/contactos?q=' + encodeURIComponent(q.trim()));
+      _roles = d.roles || {}; d.contactos.forEach(c => { _vistos[c.id] = c; });
+      cont.innerHTML = `<h3 style="margin:0 0 4px">👥 ${q.trim() ? 'Contactos con «' + esc(q.trim()) + '»' : 'Todos los contactos'} (${d.contactos.length})</h3>` +
+        (d.contactos.length ? d.contactos.map(c => filaContacto(c, true)).join('') : '<p style="color:var(--muted)">Nada.</p>');
+      stelBoton(d.resumen);
+    } catch (e) { cont.innerHTML = `<p style="color:var(--red)">Error: ${esc(e.message)}</p>`; }
+  }
+  function editarContacto(id) {
+    const c = id ? _vistos[id] : { nombre: '', rol: 'vecino', piso: '', nota: '', telefonos: [], emails: [], cliente: _sel };
+    const box = id ? null : document.getElementById('com-form-contacto');
+    const inp = (k, v, ph, w) => `<input id="cc-${k}" value="${esc(v)}" placeholder="${ph}" style="flex:${w || 1};min-width:140px;padding:7px;border-radius:8px;border:1px solid var(--border);background:var(--card2);color:var(--text)">`;
+    const html = `<div style="padding:10px;border:1px dashed var(--border);border-radius:10px;margin-top:6px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${inp('nombre', c.nombre, 'Nombre', 2)}
+        <select id="cc-rol" style="padding:7px;border-radius:8px;border:1px solid var(--border);background:var(--card2);color:var(--text)">${Object.entries(_roles).map(([k, v]) => `<option value="${k}"${k === c.rol ? ' selected' : ''}>${v}</option>`).join('')}</select>
+        ${inp('piso', c.piso, 'Piso / puerta')}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${inp('tel', (c.telefonos || []).map(t => t.t || t).join(', '), 'Teléfono(s)')}${inp('email', (c.emails || []).join(', '), 'Email')}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${inp('nota', c.nota, 'Nota: horario, llaves, relación…', 3)}</div>
+      <div style="margin-top:8px;display:flex;gap:6px"><button class="cb-btn" onclick='CP.Comunidades.guardarContacto(${JSON.stringify(id)},${JSON.stringify(c.cliente || _sel)})'>Guardar</button><button class="cb-btn" onclick="CP.Comunidades.ver(${esc(JSON.stringify(_sel || c.cliente))})">Cancelar</button></div></div>`;
+    if (box) { box.innerHTML = html; return; }
+    const cont = document.getElementById('com-contactos') || document.getElementById('com-ficha');
+    cont.insertAdjacentHTML('afterbegin', html);
+    document.getElementById('cc-nombre').focus();
+  }
+  async function guardarContacto(id, cliente) {
+    const v = k => (document.getElementById('cc-' + k) || {}).value || '';
+    try {
+      await api('/api/contactos', { method: 'POST', body: JSON.stringify({ id, cliente, nombre: v('nombre'), rol: v('rol'), piso: v('piso'), telefonos: v('tel'), emails: v('email'), nota: v('nota') }) });
+      ver(_sel || cliente);
+    } catch (e) { alert('No se pudo: ' + e.message); }
+  }
+  async function borrarContacto(id) {
+    const c = _vistos[id];
+    if (!confirm(`¿Quitar a ${c ? c.nombre : 'este contacto'}? (si ya está en StelOrder, allí se queda)`)) return;
+    try { await api('/api/contactos/' + id + '/borrar', { method: 'POST' }); _sel ? ver(_sel) : buscar(); } catch (e) { alert('No se pudo: ' + e.message); }
+  }
+  async function subirStel(n) {
+    const max = Math.min(n, 50);
+    if (!confirm(`Se crean ${max} personas de contacto en las fichas de los clientes de StelOrder (de ${n} pendientes). Gasta ${max} peticiones del cupo diario. ¿Seguimos?`)) return;
+    const el = document.getElementById('com-stel'); if (el) el.innerHTML = '<span style="color:var(--muted)">Subiendo a StelOrder… (1 por segundo)</span>';
+    try {
+      const r = await api('/api/contactos/stel', { method: 'POST', body: JSON.stringify({ max }) });
+      alert(`Subidos ${r.subidos} a StelOrder.${r.fallos.length ? '\n\nParado: ' + r.fallos[0].nombre + ' — ' + r.fallos[0].error : ''}\nQuedan ${r.quedan}.`);
+    } catch (e) { alert('No se pudo: ' + e.message); }
+    _sel ? ver(_sel) : buscar();
   }
 
   // 💶 Cuentas: facturado, coste de sus obras y gastos sueltos a su nombre (Compras → «Un cliente»).
@@ -128,5 +219,5 @@
     } catch (e) { alert('No se pudo: ' + e.message); }
   }
 
-  CP.Comunidades = { render, verSel, ver, anadir, borrar };
+  CP.Comunidades = { render, verSel, ver, anadir, borrar, buscar, editarContacto, guardarContacto, borrarContacto, subirStel };
 })(window.CP = window.CP || {});

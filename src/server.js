@@ -1240,6 +1240,22 @@ app.post('/api/comunidades/nota/borrar', requireAuth, async (req, res) => {
     res.json(r);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+// ── Personas de contacto de cada cliente (ficha de comunidad → 👥 Contactos; «Pasar a StelOrder») ──
+const _contactos = require('./contactos');
+const _porDe = req => (req.user && (req.user.name || req.user.username)) || 'dashboard';
+app.get('/api/contactos', requireAuth, async (req, res) => {
+  try { res.json({ contactos: await _contactos.lista({ clienteId: req.query.clienteId || null, cliente: req.query.cliente || null, q: req.query.q || null }), roles: _contactos.ROLES, resumen: await _contactos.resumen() }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/contactos', requireAuth, async (req, res) => {
+  try { res.json({ ok: true, contacto: await _contactos.guardar(req.body || {}, _porDe(req)) }); } catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.post('/api/contactos/:id/borrar', requireAuth, async (req, res) => {
+  try { res.json(await _contactos.borrar(req.params.id, _porDe(req))); } catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.post('/api/contactos/stel', requireAuthOficina, async (req, res) => {
+  try { res.json(await _contactos.subirStel({ ids: (req.body || {}).ids || null, max: (req.body || {}).max || 50 }, _porDe(req))); } catch (e) { res.status(400).json({ error: e.message }); }
+});
 const _cobros = require('./avisos-proactivo');
 app.get('/api/cobros', requireAuth, async (req, res) => {
   try {

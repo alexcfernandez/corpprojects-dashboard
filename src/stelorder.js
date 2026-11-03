@@ -1507,6 +1507,32 @@ async function ponerLineasPedido(workOrderId, lineas, { requestedBy = null } = {
   }
 }
 
+// Persona de contacto de un cliente (StelOrder → ficha del cliente → Contactos). Sin reintentos: si no contesta,
+// queda «desconocido» en stelWriteLog y no se repite sola (evita duplicados).
+async function crearContacto({ accId, nombre, telefono = null, email = null, cargo = null, nota = null, requestedBy = null }) {
+  if (!accId || !nombre) throw new Error('Faltan el cliente o el nombre');
+  const body = { 'account-id': Number(accId), name: String(nombre).slice(0, 100) };
+  if (telefono) body.phone = String(telefono).slice(0, 30);
+  if (email) body.email = String(email).slice(0, 100);
+  if (cargo) body.position = String(cargo).slice(0, 60);
+  if (nota) body.comments = String(nota).slice(0, 500);
+  const db = await require('./db').getDB();
+  const ins = await db.collection('stelWriteLog').insertOne({ tipo: 'contacto', accId: String(accId), body, requestedBy, at: new Date(), result: 'pending' });
+  try {
+    const r = await client.post('/contacts', body, { headers: { 'Content-Type': 'application/json; charset=utf-8' }, timeout: 20000 });
+    const d = Array.isArray(r.data) ? r.data[0] : r.data;
+    const id = d && d.id ? String(d.id) : null;
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: 'ok', status: r.status, contactId: id } });
+    return { ok: true, id };
+  } catch (err) {
+    const sinRespuesta = !err.response;
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: sinRespuesta ? 'desconocido' : 'error', error: `${err.response?.status || ''} ${err.message}`, errorBody: err.response?.data || null } });
+    const e = new Error(sinRespuesta ? 'StelOrder no contestó: mira en la ficha del cliente si el contacto se ha creado' : `StelOrder rechazó el contacto: ${err.response?.status || ''} ${JSON.stringify(err.response?.data || err.message).slice(0, 200)}`);
+    e.sinRespuesta = sinRespuesta;
+    throw e;
+  }
+}
+
 // Crea la factura generada DESDE el pedido (parent-document-id), como «Generar → Factura» de StelOrder.
 // Es un documento fiscal: se llama una sola vez por pedido (el candado está en facturarParte.js) y sin reintentos.
 async function crearFacturaDesdePedido({ workOrderId, accId, lineas, titulo = null, nota = null, requestedBy = null }) {
@@ -2177,5 +2203,5 @@ module.exports = { leerPresupuesto, setWorkEstimateState, setIncidentState, WORK
   getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap,
   getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA, diagLineaImpuesto, diagImpuestos,
   crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, crearPresupuestoStel, crearPresupuestoMultiSeccionPrueba, diagClienteCampos, diagCrearCliente, crearClienteStel, getAccountCategories, ultimaIncidencia, incidenciaPorRef, diagPresupuestoConLineas, diagCambiarIvaPrueba, getPresupuestoIva, cambiarIvaPresupuesto, getPresupuestoDetalle, modificarImportePresupuesto,
-  ponerLineasPedido, crearFacturaDesdePedido, IVA_TAX_IDS
+  ponerLineasPedido, crearFacturaDesdePedido, crearContacto, IVA_TAX_IDS
 };
