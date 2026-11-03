@@ -1446,7 +1446,7 @@ async function crearProducto({ nombre, descripcion = null, precio = 0 }) {
 // ── GENERAR PEDIDO DE TRABAJO desde una incidencia (réplica del "Generar" nativo) ──
 // Usa un producto GENÉRICO reutilizable (Actuación/Presupuesto); la descripción de la
 // incidencia va en la línea (item-description). Enlazado por parent-incident-id.
-async function generarPedidoDesdeIncidencia({ incidentId, accId, descripcion, tipo = 'actuacion', estadoId = 1120651, requestedBy = null }) {
+async function generarPedidoDesdeIncidencia({ incidentId, accId, descripcion, titulo = null, notaPrivada = null, tipo = 'actuacion', estadoId = 1120651, requestedBy = null }) {
   if (!incidentId || !accId) throw new Error('Faltan datos (incidencia o cliente)');
   const desc = String(descripcion || 'Trabajo a realizar').trim();
   const db = await require('./db').getDB();
@@ -1461,6 +1461,8 @@ async function generarPedidoDesdeIncidencia({ incidentId, accId, descripcion, ti
     'parent-incident-id': Number(incidentId),
     lines: [{ 'line-type': 'ITEM', 'item-id': Number(itemId), units: 1, 'item-base-price': 0, 'item-description': desc }]
   };
+  if (titulo) body.title = String(titulo).slice(0, 150);
+  if (notaPrivada) body['private-comments'] = String(notaPrivada).slice(0, 1000);
   const ins = await db.collection('stelWriteLog').insertOne({ tipo: 'pedido-desde-incidencia', incidentId, itemId, body, requestedBy, at: new Date(), result: 'pending' });
   try {
     const r = await client.post('/workOrders', body, { headers: { 'Content-Type': 'application/json; charset=utf-8' }, timeout: 25000 });

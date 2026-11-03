@@ -36,6 +36,7 @@ const HERRAMIENTA = {
       direccion: { type: ['string', 'null'], description: 'Piso, puerta, zona concreta (3º 1ª, parking, cubierta…)' },
       contacto: { type: ['string', 'null'], description: 'Nombre y teléfono de contacto si lo dan' },
       resumen: { type: 'string', description: 'Qué piden, en una o dos frases claras' },
+      titulo: { type: 'string', description: 'Título corto de 3 a 6 palabras con lo que pasa o lo que piden, sin el cliente ni «urgente» (p. ej. «Fuga de agua en el baño», «Presupuesto pintar escalera»). Va de título en StelOrder' },
       que_hacer: { type: 'string', description: 'Lo siguiente que tiene que hacer la oficina (ir a mirar, hacer presupuesto, llamar a…, nada)' },
       urgente: { type: 'boolean', description: 'Agua entrando, sin luz, peligro, se quejan de que no fuimos…' },
       situacion: { type: 'string', enum: SITUACIONES, description: 'nuevo; ya_hay_incidencia (una incidencia ABIERTA ya lo cubre); ya_hay_presupuesto (ya se hizo el presupuesto); seguimiento (insisten o preguntan por algo que ya estaba pedido)' },
@@ -123,7 +124,7 @@ ${cat.clientes.join('\n')}`;
     const mensajes = ms.map(m => ({ fecha: m.fecha, quien: m.quien, texto: corto(m.texto, 1000) }));
     const fotoIds = ms.flatMap(m => m.fotoIds || []);
     const set = { tipo: TIPOS.includes(p.tipo) ? p.tipo : 'consulta', clienteId: p.cliente_id && /^\d+$/.test(String(p.cliente_id)) ? String(p.cliente_id) : null,
-      cliente: corto(p.cliente, 120), direccion: corto(p.direccion, 120) || null, contacto: corto(p.contacto, 120) || null, resumen: corto(p.resumen, 400), queHacer: corto(p.que_hacer, 300),
+      cliente: corto(p.cliente, 120), titulo: corto(p.titulo, 60) || null, direccion: corto(p.direccion, 120) || null, contacto: corto(p.contacto, 120) || null, resumen: corto(p.resumen, 400), queHacer: corto(p.que_hacer, 300),
       urgente: !!p.urgente, respondimos: p.respondimos == null ? null : !!p.respondimos, hechoEnChat: p.hecho_en_chat == null ? null : !!p.hecho_en_chat, situacion: SITUACIONES.includes(p.situacion) ? p.situacion : 'nuevo', incidencia: corto(p.incidencia, 12) || null, presupuesto: corto(p.presupuesto, 12) || null, pedirContacto: p.pedir_contacto === true, actualizado: new Date() };
     if (p.cita && /^\d{4}-\d{2}-\d{2}$/.test(p.cita.fecha || '')) set.cita = { fecha: p.cita.fecha, hora: /^\d{1,2}:\d{2}$/.test(p.cita.hora || '') ? p.cita.hora : null, con: corto(p.cita.con, 80) || null };
     if (set.clienteId) set.clienteStel = cat.nombre(set.clienteId) || null;
@@ -132,7 +133,7 @@ ${cat.clientes.join('\n')}`;
       // Una queja, una urgencia o que insistan sobre algo ya archivado lo vuelve a poner a la vista (2/11/2026: lo de
       // Cartagena siguió archivado mientras CINC pedía que llamáramos al presidente).
       // Lo que ya sabíamos (contacto, piso, cliente, INC/PRT) no se borra porque el mensaje nuevo no lo repita.
-      for (const k of ['contacto', 'direccion', 'clienteId', 'clienteStel', 'incidencia', 'presupuesto', 'cita']) if (set[k] == null && prev[k] != null) delete set[k];
+      for (const k of ['titulo', 'contacto', 'direccion', 'clienteId', 'clienteStel', 'incidencia', 'presupuesto', 'cita']) if (set[k] == null && prev[k] != null) delete set[k];
       const junta = { ...prev, ...set };
       if (fuente !== 'historial') await _citaAlCalendario(db, junta, prev.cita);
       if (prev.estado === 'archivo' && importa(set) && ms.some(m => !NUESTROS.test(m.quien || ''))) Object.assign(set, { estado: 'pendiente', reabiertaAt: new Date() });
@@ -333,7 +334,7 @@ async function deCorreo({ gmailId, de, asunto, cuerpo, fecha = new Date(), avisa
 // sin aviso suelto (sale en el de las 8:15 y en la pregunta de quién va).
 const EXTRA_RECADO = `Esto es un RECADO que un cliente dejó por TELÉFONO a SecretarIA (la IA que coge las llamadas de Corp cuando nadie puede). Casi siempre es una sola petición. Si dice que ya llamó antes, que no hemos ido o que vuelve a pasar, es seguimiento. No hay teléfono completo: no lo inventes.`;
 const JID_VOZ = 'voz:corp', GRUPO_VOZ = 'Llamadas · SecretarIA';
-async function deRecado({ llamada, fecha = new Date(), urgente = false, resumen, contacto = null, final = '', _llamar = null, _cat = null, _enviar = null, _auto = null } = {}) {
+async function deRecado({ llamada, fecha = new Date(), urgente = false, resumen, titulo = null, contacto = null, final = '', _llamar = null, _cat = null, _enviar = null, _auto = null } = {}) {
   const db = await getDB();
   if (llamada && await db.collection(COL).findOne({ llamadas: String(llamada) })) return { ya: true };
   urgente = !!urgente || /^\s*URGENTE\b/i.test(resumen || '');
@@ -347,7 +348,8 @@ async function deRecado({ llamada, fecha = new Date(), urgente = false, resumen,
   const memoria = await require('./memoria').paraPrompt(texto, { paraGrupo: JID_VOZ, limite: 40 }).catch(() => '');
   const r = await _tanda(db, { jid: JID_VOZ, grupo: GRUPO_VOZ, msgs, fuente: 'llamada', cat, _llamar, extra, memoria });
   for (const p of r.nuevas) {
-    const set = { canal: 'llamada' };
+    const set = { canal: 'llamada', recado: { nombre: corto(contacto && contacto.nombre, 60) || null, final: String(final || '').slice(-3) || null, fecha: new Date(fecha), texto } };
+    if (corto(titulo, 60)) set.titulo = corto(titulo, 60);
     if (!p.clienteId && accId) Object.assign(set, { clienteId: accId, clienteStel: cat.nombre(accId) || null });
     if (urgente) set.urgente = true;
     Object.assign(p, set);
@@ -526,11 +528,42 @@ async function crearIncidencia(id, por = '') {
   if (!p) throw new Error('Petición no encontrada');
   if (p.incidencia) throw new Error(`Ya tiene la incidencia ${p.incidencia}`);
   if (!p.clienteId) throw new Error('No sé de qué cliente de StelOrder es: ponle el cliente a mano en StelOrder');
-  const msgs = (p.mensajes || []).slice(-6).map(m => `${fmt(m.fecha)} ${m.quien}: ${corto(m.texto, 300)}`).join('\n');
-  const descripcion = [`${p.resumen}${p.direccion ? ' (' + p.direccion + ')' : ''}`, p.contacto ? `Contacto: ${p.contacto}` : '', `Grupo «${p.grupo || 'WhatsApp'}»:`, msgs].filter(Boolean).join('\n').slice(0, 3800);
+  const { clientMap } = await require('./stelorder').getClients().catch(() => ({ clientMap: {} }));
+  const descripcion = [tituloPeticion(p), '', p.resumen, ...detalle(p, { clientMap }), '', ...original(p)].join('\n').slice(0, 3800);
   const r = await require('./stelorder').crearIncidencia({ accId: p.clienteId, descripcion, tipoId: p.tipo === 'presupuesto' ? TIPO_INC.presupuesto : TIPO_INC.otro, requestedBy: por || 'Peticiones del grupo' });
   await db.collection(COL).updateOne({ _id: p._id }, { $set: { incidencia: r.ref, incidenciaId: r.id || null, situacion: 'ya_hay_incidencia', incidenciaCreadaPor: por, incidenciaCreadaAt: new Date() } });
   return { ok: true, ref: r.ref, id: r.id || null };
+}
+
+// ── Cómo se ven en StelOrder la incidencia y el pedido (3/11/2026, Álex con PDT00559: «faltaría el título y todo, que se
+// vea mejor»). Título corto «URGENTE · Fuga de agua · Bellpuig 41» y, debajo del resumen, dónde, contacto y de dónde vino.
+// Para todas las peticiones: grupos, correos y recados de SecretarIA.
+const _dia = d => new Date(d).toLocaleDateString('es-ES', { timeZone: 'Europe/Madrid', day: '2-digit', month: '2-digit', year: 'numeric' });
+const _hora = d => new Date(d).toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit' });
+const esLlamada = p => p.canal === 'llamada' || p.jid === JID_VOZ;
+function tituloPeticion(p) {
+  const que = corto(p.titulo, 60) || corto(String(p.resumen || '').replace(/^\s*URGENTE\s*·\s*/i, '').split(/[.;:]/)[0], 50) || 'Petición';
+  const cli = corto(p.clienteStel || p.cliente, 40);
+  return corto(`${p.urgente ? 'URGENTE · ' : ''}${que}${cli ? ' · ' + cli : ''}`, 100);
+}
+// Líneas «Dónde», «Contacto» y el origen. La dirección sale de la ficha del cliente (caché de StelOrder) más el piso.
+function detalle(p, { clientMap = {}, incidencia = null } = {}) {
+  const c = p.clienteId ? clientMap[String(p.clienteId)] : null;
+  const a = (c && c['main-address']) || {};
+  const ficha = [a['address-data'], [a['postal-code'], a['city-town']].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  const donde = [ficha ? `${corto(c['legal-name'] || c.name, 60)} · ${ficha}` : '', p.direccion ? `(${p.direccion})` : ''].filter(Boolean).join(' ');
+  const r = p.recado || {};
+  const contacto = p.contacto || (esLlamada(p) ? `${r.nombre || 'sin nombre'}${r.final ? ` · teléfono acabado en ${r.final} (completo en Nuvo Voz)` : ''}` : '');
+  const f = (esLlamada(p) && r.fecha) || p.fecha;
+  const origen = esLlamada(p) ? `Llamada del ${_dia(f)} a las ${_hora(f)} · atendida por SecretarIA (Nuvo Voz)`
+    : p.canal === 'correo' ? `Correo de ${String(p.grupo || '').replace(/^Correo · /, '') || 'un cliente'} del ${_dia(f)} a las ${_hora(f)}`
+      : `Pedido en el grupo «${p.grupo || 'WhatsApp'}» el ${_dia(f)} a las ${_hora(f)}`;
+  return [donde ? `Dónde: ${donde}` : '', contacto ? `Contacto: ${contacto}` : '', `${origen}${incidencia ? ' · ' + incidencia : ''}`].filter(Boolean);
+}
+// Lo que dijeron tal cual: el recado entero o los últimos mensajes del grupo/correo.
+function original(p) {
+  if (esLlamada(p)) return ['Recado completo:', corto((p.recado && p.recado.texto) || (p.mensajes || [])[0]?.texto, 2500)];
+  return ['Mensajes:', ...(p.mensajes || []).slice(-6).map(m => `${fmt(m.fecha)} ${m.quien}: ${corto(m.texto, 300)}`)];
 }
 
 // ── Resumen diario por correo (20:30): lo que ha pasado hoy en los grupos y lo que sigue abierto ──
@@ -570,4 +603,4 @@ ${pend.length ? `<h3 style="margin:16px 0 4px">Sigue abierto</h3>${tabla(pend.fi
   return { enviado: !!ok, to, subject, nuevas: nuevas.length, abiertas: pend.length };
 }
 
-module.exports = { _citaAlCalendario, deCorreo, deRecado, JID_VOZ, _limpiaCorreo, _jidCorreo, presupuestoEnviado, presupuestoDevuelto, refDePdf, crearIncidencia, resumenDiario, _ventana, analizar, importarChat, analizarHistorial, parsearChat, lista, marcar, marcarGrupo, _tanda, _textoAviso, _autoIncidencias, _sinAccion: sinAccion, _contexto, TIPOS };
+module.exports = { _citaAlCalendario, deCorreo, deRecado, JID_VOZ, tituloPeticion, detalle, original, _limpiaCorreo, _jidCorreo, presupuestoEnviado, presupuestoDevuelto, refDePdf, crearIncidencia, resumenDiario, _ventana, analizar, importarChat, analizarHistorial, parsearChat, lista, marcar, marcarGrupo, _tanda, _textoAviso, _autoIncidencias, _sinAccion: sinAccion, _contexto, TIPOS };

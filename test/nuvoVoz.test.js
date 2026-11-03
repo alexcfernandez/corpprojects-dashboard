@@ -170,3 +170,42 @@ test('deRecado: petición con el cliente del externalId, incidencia creada y Wha
     assert.strictEqual(enviados.length, 0);
   } finally { dbm.getDB = real; process.env.OFICINA_TELEFONO = prevO; process.env.WHATSAPP_TO = prevW; if (prevO === undefined) delete process.env.OFICINA_TELEFONO; if (prevW === undefined) delete process.env.WHATSAPP_TO; }
 });
+
+test('StelOrder: título corto y descripción ordenada (dónde, contacto y origen) para recados, correos y grupos', () => {
+  const PG = require('../src/peticionesGrupo');
+  const clientMap = { 555: { name: 'ILLA VERDA', 'legal-name': 'Ctat. Prop. Illa Verda', 'main-address': { 'address-data': 'C/ Bellpuig 41', 'postal-code': '17003', 'city-town': 'Girona' } } };
+  const rec = { canal: 'llamada', jid: 'voz:corp', urgente: true, titulo: 'Fuga de agua', clienteId: '555', clienteStel: 'ILLA VERDA', cliente: 'Bellpuig 41', direccion: '3º 1ª', resumen: 'Fuga de agua en Bellpuig 41 (ILLA VERDA). El cliente llama para avisar.', fecha: new Date('2026-11-03T19:39:00Z'),
+    recado: { nombre: 'Marta', final: '456', fecha: new Date('2026-11-03T19:39:00Z'), texto: 'URGENTE · Fuga de agua en Bellpuig 41 (ILLA VERDA). El cliente llama para avisar.' } };
+  assert.strictEqual(PG.tituloPeticion(rec), 'URGENTE · Fuga de agua · ILLA VERDA');
+  assert.strictEqual(PG.tituloPeticion({ ...rec, urgente: false, titulo: null }), 'Fuga de agua en Bellpuig 41 (ILLA VERDA) · ILLA VERDA');
+  assert.deepStrictEqual(PG.detalle(rec, { clientMap, incidencia: 'INC00654' }), [
+    'Dónde: Ctat. Prop. Illa Verda · C/ Bellpuig 41, 17003 Girona (3º 1ª)',
+    'Contacto: Marta · teléfono acabado en 456 (completo en Nuvo Voz)',
+    'Llamada del 03/11/2026 a las 20:39 · atendida por SecretarIA (Nuvo Voz) · INC00654']);
+  assert.deepStrictEqual(PG.original(rec), ['Recado completo:', rec.recado.texto]);
+  const correo = { canal: 'correo', grupo: 'Correo · finquescompany.com', resumen: 'Gotera', contacto: 'Jordi 600 000 000', fecha: new Date('2026-11-02T09:00:00Z'), mensajes: [{ fecha: new Date('2026-11-02T09:00:00Z'), quien: 'Jordi (correo)', texto: 'Hola' }] };
+  assert.deepStrictEqual(PG.detalle(correo), ['Contacto: Jordi 600 000 000', 'Correo de finquescompany.com del 02/11/2026 a las 10:00']);
+  assert.match(PG.detalle({ grupo: 'CINC', fecha: new Date('2026-11-02T09:00:00Z') })[0], /^Pedido en el grupo «CINC» el 02\/11\/2026 a las 10:00$/);
+});
+
+test('trabajos.crear: el pedido lleva título, producto según el tipo, descripción ordenada y el recado en la nota privada', async () => {
+  const dbm = require('../src/db'); const real = dbm.getDB;
+  const users = require('../src/users'); const realU = users.getUser;
+  const asig = require('../src/asignaciones'); const realA = asig.setAssignment;
+  const { ObjectId } = require('mongodb'); const id = new ObjectId();
+  const p = { _id: id, canal: 'llamada', jid: 'voz:corp', tipo: 'trabajo', urgente: true, titulo: 'Fuga de agua', clienteId: '555', clienteStel: 'ILLA VERDA', cliente: 'Bellpuig 41', resumen: 'Fuga de agua en Bellpuig 41.', fecha: new Date('2026-11-03T19:39:00Z'),
+    incidencia: 'INC00654', incidenciaId: '9', incidenciaCreadaAt: new Date(), recado: { nombre: 'Marta', final: '456', fecha: new Date('2026-11-03T19:39:00Z'), texto: 'URGENTE · Fuga de agua en Bellpuig 41.' } };
+  const col = { findOne: async () => p, updateOne: async () => ({}), find: () => ({ toArray: async () => [] }) };
+  dbm.getDB = async () => ({ collection: n => (n === 'bridgeGrupos' ? { ...col, findOne: async () => null } : col) });
+  users.getUser = async () => ({ _id: 'u1', name: 'David' }); asig.setAssignment = async () => ({});
+  let pedido = null;
+  const _stel = { getClients: async () => ({ clientMap: { 555: { name: 'ILLA VERDA', 'main-address': { 'address-data': 'C/ Bellpuig 41', 'city-town': 'Girona' } } } }),
+    generarPedidoDesdeIncidencia: async a => { pedido = a; return { id: '77', ref: 'PDT00560' }; } };
+  try {
+    await require('../src/trabajos').crear(String(id), { userId: 'u1', nota: 'Llevar escalera' }, 'Álex', { _stel, _enviar: async () => true });
+    assert.strictEqual(pedido.titulo, 'URGENTE · Fuga de agua · ILLA VERDA');
+    assert.strictEqual(pedido.tipo, 'actuacion');
+    assert.strictEqual(pedido.descripcion, ['Fuga de agua en Bellpuig 41.', 'Dónde: ILLA VERDA · C/ Bellpuig 41, Girona', 'Contacto: Marta · teléfono acabado en 456 (completo en Nuvo Voz)', 'Nota de oficina: Llevar escalera', 'Llamada del 03/11/2026 a las 20:39 · atendida por SecretarIA (Nuvo Voz) · INC00654'].join('\n'));
+    assert.match(pedido.notaPrivada, /^Recado completo:\nURGENTE · Fuga de agua/);
+  } finally { dbm.getDB = real; users.getUser = realU; asig.setAssignment = realA; }
+});

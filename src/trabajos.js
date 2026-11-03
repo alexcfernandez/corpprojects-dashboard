@@ -148,8 +148,13 @@ async function crear(peticionId, { userId, fecha = null, hora = null, urgente = 
   }
   if (!incidencia.id) throw new Error('No encuentro la incidencia en StelOrder');
   // 2) Pedido
-  const desc = [p.resumen, p.direccion ? `Dónde: ${p.direccion}` : '', p.contacto ? `Contacto: ${p.contacto}` : '', nota ? `Nota de oficina: ${nota}` : '', `Pedido en el grupo «${p.grupo || 'WhatsApp'}» el ${new Date(p.fecha).toLocaleDateString('es-ES', { timeZone: TZ })}.`].filter(Boolean).join('\n');
-  const ped = await S.generarPedidoDesdeIncidencia({ incidentId: incidencia.id, accId: p.clienteId, descripcion: desc, tipo: p.tipo === 'presupuesto' ? 'presupuesto' : 'actuacion', requestedBy: por || 'Crear trabajo' });
+  // Título corto, y en la línea el resumen con dónde, contacto y de dónde vino (3/11/2026); lo dicho tal cual, en la nota privada.
+  // El producto de la línea sigue siendo el genérico «Presupuesto» o «Actuación» según lo que piden.
+  const PG = require('./peticionesGrupo');
+  const clientMap = S.getClients ? ((await S.getClients().catch(() => null)) || {}).clientMap || {} : {};
+  const det = PG.detalle(p, { clientMap, incidencia: incidencia.ref });   // [Dónde, Contacto, origen]: el origen al final
+  const desc = [p.resumen, ...det.slice(0, -1), nota ? `Nota de oficina: ${nota}` : '', det[det.length - 1]].filter(Boolean).join('\n');
+  const ped = await S.generarPedidoDesdeIncidencia({ incidentId: incidencia.id, accId: p.clienteId, descripcion: desc, titulo: PG.tituloPeticion({ ...p, clienteStel: cliente }), notaPrivada: PG.original(p).join('\n'), tipo: p.tipo === 'presupuesto' ? 'presupuesto' : 'actuacion', requestedBy: por || 'Crear trabajo' });
   // 3) Asignación con día y hora
   const urg = urgente == null ? !!p.urgente : !!urgente;
   await require('./asignaciones').setAssignment(ped.id, String(u._id), por || null, urg ? 'urgent' : 'normal');
