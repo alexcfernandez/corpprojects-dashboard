@@ -416,6 +416,9 @@ function startScheduler() {
   cron.schedule('20 8 * * 1-6', () => { if (process.env.PDF_TRABAJOS !== 'off') require('./planificacionPdf').avisar().then(r => console.log('[PlanificacionPdf]', JSON.stringify(r))).catch(e => console.warn('[PlanificacionPdf]', e.message)); }, { timezone: 'Europe/Madrid' });
   // Incidencias abiertas cada mañana (L-S) a Álex y oficina: presupuestos por hacer y trabajos a los que ir, hasta que se cierran.
   // Recados de Nuvo Voz que quedaron a medias (la IA o StelOrder fallaron, o un reinicio): se reintentan (src/nuvoVoz.js).
+  // Bandeja de entrada limpia: las facturas que nos reenviamos (ya leídas por n8n) y los resúmenes automáticos van a
+  // «Corp/Automáticos» (gmailOrden.js, 3/11/2026).
+  cron.schedule('3,13,23,33,43,53 * * * *', () => { require('./gmailOrden').ordenar().then(r => { if (r.movidos) console.log('[Gmail] a Corp/Automáticos:', r.movidos); }).catch(e => console.warn('[Gmail] ordenar:', e.message)); }, { timezone: 'Europe/Madrid' });
   cron.schedule('*/10 * * * *', () => { require('./nuvoVoz').reintentar().then(n => { if (n) console.log('[NuvoVoz] reintentados:', n); }).catch(e => console.warn('[NuvoVoz] reintentar:', e.message)); }, { timezone: 'Europe/Madrid' });
   cron.schedule('15 8 * * 1-6', () => { if (process.env.AVISO_INCIDENCIAS !== 'off') require('./incidenciasDia').avisar().then(r => console.log('[IncidenciasDia]', r.enviado ? `enviado a ${r.destinos}` : 'nada')).catch(e => console.warn('[IncidenciasDia]', e.message)); }, { timezone: 'Europe/Madrid' });
   cron.schedule('30 20 * * *', () => { if (process.env.RESUMEN_GRUPOS !== 'off') require('./peticionesGrupo').resumenDiario().then(r => { if (r.enviado) console.log('[Peticiones] resumen:', r.subject); }).catch(e => console.warn('[Peticiones] resumen:', e.message)); }, { timezone: 'Europe/Madrid' });
