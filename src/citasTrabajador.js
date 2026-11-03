@@ -24,13 +24,25 @@ const prompt = (nombre, texto, hoy) => `Eres de la oficina de Corp Projects (ref
 Saca SOLO las CITAS que dice que tiene o ha fijado: un día concreto para ir a un sitio, quedar con alguien o que venga alguien («mañana a las 10 tengo visita en Major 75», «el jueves paso por Sobrequés a las 9», «el lunes viene el del ascensor a Canaders»). En quien_va pon «${nombre}» si va él.
 NO son citas: lo que ya pasó, «esta semana», «cuando pueda», pedir, comprar o ir a recoger material (Obramat, Leroy, tiendas, almacén), avisar de que llega tarde, ni preguntas. Si no hay ninguna, devuelve citas vacío.`;
 
-// Aviso por WhatsApp al trabajador: 1 h antes si hay hora; si no, a las 7:45 de ese día.
-async function _programarAviso({ userId, nombre, fecha, hora, texto }, { _prog = null } = {}) {
+// Avisos por WhatsApp al trabajador (Álex, 4/11/2026: «si es de empezar el jueves a las 9, les tiene que avisar también el
+// día antes, de lo que tienen que hacer»): la víspera a las 19:00 y el mismo día 1 h antes (o a las 7:45 si no hay hora).
+async function _programarAviso({ userId, nombre, fecha, hora, texto, textoVispera = null }, { _prog = null } = {}) {
+  const P = _prog || require('./programados');
   const at = hora ? new Date(aDate(fecha, hora).getTime() - 3600000) : aDate(fecha, '07:45');
-  if (at.getTime() <= Date.now()) return null;
-  await (_prog || require('./programados')).crear({ at, tipo: 'whatsapp', userId: String(userId), nombre, texto, nota: 'Aviso de cita (citasTrabajador)', importante: true }, 'Corpy (citas)');
-  return at;
+  const vispera = new Date(aDate(fecha, '19:00').getTime() - 86400000);
+  let primero = null;
+  if (textoVispera && vispera.getTime() > Date.now()) {
+    await P.crear({ at: vispera, tipo: 'whatsapp', userId: String(userId), nombre, texto: textoVispera, nota: 'Aviso de cita, la víspera (citasTrabajador)', importante: true }, 'Corpy (citas)');
+    primero = vispera;
+  }
+  if (at.getTime() > Date.now()) {
+    await P.crear({ at, tipo: 'whatsapp', userId: String(userId), nombre, texto, nota: 'Aviso de cita (citasTrabajador)', importante: true }, 'Corpy (citas)');
+    primero = primero || at;
+  }
+  return primero;
 }
+
+const textoVispera = (nombre, c) => `📋 Hola ${primer(nombre)}, para *mañana*: ${c.hora ? '*a las ' + c.hora + '* · ' : ''}${c.que}${c.sitio ? ' · ' + c.sitio : ''}${c.con ? ` (con ${c.con})` : ''}. Si hay algún problema, dímelo por aquí.`;
 
 const textoRecordatorio = (nombre, c) => `🗓️ Hola ${primer(nombre)}, te recuerdo: *${c.hora ? 'hoy a las ' + c.hora : 'hoy'}* · ${c.que}${c.sitio ? ' · ' + c.sitio : ''}${c.con ? ` (con ${c.con})` : ''}.`;
 
@@ -46,14 +58,14 @@ async function deMensaje({ userId, nombre, texto }, { _llamar = null, _crear = n
     try {
       const d = await require('./citasGrupos').apuntar(db, { ...c, que: `${primer(nombre)}: ${c.que || 'cita'}` }, { jid: `trab:${userId}`, grupo: `WhatsApp de ${primer(nombre)}` }, { _crear });
       if (!d) continue;
-      d.avisoAt = await _programarAviso({ userId, nombre, fecha: d.fecha, hora: d.hora, texto: textoRecordatorio(nombre, { ...c, hora: d.hora }) }, { _prog }).catch(() => null);
+      d.avisoAt = await _programarAviso({ userId, nombre, fecha: d.fecha, hora: d.hora, texto: textoRecordatorio(nombre, { ...c, hora: d.hora }), textoVispera: textoVispera(nombre, { ...c, hora: d.hora }) }, { _prog }).catch(() => null);
       apuntadas.push(d);
     } catch (e) { console.warn('[CitasTrab] apuntar:', e.message); }
   }
   if (!apuntadas.length) return null;
   const linea = c => `*${fFecha(c.fecha)}${c.hora ? ' a las ' + c.hora : ''}* · ${c.que.replace(/^[^:]+:\s*/, '')} · ${c.sitio}${c.con ? ` (con ${c.con})` : ''}`;
   try { await (_enviar || require('./notifications').sendWhatsApp)(`📅 *${primer(nombre)}* le ha dicho a Corpy que tiene cita — apuntada en tu calendario:\n${apuntadas.map(c => '• ' + linea(c)).join('\n')}\n\nLo que escribió: «${String(texto).slice(0, 300)}»`); } catch (e) {}
-  return `🗓️ Apuntado en el calendario${apuntadas.length > 1 ? ':\n' + apuntadas.map(c => '• ' + linea(c)).join('\n') : ': ' + linea(apuntadas[0])}.${apuntadas.some(c => c.avisoAt) ? '\n⏰ Te aviso por aquí antes.' : ''}`;
+  return `🗓️ Apuntado en el calendario${apuntadas.length > 1 ? ':\n' + apuntadas.map(c => '• ' + linea(c)).join('\n') : ': ' + linea(apuntadas[0])}.${apuntadas.some(c => c.avisoAt) ? '\n⏰ Te lo recuerdo por aquí la víspera y antes de ir.' : ''}`;
 }
 
 // Cita de un grupo con quien_va («va David», «David y Diego»): a cada trabajador nombrado (activo, con móvil y sin los
@@ -69,7 +81,7 @@ async function avisarQuienVa(cita, { _prog = null, _usuarios = null } = {}) {
     if (!new RegExp(`\\b${pila}\\b`).test(q) || l.length !== 1) continue;
     const u = l[0];
     if (u.avisosWa === 'ninguno' || !(u.telefono || u.whatsapp)) continue;
-    const at = await _programarAviso({ userId: String(u._id), nombre: u.name, fecha: cita.fecha, hora: cita.hora, texto: textoRecordatorio(u.name, cita) }, { _prog }).catch(() => null);
+    const at = await _programarAviso({ userId: String(u._id), nombre: u.name, fecha: cita.fecha, hora: cita.hora, texto: textoRecordatorio(u.name, cita), textoVispera: textoVispera(u.name, cita) }, { _prog }).catch(() => null);
     if (at) avisados.push(primer(u.name));
   }
   return avisados;
