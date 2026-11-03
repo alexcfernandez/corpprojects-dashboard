@@ -435,6 +435,10 @@ function startScheduler() {
   cron.schedule('40 8 * * 1-5', () => require('./trimestre').revisionDiaria()
     .then(r => console.log('[Trimestre] revisión diaria →', JSON.stringify(r)))
     .catch(e => console.warn('[Trimestre] revisión:', e.message)), { timezone: 'Europe/Madrid' });
+  // Cierre del MES: el día 5 (o el lunes si cae en finde), WhatsApp a Álex y oficina con lo que falta del mes anterior.
+  cron.schedule('15 9 1-7 * 1-5', () => require('./cierreMes').avisoDia5()
+    .then(r => r.enviado && console.log(`[CierreMes] aviso ${r.mes} → ${r.n}`))
+    .catch(e => console.warn('[CierreMes] aviso:', e.message)), { timezone: 'Europe/Madrid' });
   cron.schedule('0 18 * * 1-5', () => require('./compras').resumenPendientes().catch(e => console.warn('[Compras] resumen:', e.message)), { timezone: 'Europe/Madrid' });
 
   // Resumen diario INTERNO (al admin) 08:30 lun–vie

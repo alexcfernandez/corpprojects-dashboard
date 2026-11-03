@@ -2428,8 +2428,30 @@ app.get('/api/trimestre/paquete', requireAuthOficina, async (req, res) => {
   req.setTimeout && req.setTimeout(300000);
   try {
     const { buf, nombre } = await require('./trimestre').paqueteGestoria(req.query.q || null);
+    // Paquete de un MES: el paso «paquete» de su cierre queda hecho solo.
+    if (/^\d{4}-\d{2}$/.test(String(req.query.q || ''))) { try { const q = (await _quienPush(req)) || {}; await require('./cierreMes').marcar(req.query.q, 'paquete', true, q.name || 'Oficina'); } catch (e) {} }
     res.set('Content-Disposition', `attachment; filename="${nombre}"`).type('application/zip').send(buf);
   } catch (err) { res.status(400).json({ error: err.message }); }
+});
+// ── Cierre del MES (pasos marcables; el trimestre = sus 3 meses) ──
+app.get('/api/cierre-mes', requireAuthOficina, async (req, res) => {
+  try {
+    const C = require('./cierreMes');
+    if (/^\d{4}-T[1-4]$/.test(String(req.query.q || ''))) return res.json(await C.delTrimestre(req.query.q));
+    res.json(await C.get(req.query.q || require('./trimestre').mesPorDefecto()));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/cierre-mes/:mes/paso', requireAuthOficina, express.json(), async (req, res) => {
+  try { const q = (await _quienPush(req)) || {}; const b = req.body || {}; res.json(await require('./cierreMes').marcar(req.params.mes, b.k, b.hecho !== false, q.name || 'Oficina')); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/cierre-mes/:mes/cerrar', requireAuthOficina, async (req, res) => {
+  try { const q = (await _quienPush(req)) || {}; res.json(await require('./cierreMes').cerrar(req.params.mes, q.name || 'Oficina')); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/cierre-mes/:mes/reabrir', requireAuthOficina, async (req, res) => {
+  try { const q = (await _quienPush(req)) || {}; res.json(await require('./cierreMes').reabrir(req.params.mes, q.name || 'Oficina')); }
+  catch (err) { res.status(400).json({ error: err.message }); }
 });
 // ── COPIAS DE SEGURIDAD en Google Drive ──
 app.get('/api/backup/estado', requireAuthOficina, async (req, res) => {

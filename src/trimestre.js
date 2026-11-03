@@ -13,13 +13,22 @@ async function getDB() { return require('./db').getDB(); }
 const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
 
 // '2026-T3' → { q, y, n, from:'2026-07-01', to:'2026-09-30', label }
+// '2026-10' → el MES (3/11/2026, Álex: «que lo hagan cada mes, que en el trimestre no les pille de golpe»):
+// mismo objeto, con n = su trimestre, mes = 10 y tag/nombre para archivos y textos.
+const MESES_NOM = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 function rango(q) {
+  const mm = /^(\d{4})-(\d{2})$/.exec(String(q || ''));
+  if (mm && Number(mm[2]) >= 1 && Number(mm[2]) <= 12) {
+    const y = Number(mm[1]), mes = Number(mm[2]);
+    const fin = new Date(Date.UTC(y, mes, 0)).getUTCDate();
+    return { q, y, n: Math.ceil(mes / 3), mes, tipo: 'mes', nombre: 'mes', tag: `${mm[2]}_${MESES_NOM[mes - 1]}`, from: `${q}-01`, to: `${q}-${fin}`, label: `${MESES_NOM[mes - 1]} ${y}` };
+  }
   const m = /^(\d{4})-T([1-4])$/.exec(String(q || ''));
-  if (!m) throw new Error('Trimestre no válido (ej. 2026-T3)');
+  if (!m) throw new Error('Periodo no válido (ej. 2026-10 o 2026-T3)');
   const y = Number(m[1]), n = Number(m[2]);
   const mIni = (n - 1) * 3 + 1, mFin = n * 3;
   const fin = new Date(Date.UTC(y, mFin, 0)).getUTCDate();
-  return { q, y, n, from: `${y}-${String(mIni).padStart(2, '0')}-01`, to: `${y}-${String(mFin).padStart(2, '0')}-${fin}`, label: `${n}º trimestre ${y}` };
+  return { q, y, n, tipo: 'trimestre', nombre: 'trimestre', tag: `Q${n}`, from: `${y}-${String(mIni).padStart(2, '0')}-01`, to: `${y}-${String(mFin).padStart(2, '0')}-${fin}`, label: `${n}º trimestre ${y}` };
 }
 // El trimestre que toca cerrar: hasta el día 20 del mes siguiente, el anterior.
 function trimestrePorDefecto(hoy = new Date()) {
@@ -29,6 +38,14 @@ function trimestrePorDefecto(hoy = new Date()) {
   if (m === primerMes && d <= 20) return n === 1 ? `${y - 1}-T4` : `${y}-T${n - 1}`;
   return `${y}-T${n}`;
 }
+// El mes que toca cerrar: hasta el día 10, el anterior; luego, el que está en curso.
+function mesPorDefecto(hoy = new Date()) {
+  const y = hoy.getFullYear(), m = hoy.getMonth() + 1, d = hoy.getDate();
+  if (d <= 10) return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+  return `${y}-${String(m).padStart(2, '0')}`;
+}
+// Los 3 meses de un trimestre ('2026-T4' → ['2026-10','2026-11','2026-12']).
+function mesesDe(q) { const R = rango(q); if (R.tipo === 'mes') return [R.q]; return [0, 1, 2].map(i => `${R.y}-${String((R.n - 1) * 3 + 1 + i).padStart(2, '0')}`); }
 const enRango = (f, R) => !!f && String(f).slice(0, 10) >= R.from && String(f).slice(0, 10) <= R.to;
 const fechaDe = c => c.fecha || (c.createdAt ? new Date(c.createdAt).toISOString().slice(0, 10) : null);
 
@@ -220,7 +237,7 @@ async function resumenEmitidasXlsx(q) {
   const R = rango(q || trimestrePorDefecto());
   const em = (await emitidas(R)).sort((a, b) => a.fecha.localeCompare(b.fecha) || String(a.numero).localeCompare(String(b.numero)));
   const filas = [
-    [`Facturas emitidas Q${R.n}`], [`CORP PROJECTS HOLDING SL — Facturas emitidas ${R.n}T ${R.y}`], ['CIF B09899253 · para Som Assessors'],
+    [`Facturas emitidas ${R.tag}`], [`CORP PROJECTS HOLDING SL — Facturas emitidas ${R.label}`], ['CIF B09899253 · para Som Assessors'],
     ['Referencia', 'Fecha', 'Cliente', 'Base', 'IVA', 'Total', 'Cobrado', 'Pendiente'],
   ];
   const sub = () => ({ base: 0, iva: 0, total: 0, cobrado: 0, pendiente: 0 });
@@ -234,20 +251,20 @@ async function resumenEmitidasXlsx(q) {
     for (const [k, v] of [['base', f.base], ['iva', f.iva], ['total', f.total], ['cobrado', f.cobrado], ['pendiente', pend]]) { s[k] += Number(v) || 0; T[k] += Number(v) || 0; }
   }
   cerrarMes();
-  filas.push(['', '', 'TOTAL TRIMESTRE', r2(T.base), r2(T.iva), r2(T.total), r2(T.cobrado), r2(T.pendiente)]);
+  filas.push(['', '', `TOTAL ${R.nombre.toUpperCase()}`, r2(T.base), r2(T.iva), r2(T.total), r2(T.cobrado), r2(T.pendiente)]);
   const ws = XLSX.utils.aoa_to_sheet(filas);
   for (const addr of Object.keys(ws)) { const c = ws[addr]; if (addr[0] !== '!' && c.t === 'n' && /^[D-H]\d+$/.test(addr)) c.z = '#,##0.00 "€"'; }
   ws['!cols'] = [{ wch: 12 }, { wch: 11 }, { wch: 44 }, { wch: 13 }, { wch: 12 }, { wch: 13 }, { wch: 13 }, { wch: 13 }];
-  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, `Emitidas Q${R.n}`);
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, `Emitidas ${R.tag}`);
   const faltanIva = em.filter(f => f.iva == null).length;
-  return { buf: XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }), nombre: `3_Resumen_facturas_emitidas_Q${R.n}.xlsx`, faltanIva };
+  return { buf: XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }), nombre: `3_Resumen_facturas_emitidas_${R.tag}.xlsx`, faltanIva };
 }
 
 // ZIP con los PDF oficiales de StelOrder, en carpetas por mes y con el nombre del 2º trimestre.
 async function zipEmitidas(q) {
   const R = rango(q || trimestrePorDefecto());
   const { archivos, fallos } = await _pdfsEmitidas(R);
-  return { buf: require('./zip').crearZip(archivos), nombre: `1_Facturas_emitidas_Q${R.n}_${R.y}.zip`, n: archivos.length - (fallos.length ? 1 : 0), fallos };
+  return { buf: require('./zip').crearZip(archivos), nombre: `1_Facturas_emitidas_${R.tag}_${R.y}.zip`, n: archivos.length - (fallos.length ? 1 : 0), fallos };
 }
 async function zipEmitidasArchivos(q) { return (await _pdfsEmitidas(rango(q))).archivos; }
 async function _pdfsEmitidas(R) {
@@ -312,19 +329,19 @@ async function _archivosRecibidasCompras(R, carpeta = '2_Facturas_recibidas') {
       Pagada: pg.length ? pg.map(p => `${p.fecha.split('-').reverse().join('/')} ${p.origen}${p.persona ? ' (' + p.persona + ')' : ''}`).join(' + ') : 'Sin pago encontrado',
       'En StelOrder': gm ? `Sí (${gm.numero})` : 'No', Archivo: nombres.join(', ') || 'SIN ARCHIVO', Origen: c.estado === 'archivo' ? 'Correo' : ({ email: 'Correo', whatsapp: 'WhatsApp' })[c.origen] || 'Foto en Compras' });
   }
-  const ws = XLSX.utils.json_to_sheet(filas.length ? filas : [{ Proveedor: 'No hay facturas de Compras en este trimestre' }]);
+  const ws = XLSX.utils.json_to_sheet(filas.length ? filas : [{ Proveedor: `No hay facturas de Compras en este ${R.nombre}` }]);
   for (const k of Object.keys(ws)) { const cel = ws[k]; if (k[0] !== '!' && cel.t === 'n' && /^[EFG]\d+$/.test(k)) cel.z = '#,##0.00 "€"'; }
   ws['!cols'] = [{ wch: 11 }, { wch: 32 }, { wch: 18 }, { wch: 8 }, { wch: 11 }, { wch: 10 }, { wch: 11 }, { wch: 28 }, { wch: 40 }, { wch: 18 }, { wch: 50 }, { wch: 14 }];
-  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, `Compras Q${R.n}`);
-  archivos.push({ nombre: `${carpeta}/Indice_facturas_de_Compras_Q${R.n}.xlsx`, datos: XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) });
-  if (pendientes.length) archivos.push({ nombre: `${carpeta}/_POR_REVISAR_EN_COMPRAS.txt`, datos: Buffer.from(`${pendientes.length === 1 ? 'Esta factura del trimestre sigue' : `Estas ${pendientes.length} facturas del trimestre siguen`} sin revisar en Compras y NO va(n) en esta carpeta.\nRevísalas y vuelve a descargar:\n\n` + pendientes.map(c => `${c.fecha}  ${c.proveedor || '?'}  ${c.numero || ''}  ${c.total != null ? c.total + ' €' : ''}`).join('\n') + '\n', 'utf8') });
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, `Compras ${R.tag}`);
+  archivos.push({ nombre: `${carpeta}/Indice_facturas_de_Compras_${R.tag}.xlsx`, datos: XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) });
+  if (pendientes.length) archivos.push({ nombre: `${carpeta}/_POR_REVISAR_EN_COMPRAS.txt`, datos: Buffer.from(`${pendientes.length === 1 ? `Esta factura del ${R.nombre} sigue` : `Estas ${pendientes.length} facturas del ${R.nombre} siguen`} sin revisar en Compras y NO va(n) en esta carpeta.\nRevísalas y vuelve a descargar:\n\n` + pendientes.map(c => `${c.fecha}  ${c.proveedor || '?'}  ${c.numero || ''}  ${c.total != null ? c.total + ' €' : ''}`).join('\n') + '\n', 'utf8') });
   archivos.sort((a, b) => a.nombre.localeCompare(b.nombre));
   return { archivos, n: filas.length, pendientes: pendientes.length };
 }
 async function zipRecibidasCompras(q) {
   const R = rango(q || trimestrePorDefecto());
   const { archivos, n, pendientes } = await _archivosRecibidasCompras(R);
-  return { buf: require('./zip').crearZip(archivos), nombre: `2_Facturas_recibidas_Q${R.n}_${R.y}.zip`, n, pendientes };
+  return { buf: require('./zip').crearZip(archivos), nombre: `2_Facturas_recibidas_${R.tag}_${R.y}.zip`, n, pendientes };
 }
 
 // ── PUNTEO DEL BANCO y documentos para la gestoría ───────────────────────────
@@ -634,7 +651,7 @@ function borrador303(e, p) {
 function hojaMovimientos(XLSX, p, filasMov, titulo) {
   filasMov = filasMov || p.filas;
   const filas = [
-    [`Movimientos ${titulo ? 'tarjetas' : 'banco'} Q${p.n}`], [`CORP PROJECTS HOLDING SL — ${titulo || 'Movimientos bancarios'} ${p.n}T ${p.y}`], [`${titulo ? 'Revolut Business y tarjetas de crédito Santander' : 'Cuenta ES35 0049 1807 36 2210700012'} · ${p.from.split('-').reverse().join('/')}–${p.to.split('-').reverse().join('/')} · para Som Assessors`],
+    [`Movimientos ${titulo ? 'tarjetas' : 'banco'} ${p.tag}`], [`CORP PROJECTS HOLDING SL — ${titulo || 'Movimientos bancarios'} ${p.label}`], [`${titulo ? 'Revolut Business y tarjetas de crédito Santander' : 'Cuenta ES35 0049 1807 36 2210700012'} · ${p.from.split('-').reverse().join('/')}–${p.to.split('-').reverse().join('/')} · para Som Assessors`],
     ['Fecha', 'Concepto', 'Cargo', 'Abono', 'Saldo', 'Qué es', 'Factura / documento', 'Proveedor / cliente', 'Estado', 'Nota', 'Tarjeta / cuenta', 'Quién'],
   ];
   const TIPO = { cobro: 'Cobro', pago_tarjeta: 'Compra con tarjeta', recibo: 'Recibo domiciliado', pago_transferencia: 'Transferencia', nomina: 'Nómina', seguridad_social: 'Seguridad Social', impuestos: 'Impuestos', traspaso_propio: 'Traspaso propio', liquidacion_tarjeta: 'Liquidación tarjeta crédito', comision_banco: 'Comisión banco', efectivo: 'Efectivo', prestamo: 'Préstamo', devolucion: 'Devolución' };
@@ -647,7 +664,7 @@ function hojaMovimientos(XLSX, p, filasMov, titulo) {
     if (f.importe < 0) { c += f.importe; TC += f.importe; } else { a += f.importe; TA += f.importe; }
     filas.push([f.fecha.split('-').reverse().join('/'), f.concepto, f.importe < 0 ? f.importe : null, f.importe > 0 ? f.importe : null, f.saldo, TIPO[f.tipo] || f.tipo, f.docs.map(d => d.ref + (d.refProveedor ? ` (${d.refProveedor})` : '')).join(' + '), [...new Set(f.docs.map(d => d.tercero))].join(' + '), EST[f.estado] || f.estado, f.nota || '', f.origen || '', f.persona || '']);
   }
-  cerrar(); filas.push(['', 'TOTAL TRIMESTRE', r2(TC), r2(TA)]);
+  cerrar(); filas.push(['', `TOTAL ${String(p.nombre || 'trimestre').toUpperCase()}`, r2(TC), r2(TA)]);
   const ws = XLSX.utils.aoa_to_sheet(filas);
   for (const k of Object.keys(ws)) { const cel = ws[k]; if (k[0] !== '!' && cel.t === 'n' && /^[C-E]\d+$/.test(k)) cel.z = '#,##0.00 "€"'; }
   ws['!cols'] = [{ wch: 11 }, { wch: 70 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 22 }, { wch: 28 }, { wch: 30 }, { wch: 16 }, { wch: 40 }, { wch: 18 }, { wch: 16 }];
@@ -656,7 +673,7 @@ function hojaMovimientos(XLSX, p, filasMov, titulo) {
 
 function hojaIndiceRecibidas(XLSX, R, rec, avisos) {
   const dupIds = new Set(avisos.duplicadas.map(d => d.duplicada.id)), iva0Ids = new Set(avisos.iva0.map(r => r.id));
-  const filas = [[`Facturas recibidas Q${R.n}`], [`CORP PROJECTS HOLDING SL — Facturas recibidas ${R.n}T ${R.y} (indice)`], [`${rec.length} facturas de compra - fuente: Libro StelOrder - para Som Assessors`],
+  const filas = [[`Facturas recibidas ${R.tag}`], [`CORP PROJECTS HOLDING SL — Facturas recibidas ${R.label} (indice)`], [`${rec.length} facturas de compra - fuente: Libro StelOrder - para Som Assessors`],
     ['Ref StelOrder', 'Proveedor', 'No doc', 'Fecha', 'Base', '% IVA', 'IVA', 'Total', 'Aviso']];
   const MES = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
   let mes = null, sb = 0, si = 0, st = 0, TB = 0, TI = 0, TT = 0;
@@ -667,7 +684,7 @@ function hojaIndiceRecibidas(XLSX, R, rec, avisos) {
     filas.push([r.numero, r.proveedor, r.refProveedor, r.fecha.split('-').reverse().join('/'), r.base, pct != null ? pct + '%' : '', r.iva, r.total, dupIds.has(r.id) ? 'DUPLICADA en StelOrder — no contar' : iva0Ids.has(r.id) ? 'IVA 0% en StelOrder: comprobar el ticket' : '']);
     if (!dupIds.has(r.id)) { sb += Number(r.base) || 0; si += Number(r.iva) || 0; st += Number(r.total) || 0; TB += Number(r.base) || 0; TI += Number(r.iva) || 0; TT += Number(r.total) || 0; }
   }
-  cerrar(); filas.push(['', 'TOTAL TRIMESTRE (sin duplicadas)', '', '', r2(TB), '', r2(TI), r2(TT)]);
+  cerrar(); filas.push(['', `TOTAL ${String(R.nombre || 'trimestre').toUpperCase()} (sin duplicadas)`, '', '', r2(TB), '', r2(TI), r2(TT)]);
   const ws = XLSX.utils.aoa_to_sheet(filas);
   for (const k of Object.keys(ws)) { const cel = ws[k]; if (k[0] !== '!' && cel.t === 'n' && /^[EGH]\d+$/.test(k)) cel.z = '#,##0.00 "€"'; }
   ws['!cols'] = [{ wch: 13 }, { wch: 34 }, { wch: 20 }, { wch: 11 }, { wch: 12 }, { wch: 7 }, { wch: 11 }, { wch: 12 }, { wch: 38 }];
@@ -682,14 +699,14 @@ function textoGestoria(e, p, b) {
   const efectivo = grupo('efectivo'), sinDoc = p.filas.filter(f => f.estado === 'sin_documento' && f.importe < 0);
   const lineas = [
     `Hola Rubén,`, ``,
-    `Ya tienes toda la documentación del ${e.label} en la carpeta de Drive (PARA_GESTORIA_Q${e.n}_${e.y}).`, ``,
+    `Ya tienes toda la documentación ${e.tipo === 'mes' ? 'de' : 'del'} ${e.label} en la carpeta de Drive (PARA_GESTORIA_${e.tag}_${e.y}).`, ``,
     `Dentro está organizada así:`,
     `- 1_Facturas_emitidas: PDFs separados por mes.`,
     `- 2_Facturas_recibidas: PDFs separados por mes (los que se revisan en nuestro programa), el índice del libro de StelOrder (${e.resumen.recibidas.n} facturas de compra) y el índice de Compras (columna «En StelOrder» para no contar dos veces).`,
-    `- 3_Resumen_facturas_emitidas_Q${e.n}.xlsx`,
-    `- 4_Movimientos_bancarios_Q${e.n}.xlsx — cada movimiento con su factura al lado (${p.resumen.punteados} punteados de ${p.resumen.movimientos}).`,
+    `- 3_Resumen_facturas_emitidas_${e.tag}.xlsx`,
+    `- 4_Movimientos_bancarios_${e.tag}.xlsx — cada movimiento con su factura al lado (${p.resumen.punteados} punteados de ${p.resumen.movimientos}).`,
     `- 5_Extractos_tarjeta_credito y 6_Extracto_banco.`, ``,
-    `Sobre el 303, por si te sirve de punto de partida (los números finales ya los ajustas tú):`,
+    e.tipo === 'mes' ? `Sobre el IVA del mes, para ir viéndolo (el 303 es trimestral y los números finales ya los ajustas tú):` : `Sobre el 303, por si te sirve de punto de partida (los números finales ya los ajustas tú):`,
     `- IVA repercutido: ${eur(b.repercutido)} (${b.nEmitidas} facturas emitidas, base ${eur(b.base)}).`,
     `- IVA soportado: ${eur(b.soportadoCorregido)}${b.dupIva ? ` (ya restados ${eur(b.dupIva)} de IVA de facturas duplicadas en StelOrder)` : ''}.`,
     `- Resultado que me sale: ${eur(b.resultado)} ${b.resultado >= 0 ? 'a ingresar' : 'a compensar'}.`, ``,
@@ -712,7 +729,7 @@ function textoGestoria(e, p, b) {
   if (dietasTrim.length) lineas.push(`${n++}. Comidas de trabajo pagadas por la empresa (dietas, trabajadores desplazados a obra): ${dietasTrim.length} (${eur(dietasTrim.reduce((s, m) => s - m.importe, 0))}). Detalle con quién comió en la hoja «Comidas y dietas».`);
   const bonpreu = p.filas.filter(f => f.estado === 'revisar' && /factura por mes/.test(f.nota || ''));
   if (bonpreu.length) lineas.push(`${n++}. Proveedores que facturan una vez al mes y no cuadran con lo pagado con tarjeta (${[...new Set(bonpreu.map(f => f.docs[0] && f.docs[0].tercero))].join(', ')}): la diferencia puede ser gasto personal. Señalado en el Excel.`);
-  if (n === 1) lineas.push(`- Nada especial este trimestre.`);
+  if (n === 1) lineas.push(`- Nada especial este ${e.nombre}.`);
   lineas.push(``, `Las liquidaciones de tarjeta, los traspasos entre cuentas propias, nóminas, Seguridad Social e impuestos no los he contado como gasto con factura.`, ``, `Cualquier cosa que te falte o que prefieras de otra forma, me dices.`, ``, `Gracias,`, `Àlex`);
   return lineas.join('\n');
 }
@@ -727,8 +744,8 @@ async function paqueteGestoria(q) {
   const libro = (ws, nombre) => { const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, nombre); return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }); };
   const wbMov = XLSX.utils.book_new();
   const deBanco = p.filas.filter(f => f.origen === 'Cuenta Santander'), deTarjeta = p.filas.filter(f => f.origen !== 'Cuenta Santander');
-  XLSX.utils.book_append_sheet(wbMov, hojaMovimientos(XLSX, p, deBanco), `Banco Q${R.n}`);
-  if (deTarjeta.length) XLSX.utils.book_append_sheet(wbMov, hojaMovimientos(XLSX, p, deTarjeta, 'Movimientos de tarjetas'), `Tarjetas Q${R.n}`);
+  XLSX.utils.book_append_sheet(wbMov, hojaMovimientos(XLSX, p, deBanco), `Banco ${R.tag}`);
+  if (deTarjeta.length) XLSX.utils.book_append_sheet(wbMov, hojaMovimientos(XLSX, p, deTarjeta, 'Movimientos de tarjetas'), `Tarjetas ${R.tag}`);
   // Lista de facturas que hay que pedir, por comercio
   const pedir = p.filas.filter(f => f.estado === 'sin_documento' && f.importe < 0).sort((a, b) => String(comercio(a.concepto)).localeCompare(comercio(b.concepto)) || a.fecha.localeCompare(b.fecha))
     .map(f => ({ Comercio: comercio(f.concepto), Fecha: f.fecha, Importe: -f.importe, Quién: f.persona || '', 'Tarjeta / cuenta': f.origen || '', Concepto: f.concepto, Nota: f.nota || '' }));
@@ -748,15 +765,15 @@ async function paqueteGestoria(q) {
   XLSX.utils.book_append_sheet(wbMov, XLSX.utils.json_to_sheet(corregir.length ? corregir : [{ Qué: 'Nada que corregir' }]), 'Corregir en StelOrder');
   const archivos = [];
   const emZip = await zipEmitidasArchivos(R.q);
-  archivos.push(...emZip.map(a => ({ nombre: `PARA_GESTORIA_Q${R.n}_${R.y}/${a.nombre}`, datos: a.datos })));
+  archivos.push(...emZip.map(a => ({ nombre: `PARA_GESTORIA_${R.tag}_${R.y}/${a.nombre}`, datos: a.datos })));
   const recCompras = await _archivosRecibidasCompras(R);
-  archivos.push(...recCompras.archivos.map(a => ({ nombre: `PARA_GESTORIA_Q${R.n}_${R.y}/${a.nombre}`, datos: a.datos })));
-  archivos.push({ nombre: `PARA_GESTORIA_Q${R.n}_${R.y}/2_Facturas_recibidas/Indice_facturas_recibidas_Q${R.n}.xlsx`, datos: libro(hojaIndiceRecibidas(XLSX, R, recTrim, p.avisos), `Recibidas Q${R.n}`) });
-  archivos.push({ nombre: `PARA_GESTORIA_Q${R.n}_${R.y}/${resEm.nombre}`, datos: resEm.buf });
-  archivos.push({ nombre: `PARA_GESTORIA_Q${R.n}_${R.y}/4_Movimientos_bancarios_Q${R.n}.xlsx`, datos: XLSX.write(wbMov, { type: 'buffer', bookType: 'xlsx' }) });
+  archivos.push(...recCompras.archivos.map(a => ({ nombre: `PARA_GESTORIA_${R.tag}_${R.y}/${a.nombre}`, datos: a.datos })));
+  archivos.push({ nombre: `PARA_GESTORIA_${R.tag}_${R.y}/2_Facturas_recibidas/Indice_facturas_recibidas_${R.tag}.xlsx`, datos: libro(hojaIndiceRecibidas(XLSX, R, recTrim, p.avisos), `Recibidas ${R.tag}`) });
+  archivos.push({ nombre: `PARA_GESTORIA_${R.tag}_${R.y}/${resEm.nombre}`, datos: resEm.buf });
+  archivos.push({ nombre: `PARA_GESTORIA_${R.tag}_${R.y}/4_Movimientos_bancarios_${R.tag}.xlsx`, datos: XLSX.write(wbMov, { type: 'buffer', bookType: 'xlsx' }) });
   const texto = textoGestoria(e, p, b);
-  archivos.push({ nombre: `PARA_GESTORIA_Q${R.n}_${R.y}/LEEME_para_Som_Assessors.txt`, datos: Buffer.from(texto, 'utf8') });
-  return { buf: require('./zip').crearZip(archivos), nombre: `PARA_GESTORIA_Q${R.n}_${R.y}.zip`, texto, b, resumenPunteo: p.resumen };
+  archivos.push({ nombre: `PARA_GESTORIA_${R.tag}_${R.y}/LEEME_para_Som_Assessors.txt`, datos: Buffer.from(texto, 'utf8') });
+  return { buf: require('./zip').crearZip(archivos), nombre: `PARA_GESTORIA_${R.tag}_${R.y}.zip`, texto, b, resumenPunteo: p.resumen };
 }
 
 // Cada mañana: se recalcula y se guarda; los lunes, resumen a oficina si hay pendientes
@@ -885,4 +902,4 @@ async function buscar(texto) {
   };
 }
 
-module.exports = { reglasGestoria, avisoNif, olvidarMapaPagos, enlazarCompra, todasRecibidas, rango, trimestrePorDefecto, estado, excel, revisionDiaria, resumenEmitidasXlsx, zipEmitidas, zipRecibidasCompras, punteo, paqueteGestoria, borrador303, textoGestoria, justificar, deshacerJustificacion, comercio, confirmarDesdePunteo, buscar, recibidasPunteo, mapaPagos, todasEmitidas };
+module.exports = { mesPorDefecto, mesesDe, reglasGestoria, avisoNif, olvidarMapaPagos, enlazarCompra, todasRecibidas, rango, trimestrePorDefecto, estado, excel, revisionDiaria, resumenEmitidasXlsx, zipEmitidas, zipRecibidasCompras, punteo, paqueteGestoria, borrador303, textoGestoria, justificar, deshacerJustificacion, comercio, confirmarDesdePunteo, buscar, recibidasPunteo, mapaPagos, todasEmitidas };
