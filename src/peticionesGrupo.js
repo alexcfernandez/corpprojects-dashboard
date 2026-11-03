@@ -334,7 +334,19 @@ async function deCorreo({ gmailId, de, asunto, cuerpo, fecha = new Date(), avisa
 // sin aviso suelto (sale en el de las 8:15 y en la pregunta de quién va).
 const EXTRA_RECADO = `Esto es un RECADO que un cliente dejó por TELÉFONO a SecretarIA (la IA que coge las llamadas de Corp cuando nadie puede). Casi siempre es una sola petición. Si dice que ya llamó antes, que no hemos ido o que vuelve a pasar, es seguimiento. No hay teléfono completo: no lo inventes.`;
 const JID_VOZ = 'voz:corp', GRUPO_VOZ = 'Llamadas · SecretarIA';
-async function deRecado({ llamada, fecha = new Date(), urgente = false, resumen, titulo = null, contacto = null, final = '', _llamar = null, _cat = null, _enviar = null, _auto = null } = {}) {
+// Quién llama lo sabe Nuvo Voz por el NÚMERO (contacto.externalId); lo que diga quien llama es solo una pista (3/11/2026,
+// Álex: en la prueba llamó él desde su móvil, dijo «Bellpuig 41» y salió una incidencia de ILLA VERDA). Todo automático solo
+// si el cliente del recado es el del número o de su misma familia de StelOrder (un administrador por una de sus comunidades).
+// Si no cuadra o el número es desconocido, la petición queda «por confirmar»: sin incidencia ni «¿Quién va?» hasta que la
+// oficina la confirme (o le cambie el cliente) en Inicio → Peticiones; si es urgente, el aviso va solo a Álex y oficina.
+function verificar(clienteId, accIdNumero, clientMap = {}) {
+  if (!accIdNumero) return { ok: false, motivo: 'número desconocido u oculto' };
+  if (!clienteId || String(clienteId) === String(accIdNumero)) return { ok: true };
+  const fam = id => { const f = (clientMap[String(id)] || {}).family; return f && !/^sin familia$/i.test(f) ? f : null; };
+  if (fam(clienteId) && fam(clienteId) === fam(accIdNumero)) return { ok: true, familia: fam(clienteId) };
+  return { ok: false, motivo: 'el número es de otro cliente' };
+}
+async function deRecado({ llamada, fecha = new Date(), urgente = false, resumen, titulo = null, contacto = null, final = '', _llamar = null, _cat = null, _enviar = null, _auto = null, _clientMap = null } = {}) {
   const db = await getDB();
   if (llamada && await db.collection(COL).findOne({ llamadas: String(llamada) })) return { ya: true };
   urgente = !!urgente || /^\s*URGENTE\b/i.test(resumen || '');
@@ -342,7 +354,8 @@ async function deRecado({ llamada, fecha = new Date(), urgente = false, resumen,
   const ext = contacto && String(contacto.externalId || '').trim();
   const accId = ext && /^\d+$/.test(ext) && cat.nombre(ext) ? ext : null;
   const quien = `${corto(contacto && contacto.nombre, 60) || 'Cliente sin identificar'} (teléfono acabado en ${String(final || '').slice(-3) || '¿?'})`;
-  const extra = EXTRA_RECADO + (accId ? `\nEl número que llamó es del cliente de StelOrder ${accId} · ${cat.nombre(accId)}: usa ese cliente_id salvo que el recado hable claramente de otra comunidad.` : '');
+  const extra = EXTRA_RECADO + (accId ? `\nSegún su número, quien llama es el cliente de StelOrder ${accId} · ${cat.nombre(accId)}. Si el recado es de ese cliente usa ese cliente_id; si habla claramente de otra comunidad, pon la de la que habla.` : '\nEl número que llamó no es de ningún cliente conocido.');
+  const clientMap = _clientMap || ((await require('./stelorder').getClients().catch(() => null)) || {}).clientMap || {};
   const texto = corto(resumen, 2500);
   const msgs = [{ fecha: new Date(fecha), quien, texto, fotoIds: [], nMedia: 0 }];
   const memoria = await require('./memoria').paraPrompt(texto, { paraGrupo: JID_VOZ, limite: 40 }).catch(() => '');
@@ -352,6 +365,8 @@ async function deRecado({ llamada, fecha = new Date(), urgente = false, resumen,
     if (corto(titulo, 60)) set.titulo = corto(titulo, 60);
     if (!p.clienteId && accId) Object.assign(set, { clienteId: accId, clienteStel: cat.nombre(accId) || null });
     if (urgente) set.urgente = true;
+    const v = verificar(set.clienteId || p.clienteId, accId, clientMap);
+    if (!v.ok) set.porConfirmar = { motivo: v.motivo, llama: accId ? { id: accId, nombre: cat.nombre(accId) || null } : null, at: new Date() };
     Object.assign(p, set);
     await db.collection(COL).updateOne({ _id: p._id }, { $set: set, $addToSet: { llamadas: String(llamada || '') } });
   }
@@ -362,17 +377,40 @@ async function deRecado({ llamada, fecha = new Date(), urgente = false, resumen,
   for (const p of [...r.nuevas, ...r.actualizadas]) _memo(p);
   const nuevas = r.nuevas.filter(p => !sinAccion(p));
   let auto = {};
-  try { auto = await (_auto || _autoIncidencias)(db, { _id: JID_VOZ, autoIncidencia: true }, nuevas); } catch (e) { console.warn('[Peticiones] recado incidencias:', e.message); }
+  try { auto = await (_auto || _autoIncidencias)(db, { _id: JID_VOZ, autoIncidencia: true }, nuevas.filter(p => !p.porConfirmar)); } catch (e) { console.warn('[Peticiones] recado incidencias:', e.message); }
   let avisado = false;
   if (urgente) {
     const lista = [...nuevas, ...r.actualizadas];
-    const txt = `🚨 *URGENTE · recado de SecretarIA* (${fmt(fecha)})\n${quien}\n\n` + (lista.length ? _textoAviso(GRUPO_VOZ, nuevas, r.actualizadas, auto) : `${texto}\n\nNo he sacado ninguna petición de esto: míralo tú.`);
+    const dudas = nuevas.filter(p => p.porConfirmar).map(p => `⚠️ *Por confirmar*: llama ${p.porConfirmar.llama ? `*${p.porConfirmar.llama.nombre}* (por su número)` : 'un número desconocido'} y dice ser de *${p.clienteStel || p.cliente}*. No he creado incidencia ni he preguntado quién va: confírmalo o cambia el cliente en Inicio → Peticiones.`);
+    const txt = `🚨 *URGENTE · recado de SecretarIA* (${fmt(fecha)})\n${quien}\n\n` + (lista.length ? _textoAviso(GRUPO_VOZ, nuevas, r.actualizadas, auto) : `${texto}\n\nNo he sacado ninguna petición de esto: míralo tú.`) + (dudas.length ? '\n\n' + dudas.join('\n') : '');
     const N = require('./notifications');
     for (const to of [...new Set([N.destinoDueno(), process.env.OFICINA_TELEFONO || '+34674013723'].filter(Boolean))]) {
       try { if (await (_enviar || N.sendWhatsAppTo)(to, txt, { importante: true }) !== false) avisado = true; } catch (e) { console.warn('[Peticiones] recado urgente:', e.message); }
     }
   }
-  return { jid: JID_VOZ, urgente, avisado, nuevas: nuevas.map(p => ({ id: String(p._id), cliente: p.clienteStel || p.cliente, resumen: p.resumen, incidencia: (auto[String(p._id)] || {}).incidencia || p.incidencia || null, error: (auto[String(p._id)] || {}).error || null })), actualizadas: r.actualizadas.map(p => String(p._id)) };
+  return { jid: JID_VOZ, urgente, avisado, nuevas: nuevas.map(p => ({ id: String(p._id), porConfirmar: p.porConfirmar ? p.porConfirmar.motivo : null, cliente: p.clienteStel || p.cliente, resumen: p.resumen, incidencia: (auto[String(p._id)] || {}).incidencia || p.incidencia || null, error: (auto[String(p._id)] || {}).error || null })), actualizadas: r.actualizadas.map(p => String(p._id)) };
+}
+
+// Botón «Confirmar» de una petición por confirmar (con otro cliente si se elige): sigue como una petición normal
+// (incidencia + «¿Quién va?»).
+async function confirmar(id, { clienteId = null } = {}, por = '', { _auto = null } = {}) {
+  if (!ObjectId.isValid(String(id))) throw new Error('Petición no encontrada');
+  const db = await getDB();
+  const p = await db.collection(COL).findOne({ _id: new ObjectId(String(id)) });
+  if (!p) throw new Error('Petición no encontrada');
+  if (!p.porConfirmar) throw new Error('Esta petición no está por confirmar');
+  const set = { confirmada: { por, at: new Date(), antes: p.porConfirmar } };
+  if (clienteId && String(clienteId) !== String(p.clienteId || '')) {
+    const { clientMap } = await require('./stelorder').getClients();
+    const c = clientMap[String(clienteId)];
+    if (!c) throw new Error('Ese cliente no está en StelOrder');
+    Object.assign(set, { clienteId: String(clienteId), clienteStel: c.name });
+  }
+  if (!(set.clienteId || p.clienteId)) throw new Error('Elige el cliente de StelOrder');
+  await db.collection(COL).updateOne({ _id: p._id }, { $set: set, $unset: { porConfirmar: '' } });
+  const q = { ...p, ...set }; delete q.porConfirmar;
+  const auto = (await (_auto || _autoIncidencias)(db, { _id: p.jid, autoIncidencia: true }, [q]))[String(p._id)] || {};
+  return { ok: true, incidencia: auto.incidencia || null, error: auto.error || null };
 }
 
 // ── Historial: chat exportado de WhatsApp (.txt) ──
@@ -531,7 +569,7 @@ async function crearIncidencia(id, por = '') {
   const { clientMap } = await require('./stelorder').getClients().catch(() => ({ clientMap: {} }));
   const descripcion = [tituloPeticion(p), '', p.resumen, ...detalle(p, { clientMap }), '', ...original(p)].join('\n').slice(0, 3800);
   const r = await require('./stelorder').crearIncidencia({ accId: p.clienteId, descripcion, tipoId: p.tipo === 'presupuesto' ? TIPO_INC.presupuesto : TIPO_INC.otro, requestedBy: por || 'Peticiones del grupo' });
-  await db.collection(COL).updateOne({ _id: p._id }, { $set: { incidencia: r.ref, incidenciaId: r.id || null, situacion: 'ya_hay_incidencia', incidenciaCreadaPor: por, incidenciaCreadaAt: new Date() } });
+  await db.collection(COL).updateOne({ _id: p._id }, { $set: { incidencia: r.ref, incidenciaId: r.id || null, situacion: 'ya_hay_incidencia', incidenciaCreadaPor: por, incidenciaCreadaAt: new Date() }, $unset: { porConfirmar: '' } });
   return { ok: true, ref: r.ref, id: r.id || null };
 }
 
@@ -603,4 +641,4 @@ ${pend.length ? `<h3 style="margin:16px 0 4px">Sigue abierto</h3>${tabla(pend.fi
   return { enviado: !!ok, to, subject, nuevas: nuevas.length, abiertas: pend.length };
 }
 
-module.exports = { _citaAlCalendario, deCorreo, deRecado, JID_VOZ, tituloPeticion, detalle, original, _limpiaCorreo, _jidCorreo, presupuestoEnviado, presupuestoDevuelto, refDePdf, crearIncidencia, resumenDiario, _ventana, analizar, importarChat, analizarHistorial, parsearChat, lista, marcar, marcarGrupo, _tanda, _textoAviso, _autoIncidencias, _sinAccion: sinAccion, _contexto, TIPOS };
+module.exports = { _citaAlCalendario, deCorreo, deRecado, confirmar, verificar, JID_VOZ, tituloPeticion, detalle, original, _limpiaCorreo, _jidCorreo, presupuestoEnviado, presupuestoDevuelto, refDePdf, crearIncidencia, resumenDiario, _ventana, analizar, importarChat, analizarHistorial, parsearChat, lista, marcar, marcarGrupo, _tanda, _textoAviso, _autoIncidencias, _sinAccion: sinAccion, _contexto, TIPOS };

@@ -112,6 +112,7 @@ async function crear(peticionId, { userId, fecha = null, hora = null, urgente = 
   const S = _stel || require('./stelorder');
   const p = await _peticion(db, peticionId);
   if (p.pedido && p.pedido.id) throw new Error(`Ya tiene el pedido ${p.pedido.ref}`);
+  if (p.porConfirmar) throw new Error('Esta petición está por confirmar (no sabemos si quien llamó es de ese cliente): confírmala primero');
   if (fecha && !/^\d{4}-\d{2}-\d{2}$/.test(String(fecha))) throw new Error('El día no se entiende');
   if (hora && !/^\d{1,2}:\d{2}$/.test(String(hora))) throw new Error('La hora no se entiende');
   if (!fecha) { fecha = null; hora = null; }

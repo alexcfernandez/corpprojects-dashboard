@@ -16,7 +16,7 @@ function fakeDB() {
     if (v && typeof v === 'object' && !(v instanceof Date) && Object.keys(v).some(c => c[0] === '$')) {
       return Object.entries(v).every(([op, w]) => op === '$in' ? (Array.isArray(x) ? x.some(y => w.includes(y)) : w.includes(x)) : op === '$lt' ? x < w : op === '$gte' ? x >= w : op === '$ne' ? x !== w : true);
     }
-    return Array.isArray(x) ? x.includes(v) : (v instanceof Date ? +x === +v : x === v);
+    return Array.isArray(x) ? x.includes(v) : (v instanceof Date ? +x === +v : (v && v._bsontype === 'ObjectId') ? String(x) === String(v) : x === v);
   });
   const upd = (d, u) => {
     for (const [k, v] of Object.entries(u.$set || {})) d[k] = v;
@@ -30,7 +30,7 @@ function fakeDB() {
     const l = cols[n] = cols[n] || [];
     return {
       _l: l,
-      insertOne: async d => { if (d._id == null) d._id = String(l.length + 1) + 'x'.repeat(23); if (l.some(x => x._id === d._id)) { const e = new Error('dup'); e.code = 11000; throw e; } l.push(d); return { insertedId: d._id }; },
+      insertOne: async d => { if (d._id == null) d._id = new (require('mongodb').ObjectId)(); if (l.some(x => x._id === d._id)) { const e = new Error('dup'); e.code = 11000; throw e; } l.push(d); return { insertedId: d._id }; },
       findOne: async q => l.find(d => ok(d, q)) || null,
       find: q => cursor(l.filter(d => ok(d, q))),
       updateOne: async (q, u, o = {}) => { let d = l.find(x => ok(x, q)); if (!d && o.upsert) { d = { _id: q._id }; l.push(d); } if (d) upd(d, u); return { matchedCount: d ? 1 : 0 }; },
@@ -151,7 +151,7 @@ test('deRecado: petición con el cliente del externalId, incidencia creada y Wha
   const prevO = process.env.OFICINA_TELEFONO, prevW = process.env.WHATSAPP_TO;
   process.env.OFICINA_TELEFONO = '+34600000002'; process.env.WHATSAPP_TO = '+34600000001';
   try {
-    const r = await PG.deRecado({ llamada: 'R1', fecha: new Date('2026-11-03T10:00:00Z'), urgente: false, resumen: 'URGENTE · Entra agua en el parking de Bellpuig 41', contacto: { nombre: 'Marta (presidenta)', externalId: '555' }, final: '456', _llamar, _cat: cat,
+    const r = await PG.deRecado({ llamada: 'R1', fecha: new Date('2026-11-03T10:00:00Z'), urgente: false, resumen: 'URGENTE · Entra agua en el parking de Bellpuig 41', contacto: { nombre: 'Marta (presidenta)', externalId: '555' }, final: '456', _llamar, _cat: cat, _clientMap: {},
       _auto: async (d, g, nuevas) => Object.fromEntries(nuevas.map(p => [String(p._id), { incidencia: 'INC00901' }])), _enviar: async (to, txt, o) => { enviados.push({ to, txt, o }); return true; } });
     assert.match(prompt, /cliente de StelOrder 555 · Ctat\. Bellpuig 41/);
     assert.match(prompt, /Marta \(presidenta\) \(teléfono acabado en 456\)/);
@@ -166,7 +166,7 @@ test('deRecado: petición con el cliente del externalId, incidencia creada y Wha
     assert.deepStrictEqual(await PG.deRecado({ llamada: 'R1', resumen: 'x', _llamar, _cat: cat }), { ya: true });
     // No urgente: sin WhatsApp suelto.
     enviados.length = 0;
-    await PG.deRecado({ llamada: 'R2', resumen: 'Presupuesto para pintar la escalera', contacto: null, final: '9', _llamar: async () => ({ peticiones: [{ msgs: [0], tipo: 'presupuesto', cliente: '¿?', resumen: 'Pintar escalera', que_hacer: 'Presupuesto', urgente: false, situacion: 'nuevo' }] }), _cat: cat, _auto: async () => ({}), _enviar: async (to, txt) => { enviados.push(txt); return true; } });
+    await PG.deRecado({ llamada: 'R2', resumen: 'Presupuesto para pintar la escalera', contacto: null, final: '9', _llamar: async () => ({ peticiones: [{ msgs: [0], tipo: 'presupuesto', cliente: '¿?', resumen: 'Pintar escalera', que_hacer: 'Presupuesto', urgente: false, situacion: 'nuevo' }] }), _cat: cat, _clientMap: {}, _auto: async () => ({}), _enviar: async (to, txt) => { enviados.push(txt); return true; } });
     assert.strictEqual(enviados.length, 0);
   } finally { dbm.getDB = real; process.env.OFICINA_TELEFONO = prevO; process.env.WHATSAPP_TO = prevW; if (prevO === undefined) delete process.env.OFICINA_TELEFONO; if (prevW === undefined) delete process.env.WHATSAPP_TO; }
 });
@@ -208,4 +208,41 @@ test('trabajos.crear: el pedido lleva título, producto según el tipo, descripc
     assert.strictEqual(pedido.descripcion, ['Fuga de agua en Bellpuig 41.', 'Dónde: ILLA VERDA · C/ Bellpuig 41, Girona', 'Contacto: Marta · teléfono acabado en 456 (completo en Nuvo Voz)', 'Nota de oficina: Llevar escalera', 'Llamada del 03/11/2026 a las 20:39 · atendida por SecretarIA (Nuvo Voz) · INC00654'].join('\n'));
     assert.match(pedido.notaPrivada, /^Recado completo:\nURGENTE · Fuga de agua/);
   } finally { dbm.getDB = real; users.getUser = realU; asig.setAssignment = realA; }
+});
+
+test('verificación por número: solo es automático si el recado es del cliente del número o de su familia', async () => {
+  const PG = require('../src/peticionesGrupo');
+  const cm = { 555: { name: 'ILLA VERDA', family: 'CINC' }, 556: { name: 'Bellpuig 43', family: 'CINC' }, 12043800: { name: 'Alex Castro', family: 'Particulares' }, 9: { name: 'Otro', family: 'Sin familia' }, 10: { name: 'Otro 2', family: 'Sin familia' } };
+  assert.deepStrictEqual(PG.verificar('555', '555', cm), { ok: true });
+  assert.deepStrictEqual(PG.verificar(null, '555', cm), { ok: true });
+  assert.strictEqual(PG.verificar('556', '555', cm).familia, 'CINC');
+  assert.strictEqual(PG.verificar('555', '12043800', cm).ok, false);
+  assert.strictEqual(PG.verificar('9', '10', cm).ok, false, '«Sin familia» no cuenta como mismo administrador');
+  assert.strictEqual(PG.verificar('555', null, cm).motivo, 'número desconocido u oculto');
+
+  // La prueba de Álex: llama desde su móvil (Alex Castro) y dice «Bellpuig 41» → por confirmar, sin incidencia, aviso urgente con la duda.
+  const dbm = require('../src/db'); const real = dbm.getDB; const db = fakeDB(); dbm.getDB = async () => db;
+  const cat = { clientes: [], incidencias: [], presupuestos: [], nombre: id => (cm[String(id)] || {}).name || '' };
+  const enviados = []; let auto = 0;
+  const prevW = process.env.WHATSAPP_TO; process.env.WHATSAPP_TO = '+34600000001';
+  try {
+    const r = await PG.deRecado({ llamada: 'P1', fecha: new Date('2026-11-03T19:39:00Z'), urgente: true, resumen: 'URGENTE · Fuga de agua en Bellpuig 41', contacto: { nombre: 'Alex Castro', externalId: '12043800' }, final: '123', _cat: cat, _clientMap: cm,
+      _llamar: async () => ({ peticiones: [{ msgs: [0], tipo: 'trabajo', cliente_id: '555', cliente: 'Bellpuig 41', resumen: 'Fuga de agua', que_hacer: 'Ir', urgente: true, situacion: 'nuevo' }] }),
+      _auto: async (d, g, l) => { auto += l.length; return {}; }, _enviar: async (to, txt) => { enviados.push(txt); return true; } });
+    assert.strictEqual(auto, 0, 'no se crea incidencia');
+    assert.strictEqual(r.nuevas[0].porConfirmar, 'el número es de otro cliente');
+    const p = db.cols.peticionesGrupo[0];
+    assert.deepStrictEqual(p.porConfirmar.llama, { id: '12043800', nombre: 'Alex Castro' });
+    assert.match(enviados[0], /Por confirmar\*: llama \*Alex Castro\* \(por su número\) y dice ser de \*ILLA VERDA\*/);
+    await assert.rejects(require('../src/trabajos').crear(String(p._id), { userId: 'x' }), /por confirmar/);
+    // La oficina lo confirma: sigue como una petición normal (incidencia y «¿Quién va?»).
+    let confirmadas = [];
+    const c = await PG.confirmar(String(p._id), {}, 'Álex', { _auto: async (d, g, l) => { confirmadas = l; return { [String(p._id)]: { incidencia: 'INC00700' } }; } });
+    assert.deepStrictEqual(c, { ok: true, incidencia: 'INC00700', error: null });
+    assert.strictEqual(confirmadas[0].clienteId, '555');
+    assert.strictEqual(confirmadas[0].porConfirmar, undefined);
+    assert.strictEqual(db.cols.peticionesGrupo[0].porConfirmar, undefined);
+    assert.strictEqual(db.cols.peticionesGrupo[0].confirmada.por, 'Álex');
+    await assert.rejects(PG.confirmar(String(p._id), {}, 'Álex'), /no está por confirmar/);
+  } finally { dbm.getDB = real; process.env.WHATSAPP_TO = prevW; if (prevW === undefined) delete process.env.WHATSAPP_TO; }
 });

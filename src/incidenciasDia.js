@@ -42,7 +42,7 @@ function texto({ presupuestos, trabajos, sinInc, perdidas = [] }) {
     `🔧 *Incidencias abiertas* · ${presupuestos.length + trabajos.length}`,
     seccion('📝 *Presupuestos por hacer*', presupuestos),
     seccion('🔨 *Trabajos: hay que ir*', trabajos),
-    sinInc.length ? `📬 *Pedidos por grupo o correo sin incidencia todavía* (${sinInc.length})\n${sinInc.slice(0, 6).map(p => `• ${p.urgente ? '🚨 ' : ''}${corto(p.cliente, 32)}${p.direccion ? ' ' + corto(p.direccion, 25) : ''} · ${corto(p.resumen, 70)} · ${p.grupo ? corto(p.grupo, 28) : ''}`).join('\n')}` : '',
+    sinInc.length ? `📬 *Pedidos por grupo o correo sin incidencia todavía* (${sinInc.length})\n${sinInc.slice(0, 6).map(p => `• ${p.urgente ? '🚨 ' : ''}${p.porConfirmar ? '❓ por confirmar · ' : ''}${corto(p.cliente, 32)}${p.direccion ? ' ' + corto(p.direccion, 25) : ''} · ${corto(p.resumen, 70)} · ${p.grupo ? corto(p.grupo, 28) : ''}`).join('\n')}` : '',
     perdidas.length ? `📞 *Llamadas perdidas sin recado: devolverlas* (${perdidas.length})\n${perdidas.slice(0, 8).map(p => `• ${p.quien} · ${p.cuando}${p.motivo ? ` · ${p.motivo.toLowerCase()}` : ''}`).join('\n')}${perdidas.length > 8 ? `\n…y ${perdidas.length - 8} más (en Nuvo Voz)` : ''}` : '',
     `Cuando esté hecha, dime «INC00432 cerrada» (o «hecha», «presupuesto hecho», «programada») y deja de salir.${viejas ? ` Hay ${viejas} con más de un mes (⏰): si ya no van, ciérralas y limpiamos la lista.` : ''}`,
   ];

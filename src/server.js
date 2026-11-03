@@ -2531,6 +2531,9 @@ app.get('/api/trabajos/foto/:fotoId', async (req, res) => {
 app.post('/api/peticiones/resumen', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./peticionesGrupo').resumenDiario({ enviar: req.query.enviar === '1' })); } catch (err) { res.status(500).json({ error: err.message }); }
 });
+app.post('/api/peticiones/:id/confirmar', requireAuthOficina, express.json(), async (req, res) => {
+  try { const q = (await _quienPush(req)) || {}; res.json(await require('./peticionesGrupo').confirmar(req.params.id, { clienteId: (req.body || {}).clienteId || null }, q.name || req.user?.name || 'Oficina')); } catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.post('/api/peticiones/:id/incidencia', requireAuthOficina, async (req, res) => {
   try { const q = (await _quienPush(req)) || {}; res.json(await require('./peticionesGrupo').crearIncidencia(req.params.id, q.name || req.user?.name || 'Oficina')); } catch (err) { res.status(400).json({ error: err.message }); }
 });
