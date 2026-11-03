@@ -59,10 +59,10 @@ async function apuntar(db, c, { jid, grupo }, { _crear = null } = {}) {
 }
 
 const textoAviso = (grupo, l) => `📅 *Cita${l.length > 1 ? 's' : ''} del grupo «${grupo}»* — apuntada${l.length > 1 ? 's' : ''} en tu calendario:\n` +
-  l.map(c => `• *${fFecha(c.fecha)}${c.hora ? ' a las ' + c.hora : ''}* · ${c.que} · ${c.sitio}${c.con ? ` (con ${c.con})` : ''}${c.quienVa ? ` — va ${c.quienVa}` : ''}`).join('\n') +
+  l.map(c => `• *${fFecha(c.fecha)}${c.hora ? ' a las ' + c.hora : ''}* · ${c.que} · ${c.sitio}${c.con ? ` (con ${c.con})` : ''}${c.quienVa ? ` — va ${c.quienVa}` : ''}${c.avisados && c.avisados.length ? ` (le aviso antes a ${c.avisados.join(' y ')})` : ''}`).join('\n') +
   `\n\nSi no es así, bórrala del calendario.`;
 
-async function revisar({ avisar = true, _db = null, _llamar = null, _crear = null, _enviar = null } = {}) {
+async function revisar({ avisar = true, _db = null, _llamar = null, _crear = null, _enviar = null, _prog = null } = {}) {
   if (process.env.CITAS_GRUPOS === 'off') return [];
   const db = _db || await require('./db').getDB();
   const grupos = await db.collection('bridgeGrupos').find({ activo: true, peticiones: { $ne: true } }).toArray();
@@ -79,7 +79,15 @@ async function revisar({ avisar = true, _db = null, _llamar = null, _crear = nul
       const ant = await db.collection('grupoMensajes').find({ jid: g._id, ts: { $lte: desde } }).sort({ ts: -1 }).limit(12).toArray();
       const linea = m => `${fmt(m.ts)} ${m.quien || '?'}: ${corto(m.texto, 400) || '(foto)'}`;
       const out = await (_llamar || _llamarIA)(prompt(g.nombre || g._id, ant.reverse().map(linea), raw.map(linea), `${hoyISO()} (${new Date().toLocaleDateString('es-ES', { weekday: 'long', timeZone: 'Europe/Madrid' })})`));
-      for (const c of out.citas || []) { try { const d = await apuntar(db, c, { jid: g._id, grupo: g.nombre || g._id }, { _crear }); if (d) apuntadas.push(d); } catch (e) { console.warn('[Citas] apuntar:', e.message); } }
+      for (const c of out.citas || []) {
+        try {
+          const d = await apuntar(db, c, { jid: g._id, grupo: g.nombre || g._id }, { _crear });
+          if (!d) continue;
+          // Y a quien va, un WhatsApp antes (citasTrabajador.js, 4/11/2026).
+          try { d.avisados = await require('./citasTrabajador').avisarQuienVa(d, { _prog: _prog || undefined }); } catch (e) { console.warn('[Citas] aviso a quien va:', e.message); }
+          apuntadas.push(d);
+        } catch (e) { console.warn('[Citas] apuntar:', e.message); }
+      }
     }
     await db.collection('bridgeGrupos').updateOne({ _id: g._id }, { $set: { citasHasta: hasta } });
     if (apuntadas.length && avisar) { try { await (_enviar || require('./notifications').sendWhatsApp)(textoAviso(g.nombre || g._id, apuntadas)); } catch (e) {} }
@@ -88,4 +96,4 @@ async function revisar({ avisar = true, _db = null, _llamar = null, _crear = nul
   return res;
 }
 
-module.exports = { revisar, apuntar, textoAviso };
+module.exports = { revisar, apuntar, textoAviso, _llamarIA };

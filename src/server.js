@@ -901,6 +901,12 @@ async function procesarTrabajador(from, body, media, trab, responder) {
     catch (e) { console.error('[CorpySocio]', e.message); }
   }
 
+  // ¿Dice que tiene una cita («mañana a las 10 tengo visita en Major 75»)? Al calendario, aviso a Álex y a él antes (citasTrabajador.js).
+  if (trab.userId && !PALABRAS_FICHAJE.test(texto)) {
+    try { const r = await require('./citasTrabajador').deMensaje({ userId: trab.userId, nombre: trab.name, texto }); if (r) return responder(r); }
+    catch (e) { console.warn('[CitasTrab]', e.message); }
+  }
+
   // Memoria: si deja algo pendiente («tengo que devolver…», «no encuentro el ticket»), se apunta y Corpy se lo vuelve a preguntar.
   let pend = null;
   if (trab.userId && !PALABRAS_FICHAJE.test(texto)) { try { pend = await require('./encargos').apuntarDeTrabajador(trab.userId, trab.name, texto); } catch (e) { console.warn('[Encargos] memoria:', e.message); } }
