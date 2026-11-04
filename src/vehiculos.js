@@ -149,13 +149,15 @@ async function reactivar(id, por) {
 //   · moto: 4 años exenta; luego cada 2 años.
 // Sin fecha de matriculación no se sabe la edad: se pone 1 año (mejor avisar antes que tarde).
 const _addM = (f, meses) => { const d = new Date(f + 'T12:00:00Z'); d.setUTCMonth(d.getUTCMonth() + meses); return d.toISOString().slice(0, 10); };
-function proximaItv(v, fechaItv) {
-  const tipo = v.tipo || 'furgoneta';
-  // Sin fecha de matriculación: año aproximado por la 1.ª letra de la matrícula (serie 0000-BBB, desde 2000).
+// Fecha de matriculación; sin ella, año aproximado por la 1.ª letra de la matrícula (serie 0000-BBB, desde 2000).
+function fechaMat(v) {
   const ANIO_LETRA = { B: 2000, C: 2002, D: 2004, F: 2006, G: 2008, H: 2011, J: 2014, K: 2016, L: 2018, M: 2022, N: 2024 };
   const m = String(v.matricula || '').toUpperCase().match(/^\d{4}([BCDFGHJKLMN])/);
-  const mat = fechaOk(v.fechaMatriculacion) || (m ? `${ANIO_LETRA[m[1]]}-01-01` : null);
-  const estimada = !fechaOk(v.fechaMatriculacion) && !!m;
+  return { fecha: fechaOk(v.fechaMatriculacion) || (m ? `${ANIO_LETRA[m[1]]}-01-01` : null), estimada: !fechaOk(v.fechaMatriculacion) && !!m };
+}
+function proximaItv(v, fechaItv) {
+  const tipo = v.tipo || 'furgoneta';
+  const { fecha: mat, estimada } = fechaMat(v);
   if (!mat) return { proxima: _addM(fechaItv, 12), regla: 'sin fecha de matriculación: 1 año (ponla en la ficha para afinar)' };
   const r = _proximaPorEdad(tipo, mat, fechaItv);
   return estimada ? { ...r, regla: r.regla + ` (edad aproximada por la matrícula, de ~${mat.slice(0, 4)}; pon la fecha de matriculación para afinar)` } : r;
@@ -406,4 +408,88 @@ async function revisarVencimientos({ dryRun = false, hoy = new Date() } = {}) {
   return { avisos: hechos, dryRun };
 }
 
-module.exports = { _oficinaTo: _oficina, _gastosCompra, costeTotal, CATEGORIAS, TIPOS, FORMAS, MOTIVOS_BAJA, DOCS, sugerirCategoria, limpiar, crear, editar, asignarConductor, darDeBaja, reactivar, subirDocumento, documentos, documento, borrarDocumento, lista, flota, ficha, gastos, resumen, diasHasta, claveAviso, avisosPendientes, revisarVencimientos, matNorm, proximaItv, registrarItv };
+// ── TAREAS POR VEHÍCULO (cambio de titular, pasar una póliza, pedir precio…) ──
+async function anadirTarea(id, { texto } = {}, por) {
+  const t = txt(texto, 300);
+  if (!t) throw new Error('Escribe la tarea');
+  const db = await getDB();
+  const tarea = { id: new ObjectId().toHexString(), texto: t, hecha: false, creada: new Date(), por: por || '' };
+  const r = await db.collection('vehiculos').updateOne({ _id: _oid(id) }, { $push: { tareas: tarea } });
+  if (!r.matchedCount) throw new Error('Vehículo no encontrado');
+  return tarea;
+}
+async function marcarTarea(id, tid, { hecha } = {}, por) {
+  const db = await getDB();
+  const r = await db.collection('vehiculos').updateOne({ _id: _oid(id), 'tareas.id': String(tid) }, { $set: { 'tareas.$.hecha': !!hecha, 'tareas.$.hechaEn': hecha ? new Date() : null, 'tareas.$.hechaPor': hecha ? por || '' : null } });
+  if (!r.matchedCount) throw new Error('Tarea no encontrada');
+  return { ok: true };
+}
+async function borrarTarea(id, tid) {
+  const db = await getDB();
+  await db.collection('vehiculos').updateOne({ _id: _oid(id) }, { $pull: { tareas: { id: String(tid) } } });
+  return { ok: true };
+}
+
+// ── RESUMEN DE LA FLOTA ──
+// Cada vehículo con su semáforo (rojo: sin seguro, seguro vencido o ITV caducada; ámbar: vence pronto, faltan
+// datos o hay tareas abiertas), lo que hay que hacer y una pista de si toca cambiarlo. Se calcula siempre con
+// lo que hay en las fichas: al cambiar un dato o marcar una tarea, el resumen cambia solo.
+async function estadoFlota({ hoy = new Date() } = {}) {
+  const F = await flota({ anio: hoy.getFullYear() });
+  const hoyIso = hoy.toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
+  const ORDEN = { rojo: 0, ambar: 1, verde: 2 };
+  const vencimientos = [];
+  const vehiculos = F.vehiculos.filter(v => v.estado === 'activo').map(v => {
+    const p = [];   // { nivel: rojo|ambar|info, texto }
+    const s = v.seguro || {}, parada = !!v.parada;
+    const dS = v.dias.seguro, dI = v.dias.itv;
+    if (!s.compania) p.push({ nivel: parada ? 'ambar' : 'rojo', texto: parada ? 'Sin seguro: está parada y no puede circular' : 'Sin seguro: no puede circular' });
+    else if (dS == null) p.push({ nivel: 'ambar', texto: 'Falta la fecha de vencimiento del seguro' });
+    else if (dS < 0) p.push({ nivel: parada ? 'ambar' : 'rojo', texto: `Seguro vencido desde el ${_fmt(s.vencimiento)}` });
+    else if (dS <= 60) p.push({ nivel: 'ambar', texto: `El seguro ${_cuando(dS)} (${_fmt(s.vencimiento)}): pedir precios y comparar` });
+    if (s.compania && s.precioAnual == null) p.push({ nivel: 'info', texto: 'Falta el precio del seguro' });
+    if (s.compania && !s.poliza) p.push({ nivel: 'info', texto: 'Falta el número de póliza' });
+    if (dI == null) p.push({ nivel: 'ambar', texto: 'Falta la fecha de la próxima ITV' });
+    else if (dI < 0) p.push({ nivel: parada ? 'ambar' : 'rojo', texto: `ITV caducada desde el ${_fmt(v.itv.proxima)}${parada ? ': pasarla antes de volver a usarla' : ''}` });
+    else if (dI <= 45) p.push({ nivel: 'ambar', texto: `La ITV ${_cuando(dI)} (${_fmt(v.itv.proxima)}): pedir cita` });
+    const faltan = ['ficha_tecnica', 'permiso', 'seguro'].filter(t => !(v.docsTipos || {})[t]).map(t => DOCS[t].toLowerCase());
+    if (faltan.length) p.push({ nivel: 'info', texto: 'Falta subir: ' + faltan.join(', ') });
+    const tareas = (v.tareas || []).slice().sort((a, b) => Number(a.hecha) - Number(b.hecha) || new Date(a.creada) - new Date(b.creada));
+    const abiertas = tareas.filter(t => !t.hecha).length;
+    // Pista para decidir si se cambia: edad, km y lo que se ha ido en taller y neumáticos este año.
+    const { fecha: mat, estimada } = fechaMat(v);
+    const edad = mat ? Math.floor((new Date(hoyIso) - new Date(mat)) / (365.25 * 86400000)) : null;
+    let pista = null;
+    if ((edad != null && edad >= 20) || (v.km && v.km >= 300000)) pista = `Valorar cambiarlo: ${[edad != null ? `${edad} años${estimada ? ' aprox.' : ''}` : null, v.km ? `${Math.round(v.km).toLocaleString('es-ES')} km` : null].filter(Boolean).join(' y ')}`;
+    const nivel = p.some(x => x.nivel === 'rojo') ? 'rojo' : (p.some(x => x.nivel === 'ambar') || abiertas) ? 'ambar' : 'verde';
+    if (s.vencimiento && dS != null && dS >= 0 && dS <= 365) vencimientos.push({ fecha: s.vencimiento, dias: dS, que: `Seguro${s.compania ? ' ' + s.compania : ''}`, vehiculo: v.nombre, matricula: v.matricula || '', id: v.id, importe: s.precioAnual });
+    if (v.itv && v.itv.proxima && dI != null && dI >= 0 && dI <= 365) vencimientos.push({ fecha: v.itv.proxima, dias: dI, que: 'ITV', vehiculo: v.nombre, matricula: v.matricula || '', id: v.id });
+    return {
+      id: v.id, codigo: v.codigo, nombre: v.nombre, matricula: v.matricula || '', modelo: [v.marca, v.modelo].filter(Boolean).join(' '), tipo: TIPOS[v.tipo] || '',
+      conductor: v.conductor ? v.conductor.name : null, parada: parada ? (v.parada.motivo || 'Parada') : null,
+      seguro: { compania: s.compania || '', poliza: s.poliza || '', modalidad: s.modalidad || '', precioAnual: s.precioAnual, vencimiento: s.vencimiento || null, dias: dS },
+      itv: { proxima: (v.itv && v.itv.proxima) || null, dias: dI }, edad, edadEstimada: estimada, km: v.km || null,
+      gastoAnio: v.gastoAnio || 0, nivel, problemas: p, tareas: tareas.map(t => ({ id: t.id, texto: t.texto, hecha: !!t.hecha, hechaEn: t.hechaEn || null })), abiertas, pista,
+    };
+  });
+  // Lo gastado este año en taller y neumáticos, para la pista de cambio.
+  try {
+    const res = await resumen({ anio: hoy.getFullYear() });
+    for (const v of vehiculos) {
+      const r = res.vehiculos.find(x => x.id === v.id); const t = r ? r2((r.porCategoria.taller || 0) + (r.porCategoria.neumaticos || 0)) : 0;
+      if (t >= 800) v.pista = (v.pista ? v.pista + ' · ' : 'Ojo: ') + `${Math.round(t).toLocaleString('es-ES')} € de taller y neumáticos este año`;
+    }
+  } catch (e) { /* sin desglose, sin pista de taller */ }
+  // Vehículos de baja con la póliza aún en vigor: se sigue pagando un seguro que no se usa.
+  const polizasDeBaja = F.vehiculos.filter(v => v.estado === 'baja' && v.seguro && v.seguro.compania && v.dias.seguro != null && v.dias.seguro >= 0)
+    .map(v => ({ id: v.id, nombre: v.nombre, matricula: v.matricula || '', compania: v.seguro.compania, poliza: v.seguro.poliza || '', precioAnual: v.seguro.precioAnual, vencimiento: v.seguro.vencimiento }));
+  vehiculos.sort((a, b) => ORDEN[a.nivel] - ORDEN[b.nivel] || b.abiertas - a.abiertas || a.nombre.localeCompare(b.nombre));
+  vencimientos.sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const primas = vehiculos.reduce((a, v) => a + (v.seguro.precioAnual || 0), 0) + polizasDeBaja.reduce((a, v) => a + (v.precioAnual || 0), 0);
+  return {
+    fecha: hoyIso, vehiculos, vencimientos, polizasDeBaja,
+    totales: { activos: vehiculos.length, rojo: vehiculos.filter(v => v.nivel === 'rojo').length, ambar: vehiculos.filter(v => v.nivel === 'ambar').length, verde: vehiculos.filter(v => v.nivel === 'verde').length, primasAnuales: r2(primas), sinPrecio: vehiculos.filter(v => v.seguro.compania && v.seguro.precioAnual == null).length, gastoAnio: r2(vehiculos.reduce((a, v) => a + v.gastoAnio, 0)), anio: F.anio, tareasAbiertas: vehiculos.reduce((a, v) => a + v.abiertas, 0) },
+  };
+}
+
+module.exports = { estadoFlota, anadirTarea, marcarTarea, borrarTarea, fechaMat, _oficinaTo: _oficina, _gastosCompra, costeTotal, CATEGORIAS, TIPOS, FORMAS, MOTIVOS_BAJA, DOCS, sugerirCategoria, limpiar, crear, editar, asignarConductor, darDeBaja, reactivar, subirDocumento, documentos, documento, borrarDocumento, lista, flota, ficha, gastos, resumen, diasHasta, claveAviso, avisosPendientes, revisarVencimientos, matNorm, proximaItv, registrarItv };

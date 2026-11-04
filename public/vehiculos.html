@@ -38,6 +38,22 @@ details summary{cursor:pointer;font-size:13.5px;font-weight:600;margin-top:10px}
 #mapa{height:440px;border-radius:14px;border:1px solid var(--border);margin-bottom:12px}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--border2);padding:10px 16px;border-radius:10px;z-index:2000;display:none;max-width:90vw}
 .nota{font-size:12px;color:var(--text3);line-height:1.6;margin-top:8px}
+.rs-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:12px}
+.rs-kpi{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:10px 12px}.rs-kpi b{display:block;font-size:20px;font-variant-numeric:tabular-nums}.rs-kpi span{font-size:12px;color:var(--text3)}
+.rs-v{border-left:4px solid var(--border2)}.rs-v.rojo{border-left-color:var(--red)}.rs-v.ambar{border-left-color:var(--amber)}.rs-v.verde{border-left-color:var(--green)}
+.rs-p{font-size:13.5px;margin-top:5px;line-height:1.45}.rs-p.rojo{color:var(--red)}.rs-p.ambar{color:var(--amber)}.rs-p.info{color:var(--text2)}
+.rs-t{display:flex;align-items:flex-start;gap:8px;font-size:14px;padding:5px 0}.rs-t input{margin-top:3px;width:auto;padding:0}.rs-t.hecha span{text-decoration:line-through;color:var(--text3)}.rs-t button{margin-left:auto;background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px}
+.rs-add{display:flex;gap:8px;margin-top:6px}.rs-add input{flex:1;padding:6px 10px;font-size:13px}
+.rs-pista{font-size:12.5px;color:var(--blue);margin-top:6px}
+.solo-print{display:none}
+@media print{
+  body,body.light{background:#fff!important;color:#111!important;font-size:11px}
+  .header,.tabs,.no-print,#v-flota,#v-mapa,#v-gastos,#v-bajas,#v-ficha,.rs-add,.rs-t button,.toast{display:none!important}
+  .solo-print{display:block}.wrap{max-width:none;padding:0}
+  .card,.rs-kpi{background:#fff!important;border:1px solid #ccc!important;break-inside:avoid;color:#111!important}
+  .rs-p.info,.nota,.rs-kpi span{color:#555!important}.chip{color:#111!important;border-color:#999!important}
+  td{border-color:#ddd!important}
+}
 @media(max-width:600px){.cat .l{width:110px}#mapa{height:360px}}
 </style><link rel="stylesheet" href="/cp-ui.css">
 <script src="/nav.js" defer></script>
@@ -47,11 +63,13 @@ details summary{cursor:pointer;font-size:13.5px;font-weight:600;margin-top:10px}
 <div class="wrap">
   <div class="tabs" id="tabs">
     <button class="tab on" data-t="flota" onclick="verTab('flota')">🚐 Flota</button>
+    <button class="tab" data-t="resumen" onclick="verTab('resumen')">📋 Resumen</button>
     <button class="tab" data-t="mapa" onclick="verTab('mapa')">📍 Mapa</button>
     <button class="tab" data-t="gastos" onclick="verTab('gastos')">💶 Gastos</button>
     <button class="tab" data-t="bajas" onclick="verTab('bajas')">Dados de baja</button>
   </div>
   <div id="v-flota"></div>
+  <div id="v-resumen" style="display:none"></div>
   <div id="v-mapa" style="display:none"></div>
   <div id="v-gastos" style="display:none"></div>
   <div id="v-bajas" style="display:none"></div>
@@ -80,8 +98,9 @@ function chip(titulo,dias,fecha){
 
 function verTab(t){
   tabAct=t;document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
-  ['flota','mapa','gastos','bajas','ficha'].forEach(x=>document.getElementById('v-'+x).style.display=x===t?'':'none');
+  ['flota','resumen','mapa','gastos','bajas','ficha'].forEach(x=>document.getElementById('v-'+x).style.display=x===t?'':'none');
   if(t==='flota'||t==='bajas')cargarFlota();
+  if(t==='resumen')cargarResumen();
   if(t==='mapa')cargarMapa();
   if(t==='gastos')cargarGastos();
   if(t!=='ficha'&&location.hash)history.replaceState(null,'',location.pathname);
@@ -107,6 +126,35 @@ async function cargarFlota(){
      :`<div class="vacio">${bajas?'No hay vehículos dados de baja.':'Aún no hay vehículos. Pulsa «+ Nuevo vehículo» y da de alta cada furgoneta y coche con su matrícula.'}</div>`);
   if(!bajas)cargarRepostajes(l);
 }
+// ── RESUMEN DE LA FLOTA: semáforo, lo que hay que hacer y tareas por vehículo (se calcula con las fichas) ──
+let RS=null;
+async function cargarResumen(){
+  const el=document.getElementById('v-resumen');
+  if(!tok){el.innerHTML='<div class="vacio">Abre esta página desde el dashboard.</div>';return;}
+  try{RS=await api('GET','/api/vehiculos/estado');}catch(e){el.innerHTML='<div class="vacio" style="color:var(--red)">'+esc(e.message)+'</div>';return;}
+  const T=RS.totales,ICO={rojo:'🔴',ambar:'🟠',verde:'🟢'};
+  const vcard=v=>`<div class="card rs-v ${v.nivel}" id="rs-${v.id}"><div class="top"><div class="n"><b>${ICO[v.nivel]} ${esc(v.nombre)}</b> <span class="tag">${esc(v.matricula||v.codigo||'')}</span>
+      <div class="s">${esc([v.modelo,v.tipo,v.edad!=null?`${v.edad} años${v.edadEstimada?' aprox.':''}`:null,v.km?Math.round(v.km).toLocaleString('es-ES')+' km':null].filter(Boolean).join(' · '))}</div>
+      <div class="s" style="color:var(--text2)">${v.parada?'⏸ '+esc(v.parada):v.conductor?'👤 '+esc(v.conductor):'Sin conductor asignado'}</div></div>
+      <div class="t"><b>${eur(v.gastoAnio)}</b><div>gasto ${T.anio}</div><button class="btn peq no-print" style="margin-top:6px" onclick="abrir('${v.id}')">Ficha</button></div></div>
+    <div class="chips">${v.seguro.compania?chip('Seguro',v.seguro.dias,v.seguro.vencimiento):'<span class="chip ro">Sin seguro</span>'}${chip('ITV',v.itv.dias,v.itv.proxima)}</div>
+    ${v.seguro.compania?`<div class="rs-p info">🛡️ ${esc(v.seguro.compania)}${v.seguro.poliza?' · póliza '+esc(v.seguro.poliza):''}${v.seguro.modalidad?' · '+esc(v.seguro.modalidad):''}${v.seguro.precioAnual!=null?' · <b>'+eur(v.seguro.precioAnual)+'/año</b>':''}</div>`:''}
+    ${v.problemas.map(p=>`<div class="rs-p ${p.nivel}">${p.nivel==='rojo'?'⛔':p.nivel==='ambar'?'⚠️':'·'} ${esc(p.texto)}</div>`).join('')}
+    ${v.pista?`<div class="rs-pista">🔁 ${esc(v.pista)}</div>`:''}
+    <div style="margin-top:8px">${v.tareas.map(t=>`<label class="rs-t ${t.hecha?'hecha':''}"><input type="checkbox" ${t.hecha?'checked':''} onchange="rsMarcar('${v.id}','${t.id}',this.checked)"><span>${esc(t.texto)}</span><button title="Quitar" onclick="event.preventDefault();rsBorrar('${v.id}','${t.id}')">✕</button></label>`).join('')}
+      <div class="rs-add"><input id="rs-in-${v.id}" placeholder="Añadir tarea (p. ej. «Cambio de titular en la gestoría»)" onkeydown="if(event.key==='Enter')rsAnadir('${v.id}')"><button class="btn peq" onclick="rsAnadir('${v.id}')">Añadir</button></div></div></div>`;
+  el.innerHTML=`<div class="bar no-print"><button class="btn pri" onclick="window.print()">🖨️ Imprimir / guardar PDF</button><button class="btn peq" onclick="cargarResumen()">↻ Actualizar</button><span style="font-size:12.5px;color:var(--text3)">Se calcula con las fichas: al cambiar un dato o marcar una tarea, el resumen cambia solo.</span></div>
+   <div class="solo-print"><h2 style="font-size:18px;margin-bottom:2px">Flota de Corp Projects — seguros, ITV y tareas</h2><div class="nota" style="margin:0 0 10px">Resumen a ${fmtF(RS.fecha)} · Corp Projects Holding SL · CIF B09899253</div></div>
+   <div class="rs-kpis"><div class="rs-kpi"><b>${T.activos}</b><span>vehículos en uso</span></div><div class="rs-kpi"><b style="color:var(--red)">${T.rojo}</b><span>en rojo (no pueden circular o caducado)</span></div><div class="rs-kpi"><b style="color:var(--amber)">${T.ambar}</b><span>con algo pendiente</span></div><div class="rs-kpi"><b>${eur(T.primasAnuales)}</b><span>en seguros al año${T.sinPrecio?` (+${T.sinPrecio} sin precio)`:''}</span></div><div class="rs-kpi"><b>${eur(T.gastoAnio)}</b><span>gastado en ${T.anio}</span></div><div class="rs-kpi"><b>${T.tareasAbiertas}</b><span>tareas abiertas</span></div></div>
+   ${RS.polizasDeBaja.length?`<div class="card" style="border-color:rgba(240,82,82,.45)"><b style="color:var(--red)">💸 Seguros que seguimos pagando de vehículos dados de baja</b>${RS.polizasDeBaja.map(p=>`<div class="rs-p">${esc(p.nombre)} ${esc(p.matricula)} · ${esc(p.compania)} ${esc(p.poliza)}${p.precioAnual!=null?' · '+eur(p.precioAnual)+'/año':''} · hasta ${fmtF(p.vencimiento)} → pasarla a otro vehículo o anularla y pedir lo no consumido</div>`).join('')}</div>`:''}
+   ${RS.vehiculos.map(vcard).join('')}
+   <h3>Próximos vencimientos (12 meses)</h3>
+   <div class="card">${RS.vencimientos.length?`<table>${RS.vencimientos.map(x=>`<tr><td style="white-space:nowrap">${fmtF(x.fecha)}</td><td>${esc(x.que)}</td><td>${esc(x.vehiculo)} <span class="tag">${esc(x.matricula)}</span></td><td class="r">${x.importe!=null?eur(x.importe):''}</td><td class="r" style="color:${x.dias<=30?'var(--amber)':'var(--text3)'}">${x.dias===0?'hoy':'en '+x.dias+' d'}</td></tr>`).join('')}</table>`:'<div style="color:var(--text3);font-size:14px">Nada en los próximos 12 meses con fecha puesta.</div>'}
+   <div class="nota">Un mes antes de cada seguro conviene pedir precios a otras compañías. Las fichas sin fecha no salen aquí: rellénalas para que avise.</div></div>`;
+}
+async function rsAnadir(id){const i=document.getElementById('rs-in-'+id);const t=(i.value||'').trim();if(!t)return;i.disabled=true;try{await api('POST','/api/vehiculos/'+id+'/tareas',{texto:t});await cargarResumen();const j=document.getElementById('rs-in-'+id);if(j)j.focus();}catch(e){toast(e.message);i.disabled=false;}}
+async function rsMarcar(id,tid,h){try{await api('PUT','/api/vehiculos/'+id+'/tareas/'+tid,{hecha:h});toast(h?'✅ Hecha':'Vuelve a estar pendiente');cargarResumen();}catch(e){toast(e.message);}}
+async function rsBorrar(id,tid){if(!(await CPDialog.confirmar('¿Quitar esta tarea?',{ok:'Quitar',peligro:true})))return;try{await api('DELETE','/api/vehiculos/'+id+'/tareas/'+tid);cargarResumen();}catch(e){toast(e.message);}}
 // ── REPOSTAJES (correo de Esclat en cada repostaje + capturas de su app) ──
 let _repHash=(/^#repostaje=([0-9a-f]{24})$/.exec(location.hash)||[])[1]||null;
 async function cargarRepostajes(vs){const el=document.getElementById('repost');if(!el)return;let p=[],gp=[];try{p=await api('GET','/api/vehiculos/repostajes/pendientes');}catch(e){}
@@ -303,7 +351,7 @@ async function cargarMapa(){
    +(d.sinVincular.length?`<div class="nota">En Quartix pero no en la flota (pon su id en la ficha del vehículo): ${d.sinVincular.map(p=>esc(p.registro||'?')+' (id '+esc(p.quartixId)+')').join(', ')}.</div>`:'');
 }
 
-if(/^#[0-9a-f]{24}$/.test(location.hash))abrir(location.hash.slice(1));else cargarFlota();
+if(/^#[0-9a-f]{24}$/.test(location.hash))abrir(location.hash.slice(1));else if(location.hash==='#resumen')verTab('resumen');else cargarFlota();
 </script>
 <script src="/dialogo.js"></script>
 </body></html>

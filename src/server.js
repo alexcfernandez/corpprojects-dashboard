@@ -2887,6 +2887,18 @@ app.get('/api/vehiculos/flota', requireAuthOficina, async (req, res) => {
 app.get('/api/vehiculos/resumen', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./vehiculos').resumen({ anio: req.query.anio })); } catch (err) { res.status(500).json({ error: err.message }); }
 });
+app.get('/api/vehiculos/estado', requireAuthOficina, async (req, res) => {
+  try { res.set('Cache-Control', 'no-store').json(await require('./vehiculos').estadoFlota()); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/vehiculos/:id/tareas', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./vehiculos').anadirTarea(req.params.id, req.body || {}, await _porVeh(req))); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.put('/api/vehiculos/:id/tareas/:tid', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./vehiculos').marcarTarea(req.params.id, req.params.tid, req.body || {}, await _porVeh(req))); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.delete('/api/vehiculos/:id/tareas/:tid', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./vehiculos').borrarTarea(req.params.id, req.params.tid)); } catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/vehiculos/avisos', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./vehiculos').revisarVencimientos({ dryRun: true })); } catch (err) { res.status(500).json({ error: err.message }); }
 });
