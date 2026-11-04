@@ -1,5 +1,6 @@
 // src/server.js v3
 require('dotenv').config();
+require('./iaUso').instalar();   // apunta tokens y coste de cada llamada a la IA (iaUsoLlamadas)
 const express   = require('express');
 const cors      = require('cors');
 const helmet    = require('helmet');
@@ -1247,6 +1248,7 @@ app.post('/api/diag/whatsapp/prueba', requireAuth, express.json({ limit: '4kb' }
 });
 // Mensaje suelto de Corpy a un número (Dueño): p. ej. escribir al corredor de seguros de parte de Álex.
 // Envíos programados (correos ya preparados en Gmail y WhatsApps a una hora): solo el dueño.
+app.get('/api/ia-uso', requireAuth, async (req, res) => { if ((req.user?.role || 'owner') !== 'owner') return res.status(403).json({ error: 'Solo Dueño' }); try { res.json(await require('./iaUso').resumen({ dias: Math.min(35, parseInt(req.query.dias) || 7) })); } catch (err) { res.status(500).json({ error: err.message }); } });
 app.get('/api/programados', requireAuth, async (req, res) => { if ((req.user?.role || 'owner') !== 'owner') return res.status(403).json({ error: 'Solo Dueño' }); try { res.json(await require('./programados').lista({ todos: req.query.todos === '1' })); } catch (err) { res.status(500).json({ error: err.message }); } });
 app.post('/api/programados', requireAuth, express.json({ limit: '16kb' }), async (req, res) => { if ((req.user?.role || 'owner') !== 'owner') return res.status(403).json({ error: 'Solo Dueño' }); try { res.json(await require('./programados').crear(req.body || {}, req.user?.name || 'Dueño')); } catch (err) { res.status(400).json({ error: err.message }); } });
 app.delete('/api/programados/:id', requireAuth, async (req, res) => { if ((req.user?.role || 'owner') !== 'owner') return res.status(403).json({ error: 'Solo Dueño' }); try { res.json(await require('./programados').anular(req.params.id)); } catch (err) { res.status(400).json({ error: err.message }); } });
