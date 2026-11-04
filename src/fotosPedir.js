@@ -74,7 +74,7 @@ async function _datos(db, f) {
   const d = await db.collection(f.col).findOne({ _id: new ObjectId(f.id) });
   if (!d) return null;
   let data = d.data;
-  if (!data && d.gridId) data = await require('./personalDocs').datos(d);
+  if (!data && (d.disco || d.gridId)) data = await require('./personalDocs').datos(d);
   if (!data) return null;
   return { data: Buffer.isBuffer(data) ? data : Buffer.from(data.buffer || data), mime: d.mime || d.mimetype || 'image/jpeg' };
 }

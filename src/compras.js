@@ -19,6 +19,7 @@
 // (comprimidas en el móvil); el trabajador nunca ve importes.
 
 const { ObjectId } = require('mongodb');
+const disco = require('./archivosDisco');
 const CONFIG = require('./config');
 const EMPRESA = process.env.EMPRESA_ID || 'corp';
 const COL = 'compras', FOTOS = 'comprasFotos';
@@ -294,7 +295,7 @@ async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaP
   };
   const r = await db.collection(COL).insertOne(doc);
   doc._id = r.insertedId;
-  await db.collection(FOTOS).insertMany(fotos.map((f, i) => ({ compraId: String(doc._id), idx: i, mimetype: f.mimetype || 'image/jpeg', bytes: f.data.length, data: f.data, createdAt: now })));
+  await db.collection(FOTOS).insertMany(await Promise.all(fotos.map((f, i) => disco.guardar(FOTOS, { compraId: String(doc._id), idx: i, mimetype: f.mimetype || 'image/jpeg', bytes: f.data.length, data: f.data, createdAt: now }))));
 
   const lec = await leerConIA(fotos);
   if (lec.ok) {
@@ -306,6 +307,7 @@ async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaP
   // Del grupo llegan también fotos de la obra: si la IA ve que NO es un documento de compra, no se guarda.
   if (soloSiDocumento && lec.ok && doc.tipo === 'otro' && !doc.proveedor && doc.total == null && !(doc.lineas || []).length) {
     await db.collection(COL).deleteOne({ _id: doc._id });
+    await disco.borrarDe(db, FOTOS, { compraId: String(doc._id) });
     await db.collection(FOTOS).deleteMany({ compraId: String(doc._id) });
     return { ok: true, noEsDocumento: true, queEs: lec.datos.queEs || null, descripcion: String(lec.datos.descripcionFoto || '').slice(0, 160) || null };
   }
@@ -313,6 +315,7 @@ async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaP
   // (2/11/2026: seis PDF de Cartagena acabaron en Compras «por revisar»; uno era el PRT00876 devuelto con el sello de la comunidad).
   if (soloSiDocumento && lec.ok && esNuestro(lec.datos)) {
     await db.collection(COL).deleteOne({ _id: doc._id });
+    await disco.borrarDe(db, FOTOS, { compraId: String(doc._id) });
     await db.collection(FOTOS).deleteMany({ compraId: String(doc._id) });
     return { ok: true, noEsDocumento: true, nuestro: true, numero: String(lec.datos.numero || '').trim().slice(0, 60) || null, firmado: lec.datos.selloFirma === true };
   }
@@ -332,6 +335,7 @@ async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaP
           await V.subirDocumento(vid.id, { tipo: dv.tipo, archivo: { buffer: buf, mimetype: mime, size: buf.length, originalname: `${nombres[dv.tipo] || 'Documento'}${fotos.length > 1 ? ' ' + (i + 1) : ''}.${/pdf/.test(mime) ? 'pdf' : 'jpg'}` }, nombre: `${nombres[dv.tipo] || 'Documento'} ${vid.nombre}`.slice(0, 100) }, (subidaPor && subidaPor.name) || 'Corpy');
         }
         await db.collection(COL).deleteOne({ _id: doc._id });
+        await disco.borrarDe(db, FOTOS, { compraId: String(doc._id) });
         await db.collection(FOTOS).deleteMany({ compraId: String(doc._id) });
         return { ok: true, vehiculoDoc: true, vehiculo: vid.nombre, docTipo: nombres[dv.tipo] || 'Documento' };
       }
@@ -350,6 +354,7 @@ async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaP
         subidos.push(g.id);
       }
       await db.collection(COL).deleteOne({ _id: doc._id });
+      await disco.borrarDe(db, FOTOS, { compraId: String(doc._id) });
       await db.collection(FOTOS).deleteMany({ compraId: String(doc._id) });
       return { ok: true, parteObra: true, docs: subidos, obraRef: doc.obraRef || null };
     } catch (e) { console.warn('[Compras] parte a la obra:', e.message); }
@@ -359,6 +364,7 @@ async function crear({ fotos, obraId, varias, destino, paraWorker, nota, subidaP
     try {
       const g = await require('./personalDocs').subir({ ambito: 'trabajador', userId: subidaPor.userId, tipo: pers.tipo, archivo: { buffer: Buffer.from(fotos[0].data.buffer || fotos[0].data), mimetype: fotos[0].mimetype || 'image/jpeg', originalname: `${pers.nombre}.${/pdf/.test(fotos[0].mimetype || '') ? 'pdf' : 'jpg'}` }, fecha: doc.fecha || new Date().toISOString().slice(0, 10), notas: `Mandado por WhatsApp (${doc.proveedor || 'documento'})` }, `${subidaPor.name} (WhatsApp)`);
       await db.collection(COL).deleteOne({ _id: doc._id });
+      await disco.borrarDe(db, FOTOS, { compraId: String(doc._id) });
       await db.collection(FOTOS).deleteMany({ compraId: String(doc._id) });
       return { ok: true, personal: true, docId: g.id, nombre: pers.nombre };
     } catch (e) { console.warn('[Compras] papel personal:', e.message); }
@@ -481,11 +487,11 @@ function resumenParaTrabajador(c) {
 // ── FOTOS ────────────────────────────────────────────────────────
 async function getFoto(id, idx) {
   const db = await getDB();
-  return db.collection(FOTOS).findOne({ compraId: String(id), idx: Number(idx) || 0 });
+  return disco.hidratar(await db.collection(FOTOS).findOne({ compraId: String(id), idx: Number(idx) || 0 }));
 }
 async function fotosDe(id) {
   const db = await getDB();
-  return db.collection(FOTOS).find({ compraId: String(id) }).sort({ idx: 1 }).toArray();
+  return disco.hidratar(await db.collection(FOTOS).find({ compraId: String(id) }).sort({ idx: 1 }).toArray());
 }
 
 // ── CONSULTAS ────────────────────────────────────────────────────
@@ -647,6 +653,7 @@ async function separarFoto(id, idx, por) {
   const nueva = await crear({ fotos: [{ data: f.data.buffer ? Buffer.from(f.data.buffer) : f.data, mimetype: f.mimetype }], destino: c.destino || null, obraId: c.obraId || null,
     paraWorker: c.paraWorker || null, origen: c.origen, gmailId: null, email: c.email || null, nota: `Separada de ${c.proveedor || 'otra compra'}${c.numero ? ' nº ' + c.numero : ''}`, subidaPor: c.subidaPor, silencioso: true });
   // Fuera de la original y fotos renumeradas (0, 1, 2…)
+  await disco.borrarDe(db, FOTOS, { _id: f._id });
   await db.collection(FOTOS).deleteOne({ _id: f._id });
   const resto = fotos.filter(x => String(x._id) !== String(f._id)).sort((a, b) => a.idx - b.idx);
   for (let i = 0; i < resto.length; i++) if (resto[i].idx !== i) await db.collection(FOTOS).updateOne({ _id: resto[i]._id }, { $set: { idx: i } });

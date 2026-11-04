@@ -7,6 +7,8 @@
 // Restaura cada colección de Diario/<fecha>. Las de archivos (fotos, PDF) se rehacen juntando todos los trozos de
 // Archivos/<colección> (hasta esa fecha) y aplicando encima sus datos del día (<colección>.meta.json.gz).
 // Recomendado restaurar primero en una base de datos NUEVA y comprobar antes de apuntar el programa a ella.
+// Archivos en el disco (desde el 4/11/2026, src/archivosDisco.js): copiar Archivos/disco/<colección>/<id> de Drive a
+// <volumen>/archivos/<colección>/<id>; los documentos de Mongo solo guardan la referencia `disco`.
 'use strict';
 const fs = require('fs'), path = require('path'), zlib = require('zlib');
 const { MongoClient, BSON } = require('mongodb');

@@ -10,6 +10,7 @@
 // Colección 'docsPersonal' (con el archivo dentro, ≤ 12 MB) y config en appSettings { key: 'personalDocs' }.
 
 const { ObjectId } = require('mongodb');
+const disco = require('./archivosDisco');
 async function getDB() { return require('./db').getDB(); }
 const fechaOk = s => (/^\d{4}-\d{2}-\d{2}$/.test(String(s || '')) ? String(s) : null);
 const mesOk = s => (/^\d{4}-\d{2}$/.test(String(s || '')) ? String(s) : null);
@@ -100,9 +101,10 @@ async function subir({ ambito = 'trabajador', userId, obraId, tipo, archivo, fec
   // multer da el nombre del archivo en latin1: «AdhesiÃ³n» → «Adhesión».
   if (archivo.originalname && /[ÃÂ]/.test(archivo.originalname)) { try { const u = Buffer.from(archivo.originalname, 'latin1').toString('utf8'); if (!u.includes('\ufffd')) archivo.originalname = u; } catch (e) {} }
   const doc = { ambito, userId: ambito === 'trabajador' && userId ? String(userId) : null, obraId: ambito === 'obra' ? String(obraId) : null, tipo, nombre: txt(archivo.originalname || (tipoDe(ambito, tipo) || {}).nombre, 120), fecha: fechaOk(fecha), mes: mesOk(mes), notas: txt(notas, 300),
-    mime: archivo.mimetype, size: archivo.size || archivo.buffer.length, data: archivo.buffer.length > GRANDE ? null : archivo.buffer, estado: estado === 'propuesta' ? 'propuesta' : 'ok', visibleTrabajador: visibleTrabajador !== false && visibleTrabajador !== 'false', subido: new Date(), por: por || '' };
+    mime: archivo.mimetype, size: archivo.size || archivo.buffer.length, data: archivo.buffer, estado: estado === 'propuesta' ? 'propuesta' : 'ok', visibleTrabajador: visibleTrabajador !== false && visibleTrabajador !== 'false', subido: new Date(), por: por || '' };
   doc.caduca = _caduca(ambito, tipo, doc.fecha, caduca);
-  if (!doc.data) doc.gridId = await _guardarGrande(archivo.buffer, doc.nombre, doc.mime);
+  await disco.guardar('docsPersonal', doc);
+  if (doc.data && archivo.buffer.length > GRANDE) { doc.data = null; doc.gridId = await _guardarGrande(archivo.buffer, doc.nombre, doc.mime); }
   const r = await db.collection('docsPersonal').insertOne(doc);
   return _publico({ ...doc, _id: r.insertedId });
 }
@@ -185,6 +187,7 @@ async function analizar(archivos, por) {
         importes: tipo === 'nomina' && Number(d.liquido) > 0 ? _importes(d) : null,
         ia: { ok: ia.ok, error: ia.error || null, trabajadorLeido: txt(d.trabajador, 80) || null, dni: txt(d.dni, 20) || null }, subido: new Date(), por: por || '' };
       doc.caduca = _caduca(ambito, tipo, doc.fecha, d.caduca);
+      await disco.guardar('docsPersonal', doc);
       const r = await db.collection('docsPersonal').insertOne(doc);
       out.push(_publico({ ...doc, _id: r.insertedId }));
     }
@@ -252,6 +255,7 @@ async function editar(id, cambios = {}, por) {
 async function borrar(id) {
   const db = await getDB(); const d = await db.collection('docsPersonal').findOne({ _id: _oid(id) }, { projection: { gridId: 1 } });
   if (d && d.gridId) { try { await (await _bucket()).delete(d.gridId); } catch (e) {} }
+  await disco.borrarDe(db, 'docsPersonal', { _id: _oid(id) });
   await db.collection('docsPersonal').deleteOne({ _id: _oid(id) }); return { ok: true };
 }
 // ── ARCHIVOS GRANDES ── Un documento de Mongo no puede pasar de 16 MB: los archivos de más de 8 MB van a GridFS
@@ -262,10 +266,11 @@ async function _guardarGrande(buf, nombre, mime) {
   const b = await _bucket();
   return new Promise((ok, ko) => { const up = b.openUploadStream(nombre || 'documento', { metadata: { mime } }); up.on('error', ko).on('finish', () => ok(up.id)); up.end(buf); });
 }
-// El contenido de un documento, esté dentro o en GridFS.
+// El contenido de un documento, esté dentro, en el disco (archivosDisco.js) o en GridFS.
 async function datos(d) {
   if (!d) return null;
   if (d.data) return Buffer.from(d.data.buffer || d.data);
+  if (d.disco) return disco.leer(d);
   if (!d.gridId) return null;
   const b = await _bucket(); const trozos = [];
   await new Promise((ok, ko) => b.openDownloadStream(d.gridId).on('data', c => trozos.push(c)).on('error', ko).on('end', ok));
@@ -273,7 +278,7 @@ async function datos(d) {
 }
 async function archivo(id) {
   const db = await getDB(); const d = await db.collection('docsPersonal').findOne({ _id: _oid(id) });
-  if (d && !d.data && d.gridId) d.data = await datos(d);
+  if (d && !d.data && (d.disco || d.gridId)) d.data = await datos(d);
   return d;
 }
 

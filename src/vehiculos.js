@@ -198,6 +198,7 @@ async function subirDocumento(id, { tipo, archivo, nombre }, por) {
   const v = await db.collection('vehiculos').findOne({ _id: _oid(id) }, { projection: { _id: 1 } });
   if (!v) throw new Error('Vehículo no encontrado');
   const doc = { vehiculoId: String(v._id), tipo: DOCS[tipo] ? tipo : 'otro', nombre: txt(nombre || archivo.originalname || DOCS[tipo] || 'Documento', 100), mime: archivo.mimetype, size: archivo.size || archivo.buffer.length, data: archivo.buffer, subido: new Date(), por: por || '' };
+  await require('./archivosDisco').guardar('vehiculoDocs', doc);
   const r = await db.collection('vehiculoDocs').insertOne(doc);
   return { id: String(r.insertedId), tipo: doc.tipo, nombre: doc.nombre, mime: doc.mime, size: doc.size, subido: doc.subido };
 }
@@ -208,10 +209,11 @@ async function documentos(id) {
 }
 async function documento(docId) {
   const db = await getDB();
-  return db.collection('vehiculoDocs').findOne({ _id: _oid(docId) });
+  return require('./archivosDisco').hidratar(await db.collection('vehiculoDocs').findOne({ _id: _oid(docId) }));
 }
 async function borrarDocumento(docId) {
   const db = await getDB();
+  await require('./archivosDisco').borrarDe(db, 'vehiculoDocs', { _id: _oid(docId) });
   await db.collection('vehiculoDocs').deleteOne({ _id: _oid(docId) });
   return { ok: true };
 }

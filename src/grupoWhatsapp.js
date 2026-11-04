@@ -108,7 +108,7 @@ async function procesar(p) {
         // Foto de la obra: se guarda con la obra que nombre el texto (si nombra solo una).
         const txt = texto || await textoReciente(d, jid, p.from);
         let o = null; try { o = txt ? await require('./comprasVigilancia').obraDeTexto(txt) : null; } catch (e) {}
-        const f = await d.collection(FOTOS).insertOne({ jid, grupo: doc.grupo, msgId: ins.insertedId, from: p.from || null, quien: quien.name, texto: txt || null, obraId: o ? String(o._id) : null, obraRef: o ? (o.reference || o.clientName || null) : null, mimetype: m.type, bytes: buf.length, data: buf, ts: new Date() });
+        const f = await d.collection(FOTOS).insertOne(await require('./archivosDisco').guardar(FOTOS, { jid, grupo: doc.grupo, msgId: ins.insertedId, from: p.from || null, quien: quien.name, texto: txt || null, obraId: o ? String(o._id) : null, obraRef: o ? (o.reference || o.clientName || null) : null, mimetype: m.type, bytes: buf.length, data: buf, ts: new Date() }));
         fotoIds.push(String(f.insertedId));
       }
     } catch (e) { console.error('[Grupo] compra:', e.message); }
@@ -130,7 +130,7 @@ async function mensajes(jid, { dias = 7 } = {}) {
 async function foto(id) {
   const d = await db(); const { ObjectId } = require('mongodb');
   if (!ObjectId.isValid(String(id))) return null;
-  return d.collection(FOTOS).findOne({ _id: new ObjectId(String(id)) });
+  return require('./archivosDisco').hidratar(await d.collection(FOTOS).findOne({ _id: new ObjectId(String(id)) }));
 }
 
 module.exports = { grupoVisto, gruposPermitidos, listaGrupos, setGrupo, procesar, quienEs, mensajes, foto };

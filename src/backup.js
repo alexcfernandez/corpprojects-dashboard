@@ -5,6 +5,8 @@
 //      Diario/AAAA-MM-DD/<colección>.json.gz   ← copia COMPLETA de cada colección (datos, sin archivos pesados)
 //      Archivos/<colección>/<desde>_<n>.json.gz ← fotos y PDF (compras, nóminas, vehículos…): solo lo nuevo de
 //                                                 cada noche, así el Drive no se llena con lo mismo cada día
+//      Archivos/disco/<colección>/<id>          ← los que ya viven en el disco del servidor (archivosDisco.js), tal
+//                                                 cual, cada uno una vez (lo subido se apunta en `backupDisco`)
 // Se guardan 14 días de copias diarias y la del día 1 de cada mes durante 12 meses.
 // Formato: EJSON (el de MongoDB: conserva fechas, ids y binarios) comprimido; se restaura con
 // `node scripts/restaurar-backup.js <carpeta> <MONGO_URI>`.
@@ -18,7 +20,7 @@ const { BSON } = require('mongodb');
 async function getDB() { return require('./db').getDB(); }
 const CARPETA = process.env.BACKUP_CARPETA || 'Copias Corp Projects';
 // Colecciones con archivos (fotos, PDF): copia incremental por _id.
-const PESADAS = new Set(['comprasFotos', 'docsPersonal', 'vehiculoDocs', 'documentosArchivos', 'fotos', 'partesFotos', 'medicionesFotos', 'obraFotos']);
+const PESADAS = new Set(['comprasFotos', 'docsPersonal', 'vehiculoDocs', 'grupoFotos', 'docsPersonalArchivos.chunks', 'documentosArchivos', 'fotos', 'partesFotos', 'medicionesFotos', 'obraFotos']);
 const NO_COPIAR = new Set(['sessions', 'worker_tokens', 'bancoAuthPendiente']);
 const TROZO = 40 * 1024 * 1024;   // ~40 MB por archivo de Drive
 
@@ -59,9 +61,29 @@ async function _carpeta(drive, nombre, padre) {
   const c = await drive.files.create({ requestBody: { name: nombre, mimeType: 'application/vnd.google-apps.folder', parents: padre ? [padre] : undefined }, fields: 'id' });
   return c.data.id;
 }
-async function _subir(drive, padre, nombre, buf) {
+async function _subir(drive, padre, nombre, buf, mimeType = 'application/gzip') {
   const { Readable } = require('stream');
-  await drive.files.create({ requestBody: { name: nombre, parents: [padre] }, media: { mimeType: 'application/gzip', body: Readable.from(buf) }, fields: 'id' });
+  return (await drive.files.create({ requestBody: { name: nombre, parents: [padre] }, media: { mimeType, body: Readable.from(buf) }, fields: 'id' })).data.id;
+}
+// Archivos del disco que aún no están en Drive (se apunta su SHA-256 para poder comprobarlos al restaurar).
+async function _copiarDisco(drive, archivos, db) {
+  const disco = require('./archivosDisco');
+  const lista = await disco.listar(); if (!lista.length) return { nuevos: 0, total: 0 };
+  const ya = new Set((await db.collection('backupDisco').find({}).project({ _id: 1 }).toArray()).map(d => d._id));
+  const carpetas = {}, base = await _carpeta(drive, 'disco', archivos);
+  let nuevos = 0, errores = 0;
+  for (const f of lista.filter(x => !ya.has(x.ruta))) {
+    try {
+      const [col, id] = f.ruta.split('/');
+      carpetas[col] = carpetas[col] || await _carpeta(drive, col, base);
+      const buf = await disco.leer({ disco: { ruta: f.ruta } });
+      const driveId = await _subir(drive, carpetas[col], id, buf, 'application/octet-stream');
+      await db.collection('backupDisco').insertOne({ _id: f.ruta, bytes: buf.length, sha256: disco.sha(buf), driveId, at: new Date() });
+      nuevos++;
+    } catch (e) { errores++; }
+  }
+  if (errores) throw new Error(`${errores} archivo(s) del disco sin copiar (se reintenta mañana)`);
+  return { nuevos, total: lista.length };
 }
 // Una colección a uno o varios .json.gz (una línea EJSON por documento).
 async function _volcar(cursor, alTrozo) {
@@ -105,6 +127,8 @@ async function hacerCopia({ por = 'automática' } = {}) {
         }
       } catch (e) { log.colecciones.push({ nombre, error: e.message }); }
     }
+    try { const r = await _copiarDisco(drive, archivos, db); log.colecciones.push({ nombre: 'disco', nuevos: r.nuevos, docs: r.total }); }
+    catch (e) { log.colecciones.push({ nombre: 'disco', error: e.message }); }
     await db.collection('config').updateOne({ _id: 'backupEstado' }, { $set: { ultimoId: estado.ultimoId, ultimaCopia: new Date() } }, { upsert: true });
     await _limpiar(drive, raiz).catch(e => console.warn('[Backup] limpieza:', e.message));
   } catch (e) { log.error = e.message; }

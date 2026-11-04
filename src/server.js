@@ -799,7 +799,7 @@ async function fotosDeTrabajador(trab, fotos, texto) {
         if (obra && /^[a-f0-9]{24}$/.test(String(obra.obraId || ''))) {
           await require('./personalDocs').subir({ ambito: 'obra', obraId: String(obra.obraId), tipo: 'fotos_obra', archivo: { buffer: f.buf, mimetype: f.mime, originalname: `Foto de ${nombre} ${hoy}.jpg` }, fecha: hoy, notas: [f.descripcion, texto].filter(Boolean).join(' · ').slice(0, 300) || `Mandada por ${trab.name} por WhatsApp` }, `${trab.name} (WhatsApp)`);
         } else {
-          await db.collection('grupoFotos').insertOne({ jid: 'directo:' + String(trab.userId || trab.name), grupo: `WhatsApp de ${trab.name}`, quien: trab.name, texto: [f.descripcion, texto].filter(Boolean).join(' · ') || null, obraId: null, obraRef: null, mimetype: f.mime, bytes: f.buf.length, data: f.buf, ts: new Date() });
+          await db.collection('grupoFotos').insertOne(await require('./archivosDisco').guardar('grupoFotos', { jid: 'directo:' + String(trab.userId || trab.name), grupo: `WhatsApp de ${trab.name}`, quien: trab.name, texto: [f.descripcion, texto].filter(Boolean).join(' · ') || null, obraId: null, obraRef: null, mimetype: f.mime, bytes: f.buf.length, data: f.buf, ts: new Date() }));
         }
         guardadas++;
       } catch (e) { console.warn('[WhatsApp] guardar foto:', e.message); }

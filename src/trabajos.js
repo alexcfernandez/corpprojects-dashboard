@@ -186,7 +186,7 @@ async function crear(peticionId, { userId, fecha = null, hora = null, urgente = 
     if (g) { enGrupo = g.nombre || g._id; avisado = (await enviar(g._id, txt, { importante: true, sinTraducir: true })) !== false; }
     else if (tel) avisado = (await enviar(tel, txt, { importante: true })) !== false;
     if (avisado && !_enviar) {
-      const fotos = await db.collection('grupoFotos').find({ _id: { $in: (p.fotoIds || []).filter(f => ObjectId.isValid(f)).slice(0, 3).map(f => new ObjectId(f)) } }).toArray();
+      const fotos = await require('./archivosDisco').hidratar(await db.collection('grupoFotos').find({ _id: { $in: (p.fotoIds || []).filter(f => ObjectId.isValid(f)).slice(0, 3).map(f => new ObjectId(f)) } }).toArray());
       for (const f of fotos) { try { await require('./canalWhatsapp').enviarArchivo(g ? g._id : tel, `📷 ${corto(cliente, 40)}`, { data: Buffer.from(f.data.buffer || f.data), mime: f.mimetype || 'image/jpeg', nombre: 'aviso.jpg' }); } catch (e) {} }
     }
     // Trabajo de un presupuesto aceptado con su lista de materiales: el PDF del parte con las instrucciones (materialesObra.js).

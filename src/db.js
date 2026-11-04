@@ -107,6 +107,10 @@ async function ensureIndexes(db) {
     ['emails',                 { categoria: 1, procesadoEn: -1 }],
     ['emails',                 { gmailId: 1 },               { unique: true }],
     ['activityLog',            { ts: -1 }],
+    // Limpieza sola (4/11/2026): el registro de cambios crece ~5.000/mes; se guarda 1 año.
+    ['activityLog',            { at: 1 },                    { expireAfterSeconds: 365 * 86400 }],
+    // Chats antiguos importados: ya analizados (lo útil queda en peticionesGrupo), se borran a los 90 días de importarlos.
+    ['grupoHistorial',         { importado: 1 },             { expireAfterSeconds: 90 * 86400, partialFilterExpression: { analizado: true } }],
     ['webhookSeen',            { sid: 1 },                   { unique: true }],
     ['webhookSeen',            { ts: 1 },                    { expireAfterSeconds: 172800 }], // 2 días
     ['estadoConversacion',     { from: 1 },                  { unique: true }],

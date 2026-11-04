@@ -631,7 +631,7 @@ async function presupuestoDevuelto({ jid, grupo = null, ref = null, nombre = nul
   const r = refDePdf(ref) || refDePdf(nombre);
   if (!firmado) return { ref: r, firmado: false };
   const db = await getDB();
-  const f = data ? await db.collection('grupoFotos').insertOne({ jid, grupo, msgId, from: null, quien, texto: `${r || 'Presupuesto'} devuelto con sello o firma`, obraId: null, obraRef: null, mimetype, bytes: data.length, data, ts }) : null;
+  const f = data ? await db.collection('grupoFotos').insertOne(await require('./archivosDisco').guardar('grupoFotos', { jid, grupo, msgId, from: null, quien, texto: `${r || 'Presupuesto'} devuelto con sello o firma`, obraId: null, obraRef: null, mimetype, bytes: data.length, data, ts })) : null;
   const pets = r ? await db.collection(COL).find({ jid, $or: [{ presupuesto: r }, { 'presupuestoEnviado.ref': r }] }).toArray() : [];
   const queHacer = `${r} devuelto con sello/firma por ${quien} el ${fmt(ts)}: parece aceptado. Marcarlo como aceptado en StelOrder y programar el trabajo.`;
   for (const p of pets) { await db.collection(COL).updateOne({ _id: p._id }, { $set: { estado: 'pendiente', queHacer, presupuestoFirmado: { ref: r, at: ts, por: quien }, actualizado: new Date() }, ...(f ? { $addToSet: { fotoIds: String(f.insertedId) } } : {}) }); _memo({ ...p, estado: 'pendiente', queHacer, presupuestoFirmado: { ref: r, at: ts, por: quien } }); }
