@@ -24,6 +24,8 @@ const corto = (s, n) => { const t = String(s || '').replace(/\s+/g, ' ').trim();
 const num = n => { const v = r2(n); return Number.isInteger(v) ? String(v) : String(v).replace('.', ','); };
 const oid = id => new ObjectId(String(id));
 const apagado = () => process.env.MATERIALES_OBRA === 'off';
+// Los pasos vienen a veces ya numerados («1. ANTES…»): se quita el número para no repetirlo; y las flechas, que el PDF no pinta.
+const paso = x => String(x || '').replace(/^\s*\d+\s*[.)-]\s*/, '').replace(/\s*[→➜➔]\s*/g, ' > ');
 
 // ── IA ──
 const HERR_LISTA = {
@@ -137,7 +139,7 @@ async function generar({ prt, regenerar = false, nota = null } = {}, por = '', {
   const doc = { obraId: String(obra._id), obraRef: obra.reference, cliente: obra.clientName || null, direccion: obra.address || null,
     prt: { id: String(p.id), numero: p['full-reference'], titulo: p.title || null, total: r2(p['total-amount']), accountId: String(p['account-id'] || '') },
     resumen: corto(out.resumen, 300), items, herramientas: (out.herramientas || []).slice(0, 25).map(x => corto(x, 100)), epis: (out.epis || []).slice(0, 15).map(x => corto(x, 100)),
-    medios: (out.medios || []).slice(0, 10).map(x => corto(x, 160)), instrucciones: (out.instrucciones || []).slice(0, 25).map(x => corto(x, 400)), avisos: (out.avisos || []).slice(0, 10).map(x => corto(x, 300)),
+    medios: (out.medios || []).slice(0, 10).map(x => corto(x, 160)), instrucciones: (out.instrucciones || []).slice(0, 25).map(x => corto(paso(x), 400)), avisos: (out.avisos || []).slice(0, 10).map(x => corto(x, 300)),
     personas: Number(out.personas) || null, jornadas: Number(out.jornadas) || null,
     nota: indic || null, estado: 'comprando', completaAt: null, comprasVistas: [], creadoPor: por, actualizado: new Date(), ...(prev ? {} : { creado: new Date() }) };
   if (prev) await db.collection(COL).updateOne({ _id: prev._id }, { $set: doc });
@@ -198,7 +200,7 @@ async function marcar(listaId, itemId, { ok = null, tenemos = null } = {}, por =
 function textoTrabajo(l) {
   return [`${l.resumen || l.prt.titulo || 'Trabajo'} (${l.prt.numero}, aceptado). Material comprado.`,
     l.medios.length ? `Medios: ${l.medios.join('; ')}.` : '',
-    l.instrucciones.length ? `Pasos: ${l.instrucciones.map((x, i) => `${i + 1}) ${x}`).join(' ')}` : '',
+    l.instrucciones.length ? `Pasos: ${l.instrucciones.map((x, i) => `${i + 1}) ${paso(x)}`).join(' ')}` : '',
     l.avisos.length ? `Ojo: ${l.avisos.join(' ')}` : ''].filter(Boolean).join('\n');
 }
 
@@ -261,8 +263,8 @@ async function pdf(l, { parte = false } = {}) {
       y -= 4;
     }
   };
-  const lista = (t, xs) => { if (!xs || !xs.length) return; titulo(t); xs.forEach(x => parrafo(`• ${x}`)); };
-  const pasos = () => { if (!l.instrucciones.length) return; titulo('Cómo se hace'); l.instrucciones.forEach((x, i) => parrafo(`${i + 1}. ${x}`)); };
+  const lista = (t, xs) => { if (!xs || !xs.length) return; titulo(t); xs.forEach(x => parrafo(`• ${paso(x)}`)); };
+  const pasos = () => { if (!l.instrucciones.length) return; titulo('Cómo se hace'); l.instrucciones.forEach((x, i) => parrafo(`${i + 1}. ${paso(x)}`)); };
   if (parte) { pasos(); lista('Medios', l.medios); lista('Herramientas', l.herramientas); lista('EPIs', l.epis); lista('Ojo', l.avisos); seccMateriales(); titulo('Al acabar'); parrafo('Haz fotos de antes y de después y rellena el parte en la app (horas, material gastado y si queda algo pendiente).'); }
   else { seccMateriales(); lista('Medios', l.medios); lista('Herramientas', l.herramientas); lista('EPIs', l.epis); lista('Ojo antes de comprar', l.avisos); pasos(); }
   return Buffer.from(await doc.save());
