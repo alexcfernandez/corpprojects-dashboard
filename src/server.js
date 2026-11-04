@@ -3095,6 +3095,17 @@ app.post('/api/materiales/generar', requireAuthOficina, express.json(), async (r
   try { const M = require('./materialesObra'); const l = await M.generar({ prt: String((req.body || {}).prt || ''), regenerar: !!(req.body || {}).regenerar }, req.user?.name || 'Oficina'); res.json(await M.cruzar(String(l._id), { avisar: true })); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+// Cola de trabajos aceptados (colaTrabajos.js, 4/11/2026): el tablero (Obras → 🚦) y cambiar día, medio, reservado o hecho.
+app.get('/api/cola', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./colaTrabajos').datos()); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/cola/:id', requireAuthOficina, express.json(), async (req, res) => {
+  try {
+    const b = req.body || {}; const c = {};
+    for (const k of ['fecha', 'hora', 'medio', 'reservado', 'proveedorMedio', 'hecho', 'nota']) if (b[k] !== undefined) c[k] = b[k];
+    res.json(await require('./colaTrabajos').actualizar(req.params.id, c, req.user?.name || 'Oficina'));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.get('/api/ausencias', requireAuthOficina, async (req, res) => {
   try { const A = require('./ausencias'); res.json({ lista: await A.lista(), tipos: A.TIPOS }); } catch (err) { res.status(500).json({ error: err.message }); }
 });

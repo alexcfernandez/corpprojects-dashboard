@@ -52,6 +52,7 @@ function tools() {
     { name: 'estado_presupuesto', description: 'Alfonso dice que un presupuesto está ACEPTADO o RECHAZADO («el PRT00880 lo han aceptado», «el 874 no lo quieren»). Se cambia en StelOrder y se avisa a Álex.', input_schema: { type: 'object', properties: {
       ref: { type: 'string', description: 'Número del presupuesto (PRT00880, 880…)' },
       estado: { type: 'string', enum: ['aceptado', 'rechazado'] } }, required: ['ref', 'estado'] } },
+    { name: 'cola_trabajos', description: 'COLA DE TRABAJOS ACEPTADOS: verla («¿qué trabajos tenemos pendientes de hacer?») o cambiar uno: día previsto («Cartagena el martes a las 8»), medio (grúa, plataforma, andamio, escalera), grúa reservada («he reservado la grúa para Cartagena»), hecho («Creu 42 ya está hecho»). Se avisa a Álex de lo que cambie.', input_schema: esquema('cola_trabajos') },
     { name: 'mis_recordatorios', description: 'Alfonso pregunta qué tiene pendiente que le recuerdes («¿qué me tienes que recordar?», «¿qué tengo apuntado?»).', input_schema: { type: 'object', properties: {} } },
   ];
 }
@@ -64,7 +65,7 @@ REGLAS:
 - Si cuenta una visita y no dice cuánto rato fue, PREGUNTA cuánto (de qué hora a qué hora). Si no queda claro el sitio, pregunta.
 - Resuelve fechas relativas a YYYY-MM-DD. Hora ambigua («a las 5» sin mañana/tarde) en citas o recordatorios: pregunta «¿mañana o tarde?». Pero si cuenta una visita que YA ha hecho «a las 5», es por la tarde (17:00).
 - NUNCA inventes datos. Si falta algo, pregunta corto.
-- recordar_dato es SOLO cuando pide expresamente que recuerdes o apuntes un dato («recuerda que…», «apunta que…», «el contacto de… es…») o corrige algo que sabes. Que un presupuesto (PRT…) esté aceptado o rechazado → estado_presupuesto (si no dice el número, pregúntalo). Que una incidencia esté hecha, que un cliente haya pagado o que haya que facturar NO es recordar_dato: es para Álex → NO_ES_MIO.
+- recordar_dato es SOLO cuando pide expresamente que recuerdes o apuntes un dato («recuerda que…», «apunta que…», «el contacto de… es…») o corrige algo que sabes. Que un presupuesto (PRT…) esté aceptado o rechazado → estado_presupuesto (si no dice el número, pregúntalo). Lo de los trabajos ACEPTADOS en cola (qué falta por hacer, el día previsto, la grúa reservada, que ya está hecho) → cola_trabajos. Que una incidencia esté hecha, que un cliente haya pagado o que haya que facturar NO es recordar_dato: es para Álex → NO_ES_MIO.
 - Si pide algo que no está en tus herramientas (presupuestos, facturas, cobros, dinero, nóminas, StelOrder, mandar mensajes a clientes o trabajadores…) o solo comenta algo para Álex, contesta solo: NO_ES_MIO (se lo pasamos a Álex).
 - Si pregunta qué sabes hacer, explícaselo en pocas líneas con ejemplos.
 - Formato WhatsApp: *negrita* con UN asterisco, sin títulos #. Responde en español, breve y cercano.${memoria ? `
@@ -140,6 +141,12 @@ async function ejecutar(name, input, { from, trab, _prog = null, _cal = null, _s
       await aAlex(`🧠 *Alfonso* le ha dicho a Corpy que recuerde, de *${r.sujeto}*: ${input.texto}`);
       return { reply: `🧠 Apuntado de *${r.sujeto}*${input.sitio ? ` (${input.sitio})` : ''}: ${input.texto}\nNo se me olvida.` };
     } catch (e) { return { reply: e.message, aclara: true }; }
+  }
+  if (name === 'cola_trabajos') {
+    let r; try { r = await require('./colaTrabajos').corpy(input, 'Alfonso (Corpy)'); } catch (e) { return { reply: e.message, aclara: true }; }
+    if (typeof r !== 'string') return r;
+    if (input.trabajo) await aAlex(`🤝 *Alfonso* ha cambiado la cola de trabajos:\n${r}`);
+    return { reply: r };
   }
   if (name === 'estado_presupuesto') {
     const ref = 'PRT' + String((String(input.ref || '').match(/\d{3,5}/) || [''])[0]).padStart(5, '0');

@@ -827,7 +827,8 @@
     const una = l => `<div style="margin-bottom:10px" id="mat-${l._id}">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
         <div style="font-size:12px"><b>${_escM(l.prt.numero)}</b> · ${_escM(l.resumen||'')} <span id="mat-cnt-${l._id}" style="color:var(--text3)">(${l.items.filter(hecho).length} de ${l.items.length})</span>
-          ${l.estado==='completa'?'<span style="color:var(--green);font-weight:600"> · material completo</span>':''}${l.peticionId?' · <span style="color:var(--blue)">trabajo pedido</span>':''}</div>
+          ${l.estado==='completa'?'<span style="color:var(--green);font-weight:600"> · material completo</span>':''}${l.peticionId?' · <span style="color:var(--blue)">trabajo pedido</span>':''}
+          ${l.cola&&(l.cola.fecha||l.cola.medio||l.cola.hecho)?`<span style="display:block;color:var(--text2);margin-top:2px">${l.cola.hecho?'✅ Hecho':`${l.cola.fecha?'📅 Previsto '+_escM(l.cola.fecha.split('-').reverse().join('/'))+(l.cola.hora?' a las '+_escM(l.cola.hora):''):'Sin día previsto'}${/grua|plataforma/.test(l.cola.medio||'')?` · 🏗️ ${l.cola.medio==='grua'?'grúa':'plataforma'} ${l.cola.reservado?'reservada':'<b style="color:var(--amber)">sin reservar</b>'}`:''}`} · se cambia en Obras → 🚦</span>`:''}</div>
         <div style="display:flex;gap:6px"><button class="btn bgh" style="padding:4px 10px;font-size:11px" onclick="CP.Obras.matPdf('${l._id}',0)">📄 Lista de compra</button><button class="btn bgh" style="padding:4px 10px;font-size:11px" onclick="CP.Obras.matPdf('${l._id}',1)">📋 Parte</button></div>
       </div>
       ${l.items.map(i => `<label style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;cursor:pointer">

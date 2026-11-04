@@ -407,6 +407,8 @@ function startScheduler() {
   // Cada media hora (8-21 h): lo que piden en los grupos de clientes, separado y cruzado con StelOrder (peticionesGrupo.js, 20/10/2026).
   cron.schedule('*/30 8-21 * * *', () => { if (process.env.PETICIONES_GRUPO !== 'off') require('./peticionesGrupo').analizar().then(r => { if (r.length) console.log('[Peticiones]', JSON.stringify(r)); }).catch(e => console.warn('[Peticiones]', e.message)); }, { timezone: 'Europe/Madrid' });
   // Listas de materiales de los presupuestos aceptados (materialesObra.js, 4/11/2026): PRT aceptados nuevos y compras que tachan.
+  // Cola de trabajos aceptados (colaTrabajos.js, 4/11/2026): L-V 9:10 a Álex lo que pide algo (grúa sin reservar, día pasado…); el lunes, la cola entera.
+  cron.schedule('10 9 * * 1-5', () => { require('./colaTrabajos').avisoDiario().then(t => { if (t) console.log('[Cola] aviso enviado'); }).catch(e => console.warn('[Cola]', e.message)); }, { timezone: 'Europe/Madrid' });
   cron.schedule('20,50 8-21 * * *', () => { require('./materialesObra').revisar().then(r => { if (r.nuevas || r.cruzadas) console.log('[Materiales]', JSON.stringify(r)); }).catch(e => console.warn('[Materiales]', e.message)); }, { timezone: 'Europe/Madrid' });
   // Y las citas con día que se fijan en los demás grupos de Corpy (citasGrupos.js, 3/11/2026) → a la agenda de Álex.
   cron.schedule('5,35 8-21 * * *', () => { require('./citasGrupos').revisar().then(r => { if (r.length) console.log('[Citas]', JSON.stringify(r)); }).catch(e => console.warn('[Citas]', e.message)); }, { timezone: 'Europe/Madrid' });

@@ -213,7 +213,7 @@ async function alCompletar(l, { _db = null, _preguntar = null } = {}) {
     mensajes: [{ fecha: new Date(), quien: 'Corpy', texto: `Material completo para ${l.prt.numero} (${l.obraRef}).` }], fecha: new Date(), quien: 'Corpy', creado: new Date() };
   const r = await db.collection('peticionesGrupo').insertOne(pet); pet._id = r.insertedId;
   await db.collection(COL).updateOne({ _id: l._id }, { $set: { peticionId: String(pet._id) } });
-  await (_preguntar || require('./trabajosSeguimiento').preguntarQuien)({ ...pet, resumen: `✅ Material completo de *${l.obraRef}* (${l.prt.numero}).\n${l.resumen || ''}${l.jornadas ? `\nPrevisión: ${num(l.jornadas)} jornada${l.jornadas > 1 ? 's' : ''}${l.personas ? ` · ${l.personas} personas` : ''}.` : ''}` });
+  await (_preguntar || require('./trabajosSeguimiento').preguntarQuien)({ ...pet, resumen: `✅ Material completo de *${l.obraRef}* (${l.prt.numero}).\n${l.resumen || ''}${l.jornadas ? `\nPrevisión: ${num(l.jornadas)} jornada${l.jornadas > 1 ? 's' : ''}${l.personas ? ` · ${l.personas} personas` : ''}.` : ''}${l.cola && l.cola.fecha ? `\nDía previsto en la cola: *${require('./colaTrabajos')._fechaTxt(l.cola.fecha)}${l.cola.hora ? ' a las ' + l.cola.hora : ''}* (si no dices otro, va ese).` : ''}` });
   return pet;
 }
 

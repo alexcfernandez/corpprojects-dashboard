@@ -32,6 +32,11 @@
   .cy-flecha{align-self:center;color:var(--text3);font-size:16px}
   .cy-board{display:grid;grid-template-columns:repeat(6,minmax(220px,1fr));gap:10px;overflow-x:auto;padding-bottom:6px}
   .cy-board.dos{grid-template-columns:repeat(2,minmax(260px,1fr))}
+  .cy-board.cuatro{grid-template-columns:repeat(4,minmax(220px,1fr))}
+  .cy-sug{font-size:12.5px;color:var(--text2);margin:6px 2px 0}
+  .cy-q label{display:block;font-size:12px;color:var(--text2);margin:10px 0 3px}
+  .cy-q input,.cy-q select{background:var(--bg2);border:1px solid var(--border2);border-radius:7px;color:var(--text);font:inherit;font-size:13px;padding:6px 8px;box-sizing:border-box}
+  .cy-q .fila2{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .cy-col{background:var(--bg3);border:1px solid var(--border2);border-radius:12px;padding:8px;display:flex;flex-direction:column;min-height:120px}
   .cy-col h3{font-size:13.5px;margin:2px 4px 2px;display:flex;justify-content:space-between;gap:6px}
   .cy-col .ay{font-size:11px;color:var(--text3);margin:0 4px 8px}
@@ -89,6 +94,9 @@
       </div>
       <div id="cy-flujo" class="cy-flujo"></div>
       <div id="cy-board" class="cy-board"><div class="cy-vacio">Cargando…</div></div>
+      <h3 style="font-size:14px;margin:18px 2px 8px">🧱 Presupuestos aceptados en cola</h3>
+      <div id="cy-cola" class="cy-board cuatro"><div class="cy-vacio">Cargando…</div></div>
+      <div id="cy-cola-sug"></div>
       <h3 style="font-size:14px;margin:18px 2px 8px">Presupuestos</h3>
       <div id="cy-pres" class="cy-board dos"></div>
       <div class="cy-ley">
@@ -104,7 +112,7 @@
 
   async function cargar() {
     try {
-      st.d = await api('/api/ciclo');
+      [st.d, st.cola] = await Promise.all([api('/api/ciclo'), api('/api/cola').catch(() => null)]);
       st.cargadoEn = new Date();
       opciones();
       pintar();
@@ -159,6 +167,8 @@
     }).join('');
     const b = document.getElementById('cy-board'); if (b) b.innerHTML = d.columnas.map(columna).join('');
     const p = document.getElementById('cy-pres'); if (p) p.innerHTML = d.presupuestos.map(columna).join('');
+    const q = document.getElementById('cy-cola'); if (q) q.innerHTML = st.cola ? st.cola.columnas.map(columna).join('') : '<div class="cy-vacio">No se ha podido cargar la cola</div>';
+    const qs = document.getElementById('cy-cola-sug'); if (qs) qs.innerHTML = st.cola && st.cola.sugerencias.length ? st.cola.sugerencias.map(x => `<div class="cy-sug">${esc(x)}</div>`).join('') : '';
     const L = d.limites || {};
     const li = document.getElementById('cy-limites');
     if (li) li.textContent = `Ámbar/rojo: asignar ${L.asignar}, sin cita ${L.cita}, facturar ${L.facturar}, cobrar ${L.cobrar} días`.replace(/,(\d)/g, '/$1');
@@ -169,12 +179,13 @@
   }
 
   function buscar(id) {
-    for (const c of [...st.d.columnas, ...st.d.presupuestos]) { const t = c.tarjetas.find(x => x.id === id); if (t) return { t, c }; }
+    for (const c of [...st.d.columnas, ...st.d.presupuestos, ...(st.cola ? st.cola.columnas : [])]) { const t = c.tarjetas.find(x => x.id === id); if (t) return { t, c }; }
     return {};
   }
 
   function ver(id) {
     const { t, c } = buscar(id); if (!t) return;
+    if (t.cola) return verCola(t, c);
     const icono = { hecho: ['✓', 'var(--green)', '#fff'], actual: ['●', SEM[t.semaforo], '#fff'], pendiente: ['', 'var(--bg4)', 'var(--text3)'] };
     const pasos = (t.pasos || []).map(p => { const [ic, bg, fg] = icono[p.estado] || icono.pendiente;
       return `<div class="cy-paso-l"><div class="ic" style="background:${bg};color:${fg}">${ic}</div><div style="flex:1;min-width:0">
@@ -212,6 +223,39 @@
       ${(t.facturas || []).length ? `<div style="font-size:12.5px;color:var(--text2);margin-top:8px">${t.facturas.map(f => `${esc(f.ref)} · ${eur(f.total)}${f.pendiente ? ` · faltan ${eur(f.pendiente)}` : ' · cobrada'}`).join('<br>')}</div>` : ''}
       ${ayuda ? `<div style="font-size:12px;color:var(--text3);margin-top:10px">${esc(ayuda)}</div>` : ''}
       ${acc.length ? `<div class="cy-acc">${acc.join('')}</div>` : ''}
+    </div>`;
+    document.body.appendChild(m);
+  }
+
+  // Trabajo aceptado de la cola: día previsto, medio (grúa/plataforma se reservan) y hecho.
+  function verCola(t, c) {
+    const M = (st.cola && st.cola.medios) || {};
+    const m = document.createElement('div');
+    m.className = 'cy-modal'; m.id = 'cy-modal';
+    m.onclick = e => { if (e.target === m) m.remove(); };
+    const al = (t.alertas || []).map(a => `<div style="font-size:12.5px;color:${SEM[t.semaforo]}">${esc(a)}</div>`).join('');
+    m.innerHTML = `<div class="bx cy-q">
+      <div style="display:flex;gap:8px;align-items:flex-start"><div style="flex:1">
+        <div style="font-size:12px;color:var(--text2)">${esc(c.titulo)} · ${esc(t.ref || '')}${t.pedidoRef ? ' · ' + esc(t.pedidoRef) : ''}</div>
+        <div style="font-size:17px;font-weight:700;margin-top:2px">${esc(t.cliente || '')}</div>
+        ${t.direccion ? `<div style="font-size:12.5px;color:var(--text2)">📍 ${esc(t.direccion)}</div>` : ''}
+      </div><button onclick="document.getElementById('cy-modal').remove()" style="background:none;border:0;color:var(--text2);font-size:20px;cursor:pointer">✕</button></div>
+      ${t.que ? `<div style="font-size:13px;margin:10px 0">${esc(t.que)}</div>` : ''}
+      <div style="font-size:13px;font-weight:600;color:${SEM[t.semaforo]}">${esc(t.etiqueta)}</div>${al}
+      <div style="font-size:12.5px;color:var(--text2);margin-top:6px">🛒 ${t.items - t.faltan} de ${t.items} materiales${t.operario ? ` · 👷 ${esc(t.operario)}${(t.equipo || []).length ? ' con ' + esc(t.equipo.join(', ')) : ''}` : ''}</div>
+      <label>Día previsto${t.asignado ? ' (cambia también la cita del operario)' : ' (va al calendario)'}</label>
+      <div class="fila2"><input type="date" id="cq-f" value="${esc(t.fecha || '')}"><input type="time" id="cq-h" value="${esc(t.hora || '')}" style="width:110px"></div>
+      <label>Medios</label>
+      <div class="fila2"><select id="cq-m"><option value="">—</option>${Object.entries(M).map(([k, v]) => `<option value="${k}"${t.medio === k ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select>
+        <label style="margin:0;display:flex;gap:6px;align-items:center;color:var(--text)"><input type="checkbox" id="cq-r"${t.reservado ? ' checked' : ''}> reservada</label>
+        <input id="cq-p" placeholder="A quién (Grualpa…)" value="${esc(t.proveedorMedio || '')}" style="flex:1;min-width:120px"></div>
+      <div class="cy-acc">
+        <button onclick="CP.Ciclo.colaGuardar('${esc(t.listaId)}',this)" style="background:var(--blue);border-color:var(--blue);color:#fff;font-weight:700">Guardar</button>
+        ${t.hecho ? `<button onclick="CP.Ciclo.colaGuardar('${esc(t.listaId)}',this,{hecho:false})">↩ No está hecho</button>` : `<button onclick="CP.Ciclo.colaGuardar('${esc(t.listaId)}',this,{hecho:true})">✅ Hecho</button>`}
+        <button onclick="CP.Ciclo.colaPdf('${esc(t.listaId)}',0)">📄 Lista de compra</button>
+        <button onclick="CP.Ciclo.colaPdf('${esc(t.listaId)}',1)">📋 Parte</button>
+      </div>
+      <div style="font-size:12px;color:var(--text3);margin-top:10px">También por WhatsApp a Corpy: «Cartagena el martes a las 8», «grúa de Cartagena reservada», «Creu 42 hecho». Si lleva grúa o plataforma sin reservar, te lo recuerda cada mañana desde 5 días antes.</div>
     </div>`;
     document.body.appendChild(m);
   }
@@ -315,6 +359,20 @@
     _fxCrear: fxCrear,
     async _fxDesbloquear(woId, b) { try { await api('/api/ciclo/factura/' + woId + '/desbloquear', { method: 'POST' }); facturar(woId); } catch (e) { b.textContent = e.message; } },
     render, cargar, ver,
+    async colaGuardar(id, btn, extra = null) {
+      const v = k => document.getElementById(k);
+      const b = extra || { fecha: v('cq-f').value || null, hora: v('cq-h').value || null, medio: v('cq-m').value || undefined, reservado: v('cq-r').checked, proveedorMedio: v('cq-p').value || undefined };
+      btn.disabled = true; btn.textContent = '…';
+      try { await api('/api/cola/' + id, { method: 'POST', body: JSON.stringify(b) }); document.getElementById('cy-modal')?.remove(); if (window.toast) toast('Guardado'); cargar(); }
+      catch (e) { btn.disabled = false; btn.textContent = 'Error: ' + e.message; }
+    },
+    async colaPdf(id, parte) {
+      try {
+        const r = await fetch(`/api/materiales/${id}/pdf${parte ? '?parte=1' : ''}`, { headers: { Authorization: 'Bearer ' + (localStorage.getItem('cp_token') || '') } });
+        if (!r.ok) throw new Error('No se ha podido abrir');
+        window.open(URL.createObjectURL(await r.blob()), '_blank');
+      } catch (e) { if (window.toast) toast(e.message); }
+    },
     filtrar(v) { st.filtro = v; pintar(); },
     rojos() { st.soloRojos = !st.soloRojos; document.getElementById('cy-rojos')?.classList.toggle('on', st.soloRojos); pintar(); },
     todas(k) { const c = [...st.d.columnas, ...st.d.presupuestos].find(x => x.k === k); if (c) c._todas = true; pintar(); },

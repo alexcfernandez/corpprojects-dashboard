@@ -115,6 +115,11 @@ async function crear(peticionId, { userId, fecha = null, hora = null, urgente = 
   if (p.porConfirmar) throw new Error('Esta petición está por confirmar (no sabemos si quien llamó es de ese cliente): confírmala primero');
   if (fecha && !/^\d{4}-\d{2}-\d{2}$/.test(String(fecha))) throw new Error('El día no se entiende');
   if (hora && !/^\d{1,2}:\d{2}$/.test(String(hora))) throw new Error('La hora no se entiende');
+  // Trabajo aceptado de la cola (colaTrabajos.js) con día previsto: si no se dice otro, va ese.
+  // Su evento del calendario sobra en cuanto el trabajo tiene planificación (que ya sale en el calendario).
+  let colaLista = null;
+  if (p.listaId && ObjectId.isValid(p.listaId)) colaLista = await db.collection('listasMateriales').findOne({ _id: new ObjectId(p.listaId) }, { projection: { cola: 1 } }).catch(() => null);
+  if (!fecha && colaLista && colaLista.cola && colaLista.cola.fecha && !colaLista.cola.hecho && colaLista.cola.fecha >= new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' })) { fecha = colaLista.cola.fecha; hora = hora || colaLista.cola.hora || null; }
   if (!fecha) { fecha = null; hora = null; }
   const u = await require('./users').getUser(String(userId || '')).catch(() => null);
   if (!u) throw new Error('Elige el operario');
@@ -189,6 +194,9 @@ async function crear(peticionId, { userId, fecha = null, hora = null, urgente = 
     }
     try { await require('./push').sendToWorker(String(u._id), { title: 'Trabajo nuevo', body: `${fecha ? fechaTxt(fecha) + (hora ? ' ' + hora : '') : 'Sin día'} · ${cliente}`, url: '/parte' }); } catch (e) {}
   } catch (e) { console.warn('[Trabajos] aviso:', e.message); }
+  if (fecha && colaLista && colaLista.cola && colaLista.cola.eventoId) {
+    try { await require('./calendar').deleteEvent(colaLista.cola.eventoId); await db.collection('listasMateriales').updateOne({ _id: colaLista._id }, { $set: { 'cola.eventoId': null } }); } catch (e) { console.warn('[Trabajos] evento de la cola:', e.message); }
+  }
   return { ok: true, incidencia: incidencia.ref, pedido: ped.ref, pedidoId: String(ped.id), operario: u.name, equipo, fecha, hora, fechaTxt: fecha ? fechaTxt(fecha) : null, avisado, enGrupo };
 }
 
