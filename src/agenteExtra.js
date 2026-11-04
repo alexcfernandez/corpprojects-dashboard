@@ -319,6 +319,12 @@ async function ejecutar(name, input, from) {
     try { return { handled: true, reply: name === 'ver_recados' ? await G.verRecados(from) : await G.proponerRecado(input, from) }; }
     catch (e) { return { handled: true, reply: e.message }; }
   }
+  // «Mándame las fotos de Bellpuig 41» (fotosPedir.js): visitas, ficha de la obra, grupos y operarios.
+  if (name === 'pasar_fotos') {
+    if (!require('./acceso').esOwner(from)) return { handled: true, reply: 'Las fotos se las paso a Álex.' };
+    try { const r = await require('./fotosPedir').pasar(input, from); return { handled: true, reply: r.reply, ...(r.aclara ? { aclara: true } : {}) }; }
+    catch (e) { return { handled: true, reply: e.message }; }
+  }
   // «David ha quedado con Bellpuig el jueves a las 10» (o lo cambia): día y hora del trabajo ya mandado.
   if (name === 'fijar_cita_trabajo') {
     if (!require('./acceso').esOwner(from)) return { handled: true, reply: 'Solo para Álex.' };
@@ -532,6 +538,7 @@ const TOOLS = [
   require('./gestionPeticiones').TOOL,
   require('./gestionPeticiones').TOOL_RECADO,
   require('./gestionPeticiones').TOOL_VER,
+  require('./fotosPedir').TOOL,
   { name: 'fijar_cita_trabajo', description: 'Día y hora de un trabajo YA mandado a un operario: «David ha quedado con Bellpuig el jueves a las 10», «lo de Solterra pásalo al lunes».', input_schema: { type: 'object', properties: { trabajo: { type: 'string', description: 'Cliente, calle o PDT.' }, fecha: { type: 'string', description: 'YYYY-MM-DD' }, hora: { type: ['string', 'null'], description: 'HH:MM' } }, required: ['trabajo', 'fecha'] } },
   { name: 'cola_trabajos', description: 'COLA DE TRABAJOS ACEPTADOS (presupuestos aceptados con su lista de materiales): verla («¿qué trabajos tenemos en cola?», «cómo va la cola», «qué falta por hacer de lo aceptado») o cambiar uno: día previsto («Cartagena el martes 11 a las 8»), medio («lo de Creu 42 va con andamio», «Cartagena con grúa»), grúa o plataforma reservada («grúa de Cartagena reservada con Grualpa»), hecho («los pinchos de Cartagena ya están hechos»). Sin trabajo = ver la cola.', input_schema: { type: 'object', properties: { trabajo: { type: ['string', 'null'], description: 'Obra, calle, cliente o PRT tal como lo dice; vacío para ver la cola.' }, fecha: { type: ['string', 'null'], description: 'YYYY-MM-DD si dice día.' }, hora: { type: ['string', 'null'], description: 'HH:MM' }, medio: { type: ['string', 'null'], enum: ['grua', 'plataforma', 'andamio', 'escalera', 'ninguno', null] }, reservado: { type: ['boolean', 'null'], description: 'true si dice que la grúa/plataforma ya está reservada.' }, proveedorMedio: { type: ['string', 'null'], description: 'A quién se alquila (Grualpa…), si lo dice.' }, hecho: { type: ['boolean', 'null'], description: 'true si dice que ya está hecho; false si hay que volver a hacerlo.' }, nota: { type: ['string', 'null'] } } } },
   { name: 'estado_incidencia', description: 'Cambia el estado de una INCIDENCIA de StelOrder: «INC00432 cerrada», «la 653 ya está hecha», «la 471 presupuesto hecho», «la 448 programada». Solo Álex. Hecha = cerrada.', input_schema: { type: 'object', properties: { ref: { type: 'string', description: 'INC o número' }, estado: { type: 'string', enum: ['cerrada', 'hecha', 'presupuesto_hecho', 'programada', 'en_proceso', 'pendiente', 'rechazada'] } }, required: ['ref', 'estado'] } },
