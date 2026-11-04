@@ -113,15 +113,15 @@ async function cargarFlota(){
   try{F=await api('GET','/api/vehiculos/flota');}catch(e){el.innerHTML='<div class="vacio" style="color:var(--red)">'+esc(e.message)+'</div>';return;}
   const bajas=tabAct==='bajas';
   const l=F.vehiculos.filter(v=>bajas?v.estado==='baja':v.estado==='activo');
-  const avisos=bajas?[]:l.filter(v=>['itv','seguro','revision'].some(k=>v.dias[k]!=null&&v.dias[k]<=30));
-  el.innerHTML=(bajas?'':`<div class="bar"><button class="btn pri" onclick="nuevo()">+ Nuevo vehículo</button><span style="font-size:13px;color:var(--text2)">${l.length} en la flota · gasto ${F.anio}: <b style="color:var(--text)">${eur(l.reduce((a,v)=>a+v.gastoAnio,0))}</b></span></div>`)
+  const avisos=bajas?[]:l.filter(v=>!v.particular).filter(v=>['itv','seguro','revision'].some(k=>v.dias[k]!=null&&v.dias[k]<=30));
+  el.innerHTML=(bajas?'':`<div class="bar"><button class="btn pri" onclick="nuevo()">+ Nuevo vehículo</button><span style="font-size:13px;color:var(--text2)">${l.length} en la flota · gasto ${F.anio}: <b style="color:var(--text)">${eur(l.filter(v=>!v.particular).reduce((a,v)=>a+v.gastoAnio,0))}</b></span></div>`)
    +(bajas?'':'<div id="repost"></div>')
    +(avisos.length?`<div class="card" style="border-color:rgba(245,158,11,.4)"><b style="color:var(--amber)">⚠️ Vencimientos próximos</b><div class="nota" style="color:var(--text2)">${avisos.length} vehículo${avisos.length>1?'s':''} con ITV, seguro o revisión en menos de 30 días. Se avisa por WhatsApp al conductor (ITV y revisión) y a la oficina a los 30, 15, 7, 1 y 0 días.</div></div>`:'')
    +(l.length?l.map(v=>{
       const docs=v.docsTipos||{};const faltan=['ficha_tecnica','permiso','seguro'].filter(t=>!docs[t]).map(t=>F.docs[t]);
       return `<div class="card vc" onclick="abrir('${v.id}')"><div class="top"><div class="n"><b>🚐 ${esc(v.nombre)}</b><div class="s">${esc([v.matricula,[v.marca,v.modelo].filter(Boolean).join(' '),F.tipos[v.tipo]].filter(Boolean).join(' · '))}</div><div class="s" style="color:var(--text2)">${v.conductor?'👤 Lo lleva '+esc(v.conductor.name):'Sin conductor asignado'}</div></div>
         <div class="t"><b>${eur(v.gastoAnio)}</b><div>gasto ${F.anio}</div>${bajas&&v.baja?`<div>${esc(F.motivosBaja[v.baja.motivo]||'')} ${fmtF(v.baja.fecha)}${v.baja.precioVenta?' · '+eur(v.baja.precioVenta):''}</div>`:''}</div></div>
-        ${bajas?'':`<div class="chips">${chip('ITV',v.dias.itv,v.itv&&v.itv.proxima)}${chip('Seguro',v.dias.seguro,v.seguro&&v.seguro.vencimiento)}${v.revision&&v.revision.proximaFecha?chip('Revisión',v.dias.revision,v.revision.proximaFecha):''}${v.quartixId?'<span class="chip ok">GPS</span>':''}</div>
+        ${bajas?'':v.particular?'<div class="chips"><span class="chip gr">👤 Particular · solo para apartar sus gastos</span></div>':`<div class="chips">${chip('ITV',v.dias.itv,v.itv&&v.itv.proxima)}${chip('Seguro',v.dias.seguro,v.seguro&&v.seguro.vencimiento)}${v.revision&&v.revision.proximaFecha?chip('Revisión',v.dias.revision,v.revision.proximaFecha):''}${v.quartixId?'<span class="chip ok">GPS</span>':''}</div>
         ${faltan.length?`<div class="falta">Falta subir: ${faltan.join(', ')}</div>`:''}`}</div>`;}).join('')
      :`<div class="vacio">${bajas?'No hay vehículos dados de baja.':'Aún no hay vehículos. Pulsa «+ Nuevo vehículo» y da de alta cada furgoneta y coche con su matrícula.'}</div>`);
   if(!bajas)cargarRepostajes(l);
@@ -148,6 +148,7 @@ async function cargarResumen(){
    <div class="rs-kpis"><div class="rs-kpi"><b>${T.activos}</b><span>vehículos en uso</span></div><div class="rs-kpi"><b style="color:var(--red)">${T.rojo}</b><span>en rojo (no pueden circular o caducado)</span></div><div class="rs-kpi"><b style="color:var(--amber)">${T.ambar}</b><span>con algo pendiente</span></div><div class="rs-kpi"><b>${eur(T.primasAnuales)}</b><span>en seguros al año${T.sinPrecio?` (+${T.sinPrecio} sin precio)`:''}</span></div><div class="rs-kpi"><b>${eur(T.gastoAnio)}</b><span>gastado en ${T.anio}</span></div><div class="rs-kpi"><b>${T.tareasAbiertas}</b><span>tareas abiertas</span></div></div>
    ${RS.polizasDeBaja.length?`<div class="card" style="border-color:rgba(240,82,82,.45)"><b style="color:var(--red)">💸 Seguros que seguimos pagando de vehículos dados de baja</b>${RS.polizasDeBaja.map(p=>`<div class="rs-p">${esc(p.nombre)} ${esc(p.matricula)} · ${esc(p.compania)} ${esc(p.poliza)}${p.precioAnual!=null?' · '+eur(p.precioAnual)+'/año':''} · hasta ${fmtF(p.vencimiento)} → pasarla a otro vehículo o anularla y pedir lo no consumido</div>`).join('')}</div>`:''}
    ${RS.vehiculos.map(vcard).join('')}
+   ${RS.particulares&&RS.particulares.length?`<div class="nota">👤 Fuera del resumen por ser particulares (solo se apartan sus gastos): ${RS.particulares.map(p=>esc(p.nombre)+' · '+eur(p.gastoAnio)+' en '+RS.totales.anio).join(' · ')}</div>`:''}
    <h3>Próximos vencimientos (12 meses)</h3>
    <div class="card">${RS.vencimientos.length?`<table>${RS.vencimientos.map(x=>`<tr><td style="white-space:nowrap">${fmtF(x.fecha)}</td><td>${esc(x.que)}</td><td>${esc(x.vehiculo)} <span class="tag">${esc(x.matricula)}</span></td><td class="r">${x.importe!=null?eur(x.importe):''}</td><td class="r" style="color:${x.dias<=30?'var(--amber)':'var(--text3)'}">${x.dias===0?'hoy':'en '+x.dias+' d'}</td></tr>`).join('')}</table>`:'<div style="color:var(--text3);font-size:14px">Nada en los próximos 12 meses con fecha puesta.</div>'}
    <div class="nota">Un mes antes de cada seguro conviene pedir precios a otras compañías. Las fichas sin fecha no salen aquí: rellénalas para que avise.</div></div>`;
@@ -233,6 +234,7 @@ function pintarFicha(){
     ${campo('Nombre',inp('f-nombre',v.nombre))}${campo('Matrícula',inp('f-matricula',v.matricula))}${campo('Tipo',sel('f-tipo',cur.tipos,v.tipo))}
     ${campo('Marca',inp('f-marca',v.marca))}${campo('Modelo',inp('f-modelo',v.modelo))}${campo('Combustible',sel('f-combustible',comb,v.combustible,'—'))}
     ${campo('Nº de bastidor',inp('f-bastidor',v.bastidor))}${campo('Fecha de matriculación',inp('f-fechaMatriculacion',v.fechaMatriculacion,'date'))}${campo('Km actuales',inp('f-km',v.km,'number'))}${campo('Plazas',inp('f-plazas',v.plazas,'number'))}
+    <div style="grid-column:1/-1"><label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--text)"><input type="checkbox" id="f-particular" style="width:auto" ${v.particular?'checked':''}> Coche particular, no es de la empresa: solo sirve para apartar sus gastos (sin avisos de ITV ni seguro y fuera del resumen)</label></div>
     ${campo('Impuesto circulación (€/año)',inp('f-ivtm',v.ivtm,'number'))}${campo('Id en Quartix (GPS)',inp('f-quartixId',v.quartixId,'text','se enlaza solo por matrícula'))}${campo('Nombre en la app Esclat',inp('f-aliasEsclat',(v.aliasEsclat||[]).join(', '),'text','p. ej. Citroën berlingo'))}
   </div></div>
 
@@ -276,6 +278,7 @@ function pintarFicha(){
 const V=id=>{const e=document.getElementById(id);return e?e.value:undefined;};
 async function guardar(){
   const b={};['nombre','matricula','tipo','marca','modelo','combustible','bastidor','fechaMatriculacion','km','plazas','ivtm','quartixId','formaCompra','fechaAlta','precioCompra','cuotaMensual','finContrato','proveedorCompra','notas','aliasEsclat'].forEach(k=>b[k]=V('f-'+k));
+  b.particular=document.getElementById('f-particular').checked;
   b.itv={proxima:V('f-itv-proxima'),ultima:V('f-itv-ultima'),notas:V('f-itv-notas')};
   b.seguro={};['compania','poliza','modalidad','precioAnual','vencimiento','telefonoAsistencia'].forEach(k=>b.seguro[k]=V('f-se-'+k));
   b.revision={proximaFecha:V('f-rv-proximaFecha'),proximaKm:V('f-rv-proximaKm'),notas:V('f-rv-notas')};

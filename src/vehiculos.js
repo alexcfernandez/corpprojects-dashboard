@@ -65,6 +65,8 @@ function limpiar(d = {}) {
   if ('km' in d) o.km = num(d.km) != null ? Math.round(num(d.km)) : null;
   if ('plazas' in d) { const n = Math.round(num(d.plazas) || 0); o.plazas = n >= 1 && n <= 9 ? n : null; }   // al elegir la furgoneta del día
   // Parada (sin usar, esperando reparación…): no salen sus avisos de ITV/seguro hasta que vuelva a usarse (16/10/2026, Ford Transit).
+  // Coche particular (p. ej. el de Kate): solo está para apartar sus gastos; no es de la flota ni lleva avisos.
+  if ('particular' in d) o.particular = !!d.particular;
   if ('parada' in d) o.parada = d.parada ? { desde: fechaOk(d.parada.desde) || new Date().toISOString().slice(0, 10), motivo: txt(d.parada.motivo, 200) } : null;
   if (d.itv && typeof d.itv === 'object') o.itv = { proxima: fechaOk(d.itv.proxima), ultima: fechaOk(d.itv.ultima), notas: txt(d.itv.notas, 300) };
   if (d.seguro && typeof d.seguro === 'object') {
@@ -387,7 +389,7 @@ async function revisarVencimientos({ dryRun = false, hoy = new Date() } = {}) {
   const enviar = async (to, texto) => { try { return await require('./notifications').sendWhatsAppTo(to, texto); } catch (e) { console.error('[Vehículos] envío:', e.message); return false; } };
   const hechos = [];
   for (const v of vs) {
-    if (v.parada) continue;
+    if (v.parada || v.particular) continue;
     for (const a of avisosPendientes(v, hoy)) {
       const dest = [];
       if (a.conductor && v.conductor && telDe[v.conductor.userId]) {
@@ -439,7 +441,8 @@ async function estadoFlota({ hoy = new Date() } = {}) {
   const hoyIso = hoy.toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
   const ORDEN = { rojo: 0, ambar: 1, verde: 2 };
   const vencimientos = [];
-  const vehiculos = F.vehiculos.filter(v => v.estado === 'activo').map(v => {
+  const particulares = F.vehiculos.filter(v => v.estado === 'activo' && v.particular).map(v => ({ id: v.id, nombre: v.nombre, matricula: v.matricula || '', gastoAnio: v.gastoAnio || 0 }));
+  const vehiculos = F.vehiculos.filter(v => v.estado === 'activo' && !v.particular).map(v => {
     const p = [];   // { nivel: rojo|ambar|info, texto }
     const s = v.seguro || {}, parada = !!v.parada;
     const dS = v.dias.seguro, dI = v.dias.itv;
@@ -487,7 +490,7 @@ async function estadoFlota({ hoy = new Date() } = {}) {
   vencimientos.sort((a, b) => a.fecha.localeCompare(b.fecha));
   const primas = vehiculos.reduce((a, v) => a + (v.seguro.precioAnual || 0), 0) + polizasDeBaja.reduce((a, v) => a + (v.precioAnual || 0), 0);
   return {
-    fecha: hoyIso, vehiculos, vencimientos, polizasDeBaja,
+    fecha: hoyIso, vehiculos, vencimientos, polizasDeBaja, particulares,
     totales: { activos: vehiculos.length, rojo: vehiculos.filter(v => v.nivel === 'rojo').length, ambar: vehiculos.filter(v => v.nivel === 'ambar').length, verde: vehiculos.filter(v => v.nivel === 'verde').length, primasAnuales: r2(primas), sinPrecio: vehiculos.filter(v => v.seguro.compania && v.seguro.precioAnual == null).length, gastoAnio: r2(vehiculos.reduce((a, v) => a + v.gastoAnio, 0)), anio: F.anio, tareasAbiertas: vehiculos.reduce((a, v) => a + v.abiertas, 0) },
   };
 }
