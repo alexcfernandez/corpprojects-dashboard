@@ -30,7 +30,7 @@ const iaLista = async () => ({ resumen: 'Poner pinchos bajo el voladizo', materi
 test('el prompt lleva las partidas con su descripción y pide los consumibles', () => {
   const t = M._promptLista(prt, obra);
   assert.match(t, /130 × Suministro y colocación de pinchos/);
-  assert.match(t, /adhesivos y siliconas/);
+  assert.match(t, /adhesivo de montaje/); assert.match(t, /cantidad TOTAL/);
 });
 
 test('generar → lista con materiales; las compras de la obra tachan; completa → pregunta quién va', async () => {

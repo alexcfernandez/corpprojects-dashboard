@@ -74,13 +74,14 @@ function textoPartidas(p) {
     `- ${num(l.units || 1)} × ${corto(l['item-name'] || 'Partida', 140)} (${num(l['item-base-price'])} €/ud): ${corto(l['item-description'] || '', 1200)}`).join('\n');
 }
 
-const promptLista = (p, obra) => `Eres el encargado de obra de Corp Projects (reformas y mantenimiento de comunidades en Girona). Este presupuesto está ACEPTADO. Prepara la compra y el parte de trabajo.
+const promptLista = (p, obra, nota = '') => `Eres el encargado de obra de Corp Projects (reformas y mantenimiento de comunidades en Girona). Este presupuesto está ACEPTADO. Prepara la compra y el parte de trabajo.
 Presupuesto ${p['full-reference']}${p.title ? ` «${p.title}»` : ''} · Cliente: ${obra.clientName || ''} · Dirección: ${obra.address || '—'}
-${p.notes || p['addendum'] ? `Notas: ${corto(p.notes || p.addendum, 600)}\n` : ''}Partidas:
+${p.notes || p['addendum'] ? `Notas: ${corto(p.notes || p.addendum, 600)}\n` : ''}${nota ? `INDICACIONES DE ÁLEX (mandan sobre el presupuesto, sobre todo en medios y forma de trabajar): ${corto(nota, 800)}\n` : ''}Partidas:
 ${textoPartidas(p)}
 
 REGLAS:
-- MATERIALES: todo lo que hay que COMPRAR, con cantidad por exceso (+10 % de merma) y en envases enteros (sacos de 25 kg, cartuchos, cajas, rollos). No olvides los consumibles y fijaciones: adhesivos y siliconas (1 cartucho cada 2-3 m de perfil o pincho), tacos y tornillos, imprimaciones, cinta, discos, brocas, sacos de escombro, plástico de protección… Nombres de tienda (Obramat/Leroy), sin marcas raras. Cuando haya medidas en las partidas, úsalas y di el cálculo.
+- MATERIALES: lo que se GASTA en la obra, con la cantidad TOTAL que necesita la obra (+10 % de merma), aunque ya se haya comprado algo: lo comprado se descuenta solo después, con las compras de la obra (no lo restes tú). Usa la unidad de medida natural (ml de pincho, m² de placa, kg o sacos de 25 kg de mortero, cartuchos, litros) y di cuántos envases son en el cálculo. No olvides los consumibles y fijaciones: adhesivo de montaje (1 cartucho de 300 ml cada 4 m de pincho o perfil), tacos y tornillos, imprimaciones, cinta, sacos de escombro, plástico de protección. Nombres de tienda (Obramat/Leroy). Cuando haya medidas en las partidas, úsalas y di el cálculo. Si el material va por piezas de una longitud (varillas de pincho de 50 cm, perfiles de 3 m, tubos de 2 m), las piezas son los metros ÷ la longitud de cada pieza (130 ml de pincho en varillas de 50 cm = 260 varillas, 2 por metro, sin solapes).
+- Los EPIs (guantes, mascarillas, gafas, arneses) van en «epis» y las herramientas y máquinas (pistola de silicona, taladro, radial, brocas, discos) en «herramientas»: NO en materiales. Pon solo lo que hace falta de verdad, sin relleno.
 - NO son materiales: la mano de obra, el desplazamiento, la limpieza ni los medios auxiliares de alquiler (esos van en «medios», con días).
 - Instrucciones para el operario: pasos concretos y en orden (preparación, seguridad, ejecución, comprobación, limpieza, fotos de antes y después para el parte).
 - Si una medida es estimada («se ajustará a la medición real»), avísalo en «avisos» y pide medir antes de comprar todo.`;
@@ -91,7 +92,7 @@ ${lista.items.filter(i => !i.ok).map(i => `${i.id} · ${i.material} · faltan ${
 Compra de ${c.proveedor || 'proveedor'} del ${c.fecha || ''}:
 ${(c.lineas || []).map(l => `- ${num(l.cantidad || 1)} ${l.unidad || 'ud'} · ${l.descripcion}`).join('\n') || '(sin líneas)'}
 
-¿Qué materiales de la lista cubre esta compra y cuánto, en la unidad de la lista? Solo lo que encaje claramente (mismo material o equivalente). Si nada encaja, devuelve cubre vacío.`;
+¿Qué materiales de la lista cubre esta compra y cuánto, en la unidad de la lista? Lee bien cada línea: el primer número es cuántos envases se compraron y el nombre puede decir lo que trae cada envase («2 ud · 50 VARILLAS 500 mm» = 2 paquetes de 50 varillas de 50 cm = 100 varillas = 50 ml). Convierte a la unidad de la lista (paquetes, varillas, ml…). Solo lo que encaje claramente (mismo material o equivalente). Si nada encaja, devuelve cubre vacío.`;
 
 // ── Obra del PRT: la que ya lo tiene; si no, una nueva ──
 async function _obraDe(db, p, por) {
@@ -119,24 +120,26 @@ async function _prt(ref) {
 }
 
 // ── 1. Generar la lista (una por PRT; regenerar=true la rehace conservando lo ya tachado a mano) ──
-async function generar({ prt, regenerar = false } = {}, por = '', { _ia: ia = null, _db = null, _p = null, _obra = null } = {}) {
+async function generar({ prt, regenerar = false, nota = null } = {}, por = '', { _ia: ia = null, _db = null, _p = null, _obra = null } = {}) {
   const db = _db || await getDB();
   const p = _p || await _prt(prt);
   const prev = await db.collection(COL).findOne({ 'prt.id': String(p.id) });
   if (prev && !regenerar) return prev;
   const obra = _obra || await _obraDe(db, p, por);
-  const out = await (ia || _ia)(promptLista(p, obra), HERR_LISTA);
+  const indic = nota != null ? String(nota) : (prev && prev.nota) || '';
+  const out = await (ia || _ia)(promptLista(p, obra, indic), HERR_LISTA);
   const items = (out.materiales || []).filter(m => m && m.material && Number(m.cantidad) > 0).slice(0, 60).map((m, i) => {
-    const antes = prev && prev.items.find(x => x.material === m.material);
-    return { id: `m${i + 1}`, material: corto(m.material, 120), cantidad: r2(m.cantidad), unidad: corto(m.unidad || 'ud', 20), partida: corto(m.partida, 120) || null, calculo: corto(m.calculo, 160) || null, critico: !!m.critico,
-      tenemos: antes ? antes.tenemos : 0, ok: antes ? !!antes.ok : false, fuentes: antes ? antes.fuentes : [] };
+    // Al rehacerla se conserva solo lo tachado a mano (mismo material); lo comprado se vuelve a cruzar desde cero.
+    const antes = prev && prev.items.find(x => x.material === m.material && x.ok && x.marcadoPor);
+    return { id: `m${i + 1}`, material: corto(m.material, 120), cantidad: r2(m.cantidad), unidad: corto(m.unidad || 'ud', 20), partida: corto(m.partida, 120) || null, calculo: corto(m.calculo, 200) || null, critico: !!m.critico,
+      tenemos: 0, ok: !!antes, fuentes: [], ...(antes ? { marcadoPor: antes.marcadoPor, marcadoAt: antes.marcadoAt } : {}) };
   });
   const doc = { obraId: String(obra._id), obraRef: obra.reference, cliente: obra.clientName || null, direccion: obra.address || null,
     prt: { id: String(p.id), numero: p['full-reference'], titulo: p.title || null, total: r2(p['total-amount']), accountId: String(p['account-id'] || '') },
     resumen: corto(out.resumen, 300), items, herramientas: (out.herramientas || []).slice(0, 25).map(x => corto(x, 100)), epis: (out.epis || []).slice(0, 15).map(x => corto(x, 100)),
     medios: (out.medios || []).slice(0, 10).map(x => corto(x, 160)), instrucciones: (out.instrucciones || []).slice(0, 25).map(x => corto(x, 400)), avisos: (out.avisos || []).slice(0, 10).map(x => corto(x, 300)),
     personas: Number(out.personas) || null, jornadas: Number(out.jornadas) || null,
-    estado: 'comprando', comprasVistas: prev ? prev.comprasVistas || [] : [], creadoPor: por, actualizado: new Date(), ...(prev ? {} : { creado: new Date() }) };
+    nota: indic || null, estado: 'comprando', completaAt: null, comprasVistas: [], creadoPor: por, actualizado: new Date(), ...(prev ? {} : { creado: new Date() }) };
   if (prev) await db.collection(COL).updateOne({ _id: prev._id }, { $set: doc });
   else doc._id = (await db.collection(COL).insertOne(doc)).insertedId;
   return prev ? { ...prev, ...doc } : doc;
