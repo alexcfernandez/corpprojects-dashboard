@@ -214,7 +214,15 @@ async function ejecutar(name, input, from) {
     const para = /^\d{4}-\d{2}-\d{2}$/.test(String(input.fecha || '')) ? input.fecha : null;
     const p = await P.addPendiente(String(input.texto || '').trim(), from, { para });
     if (!p) return { handled: true, reply: '¿Qué te apunto?' };
-    return { handled: true, reply: para ? `📌 Apuntado: *${p.texto}* — te lo recuerdo ${P.fechaConfirm(para)}.` : `📌 Apuntado: *${p.texto}*. Te lo recuerdo en el resumen de la mañana hasta que me digas que está hecho.` };
+    // Con sitio: las fotos que manda con el pendiente (o justo después) se archivan en ese sitio (fotosArchivo.js).
+    let fotos = '';
+    const FA = require('./fotosArchivo'), sitio = String(input.sitio || '').trim();
+    if (sitio) {
+      FA.recordar(from, sitio, p.texto);
+      const imgs = FA.tomar(from);
+      if (imgs.length) { try { const r = await FA.aSitio(sitio, imgs, { nota: p.texto }); fotos = `\n📸 ${r.ids.length === 1 ? 'La foto, guardada' : `${r.ids.length} fotos, guardadas`} en ${r.donde}.`; } catch (e) { console.warn('[Pendiente] fotos:', e.message); } }
+    }
+    return { handled: true, reply: (para ? `📌 Apuntado: *${p.texto}* — te lo recuerdo ${P.fechaConfirm(para)}.` : `📌 Apuntado: *${p.texto}*. Te lo recuerdo en el resumen de la mañana hasta que me digas que está hecho.`) + fotos };
   }
   if (name === 'asignar_repostaje') {
     const R = require('./repostajes');
@@ -317,6 +325,12 @@ async function ejecutar(name, input, from) {
     if (!require('./acceso').esOwner(from)) return { handled: true, reply: 'Los recados los lleva Álex.' };
     const G = require('./gestionPeticiones');
     try { return { handled: true, reply: name === 'ver_recados' ? await G.verRecados(from) : await G.proponerRecado(input, from) }; }
+    catch (e) { return { handled: true, reply: e.message }; }
+  }
+  // Las fotos que acaba de mandar Álex: a un sitio o como ticket de un pago con tarjeta (fotosArchivo.js).
+  if (name === 'archivar_fotos') {
+    if (!require('./acceso').esOwner(from)) return { handled: true, reply: 'Las fotos de los trabajos mándalas al grupo de la obra.' };
+    try { const r = await require('./fotosArchivo').archivar(input, from); return { handled: true, reply: r.reply, ...(r.aclara ? { aclara: true } : {}) }; }
     catch (e) { return { handled: true, reply: e.message }; }
   }
   // «Mándame las fotos de Bellpuig 41» (fotosPedir.js): visitas, ficha de la obra, grupos y operarios.
@@ -539,6 +553,7 @@ const TOOLS = [
   require('./gestionPeticiones').TOOL_RECADO,
   require('./gestionPeticiones').TOOL_VER,
   require('./fotosPedir').TOOL,
+  require('./fotosArchivo').TOOL,
   { name: 'fijar_cita_trabajo', description: 'Día y hora de un trabajo YA mandado a un operario: «David ha quedado con Bellpuig el jueves a las 10», «lo de Solterra pásalo al lunes».', input_schema: { type: 'object', properties: { trabajo: { type: 'string', description: 'Cliente, calle o PDT.' }, fecha: { type: 'string', description: 'YYYY-MM-DD' }, hora: { type: ['string', 'null'], description: 'HH:MM' } }, required: ['trabajo', 'fecha'] } },
   { name: 'cola_trabajos', description: 'COLA DE TRABAJOS ACEPTADOS (presupuestos aceptados con su lista de materiales): verla («¿qué trabajos tenemos en cola?», «cómo va la cola», «qué falta por hacer de lo aceptado») o cambiar uno: día previsto («Cartagena el martes 11 a las 8»), medio («lo de Creu 42 va con andamio», «Cartagena con grúa»), grúa o plataforma reservada («grúa de Cartagena reservada con Grualpa»), hecho («los pinchos de Cartagena ya están hechos»). Sin trabajo = ver la cola.', input_schema: { type: 'object', properties: { trabajo: { type: ['string', 'null'], description: 'Obra, calle, cliente o PRT tal como lo dice; vacío para ver la cola.' }, fecha: { type: ['string', 'null'], description: 'YYYY-MM-DD si dice día.' }, hora: { type: ['string', 'null'], description: 'HH:MM' }, medio: { type: ['string', 'null'], enum: ['grua', 'plataforma', 'andamio', 'escalera', 'ninguno', null] }, reservado: { type: ['boolean', 'null'], description: 'true si dice que la grúa/plataforma ya está reservada.' }, proveedorMedio: { type: ['string', 'null'], description: 'A quién se alquila (Grualpa…), si lo dice.' }, hecho: { type: ['boolean', 'null'], description: 'true si dice que ya está hecho; false si hay que volver a hacerlo.' }, nota: { type: ['string', 'null'] } } } },
   { name: 'estado_incidencia', description: 'Cambia el estado de una INCIDENCIA de StelOrder: «INC00432 cerrada», «la 653 ya está hecha», «la 471 presupuesto hecho», «la 448 programada». Solo Álex. Hecha = cerrada.', input_schema: { type: 'object', properties: { ref: { type: 'string', description: 'INC o número' }, estado: { type: 'string', enum: ['cerrada', 'hecha', 'presupuesto_hecho', 'programada', 'en_proceso', 'pendiente', 'rechazada'] } }, required: ['ref', 'estado'] } },
@@ -566,7 +581,7 @@ const TOOLS = [
   { name: 'crear_vehiculo', description: 'Da de alta un vehículo NUEVO en Flota cuando Álex lo pide («créala como la Peugeot Partner», «es una moto nueva, créala») — normalmente tras decirle Corpy que no existe. Si viene de un repostaje, se le asigna.', input_schema: { type: 'object', properties: { nombre: { type: 'string', description: 'Cómo la llamáis (Peugeot Partner, Moto de Javi…).' }, marca: { type: ['string', 'null'] }, modelo: { type: ['string', 'null'] }, matricula: { type: ['string', 'null'] }, tipo: { type: ['string', 'null'], enum: ['furgoneta', 'coche', 'camion', 'moto', 'remolque', 'otro', null] }, quien: { type: ['string', 'null'] }, repostajeId: { type: ['string', 'null'] } }, required: ['nombre'] } },
   { name: 'pedir_documento_vehiculo', description: 'Pide a quien lleva un vehículo (o a quien diga Álex) una foto de un papel de ese vehículo (ficha técnica, permiso, seguro, ITV). Úsalo cuando Corpy ha dicho que no tiene el papel y Álex dice «sí, pídeselo» o «pídele a Jose la ficha técnica de la Nissan».', input_schema: { type: 'object', properties: { vehiculo: { type: 'string' }, que: { type: 'string' }, trabajador: { type: ['string', 'null'] } }, required: ['vehiculo'] } },
   { name: 'repostajes_sin_vehiculo', description: 'Lista de repostajes que aún no tienen vehículo («qué repostajes faltan», «repostajes sin vehículo»).', input_schema: { type: 'object', properties: {} } },
-  { name: 'apuntar_pendiente', description: 'Apunta un PENDIENTE o recordatorio para Álex («apúntame para el lunes repasar el PRT00852», «recuérdame llamar a Caterina»). Si dice un día, resuélvelo a YYYY-MM-DD. El texto es lo que hay que hacer, tal cual (con números de documento si los dice).', input_schema: { type: 'object', properties: { texto: { type: 'string' }, fecha: { type: ['string', 'null'] } }, required: ['texto'] } },
+  { name: 'apuntar_pendiente', description: 'Apunta un PENDIENTE o recordatorio para Álex («apúntame para el lunes repasar el PRT00852», «recuérdame llamar a Caterina»). Si dice un día, resuélvelo a YYYY-MM-DD. El texto es lo que hay que hacer, tal cual (con números de documento si los dice).', input_schema: { type: 'object', properties: { texto: { type: 'string' }, fecha: { type: ['string', 'null'] }, sitio: { type: ['string', 'null'], description: 'Obra, comunidad o dirección si el pendiente es de un sitio («tubo bajante de Santa Eugenia 57 para cambiar» → «Santa Eugenia 57»). Las fotos que mande con él se guardan allí.' } }, required: ['texto'] } },
   { name: 'cerrar_pendientes', description: 'Cierra uno o VARIOS pendientes de Álex por su número: «hecho el pendiente 1, 2 y 3».', input_schema: { type: 'object', properties: { numeros: { type: 'array', items: { type: 'integer' } } }, required: ['numeros'] } },
   { name: 'consultar_memoria', description: 'Lo que RECORDAMOS de una comunidad, piso, obra o persona: contacto, averías y lo que se hizo (por orden), material puesto («¿qué fluorescente pusimos en el parking de Joan Maragall?»), presupuestos y su estado, si alguien está de alta, lo que Álex corrigió. «¿Qué sabemos de Joan Maragall 5º 3ª?», «¿quién es el contacto de…?», «¿qué se ha hecho en Cartagena?».', input_schema: { type: 'object', properties: { que: { type: 'string', description: 'Comunidad/piso/obra o persona tal cual (p. ej. «Joan Maragall 44 5º 3ª», «Javi»)' } }, required: ['que'] } },
   { name: 'corregir_dato', description: 'Álex CORRIGE a Corpy o le pide que RECUERDE algo: «Javi sí está de alta», «el contacto del 5º 3ª de Joan Maragall es Josep Maria 600…», «en el parking de Illa Verda pusimos fluorescentes de 1,60», «Judit ya no trabaja con nosotros». Guarda el hecho (el nuevo sustituye al viejo) y arregla el origen (p. ej. cierra la ficha de alta).', input_schema: { type: 'object', properties: { sobre: { type: 'string', description: 'Persona o comunidad/obra de la que es (p. ej. «Javi», «Joan Maragall 44-46»)' }, sitio: { type: ['string', 'null'], description: 'Piso o zona si lo dice («5º 3ª», «parking»)' }, tipo: { type: 'string', enum: ['correccion', 'contacto', 'material', 'estado', 'trabajo', 'dato'], description: 'contacto = nombre/teléfono; material = lo que se puso; estado = situación (de alta, de baja, aceptado…); correccion = Corpy dijo algo mal' }, texto: { type: 'string', description: 'Lo correcto, en una frase' } }, required: ['sobre', 'texto'] } },

@@ -1989,15 +1989,21 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
   // A0.5) EL AGENTE PRIMERO para el dueño (17/10/2026: «las cosas que le pregunto no se entera de nada»). La IA, con la
   // conversación reciente y herramientas que leen datos reales, entiende lo que se pide; las reglas de palabras quedan
   // para las órdenes exactas (crear presupuestos, cambios de dinero con PIN, confirmaciones en curso) y de respaldo.
-  if (!ctx.desdeAgente && !imagenes.length && acceso.esOwner(from) && !_ordenExacta(texto)) {
+  // Con fotos también (4/11/2026: «le he mandado el recibo y todo y no se entera»): el agente sabe que hay fotos y las
+  // archiva (archivar_fotos, apuntar_pendiente con sitio); lo que no es suyo (factura, presupuesto) sigue abajo con ellas.
+  if (!ctx.desdeAgente && acceso.esOwner(from) && !_ordenExacta(texto)) {
     const pa = pendiente.get(from);
     const enCurso = pa && pa.accion && pa.accion !== 'agente_aclara' && (Date.now() - (pa.ts || 0)) < 45 * 60 * 1000;
     if (!enCurso) {
+      const FA = require('./fotosArchivo');
+      if (imagenes.length) FA.guardarPendientes(from, imagenes);
+      const n = FA.hay(from);
       try {
         const contexto = await require('./agenteExtra').contextoReciente(from);
-        const res = await require('./agente').intentar({ texto, from, imagenes, puerta: 'primero', contexto });
+        const res = await require('./agente').intentar({ texto: n ? `${texto}\n[Álex manda ${n} foto(s) con este mensaje o justo antes]` : texto, from, puerta: 'primero', contexto });
         if (res && res.handled) return res.reply;
       } catch (e) { console.error('[Agente] primero:', e.message); }
+      if (imagenes.length) FA.tomar(from);   // siguen su camino de siempre (presupuesto, competencia…)
     }
   }
 

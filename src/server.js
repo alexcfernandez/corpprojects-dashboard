@@ -514,6 +514,11 @@ function bufferGuardarFotos(from, fotos) {
   return vacioAntes; // true si era la primera (para el único acuse)
 }
 
+const _ultimoTextoDueno = new Map();   // from → ts del último texto o audio (fotos que llegan mientras se procesa)
+function bufferRecogerFotosSinVaciar(from) {
+  const entry = bufferFotos.get(from);
+  return entry && (Date.now() - entry.ts) <= FOTO_BUFFER_TTL ? entry.fotos || [] : [];
+}
 function bufferRecogerFotos(from) {
   const entry = bufferFotos.get(from);
   bufferFotos.delete(from);
@@ -552,6 +557,7 @@ async function procesarWhatsApp(from, body, media = {}) {
 
   let texto = (body || '').trim();
   let prefijo = '';
+  if (texto || (media.numMedia || 0) > 0 && /audio/i.test(media.mediaType || '')) _ultimoTextoDueno.set(from, Date.now());
 
   // ¿Nota de voz? (Twilio manda NumMedia + MediaUrl0 + MediaContentType0)
   if (!texto && (media.numMedia || 0) > 0 && /audio/i.test(media.mediaType || '')) {
@@ -606,9 +612,41 @@ async function procesarWhatsApp(from, body, media = {}) {
         if (r === '') return;   // siguientes fotos de la misma tanda: silencio
       } catch (e) { console.error('[Visitas] fotos:', e.message); }
     }
+    // Justo después de apuntar algo de un sitio (un pendiente con sitio, fotos archivadas): van a ese sitio (fotosArchivo.js).
+    const FA = require('./fotosArchivo');
+    const aSitioReciente = async (fotos) => {
+      const u = FA.reciente(from); if (!u) return null;
+      const imgs = (await Promise.all(fotos.map(f => descargarFoto(f.url, f.type)))).filter(Boolean);
+      if (!imgs.length) return null;
+      const r = await FA.aSitio(u.sitio, imgs, { nota: u.que || '' });
+      FA.recordar(from, u.sitio, u.que);
+      if (u.acuse && Date.now() - u.acuse < 60 * 1000) return '';
+      FA.reciente(from).acuse = Date.now();
+      return `📸 Guardada${r.ids.length > 1 ? 's' : ''} en ${r.donde}${u.que ? ` (con «${String(u.que).slice(0, 60)}»)` : ''}. Las que mandes ahora también van ahí.`;
+    };
+    try { const r = await aSitioReciente(fotosMsg); if (r) return responder(r); if (r === '') return; } catch (e) { console.error('[FotosArchivo] reciente:', e.message); }
     const primera = bufferGuardarFotos(from, fotosMsg);
-    if (primera) return responder('📸 Foto(s) recibida(s). Dime qué hago: *"factura"* (la subo a StelOrder), *"hazme un presupuesto de esto para Illa Verda"* o cuéntame la visita (de qué obra son y qué has visto) y las guardo allí.');
-    return; // siguientes fotos: silencio
+    if (!primera) return; // siguientes fotos: silencio
+    const preguntar = async () => {
+      if (!bufferRecogerFotosSinVaciar(from).length) return;   // ya las usó otro mensaje
+      let tk = []; try { tk = await FA.ticketsDe(from); } catch (e) {}
+      if (tk.length === 1) return responder(`📸 ¿Es el ticket de ${FA.textoTicket(tk[0])} (${tk[0].fecha.split('-').reverse().slice(0, 2).join('/')})? Dime *«sí»* y lo guardo con ese pago. Si no, dime de qué sitio es y la archivo allí, o *"factura"* (la subo a StelOrder).`);
+      return responder('📸 Foto(s) recibida(s). Dime qué hago: de qué obra o comunidad son (y las archivo allí, o me cuentas la visita), *"es el ticket de…"*, *"factura"* (la subo a StelOrder) o *"hazme un presupuesto de esto para Illa Verda"*.');
+    };
+    // La foto llega mientras se procesa su texto (4/11: «Tubo bajante de Santa Eugenia 57…» + foto aparte): se espera a
+    // ver si ese texto apunta algo de un sitio, y entonces va allí sin preguntar.
+    const t0 = _ultimoTextoDueno.get(from);
+    if (t0 && Date.now() - t0 < 60 * 1000) {
+      setTimeout(async () => {
+        try {
+          const fotos = bufferRecogerFotosSinVaciar(from);
+          if (fotos.length && FA.reciente(from)) { const r = await aSitioReciente(bufferRecogerFotos(from)); if (r) return responder(r); }
+          await preguntar();
+        } catch (e) { console.error('[FotosArchivo] espera:', e.message); }
+      }, 25 * 1000);
+      return;
+    }
+    return preguntar();
   }
 
   // CASO B: hay instrucción -> juntar fotos del buffer + las de este mensaje

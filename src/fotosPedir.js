@@ -4,7 +4,8 @@
 //   · visitas (las que cuenta Álex): con obra están en docsPersonal (fotos_obra); sin obra, en visitaFotos;
 //   · «Fotos de la obra» subidas en la ficha (docsPersonal, ámbito obra);
 //   · fotos de los grupos con la obra (grupoFotos.obraId) o de una petición de ese sitio (peticionesGrupo.fotoIds);
-//   · las que mandan los operarios de un trabajo (workOrderAssignments.fotosOperario → grupoFotos).
+//   · las que mandan los operarios de un trabajo (workOrderAssignments.fotosOperario → grupoFotos);
+//   · las que Álex manda a Corpy para un sitio sin obra (sitioFotos, fotosArchivo.js).
 // Las manda por el puente de WhatsApp, las más nuevas primero (máx. 10 por petición).
 'use strict';
 const { ObjectId } = require('mongodb');
@@ -51,6 +52,9 @@ async function buscar(input = {}, { _db = null } = {}) {
   // 2) fotos de la obra subidas en su ficha
   if (obraId) for (const d of await db.collection('docsPersonal').find({ ambito: 'obra', obraId, tipo: 'fotos_obra' }).project({ fecha: 1, subido: 1 }).toArray())
     add({ col: 'docsPersonal', id: String(d._id), fecha: d.fecha || iso(d.subido), origen: 'obra' });
+  // 2b) las que Álex archivó en un sitio sin obra (fotosArchivo.js)
+  for (const f of await db.collection('sitioFotos').find({}).project({ sitio: 1, cliente: 1, ts: 1, texto: 1 }).sort({ ts: -1 }).limit(1000).toArray())
+    if (casa(sitio, [f.sitio, f.cliente].join(' '))) add({ col: 'sitioFotos', id: String(f._id), fecha: iso(f.ts), origen: 'alex' });
   // 3) grupos: con la obra, o de una petición de ese sitio
   const idsGrupo = new Map();   // id → origen
   if (obraId) for (const f of await db.collection('grupoFotos').find({ obraId }).project({ _id: 1 }).toArray()) idsGrupo.set(String(f._id), 'grupo');
@@ -75,7 +79,7 @@ async function _datos(db, f) {
   return { data: Buffer.isBuffer(data) ? data : Buffer.from(data.buffer || data), mime: d.mime || d.mimetype || 'image/jpeg' };
 }
 
-const ORIGEN = { visita: 'visita', obra: 'ficha de la obra', grupo: 'grupo', operario: 'operario' };
+const ORIGEN = { alex: 'archivada por ti', visita: 'visita', obra: 'ficha de la obra', grupo: 'grupo', operario: 'operario' };
 async function pasar(input = {}, from, { _db = null, _enviar = null } = {}) {
   const db = _db || await require('./db').getDB();
   const r = await buscar(input, { _db: db });
