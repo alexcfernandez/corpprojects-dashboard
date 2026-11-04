@@ -11,6 +11,7 @@ const COL = 'peticionesGestion';      // { _id: from, accion, ids?, id?, extra, 
 const TTL = 10 * 60 * 1000;
 const POR = 'Álex (Corpy)';
 const ACCIONES = ['descartar', 'hecho', 'confirmar', 'no_es_cliente', 'devuelta', 'asignar'];
+const TTL_LISTA = 30 * 60 * 1000;   // «descarta el 2» vale media hora después de «qué recados tengo»
 const VERBO = { descartar: 'Descartar', hecho: 'Dar por hecha', confirmar: 'Confirmar', no_es_cliente: 'Pasar a «Otros / no es cliente»', devuelta: 'Apuntar que has devuelto la llamada de', asignar: 'Mandar a' };
 
 const _n = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9ñ ]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -96,7 +97,9 @@ async function proponer(input = {}, from, { _db = null } = {}) {
     Object.assign(extra, { userId: String(u._id), operarioNombre: u.name });
   }
   if (accion === 'no_es_cliente' && input.quien) extra.que = String(input.quien).slice(0, 200);
-  const c = await candidatos(accion, input.peticion || '', { _db: db });
+  const num = _n(input.peticion).match(/^(?:el |la |numero |n )?(\d{1,2})$/);
+  const c = num ? await _deLista(from, Number(num[1]), db) : await candidatos(accion, input.peticion || '', { _db: db });
+  if (num && !c.length) return `No tengo a mano una lista con el ${num[1]}. Dime «qué recados tengo» o nómbrame el cliente.`;
   if (!c.length) { await db.collection(COL).deleteOne({ _id: String(from) }); return `No encuentro ninguna petición abierta que encaje con «${input.peticion || ''}»${accion === 'confirmar' ? ' y esté por confirmar' : ''}. Dime el cliente, la calle o quién llamó.`; }
   if (c.length > 1) {
     const l = c.slice(0, 5);
@@ -105,6 +108,13 @@ async function proponer(input = {}, from, { _db = null } = {}) {
   }
   await _guardar(from, { accion, ids: [{ tipo: c[0].tipo, id: c[0].id }], elegido: 0, extra }, db);
   return _pregunta(accion, c[0], extra);
+}
+
+async function _deLista(from, n, db) {
+  const l = await db.collection(COL).findOne({ _id: `${from}:lista` });
+  if (!l || Date.now() - new Date(l.ts).getTime() > TTL_LISTA || !l.ids[n - 1]) return [];
+  const c = await _cargar(l.ids[n - 1], db);
+  return c ? [c] : [];
 }
 
 async function _cargar(x, db) {
@@ -131,10 +141,58 @@ async function _hacer(accion, c, extra, from, db) {
     return `✅ Confirmada${extra.clienteNombre ? ` como de *${extra.clienteNombre}*` : ''}: ${etiqueta(c)}.${r.incidencia ? ` Incidencia ${r.incidencia}; ahora te pregunto quién va.` : ''}${r.error ? ` Ojo: ${r.error}` : ''}`;
   }
   if (accion === 'asignar') {
+    if (p.noCliente) return 'Esa no es de un cliente: si lo es, primero dime de qué cliente («confirma el … como de …»). No he tocado nada.';
     if (p.porConfirmar) return `Esa petición está por confirmar: primero dime «confirma el de ${_quien(p)}». No he tocado nada.`;
     return require('./trabajosSeguimiento').asignar(p, { userId: extra.userId, nota: extra.nota || '' }, POR);
   }
   return 'No he hecho nada.';
+}
+
+// Un recado que le llegó a Álex por fuera de la centralita («me ha llamado Marta de Bellpuig 41, gotera en el 3º 1ª»,
+// un WhatsApp de un cliente que reenvía…): primero repite qué va a apuntar y, con el «sí», va por el mismo camino que los
+// de SecretarIA (petición, incidencia y «¿Quién va?» si es de un cliente; «Otros» si no lo es; «por confirmar» si no se
+// sabe de quién es).
+async function _porTelefono(tel) {
+  const d = String(tel || '').replace(/\D/g, '').slice(-9);
+  if (d.length < 9) return null;
+  const { clientMap } = await require('./stelorder').getClients();
+  const c = Object.entries(clientMap).filter(([, x]) => [x.phone, x.mobile, x.phone2].some(n => String(n || '').replace(/\D/g, '').slice(-9) === d));
+  return c.length === 1 ? { id: String(c[0][0]), nombre: c[0][1].name } : null;
+}
+async function proponerRecado(input = {}, from, { _db = null } = {}) {
+  const db = _db || await getDB();
+  const texto = String(input.texto || '').trim().slice(0, 2500);
+  if (!texto) return '¿Qué recado apunto? Dime quién te ha llamado o escrito y qué quiere.';
+  const extra = { texto, quien: String(input.quien || '').trim().slice(0, 60) || null, telefono: String(input.telefono || '').replace(/[^\d+]/g, '').slice(0, 16) || null, urgente: !!input.urgente };
+  if (input.cliente) { const c = await _cliente(input.cliente); if (c.error) return c.error; Object.assign(extra, { clienteId: c.id, clienteNombre: c.nombre }); }
+  else if (extra.telefono) { const c = await _porTelefono(extra.telefono).catch(() => null); if (c) Object.assign(extra, { clienteId: c.id, clienteNombre: c.nombre, porTelefono: true }); }
+  await _guardar(from, { accion: 'recado', ids: [], elegido: -1, extra }, db);
+  const corto = texto.length > 140 ? texto.slice(0, 140) + '…' : texto;
+  return `¿Hago esto? Apuntar recado${extra.urgente ? ' 🚨 urgente' : ''} de *${extra.quien || 'alguien sin nombre'}*${extra.telefono ? ` (tel. …${extra.telefono.slice(-3)})` : ''}${extra.clienteNombre ? ` · cliente *${extra.clienteNombre}*${extra.porTelefono ? ' (por su teléfono)' : ''}` : ''}: «${corto}».\nSi es de un cliente creo la incidencia y te pregunto quién va. Contesta «sí» o «no».`;
+}
+async function _apuntar(extra, db) {
+  const P = require('./peticionesGrupo');
+  const r = await P.deRecado({ llamada: `corpy:${Date.now()}`, fecha: new Date(), urgente: extra.urgente, resumen: extra.texto, contacto: { nombre: extra.quien || null, externalId: extra.clienteId || null }, final: (extra.telefono || '').replace(/\D/g, '').slice(-3), origen: 'Álex', avisar: false });
+  const l = (r.nuevas || []).map(n => n.noCliente ? `📇 En «Otros / no es cliente»: ${n.noCliente}.`
+    : n.porConfirmar ? `⚠️ Apuntado, pero no sé de qué cliente es (${n.cliente || '¿?'}). Dime «confirma el de ${extra.quien || n.cliente} como de …» y sigo.`
+    : n.incidencia ? `✅ Apuntado: *${n.cliente}* · ${n.resumen}. Incidencia ${n.incidencia}; ahora te pregunto quién va.`
+    : `✅ Apuntado: *${n.cliente}* · ${n.resumen}.${n.error ? ` Ojo: ${n.error}` : ''}`);
+  if ((r.actualizadas || []).length) l.push(`➕ Lo he juntado con ${r.actualizadas.length === 1 ? 'el recado' : 'los recados'} de hace un momento de ese mismo número.`);
+  return l.join('\n') || 'No he sacado nada que hacer de esto; si sí lo hay, dímelo con otras palabras.';
+}
+
+// «Qué recados tengo»: los abiertos de llamadas (y los que Álex apuntó), numerados para decir «descarta el 2».
+async function verRecados(from, { _db = null } = {}) {
+  const db = _db || await getDB();
+  const ps = await db.collection('peticionesGrupo').find({ jid: 'voz:corp', estado: 'pendiente', fecha: { $gte: new Date(Date.now() - 30 * 864e5) } }).sort({ fecha: -1 }).limit(60).toArray();
+  ps.sort((a, b) => (!!b.urgente - !!a.urgente) || (!!b.porConfirmar - !!a.porConfirmar) || (new Date(b.fecha) - new Date(a.fecha)));
+  let per = [];
+  try { per = await require('./nuvoVoz').perdidasSinRecado(new Date(Date.now() - 7 * 864e5), new Date(), { _db: db }); } catch (e) {}
+  const l = [...ps.slice(0, 12).map(p => ({ tipo: 'peticion', id: String(p._id), p })), ...per.slice(-5).reverse().map(x => ({ tipo: 'perdida', id: String(x._id), nombre: (x.contacto && x.contacto.nombre) || null, final: x.final || null, fecha: x.fecha }))];
+  if (!l.length) return '📞 No hay recados abiertos ni llamadas perdidas sin devolver.';
+  await db.collection(COL).replaceOne({ _id: `${from}:lista` }, { _id: `${from}:lista`, ids: l.map(x => ({ tipo: x.tipo, id: x.id })), ts: new Date() }, { upsert: true });
+  const estado = c => c.tipo === 'perdida' ? 'sin recado' : c.p.noCliente ? '📇 no es cliente' : c.p.porConfirmar ? '⚠️ por confirmar' : c.p.pedido && c.p.pedido.ref ? `🔧 ${c.p.pedido.ref}` : c.p.incidencia ? 'falta quién va' : 'sin incidencia';
+  return `📞 *Recados abiertos* (${ps.length}${per.length ? ` · ${per.length} perdida${per.length > 1 ? 's' : ''} sin devolver` : ''})\n${l.map((c, i) => `${i + 1}. ${c.tipo === 'peticion' && c.p.urgente ? '🚨 ' : ''}${etiqueta(c)} — ${estado(c)}`).join('\n')}${ps.length > 12 ? `\n…y ${ps.length - 12} más en 📞 Llamadas.` : ''}\nDime, por ejemplo, «descarta el 2», «confirma el 1» o «el 3 lo hace David».`;
 }
 
 // El mensaje siguiente de Álex: «sí» lo hace, «no» lo deja, un número elige de la lista. Cualquier otra cosa anula la
@@ -160,6 +218,7 @@ async function respuesta(texto, from, { _db = null } = {}) {
   await db.collection(COL).deleteOne({ _id: e._id });
   if (NO.test(t)) return '👍 Vale, no toco nada.';
   if (!SI.test(t)) return null;
+  if (e.accion === 'recado') { try { return await _apuntar(e.extra || {}, db); } catch (err) { return `No he podido apuntarlo: ${err.message}`; } }
   const c = await _cargar(e.ids[e.elegido], db);
   if (!c) return 'Esa petición ya no la encuentro. No he tocado nada.';
   try { return await _hacer(e.accion, c, e.extra || {}, from, db); } catch (err) { return `No he podido: ${err.message}`; }
@@ -167,11 +226,20 @@ async function respuesta(texto, from, { _db = null } = {}) {
 
 const TOOL = { name: 'gestionar_peticion', description: 'Álex GESTIONA un recado de SecretarIA o una petición abierta: «descarta el de Exolution», «el de Belpuig no es de ILLA VERDA, es un proveedor» (no_es_cliente), «confirma el de Katerin» / «el de Katerin es de Can Bells 30» (confirmar, con cliente), «ya he devuelto la llamada a CTAT Barcelona 51» (devuelta), «lo de la bañera lo hace Álex» (asignar), «lo de Cartagena ya está» (hecho). NO cambia nada: busca la petición y le pregunta a Álex en una línea; solo se hace cuando él contesta «sí». Si encajan varias, le da una lista numerada. Nunca borra.', input_schema: { type: 'object', properties: {
   accion: { type: 'string', enum: ACCIONES },
-  peticion: { type: 'string', description: 'Cómo la nombra Álex: quien llamó, cliente, calle, qué pasa o la referencia («Exolution», «Belpuig», «Katerin», «bañera», «CTAT Barcelona 51», «INC00654»).' },
+  peticion: { type: 'string', description: 'Cómo la nombra Álex: quien llamó, cliente, calle, qué pasa o la referencia («Exolution», «Belpuig», «Katerin», «bañera», «CTAT Barcelona 51», «INC00654»), o el número de la lista de ver_recados («2»).' },
   cliente: { type: ['string', 'null'], description: 'Solo en confirmar: el cliente de StelOrder si dice que es de otro.' },
   operario: { type: ['string', 'null'], description: 'Solo en asignar: quién lo hace, tal como lo dice («Álex», «David», «yo»).' },
   quien: { type: ['string', 'null'], description: 'Solo en no_es_cliente: quién es y qué quiere, si lo dice («proveedor de aluminio»).' },
   nota: { type: ['string', 'null'] },
 }, required: ['accion', 'peticion'] } };
 
-module.exports = { TOOL, proponer, respuesta, candidatos, puntos, etiqueta, COL };
+const TOOL_RECADO = { name: 'apuntar_recado', description: 'Álex cuenta un RECADO que le ha llegado por fuera de la centralita (le han llamado a su móvil, le han escrito, le han parado por la calle o reenvía el WhatsApp de un cliente): «me ha llamado Marta de Bellpuig 41, que hay una gotera en el 3º 1ª, su móvil 666…», «apunta: el de Can Bells quiere presupuesto del baño», «recado de Fulgencio de Exolution por el Kit Digital». Se apunta como los de SecretarIA (petición, incidencia y «¿Quién va?» si es de un cliente; «Otros» si es proveedor/comercial/administrativo). NO cambia nada: repite lo que va a apuntar y lo hace cuando Álex dice «sí». No es para notas de una visita (registrar_visita) ni recordatorios (apuntar_pendiente).', input_schema: { type: 'object', properties: {
+  texto: { type: 'string', description: 'El recado completo, tal cual lo cuenta Álex o el mensaje reenviado (qué pasa, dónde, piso, contacto).' },
+  quien: { type: ['string', 'null'], description: 'Quién llamó o escribió («Marta», «Fulgencio de Exolution»).' },
+  telefono: { type: ['string', 'null'], description: 'Su teléfono si lo dice.' },
+  cliente: { type: ['string', 'null'], description: 'El cliente o la comunidad de StelOrder si Álex lo dice claramente («de Bellpuig 41», «CINC»).' },
+  urgente: { type: ['boolean', 'null'], description: 'Agua entrando, sin luz, peligro, o Álex dice que es urgente.' },
+}, required: ['texto'] } };
+const TOOL_VER = { name: 'ver_recados', description: 'Lista NUMERADA de los recados abiertos de las llamadas (SecretarIA y los que apuntó Álex) y las perdidas sin devolver: «qué recados tengo», «qué llamadas hay pendientes», «recados». Luego Álex puede decir «descarta el 2» (gestionar_peticion con peticion «2»).', input_schema: { type: 'object', properties: {} } };
+
+module.exports = { TOOL, TOOL_RECADO, TOOL_VER, proponer, proponerRecado, verRecados, respuesta, candidatos, puntos, etiqueta, COL };

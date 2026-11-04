@@ -165,3 +165,60 @@ test('Corpy: «el de Belpuig no es de ILLA VERDA, es un proveedor», «ya he dev
     assert.match(await G.proponer({ accion: 'asignar', peticion: 'bañera', operario: 'Pepito' }, ALEX), /No sé quién es «Pepito»/);
   } finally { fin(); U.getUsers = realUsers; T.crear = realCrear; }
 });
+
+test('Corpy: un recado que le llega a Álex por fuera se apunta como los de SecretarIA, solo con el «sí»', async () => {
+  const { db, fin } = conDB();
+  const G = require('../src/gestionPeticiones'), PG = require('../src/peticionesGrupo'), S = require('../src/stelorder');
+  const realRec = PG.deRecado, realCl = S.getClients;
+  S.getClients = async () => ({ clientMap: { 556: { name: 'CTAT PROP BELLPUIG 41', family: 'CINC', phone: '972 11 22 33' }, 1: { name: 'KATERIN CARDONA', family: 'Particulares', phone: '' } } });
+  const llamadas = [];
+  PG.deRecado = async o => { llamadas.push(o); return { nuevas: [{ id: 'x', cliente: 'CTAT PROP BELLPUIG 41', resumen: 'Gotera en el 3º 1ª', incidencia: 'INC00710' }], actualizadas: [] }; };
+  try {
+    const q = await G.proponerRecado({ texto: 'Marta dice que hay una gotera en el 3º 1ª', quien: 'Marta', telefono: '+34 972 112 233', urgente: true }, ALEX);
+    assert.match(q, /^¿Hago esto\? Apuntar recado 🚨 urgente de \*Marta\* \(tel\. …233\) · cliente \*CTAT PROP BELLPUIG 41\* \(por su teléfono\): «Marta dice que hay una gotera en el 3º 1ª»\./);
+    assert.strictEqual(llamadas.length, 0, 'preguntar no apunta nada');
+    assert.match(await G.respuesta('sí', ALEX), /Incidencia INC00710; ahora te pregunto quién va/);
+    assert.strictEqual(llamadas.length, 1);
+    assert.deepStrictEqual([llamadas[0].contacto, llamadas[0].final, llamadas[0].origen, llamadas[0].avisar, llamadas[0].urgente], [{ nombre: 'Marta', externalId: '556' }, '233', 'Álex', false, true]);
+    // Con el cliente dicho por Álex y sin teléfono.
+    await G.proponerRecado({ texto: 'Quiere presupuesto del baño', quien: 'Katerin', cliente: 'Katerin Cardona' }, ALEX);
+    assert.match(await G.respuesta('no', ALEX), /no toco nada/);
+    assert.strictEqual(llamadas.length, 1);
+    assert.match(await G.proponerRecado({ texto: '' }, ALEX), /¿Qué recado apunto\?/);
+  } finally { fin(); PG.deRecado = realRec; S.getClients = realCl; }
+});
+
+test('deRecado con origen Álex: no le avisa por WhatsApp de lo que acaba de contar y queda apuntado de dónde vino', async () => {
+  const { db, fin } = conDB();
+  const PG = require('../src/peticionesGrupo');
+  const enviados = []; let prompt = '';
+  try {
+    await PG.deRecado({ llamada: 'corpy:1', urgente: true, resumen: 'Gotera en el 3º 1ª', contacto: { nombre: 'Marta', externalId: '555' }, final: '233', origen: 'Álex', avisar: false, _cat: cat, _clientMap: cm,
+      _llamar: async p => { prompt = p; return { peticiones: [{ msgs: [0], tipo: 'trabajo', cliente_id: '555', cliente: 'Illa Verda', resumen: 'Gotera', que_hacer: 'Ir', urgente: true, situacion: 'nuevo' }] }; },
+      _auto: async () => ({}), _enviar: async (to, t) => { enviados.push(t); return true; } });
+    assert.deepStrictEqual(enviados, []);
+    assert.match(prompt, /NO viene de SecretarIA: se lo ha contado Álex/);
+    assert.match(prompt, /Según Álex, quien llama es el cliente de StelOrder 555/);
+    assert.strictEqual(db.cols.peticionesGrupo[0].recado.origen, 'Álex');
+    assert.strictEqual(db.cols.peticionesGrupo[0].porConfirmar, undefined, 'el cliente lo dice Álex: no queda por confirmar');
+  } finally { fin(); }
+});
+
+test('Corpy: «qué recados tengo» da lista numerada y «descarta el 2» usa esa lista', async () => {
+  const { db, fin } = conDB();
+  const G = require('../src/gestionPeticiones');
+  const a = new ObjectId(), b = new ObjectId();
+  await db.collection('peticionesGrupo').insertOne({ _id: a, jid: 'voz:corp', canal: 'llamada', cliente: 'Katerin Cardona', titulo: 'Fuga', urgente: true, incidencia: 'INC00660', estado: 'pendiente', fecha: new Date(Date.now() - 7200e3) });
+  await db.collection('peticionesGrupo').insertOne({ _id: b, jid: 'voz:corp', canal: 'llamada', cliente: 'Fulgencio', noCliente: { que: 'Fulgencio de Exolution' }, estado: 'pendiente', fecha: new Date(Date.now() - 3600e3) });
+  await db.collection('llamadasVoz').insertOne({ _id: 'llamada.perdida:Y', evento: 'llamada.perdida', llamada: 'Y', fecha: new Date(Date.now() - 600e3), contacto: { nombre: 'Pere' }, final: '777' });
+  try {
+    const l = await G.verRecados(ALEX);
+    assert.match(l, /Recados abiertos\* \(2 · 1 perdida sin devolver\)\n1\. 🚨 \*Katerin Cardona\* \(Fuga\)[^\n]*— falta quién va\n2\. \*Fulgencio de Exolution\*[^\n]*— 📇 no es cliente\n3\. llamada perdida de \*Pere\*[^\n]*— sin recado/);
+    assert.match(await G.proponer({ accion: 'descartar', peticion: 'el 2' }, ALEX), /^¿Hago esto\? Descartar \*Fulgencio de Exolution\*/);
+    assert.match(await G.respuesta('sí', ALEX), /Descartada/);
+    assert.strictEqual(db.cols.peticionesGrupo[1].estado, 'descartado');
+    assert.strictEqual(db.cols.peticionesGrupo[0].estado, 'pendiente');
+    assert.match(await G.proponer({ accion: 'devuelta', peticion: '3' }, ALEX), /devuelto la llamada perdida de \*Pere\*/);
+    assert.match(await G.proponer({ accion: 'descartar', peticion: '9' }, ALEX), /No tengo a mano una lista con el 9/);
+  } finally { fin(); }
+});

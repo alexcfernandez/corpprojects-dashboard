@@ -379,7 +379,9 @@ function porNombre(nombre, clientMap = {}, final = null) {
 // Un recado urgente de seguimiento («ya llamé», «vuelve a pasar») sin incidencia enlazada es un aviso nuevo para
 // _autoIncidencias: incidencia y «¿Quién va?» (3/11/2026: el de Katerin Cardona salió «seguimiento» y no preguntó quién iba).
 const _paraAuto = p => (!p.incidencia && p.situacion === 'seguimiento' ? { ...p, situacion: 'nuevo' } : p);
-async function deRecado({ llamada, fecha = new Date(), urgente = false, resumen, titulo = null, contacto = null, final = '', _llamar = null, _cat = null, _enviar = null, _auto = null, _clientMap = null } = {}) {
+// origen: un recado que le llegó a Álex por fuera de la centralita (a su móvil, un WhatsApp reenviado…) y se lo cuenta a
+// Corpy (gestionPeticiones.apuntarRecado). Sigue el mismo camino; no se le avisa por WhatsApp de lo que acaba de contar.
+async function deRecado({ llamada, fecha = new Date(), urgente = false, resumen, titulo = null, contacto = null, final = '', origen = null, avisar = true, _llamar = null, _cat = null, _enviar = null, _auto = null, _clientMap = null } = {}) {
   const db = await getDB();
   if (llamada && await db.collection(COL).findOne({ llamadas: String(llamada) })) return { ya: true };
   urgente = !!urgente || /^\s*URGENTE\b/i.test(resumen || '');
@@ -390,7 +392,7 @@ async function deRecado({ llamada, fecha = new Date(), urgente = false, resumen,
   const fin = String(final || '').slice(-3) || null;
   const clientMap = _clientMap || ((await require('./stelorder').getClients().catch(() => null)) || {}).clientMap || {};
   const propuesto = accId ? null : porNombre(contacto && contacto.nombre, clientMap, fin);
-  const extra = EXTRA_RECADO + (accId ? `\nSegún su número, quien llama es el cliente de StelOrder ${accId} · ${cat.nombre(accId)}. Si el recado es de ese cliente usa ese cliente_id; si habla claramente de otra comunidad, pon la de la que habla.` : '\nEl número que llamó no es de ningún cliente conocido.'
+  const extra = (origen ? `Este recado NO viene de SecretarIA: se lo ha contado ${origen} a Corpy (le llamaron o le escribieron a él). Quien llamó o escribió es «${corto(contacto && contacto.nombre, 60) || 'no lo dice'}».\n` : '') + EXTRA_RECADO + (accId ? `\n${origen ? `Según ${origen}` : 'Según su número'}, quien llama es el cliente de StelOrder ${accId} · ${cat.nombre(accId)}. Si el recado es de ese cliente usa ese cliente_id; si habla claramente de otra comunidad, pon la de la que habla.` : '\nEl número que llamó no es de ningún cliente conocido.'
     + (propuesto ? ` Por el nombre que da puede ser el cliente ${propuesto.id} · ${propuesto.nombre} (SecretarIA escribe los nombres de oído); si el recado es suyo, usa ese cliente_id.` : ''));
   // Cada llamada es su propia petición (3/11/2026: el recado de «Caterin Cardona» de las 21:17 se juntó con la prueba de
   // ILLA VERDA de las 20:38 porque la IA veía abiertas todas las del grupo voz:corp, como en un grupo de WhatsApp). Solo
@@ -401,7 +403,7 @@ async function deRecado({ llamada, fecha = new Date(), urgente = false, resumen,
   const memoria = await require('./memoria').paraPrompt(texto, { paraGrupo: JID_VOZ, limite: 40 }).catch(() => '');
   const r = await _tanda(db, { jid: JID_VOZ, grupo: GRUPO_VOZ, msgs, fuente: 'llamada', cat, _llamar, extra, memoria, filtro });
   for (const p of r.nuevas) {
-    const set = { canal: 'llamada', recado: { nombre: corto(contacto && contacto.nombre, 60) || null, final: fin, llama: accId, fecha: new Date(fecha), texto } };
+    const set = { canal: 'llamada', recado: { nombre: corto(contacto && contacto.nombre, 60) || null, final: fin, llama: accId, fecha: new Date(fecha), texto, ...(origen ? { origen: corto(origen, 60) } : {}) } };
     if (corto(titulo, 60)) set.titulo = corto(titulo, 60);
     const otro = !accId && (p.noEsCliente || NO_CLIENTE.test(`${texto} ${titulo || ''} ${p.resumen || ''}`));
     if (otro) {
@@ -429,7 +431,7 @@ async function deRecado({ llamada, fecha = new Date(), urgente = false, resumen,
   let auto = {};
   try { auto = await (_auto || _autoIncidencias)(db, { _id: JID_VOZ, autoIncidencia: true }, nuevas.filter(p => !p.porConfirmar).map(_paraAuto)); } catch (e) { console.warn('[Peticiones] recado incidencias:', e.message); }
   let avisado = false;
-  if (urgente) {
+  if (urgente && avisar) {
     const lista = [...nuevas, ...r.actualizadas];
     const notas = otros.map(p => `📇 *No es cliente*: ${p.noCliente.que}. No he creado incidencia ni preguntado quién va; está en 📞 Llamadas → Otros.`);
     const dudas = nuevas.filter(p => p.porConfirmar).map(p => `⚠️ *Por confirmar*: llama ${p.porConfirmar.llama ? `*${p.porConfirmar.llama.nombre}* (por su número)` : `un número desconocido${propuesto ? ` (por el nombre parece *${propuesto.nombre}*)` : ''}`} y dice ser de *${p.clienteStel || p.cliente}*. No he creado incidencia ni he preguntado quién va: confírmalo o cambia el cliente en Inicio → Peticiones.`);
