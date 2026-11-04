@@ -444,6 +444,12 @@ app.post(['/api/bridge/ack', '/bridge/ack'], express.json({ limit: '64kb' }), as
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Salud del puente para el monitor de webs (Telegram): 200 si va bien, 503 con el motivo si no. Pública y sin datos.
+app.get('/api/bridge/salud', async (req, res) => {
+  try { const s = await require('./canalWhatsapp').salud(); res.status(s.ok ? 200 : 503).set('Cache-Control', 'no-store').json(s); }
+  catch (e) { res.status(503).json({ ok: false, fallos: ['el panel no puede leer el estado del puente'] }); }
+});
+
 // Descarga una imagen de Twilio y la devuelve como {media_type, data(base64)}
 // Media del puente (foto/PDF/audio): src/mediaPuente.js
 const guardarMediaPuente = m => require('./mediaPuente').guardar(m);

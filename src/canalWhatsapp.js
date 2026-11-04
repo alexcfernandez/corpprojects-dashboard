@@ -241,6 +241,25 @@ async function confirmarEntregas(acks) {
   return n;
 }
 
+// ── SALUD DEL PUENTE (para el monitor de webs, que avisa por Telegram) ──
+// 4/11/2026: el VPS dejó de llegar a Railway a las 06:03 y nadie se enteró hasta la tarde (67 mensajes atascados y lo
+// que entró en los grupos, perdido). Sin datos personales: solo si va bien y, si no, por qué.
+async function salud() {
+  if (canalActivo() !== 'bridge') return { ok: true, canal: canalActivo() };
+  const db = await require('./db').getDB();
+  const st = await db.collection('bridgeStatus').findOne({ _id: 'bridge' });
+  const ahora = Date.now();
+  const visto = st && st.lastSeen ? ahora - new Date(st.lastSeen) : Infinity;
+  const fallos = [];
+  if (visto > 3 * 60000) fallos.push(visto === Infinity ? 'el puente no ha conectado nunca' : `el puente no llega al panel desde hace ${Math.round(visto / 60000)} min`);
+  else if (st.estado && st.estado !== 'open' && ahora - new Date(st.estadoAt || st.lastSeen) > 3 * 60000) fallos.push(`WhatsApp desconectado (${st.estado})`);
+  const atascado = await db.collection(OUTBOX).findOne({ status: 'pending', ts: { $lt: new Date(ahora - 10 * 60000) } }, { sort: { ts: 1 } });
+  if (atascado) fallos.push(`${await db.collection(OUTBOX).countDocuments({ status: 'pending' })} mensajes sin salir (el más antiguo, de hace ${Math.round((ahora - new Date(atascado.ts)) / 60000)} min)`);
+  const fallidos = await db.collection(OUTBOX).countDocuments({ status: 'failed', failedAt: { $gte: new Date(ahora - 30 * 60000) } });
+  if (fallidos >= 5) fallos.push(`${fallidos} mensajes fallidos en la última media hora`);
+  return { ok: !fallos.length, canal: 'bridge', segundosDesdeSondeo: visto === Infinity ? null : Math.round(visto / 1000), estado: (st && st.estado) || null, fallos };
+}
+
 // ── DIAGNÓSTICO (pantalla /diag, solo Dueño) ─────────────────────
 // Estado de los dos canales sin enseñar secretos: si hay credenciales, cuándo sondeó el puente
 // por última vez, qué hay en su buzón, y los últimos mensajes de Twilio con su código de error.
@@ -294,4 +313,4 @@ async function probar(to, canal) {
   } catch (e) { return { ok: false, error: e.message, code: e.code || null }; }
 }
 
-module.exports = { _silenciado, _olvidarSilenciados, _olvidarRepetidos: () => _recientes.clear(), enviarArchivo, archivoPuente, enviarUno, canalActivo, tokenBridgeValido, encolarSalida, reclamarLoteOutbox, diagnostico, probar, guardarEstadoPuente, confirmarEntregas, esperarNuevo, registrarSondeo, metricasPuente };
+module.exports = { salud, _silenciado, _olvidarSilenciados, _olvidarRepetidos: () => _recientes.clear(), enviarArchivo, archivoPuente, enviarUno, canalActivo, tokenBridgeValido, encolarSalida, reclamarLoteOutbox, diagnostico, probar, guardarEstadoPuente, confirmarEntregas, esperarNuevo, registrarSondeo, metricasPuente };
