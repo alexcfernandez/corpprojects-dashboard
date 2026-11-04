@@ -41,6 +41,8 @@ async function callback(code, state) {
   const o = _oauth();
   const { tokens } = await o.getToken(code);
   if (!tokens.refresh_token) throw new Error('Google no devolvió permiso permanente: vuelve a intentarlo');
+  // Google deja desmarcar cada permiso: sin el de Drive la conexión «sale bien» pero luego no se puede copiar nada.
+  if (!String(tokens.scope || '').includes('/auth/drive.file')) throw new Error('Falta el permiso de Drive: vuelve a conectar y marca la casilla de Google Drive');
   o.setCredentials(tokens);
   let email = null; try { const { google } = require('googleapis'); email = (await google.oauth2({ version: 'v2', auth: o }).userinfo.get()).data.email; } catch (e) {}
   await db.collection('config').updateOne({ _id: 'driveBackup' }, { $set: { refreshToken: tokens.refresh_token, email, conectadoAt: new Date() } }, { upsert: true });
