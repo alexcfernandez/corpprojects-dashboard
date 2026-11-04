@@ -629,8 +629,21 @@ async function procesarWhatsApp(from, body, media = {}) {
     if (!primera) return; // siguientes fotos: silencio
     const preguntar = async () => {
       if (!bufferRecogerFotosSinVaciar(from).length) return;   // ya las usó otro mensaje
-      let tk = null; try { tk = await FA.ticketParaPreguntar(from); } catch (e) {}
-      if (tk) return responder(`📸 ¿Es el ticket de ${FA.textoTicket(tk)} (${tk.fecha.split('-').reverse().slice(0, 2).join('/')})? Dime *«sí»* y lo guardo con ese pago. Si no, dime de qué sitio es y la archivo allí, o *"factura"* (la subo a StelOrder).`);
+      // Con pagos de su tarjeta esperando ticket: se lee la foto y, si es un ticket o factura, se une sola a su pago
+      // por importe y comercio (4/11/2026). Si la IA no puede leerla, se pregunta (y el «sí»/«no» va sin IA).
+      let tks = []; try { tks = await FA.ticketsDe(from); } catch (e) {}
+      if (tks.length) {
+        let r = null, compraId = null;
+        try {
+          const imgs = (await Promise.all(bufferRecogerFotosSinVaciar(from).map(f => descargarFoto(f.url, f.type)))).filter(Boolean);
+          r = imgs.length ? await FA.leerTicket(from, imgs) : null;
+        } catch (e) { console.error('[FotosArchivo] leer ticket:', e.message); r = { sinLeer: true }; }
+        if (r && r.reply) { bufferRecogerFotos(from); return responder(r.reply); }
+        if (r && r.sinLeer) compraId = r.compraId || null;
+        else if (!r) tks = [];   // no es un ticket: sigue como foto
+        const tk = tks.length ? await FA.ticketParaPreguntar(from).catch(() => null) : null;
+        if (tk) { FA.preguntar(from, tk, compraId); return responder(`📸 ¿Es el ticket de ${FA.textoTicket(tk)} (${tk.fecha.split('-').reverse().slice(0, 2).join('/')})? Contesta *«sí»* o *«no»*.`); }
+      }
       return responder('📸 Foto(s) recibida(s). Dime qué hago: de qué obra o comunidad son (y las archivo allí, o me cuentas la visita), *"es el ticket de…"*, *"factura"* (la subo a StelOrder) o *"hazme un presupuesto de esto para Illa Verda"*.');
     };
     // La foto llega mientras se procesa su texto (4/11: «Tubo bajante de Santa Eugenia 57…» + foto aparte): se espera a
@@ -647,6 +660,22 @@ async function procesarWhatsApp(from, body, media = {}) {
       return;
     }
     return preguntar();
+  }
+
+  // «sí» / «no» a «¿Es el ticket de…?» (fotosArchivo.js): sin IA, para que funcione aunque esté caída.
+  if (texto && !fotosMsg.length) {
+    const FA = require('./fotosArchivo');
+    const rt = FA.respuestaTicket(from, texto);
+    if (rt && rt.si) {
+      try {
+        if (rt.compraId) { await require('./ticketsAviso').alSubir(rt.movId, rt.compraId, 'Álex (Corpy)'); bufferRecogerFotos(from); return responder(prefijo + `🧾 Unido: el ticket de ${rt.texto} queda guardado con ese pago. Ya no te lo pido más.`); }
+        const imgs = (await Promise.all(bufferRecogerFotos(from).map(f => descargarFoto(f.url, f.type)))).filter(Boolean);
+        if (!imgs.length) return responder(prefijo + 'Se me ha pasado la foto (más de 15 min). Mándamela otra vez.');
+        const r = await FA.aTicket(from, imgs, { movId: rt.movId });
+        return responder(prefijo + r.reply);
+      } catch (e) { console.error('[FotosArchivo] sí:', e.message); return responder(prefijo + 'No he podido guardar el ticket ahora. Súbelo en Compras: https://dashboard.corpprojects.es/compras'); }
+    }
+    if (rt && !rt.si) return responder(prefijo + `Vale, no es el de ${rt.texto}. ¿Qué es entonces? Dime de qué sitio es (y la archivo allí), «es el ticket de…» o «factura».`);
   }
 
   // CASO B: hay instrucción -> juntar fotos del buffer + las de este mensaje

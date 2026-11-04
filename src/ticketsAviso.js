@@ -139,6 +139,25 @@ async function alSubir(movId, compraId, por) {
   await db.collection('ticketAvisos').updateOne({ _id: String(movId) }, { $set: { compraId: String(compraId), resueltoAt: new Date() } }, { upsert: true });
   return { ok: true };
 }
+// Una compra recién leída (de la app, de un grupo, del WhatsApp de Álex…) se une SOLA a su pago con tarjeta (4/11/2026,
+// Álex: «yo le mando un ticket y por el importe y el nombre del sitio, que lo cace ya con ese pago»). Mismo importe (±2 cént.),
+// de 1 día antes a 3 después, y el nombre del sitio parecido; si el nombre no casa, vale solo si es el único con ese importe.
+async function casarCompra(compra, { _pendientes = null, _alSubir = null } = {}) {
+  if (!compra || compra.total == null || !compra.id && !compra._id) return null;
+  const total = Math.abs(Number(compra.total)); if (!(total > 0)) return null;
+  const l = await (_pendientes || pendientes)({ dias: 20 });
+  const fc = compra.fecha ? new Date(compra.fecha) : null;
+  const imp = l.filter(p => Math.abs(Math.abs(p.importe) - total) < 0.021 && (!fc || ((new Date(p.fecha) - fc) / DIA >= -1 && (new Date(p.fecha) - fc) / DIA <= 3)));
+  if (!imp.length) return null;
+  const FA = require('./fotosArchivo');
+  const nombre = [compra.proveedor, compra.razonSocial].filter(Boolean).join(' ');
+  const porNombre = nombre ? imp.filter(p => FA.pareceComercio(nombre, p.comercio || p.concepto) || FA.pareceComercio(compra.proveedor || '', p.comercio || p.concepto)) : [];
+  const p = porNombre.length === 1 ? porNombre[0] : imp.length === 1 ? imp[0] : null;
+  if (!p) return null;
+  await (_alSubir || alSubir)(p.id, String(compra.id || compra._id), 'auto (importe y comercio)');
+  return p;
+}
+
 // «Era personal» → se marca como gasto personal en el cierre; «no tengo ticket» → deja de recordarse y lo ve oficina.
 async function responder(movId, respuesta, quien) {
   if (!['personal', 'sin_ticket'].includes(respuesta)) throw new Error('Respuesta no válida');
@@ -192,4 +211,4 @@ async function revisarLimites({ hoy = new Date(), dryRun = false, _enviar = null
   return out;
 }
 
-module.exports = { pendientes, avisar, alSubir, responder, textoAviso, _quien, SIN_TICKET, FACTURA_MES, gastoMes, revisarLimites };
+module.exports = { pendientes, avisar, alSubir, casarCompra, responder, textoAviso, _quien, SIN_TICKET, FACTURA_MES, gastoMes, revisarLimites };

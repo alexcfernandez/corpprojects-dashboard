@@ -81,10 +81,34 @@ async function ticketParaPreguntar(from, opts = {}) {
   const h = l.filter(p => p.fecha === hoy);
   return h.length === 1 ? h[0] : l.length === 1 ? l[0] : null;
 }
+// «¿Es el ticket de…?» se contesta sin IA (4/11/2026: con la IA caída, el «sí» y el «no» acababan en «no te entiendo»).
+const preguntas = new Map();   // from → { movId, texto, ts }
+function preguntar(from, p, compraId = null) { preguntas.set(from, { movId: p.id, compraId, texto: textoTicket(p), ts: Date.now() }); }
+function respuestaTicket(from, texto) {
+  const q = preguntas.get(from);
+  if (!q || Date.now() - q.ts > TTL) return null;
+  const t = String(texto || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  if (/^(si|sip|vale|ok|correcto|eso|exacto|afirmativo|claro)\b/.test(t) && !/\bno\b/.test(t)) { preguntas.delete(from); return { si: true, movId: q.movId, compraId: q.compraId || null, texto: q.texto }; }
+  if (/^no\b/.test(t)) { preguntas.delete(from); return { si: false, texto: q.texto }; }
+  return null;
+}
+
+// Foto suelta de Álex con tickets pendientes: se lee como compra (IA) y se une sola a su pago. Si no es un ticket o
+// factura, null (sigue el camino de las fotos). Si la IA no puede leerla, { sinLeer } para preguntar.
+async function leerTicket(from, imagenes, { _crear = null } = {}) {
+  const r = await (_crear || require('./compras').crear)({ fotos: imagenes.map(i => ({ data: Buffer.from(i.data, 'base64'), mimetype: i.media_type || 'image/jpeg' })), destino: 'general', origen: 'whatsapp-alex', soloSiDocumento: true, nota: 'Mandada a Corpy por WhatsApp', subidaPor: { kind: 'admin', userId: 'alex', name: 'Álex' } });
+  if (!r || r.noEsDocumento || r.vehiculoDoc || r.parteObra || r.personal) return r && r.vehiculoDoc ? { reply: `🚗 Es un papel del vehículo: guardado en la ficha de *${r.vehiculo}*.` } : null;
+  if (!r.leida) return { sinLeer: true, compraId: r.id };
+  const que = [r.tipoTxt, r.proveedor].filter(Boolean).join(' de ');
+  if (r.pagoCasado) return { reply: `🧾 ${que} guardado en Compras y unido a tu pago con tarjeta: ${textoTicket(r.pagoCasado)} (${String(r.pagoCasado.fecha).split('-').reverse().slice(0, 2).join('/')}). Ya no te lo pido más.` };
+  return { reply: `🧾 ${que}${r.fecha ? ` del ${String(r.fecha).split('-').reverse().slice(0, 2).join('/')}` : ''} guardado en Compras. No veo ningún pago con tarjeta del mismo importe; si lo pagaste en efectivo o con otra tarjeta, no hace falta nada más.` };
+}
+
 const textoTicket = p => `*${p.comercio}* · ${eur(p.importe)}`;
 
-async function aTicket(from, imagenes, { comercio = '', importe = null, por = 'Álex (Corpy)', _pendientes = null, _crear = null, _alSubir = null } = {}) {
+async function aTicket(from, imagenes, { movId = null, comercio = '', importe = null, por = 'Álex (Corpy)', _pendientes = null, _crear = null, _alSubir = null } = {}) {
   let l = await ticketsDe(from, { _pendientes });
+  if (movId) l = l.filter(p => p.id === String(movId));
   if (importe != null) l = l.filter(p => Math.abs(Math.abs(p.importe) - Math.abs(Number(importe))) < 0.5);
   if (comercio) { const c = l.filter(p => pareceComercio(comercio, p.comercio || p.concepto)); if (c.length) l = c; }
   // Sin decir cuál: si solo hay uno de hoy, ese (4/11: el de TEKE TUMATEKE, con 5 de Obramat de ayer esperando).
@@ -94,8 +118,10 @@ async function aTicket(from, imagenes, { comercio = '', importe = null, por = '�
   const p = l[0];
   const c = await (_crear || require('./compras').crear)({ fotos: imagenes.map(i => ({ data: Buffer.from(i.data, 'base64'), mimetype: i.media_type || 'image/jpeg' })), destino: 'general', origen: 'whatsapp-alex', nota: `Ticket del pago con tarjeta: ${p.comercio} · ${eur(p.importe)}`, subidaPor: { kind: 'admin', userId: p.userId || 'alex', name: 'Álex' } });
   if (!c || !c.id) return { reply: 'No he podido guardar el ticket. Súbelo en Compras: https://dashboard.corpprojects.es/compras' };
-  await (_alSubir || require('./ticketsAviso').alSubir)(p.id, c.id, por);
-  return { ok: true, reply: `🧾 Guardado el ticket de ${textoTicket(p)} y unido a ese pago. Ya no te lo pido más.` };
+  // Al leerla, Compras ya la une sola a su pago si casan importe y comercio; si no, a este que ha dicho Álex.
+  const q = c.pagoCasado || p;
+  if (!c.pagoCasado) await (_alSubir || require('./ticketsAviso').alSubir)(p.id, c.id, por);
+  return { ok: true, reply: `🧾 Guardado el ticket de ${textoTicket(q)} y unido a ese pago. Ya no te lo pido más.` };
 }
 
 // Herramienta del agente: archivar las fotos que acaba de mandar Álex.
@@ -122,4 +148,4 @@ const TOOL = { name: 'archivar_fotos', description: 'GUARDA las FOTOS que Álex 
   importe: { type: ['number', 'null'], description: 'Si es un ticket: importe, si lo dice.' },
 }, required: ['destino'] } };
 
-module.exports = { TOOL, COL, pareceComercio, ticketParaPreguntar, guardarPendientes, hay, tomar, recordar, reciente, aSitio, aTicket, ticketsDe, textoTicket, archivar, _pendientes: pendientes, _ultimo: ultimo };
+module.exports = { TOOL, COL, pareceComercio, ticketParaPreguntar, preguntar, respuestaTicket, leerTicket, _preguntas: preguntas, guardarPendientes, hay, tomar, recordar, reciente, aSitio, aTicket, ticketsDe, textoTicket, archivar, _pendientes: pendientes, _ultimo: ultimo };

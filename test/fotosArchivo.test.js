@@ -115,3 +115,42 @@ test('ticket: el nombre de oído casa con el del banco y, sin decir cuál, se qu
   assert.match(r.reply, /TEKE TUMATEKE/); assert.deepStrictEqual(unidas, ['t', 't']);
   assert.strictEqual((await FA.ticketParaPreguntar(ALEX, { _pendientes: async () => pagos })).id, 't');
 });
+
+test('casarCompra: por importe (±2 cént.), fecha y nombre del sitio; si el nombre no casa, solo si es el único con ese importe', async () => {
+  const T = require('../src/ticketsAviso');
+  const pagos = [
+    { id: 'tk', comercio: 'TEKE TUMATEKE', concepto: 'TEKE TUMATEKE GIRONA', importe: -102.6, fecha: '2026-11-04' },
+    { id: 'a1', comercio: 'ACTION', importe: -12.3, fecha: '2026-11-04' },
+    { id: 'o1', comercio: 'OBRAMAT', importe: -57.18, fecha: '2026-11-03' },
+    { id: 'o2', comercio: 'LIDL', importe: -57.18, fecha: '2026-11-03' },
+  ];
+  const unidas = []; const o = { _pendientes: async () => pagos, _alSubir: async (m, c) => unidas.push([m, c]) };
+  assert.strictEqual((await T.casarCompra({ id: 'c1', total: 102.6, fecha: '2026-11-04', proveedor: 'Teke Tumateke SL' }, o)).id, 'tk');
+  assert.strictEqual((await T.casarCompra({ id: 'c2', total: 12.3, fecha: '2026-11-04', proveedor: 'Tiendas Action' }, o)).id, 'a1');
+  assert.strictEqual((await T.casarCompra({ id: 'c3', total: 57.18, fecha: '2026-11-03', proveedor: 'Obramat Girona' }, o)).id, 'o1');
+  assert.strictEqual(await T.casarCompra({ id: 'c4', total: 57.18, fecha: '2026-11-03', proveedor: 'Bauhaus' }, o), null);   // dos con ese importe y ninguno se llama así
+  assert.strictEqual(await T.casarCompra({ id: 'c5', total: 102.6, fecha: '2026-10-20', proveedor: 'Teke Tumateke' }, o), null);   // otro día
+  assert.strictEqual(await T.casarCompra({ id: 'c6', total: 99, fecha: '2026-11-04' }, o), null);
+  assert.deepStrictEqual(unidas, [['tk', 'c1'], ['a1', 'c2'], ['o1', 'c3']]);
+});
+
+test('foto suelta con tickets pendientes: leída y unida → lo dice; no es documento → null; sin leer → pregunta', async () => {
+  let r = await FA.leerTicket(ALEX, [foto('t')], { _crear: async () => ({ id: 'c', leida: true, tipoTxt: 'Ticket', proveedor: 'Teke Tumateke', pagoCasado: { comercio: 'TEKE TUMATEKE', importe: -102.6, fecha: '2026-11-04' } }) });
+  assert.match(r.reply, /Ticket de Teke Tumateke guardado en Compras y unido a tu pago con tarjeta: \*TEKE TUMATEKE\* · 102,60 € \(04\/11\)/);
+  r = await FA.leerTicket(ALEX, [foto('t')], { _crear: async () => ({ id: 'c', leida: true, tipoTxt: 'Ticket', proveedor: 'Action', fecha: '2026-11-04', pagoCasado: null }) });
+  assert.match(r.reply, /Ticket de Action del 04\/11 guardado en Compras\. No veo ningún pago/);
+  assert.strictEqual(await FA.leerTicket(ALEX, [foto('t')], { _crear: async () => ({ ok: true, noEsDocumento: true }) }), null);
+  r = await FA.leerTicket(ALEX, [foto('t')], { _crear: async () => ({ id: 'c9', leida: false }) });
+  assert.deepStrictEqual(r, { sinLeer: true, compraId: 'c9' });
+});
+
+test('«sí» / «no» a «¿Es el ticket de…?» sin IA', () => {
+  FA._preguntas.clear();
+  assert.strictEqual(FA.respuestaTicket(ALEX, 'sí'), null);   // no se preguntó nada
+  FA.preguntar(ALEX, { id: 'tk', comercio: 'TEKE TUMATEKE', importe: -102.6 }, 'c9');
+  assert.strictEqual(FA.respuestaTicket(ALEX, 'mándame las fotos de Bellpuig'), null);
+  assert.deepStrictEqual(FA.respuestaTicket(ALEX, 'Sí, es el ticket del Tucamatete'), { si: true, movId: 'tk', compraId: 'c9', texto: '*TEKE TUMATEKE* · 102,60 €' });
+  assert.strictEqual(FA.respuestaTicket(ALEX, 'sí'), null);   // ya contestado
+  FA.preguntar(ALEX, { id: 'tk', comercio: 'TEKE TUMATEKE', importe: -102.6 });
+  assert.strictEqual(FA.respuestaTicket(ALEX, 'No').si, false);
+});
