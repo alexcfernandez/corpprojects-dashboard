@@ -566,7 +566,6 @@ async function apuntarJornada({ trabajadores = [], obra = '', fecha = null, hora
   let h = horas != null && horas !== '' ? Number(horas) : null;
   const d0 = _aMin(desde), d1 = _aMin(hasta);
   if (!(h > 0) && d0 != null && d1 != null && d1 > d0) h = Math.round((d1 - d0) / 60 * 100) / 100;
-  if (!(h > 0)) throw new Error('¿Cuántas horas? Dime de qué hora a qué hora o las horas de cada uno.');
   const obras = await db.collection('obras').find({ status: { $ne: 'descartada' } }).project({ reference: 1, aliases: 1, clientName: 1, address: 1, status: 1 }).toArray();
   const o = N.casarObra(obra, obras);
   if (!o) throw new Error(`No encuentro la obra «${obra}». Dímela como sale en el dashboard.`);
@@ -580,11 +579,16 @@ async function apuntarJornada({ trabajadores = [], obra = '', fecha = null, hora
   }
   if (dudas.length) throw new Error('Antes de apuntar: ' + dudas.join('; ') + '.');
   if (!quienes.length) throw new Error('¿Quién ha trabajado?');
+  // Las horas solo hacen falta de quien no ha fichado (4/11/2026: «Diego y Javi en Sant Pere hoy» → preguntaba horas que ya estaban).
+  const prevs = new Map();
+  for (const u of quienes) prevs.set(String(u._id), await db.collection('attendance').findOne({ workerId: String(u._id), date: fec }));
+  const fichadasDe = u => { const prev = prevs.get(String(u._id)); return prev && (prev.fichado || prev.autoFromFichaje) && Number(prev.horas) > 0 ? Number(prev.horas) : null; };
+  const sinHoras = quienes.filter(u => fichadasDe(u) == null);
+  if (!(h > 0) && sinHoras.length) throw new Error(`¿Cuántas horas hizo ${sinHoras.map(u => u.name).join(' y ')}? No ${sinHoras.length > 1 ? 'han' : 'ha'} fichado: dime de qué hora a qué hora.`);
   const out = [];
   for (const u of quienes) {
     const workerId = String(u._id);
-    const prev = await db.collection('attendance').findOne({ workerId, date: fec });
-    const fichadas = prev && (prev.fichado || prev.autoFromFichaje) && Number(prev.horas) > 0 ? Number(prev.horas) : null;
+    const fichadas = fichadasDe(u);
     const hh = fichadas != null ? fichadas : h;
     await db.collection('attendance').updateOne({ workerId, date: fec }, {
       $set: { workerName: u.name, estado: 'obra', obraId: String(o._id), clientName: o.reference, obras: [{ obraId: String(o._id), clientName: o.reference, horas: hh }], horas: hh, apuntadoPor: por || 'Corpy', updatedAt: new Date() },

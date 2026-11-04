@@ -63,12 +63,32 @@ async function ticketsDe(from, { _pendientes = null } = {}) {
   const l = await (_pendientes || require('./ticketsAviso').pendientes)({ dias: 2 });
   return l.filter(p => p.tel && ult9(p.tel) === ult9(from));
 }
+// El nombre dicho de oído contra el del banco: «tequetucamate» ~ «TEKE TUMATEKE» (letras parecidas, sin espacios).
+const _letras = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/qu/g, 'k').replace(/c(?=[aou])/g, 'k').replace(/[^a-zñ]/g, '');
+function pareceComercio(dicho, banco) {
+  const a = _letras(dicho), b = _letras(banco);
+  if (!a || !b) return false;
+  if (a.length >= 4 && (b.includes(a) || a.includes(b))) return true;
+  const big = x => { const m = new Map(); for (let i = 0; i < x.length - 1; i++) { const k = x.slice(i, i + 2); m.set(k, (m.get(k) || 0) + 1); } return m; };
+  const A = big(a), B = big(b); let comun = 0;
+  for (const [k, n] of A) comun += Math.min(n, B.get(k) || 0);
+  return 2 * comun / (a.length - 1 + b.length - 1) >= 0.55;
+}
+// El pago por el que preguntar al llegar una foto suelta: el único de hoy (o el único de estos 2 días).
+async function ticketParaPreguntar(from, opts = {}) {
+  const l = await ticketsDe(from, opts);
+  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
+  const h = l.filter(p => p.fecha === hoy);
+  return h.length === 1 ? h[0] : l.length === 1 ? l[0] : null;
+}
 const textoTicket = p => `*${p.comercio}* · ${eur(p.importe)}`;
 
 async function aTicket(from, imagenes, { comercio = '', importe = null, por = 'Álex (Corpy)', _pendientes = null, _crear = null, _alSubir = null } = {}) {
   let l = await ticketsDe(from, { _pendientes });
   if (importe != null) l = l.filter(p => Math.abs(Math.abs(p.importe) - Math.abs(Number(importe))) < 0.5);
-  if (comercio) { const w = String(comercio).toLowerCase().split(/\W+/).filter(x => x.length > 2); const c = l.filter(p => w.some(x => String(p.comercio || p.concepto || '').toLowerCase().includes(x))); if (c.length) l = c; }
+  if (comercio) { const c = l.filter(p => pareceComercio(comercio, p.comercio || p.concepto)); if (c.length) l = c; }
+  // Sin decir cuál: si solo hay uno de hoy, ese (4/11: el de TEKE TUMATEKE, con 5 de Obramat de ayer esperando).
+  else if (importe == null && l.length > 1) { const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' }); const h = l.filter(p => p.fecha === hoy); if (h.length === 1) l = h; }
   if (!l.length) return { aclara: true, reply: 'No tengo ningún pago con tu tarjeta de hoy o ayer esperando ticket. Si es de otro día, súbelo en Compras: https://dashboard.corpprojects.es/compras' };
   if (l.length > 1) return { aclara: true, reply: `¿De cuál es el ticket?\n${l.slice(0, 5).map((p, i) => `${i + 1}. ${textoTicket(p)} (${p.fecha.split('-').reverse().slice(0, 2).join('/')})`).join('\n')}` };
   const p = l[0];
@@ -102,4 +122,4 @@ const TOOL = { name: 'archivar_fotos', description: 'GUARDA las FOTOS que Álex 
   importe: { type: ['number', 'null'], description: 'Si es un ticket: importe, si lo dice.' },
 }, required: ['destino'] } };
 
-module.exports = { TOOL, COL, guardarPendientes, hay, tomar, recordar, reciente, aSitio, aTicket, ticketsDe, textoTicket, archivar, _pendientes: pendientes, _ultimo: ultimo };
+module.exports = { TOOL, COL, pareceComercio, ticketParaPreguntar, guardarPendientes, hay, tomar, recordar, reciente, aSitio, aTicket, ticketsDe, textoTicket, archivar, _pendientes: pendientes, _ultimo: ultimo };

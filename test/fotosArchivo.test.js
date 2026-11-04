@@ -80,7 +80,7 @@ test('ticket: un solo pago de Álex sin ticket → compra creada y unida al pago
   let r = await FA.archivar({ destino: 'ticket' }, ALEX, { _pendientes: async () => pagos, _crear: async d => { creadas.push(d); return { id: 'c1' }; }, _alSubir: async (m, c) => unidas.push([m, c]) });
   assert.match(r.reply, /Guardado el ticket de \*TQ Mate\* · 45,60 €/);
   assert.strictEqual(creadas[0].fotos[0].data.toString(), 'recibo'); assert.deepStrictEqual(unidas, [['m1', 'c1']]);
-  const dos = [...pagos, { id: 'm3', tel: ALEX, comercio: 'Gasolinera', importe: -60, fecha: '2026-11-03' }];
+  const dos = [{ ...pagos[0], fecha: '2000-01-02' }, pagos[1], { id: 'm3', tel: ALEX, comercio: 'Gasolinera', importe: -60, fecha: '2000-01-01' }];   // ninguno de hoy: pregunta
   FA.guardarPendientes(ALEX, [foto('otro')]);
   r = await FA.archivar({ destino: 'ticket' }, ALEX, { _pendientes: async () => dos, _crear: async () => { throw new Error('no'); } });
   assert.ok(r.aclara); assert.match(r.reply, /1\. \*TQ Mate\*[\s\S]*2\. \*Gasolinera\*/); assert.strictEqual(FA.hay(ALEX), 1);
@@ -101,4 +101,17 @@ test('apuntar_pendiente con sitio: guarda el pendiente y archiva allí las fotos
     assert.strictEqual(db.cols.pendientes.length, 1); assert.strictEqual(db.cols.sitioFotos.length, 1);
     assert.strictEqual(FA.reciente(ALEX).sitio, 'Santa Eugenia 57');
   } finally { stel.getClients = real; fin(); }
+});
+
+test('ticket: el nombre de oído casa con el del banco y, sin decir cuál, se queda con el único de hoy', async () => {
+  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' });
+  assert.ok(FA.pareceComercio('tequetucamate', 'TEKE TUMATEKE'));
+  assert.ok(!FA.pareceComercio('tequetucamate', 'OBRAMAT'));
+  const pagos = [{ id: 't', tel: ALEX, comercio: 'TEKE TUMATEKE', importe: -102.6, fecha: hoy }, ...[1, 2, 3].map(i => ({ id: 'o' + i, tel: ALEX, comercio: 'OBRAMAT', importe: -10 * i, fecha: '2000-01-01' }))];
+  const unidas = [], opts = { _pendientes: async () => pagos, _crear: async () => ({ id: 'c' }), _alSubir: async (m) => unidas.push(m) };
+  let r = await FA.aTicket(ALEX, [foto('r')], { comercio: 'tequetucamate', ...opts });
+  assert.match(r.reply, /TEKE TUMATEKE\* · 102,60 €/);
+  r = await FA.aTicket(ALEX, [foto('r')], opts);
+  assert.match(r.reply, /TEKE TUMATEKE/); assert.deepStrictEqual(unidas, ['t', 't']);
+  assert.strictEqual((await FA.ticketParaPreguntar(ALEX, { _pendientes: async () => pagos })).id, 't');
 });

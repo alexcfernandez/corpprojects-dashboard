@@ -629,8 +629,8 @@ async function procesarWhatsApp(from, body, media = {}) {
     if (!primera) return; // siguientes fotos: silencio
     const preguntar = async () => {
       if (!bufferRecogerFotosSinVaciar(from).length) return;   // ya las usó otro mensaje
-      let tk = []; try { tk = await FA.ticketsDe(from); } catch (e) {}
-      if (tk.length === 1) return responder(`📸 ¿Es el ticket de ${FA.textoTicket(tk[0])} (${tk[0].fecha.split('-').reverse().slice(0, 2).join('/')})? Dime *«sí»* y lo guardo con ese pago. Si no, dime de qué sitio es y la archivo allí, o *"factura"* (la subo a StelOrder).`);
+      let tk = null; try { tk = await FA.ticketParaPreguntar(from); } catch (e) {}
+      if (tk) return responder(`📸 ¿Es el ticket de ${FA.textoTicket(tk)} (${tk.fecha.split('-').reverse().slice(0, 2).join('/')})? Dime *«sí»* y lo guardo con ese pago. Si no, dime de qué sitio es y la archivo allí, o *"factura"* (la subo a StelOrder).`);
       return responder('📸 Foto(s) recibida(s). Dime qué hago: de qué obra o comunidad son (y las archivo allí, o me cuentas la visita), *"es el ticket de…"*, *"factura"* (la subo a StelOrder) o *"hazme un presupuesto de esto para Illa Verda"*.');
     };
     // La foto llega mientras se procesa su texto (4/11: «Tubo bajante de Santa Eugenia 57…» + foto aparte): se espera a

@@ -45,4 +45,8 @@ test('apuntarJornada: crea la presencia de cada uno y no pisa las horas fichadas
   assert.strictEqual(att.find(d => d.workerId === 'd2').obras[0].obraId, 'o1');
   await assert.rejects(A.apuntarJornada({ trabajadores: ['Pepe'], obra: 'Claudia Bar', horas: 8 }, '', { _db: db }), /no conozco a «Pepe»/);
   await assert.rejects(A.apuntarJornada({ trabajadores: ['Diego'], obra: 'Claudia Bar' }, '', { _db: db }), /Cuántas horas/);
+  // Sin horas: si ha fichado, no se le preguntan («Diego y Javi en Sant Pere hoy», 4/11/2026); solo a quien no fichó.
+  const r2 = await A.apuntarJornada({ trabajadores: ['David Valencia'], obra: 'Sant Pere' , fecha: '2026-11-01' }, 'Álex', { _db: db });
+  assert.deepStrictEqual(r2.trabajadores.map(t => [t.horas, t.fichadas]), [[9.2, true]]);
+  await assert.rejects(A.apuntarJornada({ trabajadores: ['David Valencia', 'Diego'], obra: 'Sant Pere', fecha: '2026-11-02' }, '', { _db: db }), /Cuántas horas hizo David Taladros y Diego Campillo/);
 });
