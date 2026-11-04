@@ -392,6 +392,8 @@ function startScheduler() {
   // Banco automático (Enable Banking): la normativa deja leer cada cuenta ~4 veces al día sin la persona delante.
   cron.schedule('15 7,11,15,19 * * *', () => require('./bancoSync').sincronizar().then(r => { if (r.configurado && r.nuevos) console.log(`[BancoSync] ${r.nuevos} movimiento(s) nuevos`); }).catch(e => console.warn('[BancoSync] sync:', e.message)), { timezone: 'Europe/Madrid' });
   // Tickets que faltan de las compras con tarjeta: recordatorio cada mañana a quien pagó (hasta que lo suba).
+  // Al arrancar: une a su pago con tarjeta los tickets ya guardados que se quedaron sin unir (ticketsAviso.casarRecientes).
+  setTimeout(() => { if (process.env.TICKETS_AVISOS !== 'off') require('./ticketsAviso').casarRecientes().catch(e => console.warn('[Tickets] repaso:', e.message)); }, 90 * 1000);
   cron.schedule('30 9 * * 1-6', () => { if (process.env.TICKETS_AVISOS !== 'off') require('./ticketsAviso').avisar({ modo: 'recordatorio' }).catch(e => console.warn('[Tickets] recordatorio:', e.message)); }, { timezone: 'Europe/Madrid' });
   // Copia de seguridad de todo en Google Drive, cada noche a las 3:30.
   cron.schedule('30 3 * * *', () => { if (process.env.BACKUP !== 'off') require('./backup').hacerCopia().catch(e => console.warn('[Backup]', e.message)); }, { timezone: 'Europe/Madrid' });

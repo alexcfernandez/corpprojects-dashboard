@@ -51,7 +51,7 @@ function _quien(tarjetas, users, last4) {
 }
 
 // Lo que falta: pagos con tarjeta sin documento, con su persona. `porUsuario` para la página del trabajador.
-async function pendientes({ dias = 30, hoy = new Date(), userId = null } = {}) {
+async function pendientes({ dias = 30, hoy = new Date(), userId = null, sinCompra = null } = {}) {
   const db = await getDB();
   const [pagos, tarjetas, users, avisos, mapa] = await Promise.all([
     _pagos(db, dias, hoy), db.collection('tarjetas').find({}).toArray(), require('./users').getUsers(false),
@@ -63,6 +63,9 @@ async function pendientes({ dias = 30, hoy = new Date(), userId = null } = {}) {
   const desde = iso(hoy.getTime() - (dias + 5) * DIA);
   let compras = [];
   try { compras = (await db.collection('compras').find({ estado: { $ne: 'descartada' }, fecha: { $gte: desde }, total: { $ne: null } }, { projection: { proveedor: 1, proveedorNorm: 1, razonSocial: 1, fecha: 1, total: 1 } }).toArray()) || []; } catch (e) { compras = []; }
+  // La compra que se está casando no cuenta como «ya está en Compras» (4/11/2026: el ticket de Teke Tumateke, recién
+  // guardado, escondía su propio pago y salía «no veo ningún pago con tarjeta del mismo importe»).
+  if (sinCompra) compras = compras.filter(c => String(c._id) !== String(sinCompra));
   const casa = p => { const con = nrm(p.concepto); return compras.find(c => {
     if (Math.abs(Math.abs(Number(c.total)) - Math.abs(p.importe)) > 0.02) return false;
     const dd = (new Date(p.fecha) - new Date(c.fecha)) / DIA; if (dd < -1 || dd > 3) return false;
@@ -102,6 +105,7 @@ function textoAviso(nombre, ps, url, { recordatorio = false, hoy = new Date() } 
 async function avisar({ modo = 'nuevos', hoy = new Date(), dryRun = false, _enviar = null } = {}) {
   const db = await getDB();
   const enviar = _enviar || (async (to, txt) => require('./notifications').sendWhatsAppTo(to, txt));
+  if (!dryRun) { try { await casarRecientes(); } catch (e) { console.warn('[Tickets] repaso:', e.message); } }
   const ps = await pendientes({ dias: modo === 'nuevos' ? 3 : 30, hoy });
   const porUser = new Map();
   for (const p of ps) {
@@ -145,7 +149,7 @@ async function alSubir(movId, compraId, por) {
 async function casarCompra(compra, { _pendientes = null, _alSubir = null } = {}) {
   if (!compra || compra.total == null || !compra.id && !compra._id) return null;
   const total = Math.abs(Number(compra.total)); if (!(total > 0)) return null;
-  const l = await (_pendientes || pendientes)({ dias: 20 });
+  const l = await (_pendientes || pendientes)({ dias: 20, sinCompra: String(compra.id || compra._id) });
   const fc = compra.fecha ? new Date(compra.fecha) : null;
   const imp = l.filter(p => Math.abs(Math.abs(p.importe) - total) < 0.021 && (!fc || ((new Date(p.fecha) - fc) / DIA >= -1 && (new Date(p.fecha) - fc) / DIA <= 3)));
   if (!imp.length) return null;
@@ -156,6 +160,23 @@ async function casarCompra(compra, { _pendientes = null, _alSubir = null } = {})
   if (!p) return null;
   await (_alSubir || alSubir)(p.id, String(compra.id || compra._id), 'auto (importe y comercio)');
   return p;
+}
+
+// Repaso: compras leídas de estos días que no se unieron a su pago (subidas antes de existir casarCompra, o el pago llegó
+// del banco después del ticket). Antes de cada aviso y al arrancar.
+async function casarRecientes({ dias = 20, _db = null } = {}) {
+  const db = _db || await getDB();
+  const desde = new Date(Date.now() - dias * DIA);
+  const [cs, avs, pms] = await Promise.all([
+    db.collection('compras').find({ createdAt: { $gte: desde }, total: { $ne: null }, estado: { $ne: 'descartada' }, duplicadoDe: null }).project({ total: 1, fecha: 1, proveedor: 1, razonSocial: 1 }).toArray(),
+    db.collection('ticketAvisos').find({ compraId: { $ne: null } }).project({ compraId: 1 }).toArray(),
+    db.collection('punteoManual').find({ compraId: { $ne: null } }).project({ compraId: 1 }).toArray(),
+  ]);
+  const unidas = new Set([...avs, ...pms].map(x => String(x.compraId)));
+  let n = 0;
+  for (const c of cs.filter(c => !unidas.has(String(c._id)))) { try { if (await casarCompra({ id: String(c._id), total: c.total, fecha: c.fecha, proveedor: c.proveedor, razonSocial: c.razonSocial })) n++; } catch (e) { console.warn('[Tickets] casar:', e.message); } }
+  if (n) console.log(`[Tickets] ${n} compra(s) unidas a su pago con tarjeta`);
+  return n;
 }
 
 // «Era personal» → se marca como gasto personal en el cierre; «no tengo ticket» → deja de recordarse y lo ve oficina.
@@ -211,4 +232,4 @@ async function revisarLimites({ hoy = new Date(), dryRun = false, _enviar = null
   return out;
 }
 
-module.exports = { pendientes, avisar, alSubir, casarCompra, responder, textoAviso, _quien, SIN_TICKET, FACTURA_MES, gastoMes, revisarLimites };
+module.exports = { pendientes, avisar, alSubir, casarCompra, casarRecientes, responder, textoAviso, _quien, SIN_TICKET, FACTURA_MES, gastoMes, revisarLimites };

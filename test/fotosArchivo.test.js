@@ -154,3 +154,10 @@ test('«sí» / «no» a «¿Es el ticket de…?» sin IA', () => {
   FA.preguntar(ALEX, { id: 'tk', comercio: 'TEKE TUMATEKE', importe: -102.6 });
   assert.strictEqual(FA.respuestaTicket(ALEX, 'No').si, false);
 });
+
+test('casarCompra: pide los pagos pendientes SIN contar la propia compra (si no, se escondía su pago)', async () => {
+  const T = require('../src/ticketsAviso'); let arg = null;
+  await T.casarCompra({ id: 'c77', total: 102.6, fecha: '2026-11-04', proveedor: 'Teke-Tumateke' }, { _pendientes: async a => { arg = a; return []; } });
+  assert.strictEqual(arg.sinCompra, 'c77');
+});
+
