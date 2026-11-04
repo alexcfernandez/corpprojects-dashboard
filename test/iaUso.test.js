@@ -34,3 +34,14 @@ test('el envoltorio no toca la respuesta ni otras URLs', async () => {
     assert.deepStrictEqual(vistas, ['https://api.anthropic.com/v1/messages', 'https://example.com/x']);
   } finally { global.fetch = antes; }
 });
+
+test('modelos: lo automático va a Haiku 4.5 salvo que IA_AUTO_MODEL diga otra cosa', () => {
+  const ia = require('../src/config').ia;
+  const antes = process.env.IA_AUTO_MODEL;
+  delete process.env.IA_AUTO_MODEL;
+  assert.strictEqual(ia.auto, 'claude-haiku-4-5');
+  assert.strictEqual(ia.clasificador, ia.auto);
+  process.env.IA_AUTO_MODEL = 'claude-sonnet-4-6';
+  assert.strictEqual(ia.clasificador, 'claude-sonnet-4-6');
+  if (antes === undefined) delete process.env.IA_AUTO_MODEL; else process.env.IA_AUTO_MODEL = antes;
+});

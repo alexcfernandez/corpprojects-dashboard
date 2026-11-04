@@ -80,14 +80,18 @@ function _ventana(cat, desde, hasta) {
   return { ...cat, incidencias: cat.incidencias.filter(dentro), presupuestos: cat.presupuestos.filter(dentro) };
 }
 
-async function _llamarIA(prompt, maxTokens = 8000) {
+// Lo del día va con el modelo barato (ia.auto); el repaso del historial, con catálogos enormes, con el del agente
+// (1M de contexto). Si el día a día no cabe en Haiku (200K), se repite una vez con el del agente.
+async function _llamarIA(prompt, maxTokens = 8000, modelo = require('./config').ia.auto) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error('Falta ANTHROPIC_API_KEY');
   const c = new AbortController(); const tm = setTimeout(() => c.abort(), maxTokens > 8000 ? 480000 : 180000);
   const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', signal: c.signal,
     headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: require('./config').ia.agente, max_tokens: maxTokens, tools: [HERRAMIENTA], tool_choice: { type: 'tool', name: HERRAMIENTA.name }, messages: [{ role: 'user', content: prompt }] }) }).finally(() => clearTimeout(tm));
+    body: JSON.stringify({ model: modelo, max_tokens: maxTokens, tools: [HERRAMIENTA], tool_choice: { type: 'tool', name: HERRAMIENTA.name }, messages: [{ role: 'user', content: prompt }] }) }).finally(() => clearTimeout(tm));
   const d = await r.json();
+  const grande = require('./config').ia.agente;
+  if (!r.ok && r.status === 400 && modelo !== grande && /too long|context|maximum/i.test(d.error?.message || '')) return _llamarIA(prompt, maxTokens, grande);
   if (!r.ok) throw new Error(`API ${r.status}: ${d.error?.message || ''}`);
   const tu = (d.content || []).find(b => b.type === 'tool_use');
   return tu ? tu.input : { peticiones: [] };
@@ -117,7 +121,7 @@ ${cat.presupuestos.join('\n')}
 
 CLIENTES (id · nombre):
 ${cat.clientes.join('\n')}`;
-  const out = _llamar ? await _llamar(prompt) : await _llamarIA(prompt, maxTokens);
+  const out = _llamar ? await _llamar(prompt) : await _llamarIA(prompt, maxTokens, fuente === 'historial' ? require('./config').ia.agente : require('./config').ia.auto);
   const nuevas = [], actualizadas = [];
   for (const p of (out.peticiones || [])) {
     const ms = (p.msgs || []).map(n => msgs[n]).filter(Boolean);

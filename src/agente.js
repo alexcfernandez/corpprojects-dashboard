@@ -161,7 +161,7 @@ TOOLS.push(...EXTRA.TOOLS);
 for (const t of EXTRA.LECTURA) LECTURA.add(t);
 
 function systemPrompt(hoy, contexto = '', memoria = '') {
-  return `Eres el asistente del jefe de una empresa de mantenimiento de fincas, por WhatsApp. Hoy es ${hoy} (Europe/Madrid).
+  const fijo = `Eres el asistente del jefe de una empresa de mantenimiento de fincas, por WhatsApp.
 REGLAS DURAS:
 - Si NO puedes resolver con confianza a qué/quién se refiere (comunidad, cliente, trabajador), haz una PREGUNTA corta de aclaración; NUNCA elijas "el más parecido".
 - NUNCA inventes datos (fechas, importes, números de documento). Si falta un dato, pídelo.
@@ -197,13 +197,18 @@ REGLAS DURAS:
 - MEMORIA (2/11/2026): lo que sabemos de una comunidad, piso, obra o persona (contacto, averías y lo que se hizo, material puesto, presupuestos, si alguien está de alta…) → consultar_memoria. Si abajo hay «LO QUE RECUERDAS», úsalo y NO preguntes ni digas lo contrario de lo que pone. «Recuerda que…», «apunta que en X pusimos…» o Álex te CORRIGE («Javi sí está de alta», «el contacto del 5º 3ª es Josep Maria», «eso no es así, …») → corregir_dato (guarda el hecho y arregla el origen para no repetirlo). «¿Cuánto nos debe / le debemos a <trabajador>?» es su saldo del cuadre de nóminas (memoria), NO facturas_cliente.
 - Al contestar con datos: breve, para WhatsApp (*negritas* para nombres y totales, una línea por persona u obra).
 - Formato de WhatsApp: negrita con UN asterisco a cada lado (*así*), NUNCA con dos (**así**), sin títulos con # ni líneas ---.
-- Responde en español y breve.${memoria ? `
+- Responde en español y breve.`;
+  // Lo que cambia en cada mensaje va en un segundo bloque, detrás de la caché.
+  const variable = `Hoy es ${hoy} (Europe/Madrid).${memoria ? `
 
 LO QUE RECUERDAS (memoria de Corpy; manda sobre lo que creas tú):
 ${memoria}` : ''}${contexto ? `
 
 CONVERSACIÓN RECIENTE (lo último que se han dicho; el mensaje a contestar es el siguiente):
 ${contexto}` : ''}`;
+  // Reglas e instrucciones (iguales en todos los mensajes) con caché: las herramientas y este bloque se cobran a una
+  // décima parte en las llamadas siguientes de los 5 minutos (4/11/2026, tope de gasto de IA).
+  return [{ type: 'text', text: fijo, cache_control: { type: 'ephemeral' } }, { type: 'text', text: variable }];
 }
 
 // Llama al modelo con tools. Devuelve {tipo:'tool',name,input} | {tipo:'texto',texto} | {tipo:'nada'}.

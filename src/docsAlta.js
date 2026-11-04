@@ -90,7 +90,7 @@ async function _mirar(buf, mime) {
   try {
     const c = new AbortController(); const t = setTimeout(() => c.abort(), 45000);
     const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', signal: c.signal, headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: require('./config').ia.vision, max_tokens: 300, tools: [HERR], tool_choice: { type: 'tool', name: HERR.name }, messages: [{ role: 'user', content: [contenido, { type: 'text', text: 'Un trabajador manda esta foto para darse de alta en la Seguridad Social. Dime qué documento es y si se lee bien entero.' }] }] }) }).finally(() => clearTimeout(t));
+      body: JSON.stringify({ model: require('./config').ia.auto, max_tokens: 300, tools: [HERR], tool_choice: { type: 'tool', name: HERR.name }, messages: [{ role: 'user', content: [contenido, { type: 'text', text: 'Un trabajador manda esta foto para darse de alta en la Seguridad Social. Dime qué documento es y si se lee bien entero.' }] }] }) }).finally(() => clearTimeout(t));
     const d = await r.json(); if (!r.ok) throw new Error('API ' + r.status);
     const tu = (d.content || []).find(b => b.type === 'tool_use');
     return tu ? tu.input : null;

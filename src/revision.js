@@ -237,7 +237,7 @@ async function automatica({ fecha = hoyMadrid(), avisar = true, _llamar = null }
     const c = new AbortController(); const tm = setTimeout(() => c.abort(), 240000);
     const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', signal: c.signal,
       headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: process.env.REVISION_IA_MODEL || require('./config').ia.agente, max_tokens: 8000, tools: [HERRAMIENTA], tool_choice: { type: 'tool', name: HERRAMIENTA.name }, messages: [{ role: 'user', content: prompt }] }) }).finally(() => clearTimeout(tm));
+      body: JSON.stringify({ model: process.env.REVISION_IA_MODEL || require('./config').ia.auto, max_tokens: 8000, tools: [HERRAMIENTA], tool_choice: { type: 'tool', name: HERRAMIENTA.name }, messages: [{ role: 'user', content: prompt }] }) }).finally(() => clearTimeout(tm));
     const data = await r.json(); if (!r.ok) throw new Error(`IA ${r.status}: ${JSON.stringify(data).slice(0, 200)}`);
     const tu = (data.content || []).find(b => b.type === 'tool_use');
     out = tu && tu.input;

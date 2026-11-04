@@ -6,7 +6,12 @@ const CONFIG = {
   // Un ID de modelo caducado no debe poder romper el bot desde varios sitios.
   // Default a un modelo conocido-bueno; el health-check del arranque avisa si ❌.
   ia: {
-    get clasificador() { return process.env.EMAIL_IA_MODEL  || 'claude-sonnet-4-6'; },
+    // Tareas automáticas y clasificadores (correos, grupos, citas, encargos, seguimiento, traducciones, revisión):
+    // Haiku 4.5, un tercio del precio de Sonnet (4/11/2026, tope de 60 $/mes). Sonnet queda para el agente que habla
+    // con personas y para leer documentos con cifras. IA_AUTO_MODEL=claude-sonnet-4-6 lo devuelve todo a Sonnet.
+    // EMAIL_IA_MODEL ya no se lee.
+    get auto()         { return process.env.IA_AUTO_MODEL   || 'claude-haiku-4-5'; },
+    get clasificador() { return this.auto; },
     get agente()       { return process.env.AGENTE_IA_MODEL || 'claude-sonnet-4-6'; },
     get vision()       { return process.env.PRESU_IA_MODEL  || 'claude-sonnet-4-6'; },
   },

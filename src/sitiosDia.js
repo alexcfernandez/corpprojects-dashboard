@@ -90,7 +90,7 @@ async function _leer(texto, obras, partes) {
     + `Devuelve cada sitio que nombra, en orden. Si casa con una obra de la lista (por calle y número, o por el nombre del cliente), pon su id; si no, obraId null y el nombre tal como lo dice. Si dice horas («por la mañana» ≈ 4, «un rato» ≈ 1, «2 horas»), ponlas; si no, null. Si el mensaje no dice dónde ha estado (por ejemplo «mañana llego tarde»), esRespuesta=false.`;
   const c = new AbortController(); const t = setTimeout(() => c.abort(), 45000);
   const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', signal: c.signal, headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: require('./config').ia.vision, max_tokens: 1500, tools: [HERRAMIENTA], tool_choice: { type: 'tool', name: HERRAMIENTA.name }, messages: [{ role: 'user', content: prompt }] }) }).finally(() => clearTimeout(t));
+    body: JSON.stringify({ model: require('./config').ia.auto, max_tokens: 1500, tools: [HERRAMIENTA], tool_choice: { type: 'tool', name: HERRAMIENTA.name }, messages: [{ role: 'user', content: prompt }] }) }).finally(() => clearTimeout(t));
   const j = await r.json();
   if (!r.ok) throw new Error((j.error && j.error.message) || 'La IA no respondió');
   const tu = (j.content || []).find(x => x.type === 'tool_use');

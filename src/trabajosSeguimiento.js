@@ -161,7 +161,7 @@ async function _leerIA(prompt) {
   if (!key) throw new Error('Falta ANTHROPIC_API_KEY');
   const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: require('./config').ia.agente, max_tokens: 400, tools: [HERRAMIENTA], tool_choice: { type: 'tool', name: HERRAMIENTA.name }, messages: [{ role: 'user', content: prompt }] }) });
+    body: JSON.stringify({ model: require('./config').ia.auto, max_tokens: 400, tools: [HERRAMIENTA], tool_choice: { type: 'tool', name: HERRAMIENTA.name }, messages: [{ role: 'user', content: prompt }] }) });
   const d = await r.json();
   if (!r.ok) throw new Error(`API ${r.status}: ${d.error?.message || ''}`);
   const tu = (d.content || []).find(b => b.type === 'tool_use');

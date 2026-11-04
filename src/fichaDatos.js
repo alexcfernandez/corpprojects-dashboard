@@ -91,7 +91,7 @@ const HERR = { name: 'tallas', description: 'Tallas y fecha de nacimiento que di
 async function _leer(texto) {
   const key = process.env.ANTHROPIC_API_KEY; if (!key) return {};
   const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: require('./config').ia.agente, max_tokens: 300, tools: [HERR], tool_choice: { type: 'tool', name: 'tallas' }, messages: [{ role: 'user', content: `Mensaje de un trabajador al que le pedimos sus tallas y su fecha de nacimiento:\n"""${String(texto).slice(0, 600)}"""\nSaca solo lo que diga (no inventes).` }] }) });
+    body: JSON.stringify({ model: require('./config').ia.auto, max_tokens: 300, tools: [HERR], tool_choice: { type: 'tool', name: 'tallas' }, messages: [{ role: 'user', content: `Mensaje de un trabajador al que le pedimos sus tallas y su fecha de nacimiento:\n"""${String(texto).slice(0, 600)}"""\nSaca solo lo que diga (no inventes).` }] }) });
   const j = await r.json(); const tu = (j.content || []).find(b => b.type === 'tool_use'); return (tu && tu.input) || {};
 }
 

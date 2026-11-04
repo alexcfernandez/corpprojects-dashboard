@@ -38,7 +38,7 @@ async function _llamarIA(texto) {
   const key = process.env.ANTHROPIC_API_KEY; if (!key) throw new Error('Falta ANTHROPIC_API_KEY');
   const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', signal: AbortSignal.timeout(120000),
     headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: require('./config').ia.agente, max_tokens: 2000, tools: [HERRAMIENTA], tool_choice: { type: 'tool', name: HERRAMIENTA.name }, messages: [{ role: 'user', content: texto }] }) });
+    body: JSON.stringify({ model: require('./config').ia.auto, max_tokens: 2000, tools: [HERRAMIENTA], tool_choice: { type: 'tool', name: HERRAMIENTA.name }, messages: [{ role: 'user', content: texto }] }) });
   const d = await r.json(); if (!r.ok) throw new Error(`API ${r.status}: ${d.error?.message || ''}`);
   const tu = (d.content || []).find(b => b.type === 'tool_use');
   return tu ? tu.input : { citas: [] };

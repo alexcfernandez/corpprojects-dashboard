@@ -190,7 +190,7 @@ async function detectarPendiente(texto, { hoy = new Date(), _ia = null } = {}) {
   const key = process.env.ANTHROPIC_API_KEY; if (!key || String(texto || '').trim().length < 8) return { hay: false };
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: require('./config').ia.agente, max_tokens: 250, tools: [HERR_PEND], tool_choice: { type: 'tool', name: 'pendiente' }, messages: [{ role: 'user', content: `Hoy es ${hoyISO(hoy)}. Mensaje de un trabajador de una empresa de reformas a la oficina:\n«${String(texto).slice(0, 800)}»` }] }) });
+      body: JSON.stringify({ model: require('./config').ia.auto, max_tokens: 250, tools: [HERR_PEND], tool_choice: { type: 'tool', name: 'pendiente' }, messages: [{ role: 'user', content: `Hoy es ${hoyISO(hoy)}. Mensaje de un trabajador de una empresa de reformas a la oficina:\n«${String(texto).slice(0, 800)}»` }] }) });
     const j = await r.json(); const tu = (j.content || []).find(b => b.type === 'tool_use'); return (tu && tu.input) || { hay: false };
   } catch (e) { return { hay: false }; }
 }
