@@ -318,4 +318,4 @@ async function alParte(workOrderId, parte, { _enviar = null, _avisar = null, _st
   return { cerrado: false, motivo };
 }
 
-module.exports = { preguntarQuien, respuestaQuien, nombrado, asignar, abiertos, respuestaGrupo, seguimiento, alParte, precioSalida, _ultimaPregunta, REF };
+module.exports = { preguntarQuien, respuestaQuien, nombrado, asignar, abiertos, respuestaGrupo, seguimiento, alParte, precioSalida, _ultimaPregunta, _yo, REF };

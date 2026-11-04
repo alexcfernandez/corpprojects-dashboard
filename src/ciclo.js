@@ -74,7 +74,7 @@ async function datos({ _S = null, _db = null } = {}) {
   partes.forEach(p => { const k = String(p.workOrderId); if (!partesDe.has(k)) partesDe.set(k, []); partesDe.get(k).push(p); });
 
   // Peticiones (grupos y correo)
-  const pets = await db.collection('peticionesGrupo').find({ estado: 'pendiente', tipo: { $in: ['trabajo', 'queja', 'presupuesto'] } }).sort({ fecha: -1 }).limit(200).toArray();
+  const pets = await db.collection('peticionesGrupo').find({ estado: 'pendiente', noCliente: { $exists: false }, tipo: { $in: ['trabajo', 'queja', 'presupuesto'] } }).sort({ fecha: -1 }).limit(200).toArray();
   const petPorInc = new Map(pets.filter(p => p.incidencia).map(p => [p.incidencia, p]));
 
   const tarjetas = [], presupuestos = [];

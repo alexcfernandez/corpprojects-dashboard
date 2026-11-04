@@ -113,6 +113,7 @@ async function crear(peticionId, { userId, fecha = null, hora = null, urgente = 
   const p = await _peticion(db, peticionId);
   if (p.pedido && p.pedido.id) throw new Error(`Ya tiene el pedido ${p.pedido.ref}`);
   if (p.porConfirmar) throw new Error('Esta petición está por confirmar (no sabemos si quien llamó es de ese cliente): confírmala primero');
+  if (p.noCliente) throw new Error('Esta petición no es de un cliente (proveedor, comercial o administrativo): si sí lo es, confírmala con su cliente primero');
   if (fecha && !/^\d{4}-\d{2}-\d{2}$/.test(String(fecha))) throw new Error('El día no se entiende');
   if (hora && !/^\d{1,2}:\d{2}$/.test(String(hora))) throw new Error('La hora no se entiende');
   // Trabajo aceptado de la cola (colaTrabajos.js) con día previsto: si no se dice otro, va ese.

@@ -47,6 +47,7 @@ const HERRAMIENTA = {
       hecho_en_chat: { type: 'boolean', description: 'En el chat se ve que se hizo, se mandó el presupuesto o se cerró (fotos de acabado, «ya está», «enviado»…)' },
       cita: { type: ['object', 'null'], description: 'SOLO si en estos mensajes queda fijado un día para ir (lo dice alguien de Corp, el administrador o un vecino: «vamos mañana a las 10», «os espera el jueves a las 9», «habíamos quedado el miércoles»). Fecha absoluta. null si no hay día concreto.', properties: {
         fecha: { type: 'string', description: 'YYYY-MM-DD' }, hora: { type: ['string', 'null'], description: 'HH:MM en 24 h, o null' }, con: { type: ['string', 'null'], description: 'Con quién se queda (nombre/teléfono), si se dice' } } },
+      no_es_cliente: { type: ['string', 'null'], description: 'Solo en RECADOS de teléfono: si quien llama NO es un cliente ni una comunidad que nos encarga algo (proveedor, comercial que vende algo, Kit Digital, banco, gestoría, asesoría, seguros, facturas de un proveedor, administración…), pon quién es y qué quiere en una frase («Fulgencio de Exolution, por el Kit Digital»). Entonces no pongas cliente_id aunque nombre una calle. null si es un cliente.' },
       pedir_contacto: { type: 'boolean', description: 'true SOLO si para ir a hacerlo nos falta un contacto o cómo entrar y nadie lo ha dado. false si ya estamos trabajando en ese edificio, si alguien de Corp ya contestó que se encarga («sí miramos», «vamos»), si el contacto ya salió (en la conversación anterior o en la petición abierta), si es zona común con acceso o si no hay que ir a ningún sitio' },
     }, required: ['msgs', 'tipo', 'cliente', 'resumen', 'que_hacer', 'urgente', 'situacion'] } },
   }, required: ['peticiones'] },
@@ -126,6 +127,7 @@ ${cat.clientes.join('\n')}`;
     const set = { tipo: TIPOS.includes(p.tipo) ? p.tipo : 'consulta', clienteId: p.cliente_id && /^\d+$/.test(String(p.cliente_id)) ? String(p.cliente_id) : null,
       cliente: corto(p.cliente, 120), titulo: corto(p.titulo, 60) || null, direccion: corto(p.direccion, 120) || null, contacto: corto(p.contacto, 120) || null, resumen: corto(p.resumen, 400), queHacer: corto(p.que_hacer, 300),
       urgente: !!p.urgente, respondimos: p.respondimos == null ? null : !!p.respondimos, hechoEnChat: p.hecho_en_chat == null ? null : !!p.hecho_en_chat, situacion: SITUACIONES.includes(p.situacion) ? p.situacion : 'nuevo', incidencia: corto(p.incidencia, 12) || null, presupuesto: corto(p.presupuesto, 12) || null, pedirContacto: p.pedir_contacto === true, actualizado: new Date() };
+    if (corto(p.no_es_cliente, 200)) set.noEsCliente = corto(p.no_es_cliente, 200);
     if (p.cita && /^\d{4}-\d{2}-\d{2}$/.test(p.cita.fecha || '')) set.cita = { fecha: p.cita.fecha, hora: /^\d{1,2}:\d{2}$/.test(p.cita.hora || '') ? p.cita.hora : null, con: corto(p.cita.con, 80) || null };
     if (set.clienteId) set.clienteStel = cat.nombre(set.clienteId) || null;
     const prev = p.actualiza && ObjectId.isValid(String(p.actualiza)) ? abiertas.find(a => String(a._id) === String(p.actualiza)) : null;
@@ -332,7 +334,12 @@ async function deCorreo({ gmailId, de, asunto, cuerpo, fecha = new Date(), avisa
 // «¿Quién va?» a Álex. El cliente viene por externalId (= account-id de StelOrder, de la caché: no gasta cupo). Del
 // teléfono solo llegan las 3 últimas cifras. Si es URGENTE sale al momento un WhatsApp a Álex y a la oficina; si no,
 // sin aviso suelto (sale en el de las 8:15 y en la pregunta de quién va).
-const EXTRA_RECADO = `Esto es un RECADO que un cliente dejó por TELÉFONO a SecretarIA (la IA que coge las llamadas de Corp cuando nadie puede). Casi siempre es una sola petición. Si dice que ya llamó antes, que no hemos ido o que vuelve a pasar, es seguimiento. No hay teléfono completo: no lo inventes.`;
+const EXTRA_RECADO = `Esto es un RECADO que alguien dejó por TELÉFONO a SecretarIA (la IA que coge las llamadas de Corp cuando nadie puede). Casi siempre es una sola petición. Si dice que ya llamó antes, que no hemos ido o que vuelve a pasar, es seguimiento. No hay teléfono completo: no lo inventes.
+No todo el que llama es cliente: un proveedor, un comercial, el Kit Digital, un banco, la gestoría o un tema administrativo NO es una comunidad que nos encarga algo. Entonces rellena no_es_cliente (quién es y qué quiere) y deja cliente_id vacío aunque diga una dirección.`;
+// Proveedores, comerciales y temas administrativos (4/11/2026: «Fulgencio de Exolution» llamó por el Kit Digital, dio la
+// dirección «Belpuig 41» y la petición quedó «por confirmar · ILLA VERDA»). Van a «Otros / no es cliente»: sin cliente,
+// sin incidencia, sin «¿Quién va?» ni botón de confirmar. Además de lo que diga la IA, el Kit Digital siempre es esto.
+const NO_CLIENTE = /\bkit digital\b/i;
 const JID_VOZ = 'voz:corp', GRUPO_VOZ = 'Llamadas · SecretarIA';
 // Quién llama lo sabe Nuvo Voz por el NÚMERO (contacto.externalId); lo que diga quien llama es solo una pista (3/11/2026,
 // Álex: en la prueba llamó él desde su móvil, dijo «Bellpuig 41» y salió una incidencia de ILLA VERDA). Todo automático solo
@@ -396,6 +403,14 @@ async function deRecado({ llamada, fecha = new Date(), urgente = false, resumen,
   for (const p of r.nuevas) {
     const set = { canal: 'llamada', recado: { nombre: corto(contacto && contacto.nombre, 60) || null, final: fin, llama: accId, fecha: new Date(fecha), texto } };
     if (corto(titulo, 60)) set.titulo = corto(titulo, 60);
+    const otro = !accId && (p.noEsCliente || NO_CLIENTE.test(`${texto} ${titulo || ''} ${p.resumen || ''}`));
+    if (otro) {
+      const que = p.noEsCliente || `${corto(contacto && contacto.nombre, 60) || 'Alguien'}: ${corto(p.resumen || texto, 200)}`;
+      Object.assign(set, { noCliente: { quien: corto(contacto && contacto.nombre, 60) || null, que, at: new Date() }, cliente: corto(contacto && contacto.nombre, 60) || 'No es cliente', clienteId: null, clienteStel: null, situacion: 'nuevo' });
+      Object.assign(p, set);
+      await db.collection(COL).updateOne({ _id: p._id }, { $set: set, $unset: { noEsCliente: '' }, $addToSet: { llamadas: String(llamada || '') } });
+      continue;
+    }
     if (!p.clienteId && accId) Object.assign(set, { clienteId: accId, clienteStel: cat.nombre(accId) || null });
     if (!p.clienteId && propuesto) Object.assign(set, { clienteId: propuesto.id, clienteStel: propuesto.nombre });
     if (urgente) set.urgente = true;
@@ -408,32 +423,34 @@ async function deRecado({ llamada, fecha = new Date(), urgente = false, resumen,
     await db.collection(COL).updateOne({ _id: p._id }, { $set: urgente ? { urgente: true } : {}, $addToSet: { llamadas: String(llamada || '') } });
     if (urgente) p.urgente = true;
   }
-  for (const p of [...r.nuevas, ...r.actualizadas]) _memo(p);
-  const nuevas = r.nuevas.filter(p => !sinAccion(p));
+  for (const p of [...r.nuevas, ...r.actualizadas]) if (!p.noCliente) _memo(p);
+  const otros = r.nuevas.filter(p => p.noCliente);
+  const nuevas = r.nuevas.filter(p => !p.noCliente && !sinAccion(p));
   let auto = {};
   try { auto = await (_auto || _autoIncidencias)(db, { _id: JID_VOZ, autoIncidencia: true }, nuevas.filter(p => !p.porConfirmar).map(_paraAuto)); } catch (e) { console.warn('[Peticiones] recado incidencias:', e.message); }
   let avisado = false;
   if (urgente) {
     const lista = [...nuevas, ...r.actualizadas];
+    const notas = otros.map(p => `📇 *No es cliente*: ${p.noCliente.que}. No he creado incidencia ni preguntado quién va; está en 📞 Llamadas → Otros.`);
     const dudas = nuevas.filter(p => p.porConfirmar).map(p => `⚠️ *Por confirmar*: llama ${p.porConfirmar.llama ? `*${p.porConfirmar.llama.nombre}* (por su número)` : `un número desconocido${propuesto ? ` (por el nombre parece *${propuesto.nombre}*)` : ''}`} y dice ser de *${p.clienteStel || p.cliente}*. No he creado incidencia ni he preguntado quién va: confírmalo o cambia el cliente en Inicio → Peticiones.`);
-    const txt = `🚨 *URGENTE · recado de SecretarIA* (${fmt(fecha)})\n${quien}\n\n` + (lista.length ? _textoAviso(GRUPO_VOZ, nuevas, r.actualizadas, auto) : `${texto}\n\nNo he sacado ninguna petición de esto: míralo tú.`) + (dudas.length ? '\n\n' + dudas.join('\n') : '');
+    const txt = `🚨 *URGENTE · recado de SecretarIA* (${fmt(fecha)})\n${quien}\n\n` + (lista.length ? _textoAviso(GRUPO_VOZ, nuevas, r.actualizadas, auto) : notas.length ? '' : `${texto}\n\nNo he sacado ninguna petición de esto: míralo tú.`) + (dudas.length ? '\n\n' + dudas.join('\n') : '') + (notas.length ? (lista.length ? '\n\n' : '') + notas.join('\n') : '');
     const N = require('./notifications');
     for (const to of [...new Set([N.destinoDueno(), process.env.OFICINA_TELEFONO || '+34674013723'].filter(Boolean))]) {
       try { if (await (_enviar || N.sendWhatsAppTo)(to, txt, { importante: true }) !== false) avisado = true; } catch (e) { console.warn('[Peticiones] recado urgente:', e.message); }
     }
   }
-  return { jid: JID_VOZ, urgente, avisado, nuevas: nuevas.map(p => ({ id: String(p._id), porConfirmar: p.porConfirmar ? p.porConfirmar.motivo : null, cliente: p.clienteStel || p.cliente, resumen: p.resumen, incidencia: (auto[String(p._id)] || {}).incidencia || p.incidencia || null, error: (auto[String(p._id)] || {}).error || null })), actualizadas: r.actualizadas.map(p => String(p._id)) };
+  return { jid: JID_VOZ, urgente, avisado, nuevas: [...nuevas.map(p => ({ id: String(p._id), porConfirmar: p.porConfirmar ? p.porConfirmar.motivo : null, cliente: p.clienteStel || p.cliente, resumen: p.resumen, incidencia: (auto[String(p._id)] || {}).incidencia || p.incidencia || null, error: (auto[String(p._id)] || {}).error || null })), ...otros.map(p => ({ id: String(p._id), noCliente: p.noCliente.que, cliente: p.cliente, resumen: p.resumen, incidencia: null }))], actualizadas: r.actualizadas.map(p => String(p._id)) };
 }
 
 // Botón «Confirmar» de una petición por confirmar (con otro cliente si se elige): sigue como una petición normal
-// (incidencia + «¿Quién va?»).
+// (incidencia + «¿Quién va?»). También vale para una de «Otros / no es cliente» que sí era de un cliente.
 async function confirmar(id, { clienteId = null } = {}, por = '', { _auto = null } = {}) {
   if (!ObjectId.isValid(String(id))) throw new Error('Petición no encontrada');
   const db = await getDB();
   const p = await db.collection(COL).findOne({ _id: new ObjectId(String(id)) });
   if (!p) throw new Error('Petición no encontrada');
-  if (!p.porConfirmar) throw new Error('Esta petición no está por confirmar');
-  const set = { confirmada: { por, at: new Date(), antes: p.porConfirmar } };
+  if (!p.porConfirmar && !p.noCliente) throw new Error('Esta petición no está por confirmar');
+  const set = { confirmada: { por, at: new Date(), antes: p.porConfirmar || { noCliente: p.noCliente } } };
   if (clienteId && String(clienteId) !== String(p.clienteId || '')) {
     const { clientMap } = await require('./stelorder').getClients();
     const c = clientMap[String(clienteId)];
@@ -441,8 +458,8 @@ async function confirmar(id, { clienteId = null } = {}, por = '', { _auto = null
     Object.assign(set, { clienteId: String(clienteId), clienteStel: c.name });
   }
   if (!(set.clienteId || p.clienteId)) throw new Error('Elige el cliente de StelOrder');
-  await db.collection(COL).updateOne({ _id: p._id }, { $set: set, $unset: { porConfirmar: '' } });
-  const q = _paraAuto({ ...p, ...set }); delete q.porConfirmar;
+  await db.collection(COL).updateOne({ _id: p._id }, { $set: set, $unset: { porConfirmar: '', noCliente: '' }, $push: { cambios: _cambio('confirmada', por, { clienteId: set.clienteId || p.clienteId }) } });
+  const q = _paraAuto({ ...p, ...set }); delete q.porConfirmar; delete q.noCliente;
   const auto = (await (_auto || _autoIncidencias)(db, { _id: p.jid, autoIncidencia: true }, [q]))[String(p._id)] || {};
   return { ok: true, incidencia: auto.incidencia || null, error: auto.error || null };
 }
@@ -523,14 +540,44 @@ async function lista({ estado = 'pendiente', jid = null, limite = 200 } = {}) {
   return l.map(p => ({ ...p, id: String(p._id) }));
 }
 
+// Cada cambio queda apuntado en la petición (p.cambios): nada se borra, descartar es un estado.
+const _cambio = (que, por, extra = {}) => ({ que, por: corto(por, 60), at: new Date(), ...extra });
 async function marcar(id, { estado, nota = '' }, por = '') {
   if (!['pendiente', 'hecho', 'descartado'].includes(estado)) throw new Error('Estado no válido');
   if (!ObjectId.isValid(String(id))) throw new Error('Petición no encontrada');
   const db = await getDB();
-  const r = await db.collection(COL).updateOne({ _id: new ObjectId(String(id)) }, { $set: { estado, nota: corto(nota, 300), marcadoPor: por, marcadoAt: new Date() } });
-  if (!r.matchedCount) throw new Error('Petición no encontrada');
-  _memo(await db.collection(COL).findOne({ _id: new ObjectId(String(id)) }));
+  const antes = await db.collection(COL).findOne({ _id: new ObjectId(String(id)) }, { projection: { estado: 1 } });
+  if (!antes) throw new Error('Petición no encontrada');
+  await db.collection(COL).updateOne({ _id: antes._id }, { $set: { estado, nota: corto(nota, 300), marcadoPor: por, marcadoAt: new Date() }, $push: { cambios: _cambio(estado, por, { antes: antes.estado, nota: corto(nota, 300) || null }) } });
+  const p = await db.collection(COL).findOne({ _id: antes._id });
+  if (!p.noCliente) _memo(p);
   return { ok: true };
+}
+
+// «Esto no es de un cliente» (Corpy o el panel): pasa a «Otros / no es cliente». Si ya tiene incidencia no se toca.
+async function noEsCliente(id, { que = '' } = {}, por = '') {
+  if (!ObjectId.isValid(String(id))) throw new Error('Petición no encontrada');
+  const db = await getDB();
+  const p = await db.collection(COL).findOne({ _id: new ObjectId(String(id)) });
+  if (!p) throw new Error('Petición no encontrada');
+  if (p.incidencia || p.pedido) throw new Error(`Ya tiene ${p.incidencia || (p.pedido && p.pedido.ref)}: eso no lo cambio yo, míralo en StelOrder`);
+  const quien = (p.recado && p.recado.nombre) || p.contacto || p.quien || null;
+  const noCliente = { quien, que: corto(que, 200) || `${quien || 'Alguien'}: ${corto(p.resumen, 200)}`, at: new Date(), por: corto(por, 60) };
+  await db.collection(COL).updateOne({ _id: p._id }, { $set: { noCliente, cliente: quien || 'No es cliente', clienteId: null, clienteStel: null }, $unset: { porConfirmar: '' },
+    $push: { cambios: _cambio('no_es_cliente', por, { antes: { clienteId: p.clienteId || null, clienteStel: p.clienteStel || null, cliente: p.cliente } }) } });
+  return { ok: true };
+}
+
+// «Ya he devuelto la llamada»: queda apuntado en la petición; si no era de un cliente, con eso está hecha.
+async function llamadaDevuelta(id, por = '') {
+  if (!ObjectId.isValid(String(id))) throw new Error('Petición no encontrada');
+  const db = await getDB();
+  const p = await db.collection(COL).findOne({ _id: new ObjectId(String(id)) });
+  if (!p) throw new Error('Petición no encontrada');
+  const set = { llamadaDevuelta: { por: corto(por, 60), at: new Date() } };
+  if (p.noCliente) Object.assign(set, { estado: 'hecho', marcadoPor: por, marcadoAt: new Date() });
+  await db.collection(COL).updateOne({ _id: p._id }, { $set: set, $push: { cambios: _cambio('llamada_devuelta', por, p.noCliente ? { antes: p.estado } : {}) } });
+  return { ok: true, hecha: !!p.noCliente };
 }
 
 async function marcarGrupo(jid, peticiones) {
@@ -654,7 +701,7 @@ async function resumenDiario({ hoy = new Date(), enviar = true, _enviar = null }
   ]);
   if (!nMsgs && !nuevas.length && !pend.length) return { enviado: false, motivo: 'nada' };
   const et = { presupuesto: 'Presupuesto', trabajo: 'Trabajo', queja: 'Queja', consulta: 'Consulta', aviso: 'Aviso' };
-  const sit = p => p.situacion === 'ya_hay_incidencia' ? `está en ${p.incidencia || 'una incidencia'}` : p.situacion === 'ya_hay_presupuesto' ? `hay ${p.presupuesto || 'presupuesto'}` : p.situacion === 'seguimiento' ? 'insisten' : 'nuevo, no está en StelOrder';
+  const sit = p => p.noCliente ? 'no es cliente' : p.situacion === 'ya_hay_incidencia' ? `está en ${p.incidencia || 'una incidencia'}` : p.situacion === 'ya_hay_presupuesto' ? `hay ${p.presupuesto || 'presupuesto'}` : p.situacion === 'seguimiento' ? 'insisten' : 'nuevo, no está en StelOrder';
   const dias = p => Math.floor((Date.now() - new Date(p.fecha).getTime()) / 86400000);
   const fila = p => `<tr><td style="padding:6px 8px;border-top:1px solid #ddd;white-space:nowrap">${p.urgente ? '🚨 ' : ''}${et[p.tipo] || p.tipo}</td><td style="padding:6px 8px;border-top:1px solid #ddd"><b>${esc(p.cliente)}</b>${p.direccion ? ' · ' + esc(p.direccion) : ''}<br>${esc(p.resumen)}<br><span style="color:#666">→ ${esc(p.queHacer)} (${esc(sit(p))}${dias(p) > 0 ? ` · ${dias(p)} días` : ''})</span></td></tr>`;
   const tabla = l => `<table style="border-collapse:collapse;font:14px system-ui,sans-serif;width:100%">${l.map(fila).join('')}</table>`;
@@ -675,4 +722,4 @@ ${pend.length ? `<h3 style="margin:16px 0 4px">Sigue abierto</h3>${tabla(pend.fi
   return { enviado: !!ok, to, subject, nuevas: nuevas.length, abiertas: pend.length };
 }
 
-module.exports = { _citaAlCalendario, deCorreo, deRecado, confirmar, verificar, porNombre, JID_VOZ, tituloPeticion, detalle, original, _limpiaCorreo, _jidCorreo, presupuestoEnviado, presupuestoDevuelto, refDePdf, crearIncidencia, resumenDiario, _ventana, analizar, importarChat, analizarHistorial, parsearChat, lista, marcar, marcarGrupo, _tanda, _textoAviso, _autoIncidencias, _sinAccion: sinAccion, _contexto, TIPOS };
+module.exports = { _citaAlCalendario, deCorreo, deRecado, confirmar, noEsCliente, llamadaDevuelta, verificar, porNombre, JID_VOZ, tituloPeticion, detalle, original, _limpiaCorreo, _jidCorreo, presupuestoEnviado, presupuestoDevuelto, refDePdf, crearIncidencia, resumenDiario, _ventana, analizar, importarChat, analizarHistorial, parsearChat, lista, marcar, marcarGrupo, _tanda, _textoAviso, _autoIncidencias, _sinAccion: sinAccion, _contexto, TIPOS };

@@ -1936,6 +1936,12 @@ async function responderConsultaInterna(texto, from = 'anon', imagenes = [], ctx
   // A0.3) FASE 2 — modificar una FACTURA no es posible por API: responder la verdad.
   { const fm = mensajeFacturaNoEditable(texto); if (fm) return fm; }
 
+  // A0.39) «sí» / «no» / «2» a «¿Hago esto? …» de gestionar_peticion (gestionPeticiones.js): antes que nada que pueda
+  // quedarse ese «sí». Si el mensaje es otra cosa, la pregunta se anula y sigue el camino normal.
+  if (!imagenes.length && acceso.esOwner(from)) {
+    try { const r = await require('./gestionPeticiones').respuesta(texto, from); if (r) { pendiente.delete(from); return r; } } catch (e) { console.error('[Peticiones] gestión:', e.message); }
+  }
+
   // A0.4) FASE 1 — ¿el jefe está RESPONDIENDO a una aclaración que pidió el agente?
   // Devuelve la continuidad al agente (usa el contexto guardado en estadoConversacion).
   {

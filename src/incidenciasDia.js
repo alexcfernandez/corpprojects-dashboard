@@ -23,7 +23,7 @@ async function datos({ _S = null, _db = null } = {}) {
   const presupuestos = abiertas.filter(i => /presupuesto/i.test(i.tipo));
   const trabajos = abiertas.filter(i => !/presupuesto/i.test(i.tipo));
   const db = _db || await require('./db').getDB();
-  const sinInc = await db.collection('peticionesGrupo').find({ estado: 'pendiente', incidencia: null, tipo: { $in: ['trabajo', 'queja', 'presupuesto'] } }).sort({ urgente: -1, fecha: -1 }).limit(30).toArray();
+  const sinInc = await db.collection('peticionesGrupo').find({ estado: 'pendiente', incidencia: null, noCliente: { $exists: false }, tipo: { $in: ['trabajo', 'queja', 'presupuesto'] } }).sort({ urgente: -1, fecha: -1 }).limit(30).toArray();
   // Llamadas perdidas sin recado desde el aviso anterior (Nuvo Voz, 3/11/2026): hay que devolverlas.
   const perdidas = await require('./nuvoVoz').perdidasParaAviso({ _db: db }).catch(() => []);
   return { presupuestos, trabajos, sinInc, perdidas };
