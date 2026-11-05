@@ -474,6 +474,9 @@ async function getSummary() {
       criticalCount:    pending.filter(i => i.daysOverdue >= 60).length,
       warningCount:     pending.filter(i => i.daysOverdue >= 15 && i.daysOverdue < 30).length,
       pendingList:      pending.slice(0, 30),
+      // «Cobros más urgentes» (5/11/2026): las más grandes vencidas hace entre 1 y 4 meses. Las de hoy aún no tocan y
+      // las muy antiguas (Eclipse…) ya se sabe que están ahí y taparían lo que sí se puede cobrar.
+      urgentList:       pending.filter(i => i.daysOverdue >= 30 && i.daysOverdue <= 120).sort((a, b) => b.pending - a.pending).slice(0, 5),
       lastUpdated:      now.toISOString()
     };
   } catch (err) {

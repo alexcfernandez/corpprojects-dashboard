@@ -70,6 +70,13 @@ async function estado({ hoy = new Date() } = {}) {
       .map(m => ({ fecha: m.fechaOperacion, importe: r2(-m.importe), banco: true }));
     const cerca = (a, b) => Math.abs(new Date(a) - new Date(b)) <= 10 * 86400000;
     const manual = (e.pagosManual || []).filter(p => !banco.some(b => Math.abs(b.importe - p.importe) < 0.01 && cerca(b.fecha, p.fecha))).map(p => ({ fecha: p.fecha, importe: p.importe, manual: true, nota: p.nota }));
+    // Sin `buscar` que case (5/11/2026: el ingreso de Javier salió como «NOTIFICACIONES SIR»): un cargo con el importe
+    // exacto de lo que falta, desde el mes de la última retención, es ese ingreso.
+    const falta0 = r2(retenido - [...banco, ...manual].reduce((a, p) => a + p.importe, 0));
+    if (falta0 > 0.01 && meses.length) {
+      const m = await db.collection('bancoMovimientos').findOne({ fechaOperacion: { $gte: meses[meses.length - 1].mes + '-01' }, importe: { $gt: -falta0 - 0.01, $lt: -falta0 + 0.01 } });
+      if (m && !banco.some(b => b.fecha === m.fechaOperacion)) banco.push({ fecha: m.fechaOperacion, importe: r2(-m.importe), banco: true, porImporte: true });
+    }
     const pagos = [...banco, ...manual].sort((a, b) => a.fecha.localeCompare(b.fecha));
     const pagado = r2(pagos.reduce((a, p) => a + p.importe, 0));
     const pendiente = r2(Math.max(0, retenido - pagado));

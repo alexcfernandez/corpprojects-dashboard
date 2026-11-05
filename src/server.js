@@ -1186,7 +1186,7 @@ app.get('/api/inicio', requireAuth, async (req, res) => {
   t.push((async () => { try {
     const s = await getSummary();
     out.facturacion = { mes: s.totalBilledMonth, mesCount: s.totalInvoicesMonth, pendiente: s.totalPending, pendienteCount: s.pendingInvoices, criticas: s.criticalCount, avisos: s.overdueCount + s.warningCount,
-      topPendientes: (s.pendingList || []).slice(0, 5).map(p => ({ number: p.number, client: p.client, pending: p.pending, days: p.daysOverdue, alert: p.alertLevel })) };
+      topPendientes: (s.urgentList || []).map(p => ({ number: p.number, client: p.client, pending: p.pending, days: p.daysOverdue, alert: p.alertLevel })) };
   } catch (e) { out.facturacion = { error: e.message }; } })());
   // 2) Serie mensual (6 meses) para la gráfica de barras
   t.push((async () => { try { out.serieMensual = await require('./stelorder').getMonthlyBilling(6); } catch (e) { out.serieMensual = []; out.serieMensualError = e.message; } })());

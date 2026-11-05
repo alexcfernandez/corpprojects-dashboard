@@ -69,7 +69,9 @@ body.light table th { color: #64748b; }
 /* Portada */
 @keyframes cpGrow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
 .ini-barra { transform-box: fill-box; transform-origin: bottom; animation: cpGrow .6s cubic-bezier(.2,.8,.2,1) both; }
-@media (max-width: 900px) { .ini-grid { grid-template-columns: 1fr !important; } }
+@media (max-width: 900px) { .ini-grid { grid-template-columns: minmax(0, 1fr) !important; } }
+.ini-grid > * { min-width: 0; }
+.ini-grid table td { overflow-wrap: anywhere; }
 .tools-quick.compacto { display: flex !important; flex-wrap: wrap; gap: 8px; grid-template-columns: none !important; }
 .tools-quick.compacto .tq { flex: 0 0 auto; display: inline-flex; flex-direction: row; align-items: center; gap: 6px; padding: 8px 12px; min-height: 0; border-radius: 999px; }
 .tools-quick.compacto .tq .em { font-size: 15px; margin: 0; }
