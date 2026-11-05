@@ -1650,12 +1650,35 @@ async function cargarLlamadas(){
       <div><div class="ll-titulo-g" style="font-family:var(--font-display);font-size:24px;font-weight:800">📞 Llamadas</div><div style="font-size:12.5px;color:var(--text3)">Lo que llega de la centralita Nuvo Voz: recados de SecretarIA y llamadas perdidas${d.ultimoAviso?` · último aviso ${_llCuando(d.ultimoAviso)}`:''}</div></div>
       <a href="https://voz.nuvoialabs.com" target="_blank" rel="noopener" style="margin-left:auto;font-size:13px;color:var(--blue);text-decoration:none">Abrir Nuvo Voz ↗</a>
     </div>
+    ${_llNativo()?'<div id="ll-movil" class="card" style="margin:0 0 14px"></div>':''}
     ${r?`<div class="cp-kpis">${tile('Entrantes hoy',r.entrantes)}${tile('Atendidas',r.atendidas,'var(--green)')}${tile('Perdidas',r.perdidas,r.perdidas?'var(--red)':'')}${tile('Recados SecretarIA',r.recados,'var(--blue)')}</div>`:`<div style="font-size:12.5px;color:var(--text3);margin:-4px 0 14px">El resumen de hoy (entrantes, atendidas, minutos…) llega de la centralita a las 20:30.</div>`}
     ${sec('⚠️ Por confirmar',porConf.length?`${porConf.length}`:'',porConf.map(petFila).join(''),'Nada por confirmar. Aquí salen los recados de un número desconocido o que no cuadra con el cliente que dicen ser.')}
     ${otros.length?sec('📇 Otros / no es cliente',`${otros.length}`,otros.map(petFila).join(''),''):''}
     ${sec('📵 Perdidas sin devolver',d.perdidas.length?`${d.perdidas.length} · últimos ${d.dias} días`:'',perd,'Ninguna. Las que no dejaron recado salen aquí hasta que marques que ya las has devuelto.')}
     ${abiertas.length?sec('📋 Peticiones de llamadas abiertas',`${abiertas.length}`,abiertas.slice(0,6).map(petFila).join('')+(abiertas.length>6?`<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;color:var(--text3)">Ver las otras ${abiertas.length-6}</summary>${abiertas.slice(6).map(petFila).join('')}</details>`:''),''):''}
     ${sec('🤖 Recados de SecretarIA',d.recados.length?`${d.recados.length} · últimos ${d.dias} días`:'',rec,'Todavía no ha llegado ningún recado de la centralita.')}`;
+  llMovilPintar();
+}
+// Llamadas en este móvil (5/11/2026): solo dentro de la app de Corp. La pieza de Nuvo Voz hace que suenen como una
+// llamada normal (pantalla de llamada con el nombre del cliente) aunque la app esté cerrada o el móvil bloqueado.
+const _llNativo=()=>{ try{ return !!(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform()&&window.Capacitor.Plugins.NuvoLlamadas); }catch(e){ return false; } };
+async function llMovilPintar(e){
+  const c=document.getElementById('ll-movil'); if(!c) return;
+  const N=window.Capacitor.Plugins.NuvoLlamadas;
+  if(!e){ c.innerHTML='<div style="color:var(--text3);font-size:13px">Comprobando las llamadas en este móvil…</div>'; try{ e=await N.estado(); }catch(err){ e={vinculado:false,error:err.message}; } }
+  const t='<div class="card-title" style="margin:0 0 6px">📱 Llamadas en este móvil</div>';
+  if(!e.vinculado){ c.innerHTML=t+`<div style="font-size:13px;color:var(--text2);margin-bottom:10px">Las llamadas de la centralita te sonarán aquí como una llamada normal, aunque la app esté cerrada. Entrarás con tu usuario de Nuvo Voz una sola vez.</div>${e.error?`<div style="font-size:12.5px;color:var(--red);margin-bottom:8px">${_llE(e.error)}</div>`:''}<button class="btn" onclick="llMovil('vincular',this)">Recibir las llamadas en este móvil</button>`; return; }
+  const disp=e.estado==='disponible', ocup=e.estado==='ocupado';
+  c.innerHTML=t+`<div style="font-size:13px;color:var(--text2)">${_llE(e.usuario)} · ${_llE(e.empresa)}</div>
+    <div style="font-size:13px;margin:6px 0 10px">${ocup?'📞 En una llamada':disp?'<span style="color:var(--green)">● Disponible: te sonarán las llamadas</span>':'<span style="color:var(--amber)">● En pausa: no te sonarán</span>'}${e.registrado?'':'<br><span style="color:var(--red);font-size:12.5px">⚠️ Este móvil aún no puede recibir llamadas'+(e.error?': '+_llE(e.error):'')+'</span>'}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${ocup?'':`<button class="btn" onclick="llMovil('${disp?'pausa':'disponible'}',this)">${disp?'Pausar':'Ponerme disponible'}</button>`}<button class="btn btn-sm" style="margin-left:auto" onclick="llMovil('desvincular',this)">Dejar de recibirlas aquí</button></div>`;
+}
+async function llMovil(acc,b){
+  const N=window.Capacitor.Plugins.NuvoLlamadas;
+  if(acc==='desvincular'&&!confirm('¿Dejar de recibir las llamadas en este móvil?')) return;
+  b.disabled=true;
+  try{ llMovilPintar(acc==='vincular'?await N.vincular():acc==='desvincular'?await N.desvincular():await N.cambiarEstado({estado:acc})); }
+  catch(err){ b.disabled=false; if(err.message!=='Cancelado') alert(err.message); }
 }
 async function llDevuelta(id,b){ b.disabled=true; b.textContent='…'; try{ const r=await apiCall(`/api/llamadas/${encodeURIComponent(id)}/devuelta`,'POST'); if(r&&r.error) throw new Error(r.error); cargarLlamadas(); cargarAvisoLlamadas(); }catch(e){ alert(e.message); b.disabled=false; b.textContent='Ya la he devuelto'; } }
 // En la portada (y en la 🔔 del móvil): «N llamadas por confirmar» y «N perdidas sin devolver», que llevan a 📞 Llamadas.

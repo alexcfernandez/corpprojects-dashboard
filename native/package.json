@@ -1,0 +1,15 @@
+{
+  "name": "corp-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "App de Corp Projects para iPhone: el panel de dashboard.corpprojects.es y las llamadas de Nuvo Voz",
+  "dependencies": {
+    "@capacitor/app": "^7.1.2",
+    "@capacitor/cli": "^7.6.9",
+    "@capacitor/core": "^7.6.9",
+    "@capacitor/ios": "^7.6.9",
+    "@capacitor/splash-screen": "^7.0.5",
+    "@capacitor/status-bar": "^7.0.6",
+    "@nuvo-voz/capacitor-llamadas": "file:../../call-center/packages/capacitor-llamadas"
+  }
+}

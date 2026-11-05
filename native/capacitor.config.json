@@ -1,0 +1,31 @@
+{
+  "appId": "es.corpprojects.app",
+  "appName": "Corp Projects",
+  "webDir": "www",
+  "server": {
+    "url": "https://dashboard.corpprojects.es/?app=ios",
+    "allowNavigation": [
+      "dashboard.corpprojects.es"
+    ]
+  },
+  "backgroundColor": "#0c0e12",
+  "ios": {
+    "contentInset": "automatic",
+    "scheme": "Corp Projects",
+    "backgroundColor": "#0c0e12",
+    "preferredContentMode": "mobile"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 800,
+      "launchAutoHide": true,
+      "backgroundColor": "#0c0e12",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#0c0e12",
+      "overlaysWebView": false
+    }
+  }
+}
