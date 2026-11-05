@@ -44,7 +44,7 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 const fh=d=>d?new Date(d).toLocaleString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
 function toast(t){const e=document.getElementById('toast');e.textContent=t;e.style.display='block';clearTimeout(window._tt);window._tt=setTimeout(()=>e.style.display='none',3500);}
 async function cargar(){if(!tok){document.querySelector('.wrap').innerHTML='<div class="card">Abre esta página desde el dashboard.</div>';return;}
-  try{const r=await fetch('/api/backup/estado',{headers:H});const d=await r.json();if(!r.ok)throw new Error(d.error);
+  try{const r=await fetch('/api/backup/estado',{headers:H});if(r.status===401){document.querySelector('.wrap').innerHTML='<div class="card">Tu sesión del panel ha caducado (dura 24 h). <a href="/">Vuelve a entrar en el dashboard</a> y abre otra vez Ajustes → Copias de seguridad.</div>';return;}const d=await r.json();if(!r.ok)throw new Error(d.error);
     const ult=d.copias[0];
     document.getElementById('estado').innerHTML=(d.drive.sinPermiso?`⚠️ <b>Falta el permiso de Drive</b>${d.drive.email?' ('+esc(d.drive.email)+')':''}: pulsa «Volver a conectar Drive» y, en la pantalla de Google, marca la casilla de Google Drive.`:d.drive.conectado?`✅ Google Drive conectado${d.drive.email?' ('+esc(d.drive.email)+')':''} desde el ${fh(d.drive.desde)}`:'⚠️ <b>Google Drive sin conectar</b>: las copias no se pueden hacer hasta que lo conectes (un minuto, con la cuenta de Google de la empresa).')+
       `<br>${ult?(ult.ok?'✅':'❌')+' Última copia: '+fh(ult.inicio)+(ult.segundos!=null?' ('+ult.segundos+' s)':''):'Aún no se ha hecho ninguna copia.'}${d.enCurso?'<br>⏳ Hay una copia en marcha…':''}
