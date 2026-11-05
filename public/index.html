@@ -621,9 +621,9 @@ async function doLogin(){
     tok=d.token;localStorage.setItem('cp_token',tok);
     if(d.name) localStorage.setItem('cp_user',JSON.stringify({name:d.name,role:d.role||'owner'}));
     else localStorage.removeItem('cp_user');
-    // ── Cargar workers en config central antes de mostrar la app ──
-    await window.CP_CONFIG.loadWorkers();
-    showApp();
+    // Recargar con la sesión ya guardada: nav.js y movil.js deciden al abrir la página (sin token no ponen el
+    // menú de móvil y salía el de ordenador, más ancho que la pantalla; pasaba al entrar en la app del iPhone, 5/11/2026).
+    location.reload();
   }catch(e){
     const el=document.getElementById('loginError');el.textContent=e.message;el.style.display='block';
     btn.disabled=false;btn.textContent='Entrar →';
