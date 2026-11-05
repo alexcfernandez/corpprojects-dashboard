@@ -27,7 +27,7 @@ async function resumen({ fresco = false } = {}) {
   const masAntigua = vencidas.slice().sort((a, b) => b.daysOverdue - a.daysOverdue)[0] || null;
   const proveedores = prev ? r2((prev.totales.vencido || 0) + (prev.totales.proximos30 || 0)) : null;
   // De Reservas: lo que vence en 30 días y aún no cubre la cuenta de reserva.
-  const items = res ? (res.items || []).filter(i => !i.error && i.dias != null && i.dias <= 30) : [];
+  const items = res ? (res.items || []).filter(i => !i.error && i.dias != null && i.dias <= 30 && (i.falta != null ? i.falta : i.importe || 0) > 0.01) : [];   // lo ya pagado (0 €) no se lista
   const impuestos = r2(items.reduce((a, i) => a + (i.falta != null ? i.falta : i.importe || 0), 0));
   const aPagar = r2((proveedores || 0) + impuestos);
   const nosDeben = r2(pend.reduce((a, p) => a + (p.pending || 0), 0)), vencido = r2(vencidas.reduce((a, p) => a + (p.pending || 0), 0));

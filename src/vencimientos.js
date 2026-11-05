@@ -43,6 +43,12 @@ async function prevision({ dias = 45, hoy = new Date() } = {}) {
   const hoyIso = iso(hoy), hasta = iso(hoy.getTime() + dias * DIA);
   const out = [], revisar = [];
   const limiteAntigua = iso(hoy.getTime() - 120 * DIA);
+  // Facturas que se pagan a plazos con el proveedor (5/11/2026: Modest Casadevall). appSettings 'facturasAPlazos':
+  // [{ proveedor: 'texto', factura: 'nº', cuotaMes: 1000 | null, nota }]. Con cuota, cuenta la cuota del mes; sin
+  // cuota, va a «revisar» (no es un pago de los próximos 30 días).
+  let plazos = [];
+  try { const d = await (await require('./db').getDB()).collection('appSettings').findOne({ key: 'facturasAPlazos' }); plazos = (d && d.valor) || []; } catch (e) {}
+  const aPlazos = (prov, f) => plazos.find(x => new RegExp(String(x.proveedor).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(prov) && [f.refProveedor, f.numero].map(String).includes(String(x.factura)));
   for (const g of gs) {
     const pend = g.facturas.filter(f => f.estado === 'pendiente' || f.estado === 'parcial');
     if (!pend.length) continue;
@@ -54,6 +60,10 @@ async function prevision({ dias = 45, hoy = new Date() } = {}) {
     const deTarjeta = pagos.length >= 3 && conTarjeta / pagos.length >= 0.6;
     for (const f of pend) {
       // Sin pago en el banco y de hace más de 4 meses, o de proveedor de tarjeta: a revisar, no es un pago previsto.
+      const pl = aPlazos(g.proveedor, f);
+      if (pl && !(pl.cuotaMes > 0)) { revisar.push({ proveedor: g.proveedor, factura: f.refProveedor || f.numero, numero: f.numero, fechaFactura: f.fecha, importe: f.pendiente, motivo: `a plazos${pl.nota ? ': ' + pl.nota : ''} (falta decir la cuota)` }); continue; }
+      if (pl) { const d = new Date(hoy); const fc = iso(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + (d.getUTCDate() > 25 ? 1 : 0), 25));
+        out.push({ proveedor: g.proveedor, factura: f.refProveedor || f.numero, numero: f.numero, fechaFactura: f.fecha, importe: r2(Math.min(pl.cuotaMes, f.pendiente)), fecha: fc, vencida: false, como: `a plazos: ${eur(pl.cuotaMes)} al mes (quedan ${eur(f.pendiente)})` }); continue; }
       if (deTarjeta || f.fecha < limiteAntigua) { revisar.push({ proveedor: g.proveedor, factura: f.refProveedor || f.numero, numero: f.numero, fechaFactura: f.fecha, importe: f.pendiente, motivo: deTarjeta ? 'se paga con tarjeta: seguramente ya pagada' : 'de hace más de 4 meses sin pago en el banco' }); continue; }
       const fecha = fechaPrevista(f.fecha, pt);
       if (fecha > hasta) continue;
