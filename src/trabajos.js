@@ -189,6 +189,10 @@ async function crear(peticionId, { userId, fecha = null, hora = null, urgente = 
       const fotos = await require('./archivosDisco').hidratar(await db.collection('grupoFotos').find({ _id: { $in: (p.fotoIds || []).filter(f => ObjectId.isValid(f)).slice(0, 3).map(f => new ObjectId(f)) } }).toArray());
       for (const f of fotos) { try { await require('./canalWhatsapp').enviarArchivo(g ? g._id : tel, `📷 ${corto(cliente, 40)}`, { data: Buffer.from(f.data.buffer || f.data), mime: f.mimetype || 'image/jpeg', nombre: 'aviso.jpg' }); } catch (e) {} }
     }
+    // El pedido sin valorar, para que lo tenga con el mensaje (5/11/2026).
+    if (avisado && !_enviar) {
+      try { const data = await pdfPedido({ ref: ped.ref, incidencia: incidencia.ref, cliente, p, fecha, hora, urgente: urg, operario: u.name, equipo, nota, detalle: det }); await require('./canalWhatsapp').enviarArchivo(g ? g._id : tel, `📄 Pedido ${ped.ref} · ${corto(cliente, 40)}`, { data, mime: 'application/pdf', nombre: `Pedido ${ped.ref}.pdf` }); } catch (e) { console.warn('[Trabajos] PDF del pedido:', e.message); }
+    }
     // Trabajo de un presupuesto aceptado con su lista de materiales: el PDF del parte con las instrucciones (materialesObra.js).
     if (avisado && !_enviar && p.origen === 'materiales') {
       try { const f = await require('./materialesObra').pdfParaPeticion(String(p._id)); if (f) await require('./canalWhatsapp').enviarArchivo(g ? g._id : tel, `📋 Parte e instrucciones · ${corto(cliente, 40)}`, { data: f.data, mime: 'application/pdf', nombre: f.nombre }); } catch (e) { console.warn('[Trabajos] PDF del parte:', e.message); }
@@ -199,6 +203,40 @@ async function crear(peticionId, { userId, fecha = null, hora = null, urgente = 
     try { await require('./calendar').deleteEvent(colaLista.cola.eventoId); await db.collection('listasMateriales').updateOne({ _id: colaLista._id }, { $set: { 'cola.eventoId': null } }); } catch (e) { console.warn('[Trabajos] evento de la cola:', e.message); }
   }
   return { ok: true, incidencia: incidencia.ref, pedido: ped.ref, pedidoId: String(ped.id), operario: u.name, equipo, fecha, hora, fechaTxt: fecha ? fechaTxt(fecha) : null, avisado, enGrupo };
+}
+
+// PDF del pedido SIN VALORAR para el operario (5/11/2026, Álex: «que lo mandemos sin valorar, que tenga también ese
+// pedido de trabajo»). El PDF de StelOrder sale valorado (precios a 0), así que se hace aquí: lo que hay que hacer, dónde,
+// contacto, día y quién va, sin ni un precio.
+async function pdfPedido({ ref, incidencia = null, cliente, p, fecha = null, hora = null, urgente = false, operario = '', equipo = [], nota = '', detalle = [] }) {
+  const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
+  const { limpio } = require('./planificacionPdf');
+  const doc = await PDFDocument.create();
+  const F = await doc.embedFont(StandardFonts.Helvetica), FB = await doc.embedFont(StandardFonts.HelveticaBold);
+  const W = 595, H = 842, M = 44;
+  const C = { tinta: rgb(0.13, 0.15, 0.18), gris: rgb(0.45, 0.47, 0.5), linea: rgb(0.86, 0.87, 0.89), naranja: rgb(0.93, 0.45, 0.16), rojo: rgb(0.85, 0.26, 0.24) };
+  const pg = doc.addPage([W, H]); let y = H - M;
+  const lineas = (t, f, s, w) => { const out = []; let cur = ''; for (const pal of limpio(t).split(' ')) { const p2 = cur ? cur + ' ' + pal : pal; if (f.widthOfTextAtSize(p2, s) > w && cur) { out.push(cur); cur = pal; } else cur = p2; } if (cur) out.push(cur); return out; };
+  const parrafo = (t, { s = 10, f = F, c = C.tinta, x = M, w = W - 2 * M, gap = 3.5 } = {}) => { for (const tr of String(t || '').split('\n')) for (const ln of lineas(tr, f, s, w)) { pg.drawText(ln, { x, y, size: s, font: f, color: c }); y -= s + gap; } };
+  const titulo = t => { y -= 10; pg.drawText(limpio(t), { x: M, y, size: 10, font: FB, color: C.naranja }); y -= 5; pg.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.6, color: C.linea }); y -= 14; };
+  pg.drawText('CORP PROJECTS', { x: M, y: y - 6, size: 15, font: FB, color: C.tinta });
+  pg.drawText(limpio('Corp Projects Holding, S.L. · C/ Nou 12, 2º 2B · 17001 Girona · 674 013 723'), { x: M, y: y - 20, size: 8, font: F, color: C.gris });
+  y -= 52;
+  parrafo('PEDIDO DE TRABAJO', { s: 18, f: FB, gap: 6 });
+  parrafo(`${ref}${incidencia ? ' · ' + incidencia : ''}${urgente ? ' · URGENTE' : ''}`, { s: 11, f: FB, c: urgente ? C.rojo : C.gris, gap: 4 });
+  titulo('Cliente y lugar');
+  parrafo(cliente, { s: 11.5, f: FB, gap: 5 });
+  for (const d of detalle.filter(x => !/^Pedido en el grupo|^Llamada del|^Correo de/.test(x))) parrafo(d);
+  titulo('Cuándo y quién va');
+  parrafo(fecha ? `${fechaTxt(fecha)}${hora ? ' a las ' + hora : ''}` : 'Sin día: queda tú con el cliente y contesta en el grupo el día y la hora.', { f: FB });
+  parrafo(`Va: ${operario}${equipo.length ? ' con ' + equipo.join(', ') : ''}`);
+  titulo('Trabajo a realizar');
+  parrafo(p.resumen || p.titulo || '', { s: 11 });
+  if (nota) { y -= 4; parrafo(`Nota de oficina: ${nota}`, { c: C.gris }); }
+  titulo('Al acabar');
+  parrafo('Pon el parte en tu app (Mis trabajos): horas, material usado y fotos de antes y después.', { c: C.gris });
+  pg.drawText(limpio(`${ref} · sin valorar`), { x: M, y: 28, size: 8, font: F, color: C.gris });
+  return Buffer.from(await doc.save());
 }
 
 // El operario dice cuándo ha quedado (grupo, app o Álex por Corpy): día y hora en la asignación, en Planificación
@@ -228,4 +266,4 @@ async function fotoParaOperario(fotoId, workerId) {
   return require('./grupoWhatsapp').foto(fotoId);
 }
 
-module.exports = { propuesta, crear, fijarCita, operarios, diaPropuesto, fotoParaOperario, _palabras: palabras, _fechaTxt: fechaTxt, _ocupadoEn: ocupadoEn };
+module.exports = { propuesta, crear, fijarCita, operarios, diaPropuesto, fotoParaOperario, pdfPedido, _palabras: palabras, _fechaTxt: fechaTxt, _ocupadoEn: ocupadoEn };
