@@ -193,6 +193,9 @@
 
   async function loadCalendar() {
     updateMonthLabel();
+    // Si la lista de trabajadores no llegó al abrir el panel (red lenta, sesión recién renovada), se pide otra vez:
+    // sin ella el calendario sale solo con los días (Álex, 5/11/2026).
+    if (!(CFG.workers || []).length) { try { await CFG.loadWorkers(); } catch (e) {} }
     const from = `${calYear}-${String(calMonth).padStart(2,'0')}-01`;
     const to   = `${calYear}-${String(calMonth).padStart(2,'0')}-31`;
     calData = {};
