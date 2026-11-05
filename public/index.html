@@ -1608,11 +1608,12 @@ function petFila(p){
     </div>`;
 }
 // De dónde viene cada petición (5/11/2026, Álex: «no sé de quién viene… se me van a quedar perdidas estas llamadas»).
-// Las llamadas solo traen las 3 últimas cifras (el número completo se queda en Nuvo Voz).
+// Las llamadas solo traen las 3 últimas cifras (el número completo se queda en Nuvo Voz). Si dio otro teléfono a
+// SecretarIA, se guarda en su ficha de Nuvo Voz y «Devolver» marca ese: aquí se avisa con sus 3 cifras.
 function petOrigen(p){
   const e=s=>String(s==null?'':s).replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
   const r=p.recado||{}, h=new Date((r.fecha)||p.fecha).toLocaleString('es-ES',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
-  if(p.canal==='llamada'||p.jid==='voz:corp') return `📞 Llamada a la centralita · ${h}${r.nombre?' · '+e(r.nombre):''}${r.final?` · teléfono acabado en <b>${e(r.final)}</b>`:' · número oculto'} · <a href="https://voz.nuvoialabs.com" target="_blank" rel="noopener">número completo en Nuvo Voz</a>`;
+  if(p.canal==='llamada'||p.jid==='voz:corp') return `📞 Llamada a la centralita · ${h}${r.nombre?' · '+e(r.nombre):''}${r.final?` · teléfono acabado en <b>${e(r.final)}</b>`:' · número oculto'}${r.otroFinal?` · <b>ha dado otro teléfono</b>, acabado en <b>${e(r.otroFinal)}</b>`:''} · <a href="https://voz.nuvoialabs.com" target="_blank" rel="noopener">${r.otroFinal?'llamarle desde Nuvo Voz (Devolver llamadas)':'número completo en Nuvo Voz'}</a>`;
   if(p.canal==='correo') return `✉️ ${e(p.grupo||'Correo')} · ${h}`;
   const q=((p.mensajes||[]).find(m=>m.quien)||{}).quien;
   return `💬 Grupo «${e(p.grupo||'WhatsApp')}»${q?' · '+e(q):''} · ${h}`;

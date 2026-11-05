@@ -385,7 +385,7 @@ function porNombre(nombre, clientMap = {}, final = null) {
 const _paraAuto = p => (!p.incidencia && p.situacion === 'seguimiento' ? { ...p, situacion: 'nuevo' } : p);
 // origen: un recado que le llegó a Álex por fuera de la centralita (a su móvil, un WhatsApp reenviado…) y se lo cuenta a
 // Corpy (gestionPeticiones.apuntarRecado). Sigue el mismo camino; no se le avisa por WhatsApp de lo que acaba de contar.
-async function deRecado({ llamada, fecha = new Date(), urgente = false, resumen, titulo = null, contacto = null, final = '', origen = null, avisar = true, _llamar = null, _cat = null, _enviar = null, _auto = null, _clientMap = null } = {}) {
+async function deRecado({ llamada, fecha = new Date(), urgente = false, resumen, titulo = null, contacto = null, final = '', otroFinal = null, origen = null, avisar = true, _llamar = null, _cat = null, _enviar = null, _auto = null, _clientMap = null } = {}) {
   const db = await getDB();
   if (llamada && await db.collection(COL).findOne({ llamadas: String(llamada) })) return { ya: true };
   urgente = !!urgente || /^\s*URGENTE\b/i.test(resumen || '');
@@ -407,7 +407,7 @@ async function deRecado({ llamada, fecha = new Date(), urgente = false, resumen,
   const memoria = await require('./memoria').paraPrompt(texto, { paraGrupo: JID_VOZ, limite: 40 }).catch(() => '');
   const r = await _tanda(db, { jid: JID_VOZ, grupo: GRUPO_VOZ, msgs, fuente: 'llamada', cat, _llamar, extra, memoria, filtro });
   for (const p of r.nuevas) {
-    const set = { canal: 'llamada', recado: { nombre: corto(contacto && contacto.nombre, 60) || null, final: fin, llama: accId, fecha: new Date(fecha), texto, ...(origen ? { origen: corto(origen, 60) } : {}) } };
+    const set = { canal: 'llamada', recado: { nombre: corto(contacto && contacto.nombre, 60) || null, final: fin, ...(otroFinal ? { otroFinal: String(otroFinal).slice(-3) } : {}), llama: accId, fecha: new Date(fecha), texto, ...(origen ? { origen: corto(origen, 60) } : {}) } };
     if (corto(titulo, 60)) set.titulo = corto(titulo, 60);
     const otro = !accId && (p.noEsCliente || NO_CLIENTE.test(`${texto} ${titulo || ''} ${p.resumen || ''}`));
     if (otro) {

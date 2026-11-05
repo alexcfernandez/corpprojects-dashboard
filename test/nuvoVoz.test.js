@@ -58,6 +58,15 @@ test('firma: vale la buena; no valen otra clave, cuerpo tocado, más de 5 minuto
   assert.strictEqual(V.firmaValida({ ...base, secreto: '' }).ok, false);
 });
 
+test('recibir: el otro teléfono que dio el cliente llega con sus 3 últimas cifras y pasa a la petición', async () => {
+  const db = fakeDB(); let pasado = null;
+  await V.recibir({ evento: 'recado.nuevo', empresa: 'corp', llamada: 'L9', fecha: '2026-11-05T10:00:00Z', resumen: 'Gotera. Teléfono: ha dado otro teléfono, el …013.', contacto: null, final: '555', otroFinal: '013' }, { _db: db });
+  assert.strictEqual(db.cols.llamadasVoz[0].otroFinal, '013');
+  await V.procesar('recado.nuevo:L9', { _db: db, _deRecado: async (d) => { pasado = d; return { nuevas: [] }; } });
+  assert.strictEqual(pasado.otroFinal, '013');
+  assert.strictEqual(pasado.final, '555');
+});
+
 test('recibir: recado una sola vez aunque reintenten; perdida guardada sin procesar; resumen por fecha; prueba sin nada', async () => {
   const db = fakeDB();
   const rec = { evento: 'recado.nuevo', empresa: 'corp', llamada: 'L1', fecha: '2026-11-03T10:15:00Z', urgente: false, resumen: 'URGENTE · Entra agua por el techo del 3º 1ª', contacto: { nombre: 'Marta', externalId: '123' }, final: '456' };

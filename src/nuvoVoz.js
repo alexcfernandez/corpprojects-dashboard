@@ -12,7 +12,7 @@
 //   resumen.diario   → 20:30, cifras del día para la revisión de las 21:05.
 //   prueba           → botón de Nuvo Voz: 200 y nada más.
 //
-//   llamadasVoz { _id: '<evento>:<llamada>', evento, llamada, fecha, urgente, resumen, contacto, final, motivo, estado, intentos, resultado, recibido }
+//   llamadasVoz { _id: '<evento>:<llamada>', evento, llamada, fecha, urgente, resumen, contacto, final, otroFinal, motivo, estado, intentos, resultado, recibido }
 //   llamadasDia { _id: 'AAAA-MM-DD', entrantes, salientes, atendidas, perdidas, secretaria, recados, minutos, porPersona, recibido }
 'use strict';
 const crypto = require('crypto');
@@ -57,6 +57,8 @@ async function recibir(ev, { _db = null } = {}) {
   const doc = { _id: `${ev.evento}:${llamada}`, evento: ev.evento, llamada, fecha, contacto: _contacto(ev.contacto), final: corto(ev.final, 3).replace(/\D/g, '') || null, recibido: new Date() };
   if (ev.evento === 'recado.nuevo') Object.assign(doc, { resumen: corto(ev.resumen, 3000), titulo: corto(ev.titulo, 60) || null, urgente: !!ev.urgente || /^\s*URGENTE\b/i.test(ev.resumen || ''), estado: 'pendiente', intentos: 0 });
   else Object.assign(doc, { motivo: corto(ev.motivo, 60) || null, estado: 'hecho' });
+  // Otro teléfono que dio el cliente a SecretarIA: también solo sus 3 últimas cifras (entero, en su ficha de Nuvo Voz).
+  if (ev.evento === 'recado.nuevo' && ev.otroFinal) doc.otroFinal = corto(ev.otroFinal, 3).replace(/\D/g, '') || null;
   try { await db.collection(COL).insertOne(doc); }
   catch (e) { if (e && e.code === 11000) return { ya: true }; throw e; }
   return doc.estado === 'pendiente' ? { id: doc._id } : { guardado: doc._id };
@@ -69,7 +71,7 @@ async function procesar(id, { _db = null, _deRecado = null } = {}) {
   const d = r0 && (r0.value !== undefined ? r0.value : r0);
   if (!d || !d._id) return null;
   try {
-    const res = await (_deRecado || require('./peticionesGrupo').deRecado)({ llamada: d.llamada, fecha: d.fecha, urgente: d.urgente, resumen: d.resumen, titulo: d.titulo || null, contacto: d.contacto, final: d.final });
+    const res = await (_deRecado || require('./peticionesGrupo').deRecado)({ llamada: d.llamada, fecha: d.fecha, urgente: d.urgente, resumen: d.resumen, titulo: d.titulo || null, contacto: d.contacto, final: d.final, otroFinal: d.otroFinal || null });
     await db.collection(COL).updateOne({ _id: d._id }, { $set: { estado: 'hecho', resultado: res, hechoAt: new Date() }, $unset: { error: '' } });
     return res;
   } catch (e) {
