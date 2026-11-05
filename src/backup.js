@@ -157,7 +157,10 @@ async function _limpiar(drive, raiz) {
 async function estado() {
   const db = await getDB();
   const [c, ult] = await Promise.all([db.collection('config').findOne({ _id: 'driveBackup' }), db.collection('backupLog').find({}).sort({ inicio: -1 }).limit(10).toArray()]);
-  return { drive: c ? { conectado: !!c.refreshToken, email: c.email || null, desde: c.conectadoAt } : { conectado: false }, carpeta: CARPETA, enCurso: _enCurso,
+  // Se pregunta a Google qué permisos tiene de verdad el token: «conectado» sin el de Drive no sirve para copiar.
+  let sinPermiso = false;
+  if (c && c.refreshToken) try { const o = _oauth(); o.setCredentials({ refresh_token: c.refreshToken }); const { token } = await o.getAccessToken(); sinPermiso = !((await o.getTokenInfo(token)).scopes || []).some(x => x.includes('/auth/drive')); } catch (e) {}
+  return { drive: c ? { conectado: !!c.refreshToken, sinPermiso, email: c.email || null, desde: c.conectadoAt } : { conectado: false }, carpeta: CARPETA, enCurso: _enCurso,
     copias: ult.map(l => ({ inicio: l.inicio, ok: l.ok, segundos: l.segundos, error: l.error, colecciones: (l.colecciones || []).length, conError: (l.colecciones || []).filter(x => x.error).map(x => x.nombre), por: l.por })) };
 }
 
