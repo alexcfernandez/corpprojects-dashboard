@@ -512,7 +512,7 @@ async function procesarEmail(gmail, messageId) {
     // Los «PRESUPUESTO» solo si el remitente es cliente nuestro (los demás suelen ser ofertas de proveedores).
     let enFlujo = false;
     const cat = String(clasificacion.categoria || '');
-    const pideAlgo = /^INCIDENCIA/.test(cat) || (/^PRESUPUESTO/.test(cat) && remitente.encontrado && /cliente|comunidad/.test(remitente.tipo || ''));
+    const pideAlgo = /^INCIDENCIA/.test(cat) || (/^PRESUPUESTO/.test(cat) && ((remitente.encontrado && /cliente|comunidad/.test(remitente.tipo || '')) || await esAdministrador(de)));
     if (pideAlgo && process.env.PETICIONES_CORREO !== 'off' && !/@corpprojects\.es/i.test(de)) {
       try { const r = await require('./peticionesGrupo').deCorreo({ gmailId: messageId, de, asunto, cuerpo, fecha }); enFlujo = !!(r && r.avisado); console.log(`[Email] → peticiones: ${JSON.stringify(r)}`); }
       catch (e) { console.warn('[Email] peticiones:', e.message); }
@@ -747,6 +747,31 @@ function esGestoria(...fuentes) {
   return cands.some(c => cfg.some(g => g.startsWith('@') ? c.endsWith(g) : c === g));
 }
 
+// ¿Escribe un administrador de fincas? (5/11/2026: el presupuesto de la ITE de Àngel Guimerà 148 de Grup TAS no entró en
+// Peticiones porque TAS no está como cliente en StelOrder). Por dominio: los conocidos, los de ADMIN_DOMINIOS y los que
+// han aprendido los gestores (communityManagers). Los correos gratuitos (gmail, hotmail…) no cuentan.
+const ADMIN_DOMINIOS_BASE = ['gruptas.cat', 'finquescompany.com', 'cinc.es', 'scgestio.cat', 'dextragrup.com', 'madrenas.com', 'palomares.cat'];
+const GRATUITOS = /@(gmail|googlemail|hotmail|outlook|live|yahoo|icloud|me|msn|telefonica|movistar)\./i;
+let _adminDom = { at: 0, set: null };
+async function esAdministrador(de) {
+  const email = (extraerEmails(de)[0] || '').toLowerCase();
+  if (!email || GRATUITOS.test(email)) return false;
+  if (!_adminDom.set || Date.now() - _adminDom.at > 3600e3) {
+    const s = new Set([...ADMIN_DOMINIOS_BASE, ...String(process.env.ADMIN_DOMINIOS || '').split(',').map(x => x.trim().toLowerCase().replace(/^@/, '')).filter(Boolean)]);
+    try {
+      const db = await getDB();
+      // Solo los de familias de administradores: los de «Provedores», particulares o sin familia no.
+      for (const m of await db.collection('communityManagers').find({ family: { $nin: ['Provedores', 'Proveedores', 'Sin familia', 'PARTICULAR', '', null] } }, { projection: { managerEmail: 1 } }).toArray()) {
+        const d = String(m.managerEmail || '').toLowerCase().split('@')[1];
+        if (d && !GRATUITOS.test('@' + d)) s.add(d);
+      }
+    } catch (e) {}
+    _adminDom = { at: Date.now(), set: s };
+  }
+  const dom = email.split('@')[1] || '';
+  return [..._adminDom.set].some(d => dom === d || dom.endsWith('.' + d));
+}
+
 // Correos importantes recientes (gestoría / incidencias / facturas nuevas).
 async function emailsRecientes({ horas = 24, categorias = CATS_IMPORTANTES } = {}) {
   const { db, client } = await getDB();
@@ -783,5 +808,5 @@ function intentCorreo(texto) {
   return null;
 }
 
-module.exports = {
+module.exports = { esAdministrador,
   _esPublicidadObvia: esPublicidadObvia, extractBody, extractAttachments, comprasDesdeCorreo, pollEmails, recuperarFacturasCorreo, documentosDeAdjuntos, enviarRespuesta, getGmailClient, diagnosticoIA, reclasificarPendientes, usoIAHoy, listAttachments, getAttachment, reenviarAdjuntoOCR, esGestoria, emailsRecientes, seccionCorreo, resumenCorreo, intentCorreo };
