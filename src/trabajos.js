@@ -178,7 +178,8 @@ async function crear(peticionId, { userId, fecha = null, hora = null, urgente = 
   let avisado = false, enGrupo = null;
   try {
     const url = (await require('./fichajeAvisos').enlacePersonal(String(u._id))) + '&ir=parte';
-    const cuando = fecha ? `para el *${fechaTxt(fecha)}${hora ? ' a las ' + hora : ''}*` : '— *queda tú con el cliente*';
+    // Comunidad sin día: se puede ir cuando vaya bien, no hace falta quedar (5/11/2026, Álex).
+    const cuando = fecha ? `para el *${fechaTxt(fecha)}${hora ? ' a las ' + hora : ''}*` : esComunidad(cliente) ? '— *es una comunidad: ve cuando te vaya bien y di aquí qué día vas*' : '— *queda tú con el cliente*';
     const txt = `🔧 *Trabajo nuevo* ${cuando}${urg ? ' (URGENTE)' : ''}\n*${cliente}*${p.direccion ? ' · ' + p.direccion : ''}\n${p.resumen}${p.contacto ? `\nContacto: ${p.contacto}` : ''}${equipo.length ? `\nVas con: ${equipo.join(', ')}` : ''}${nota ? `\nNota: ${nota}` : ''}\nPedido ${ped.ref} · ${incidencia.ref}\n\n${fecha ? '' : 'Cuando quedes, contesta aquí el día y la hora (p. ej. «' + corto(cliente, 25) + ' el jueves a las 10») o ponlo en la app.\n'}En tu app, con las fotos, en «Mis trabajos»:\n${url}`;
     const enviar = _enviar || require('./notifications').sendWhatsAppTo;
     const g = await db.collection('bridgeGrupos').findOne({ trabajosDe: String(u._id), activo: true });
@@ -205,6 +206,7 @@ async function crear(peticionId, { userId, fecha = null, hora = null, urgente = 
   return { ok: true, incidencia: incidencia.ref, pedido: ped.ref, pedidoId: String(ped.id), operario: u.name, equipo, fecha, hora, fechaTxt: fecha ? fechaTxt(fecha) : null, avisado, enGrupo };
 }
 
+const esComunidad = c => /\b(ctat|c\.?\s?p\.?|com\.?\s?prop|comunitat|comunidad|propietaris|propietarios)\b/i.test(String(c || ''));
 // PDF del pedido SIN VALORAR para el operario (5/11/2026, Álex: «que lo mandemos sin valorar, que tenga también ese
 // pedido de trabajo»). El PDF de StelOrder sale valorado (precios a 0), así que se hace aquí: lo que hay que hacer, dónde,
 // contacto, día y quién va, sin ni un precio.
@@ -228,7 +230,7 @@ async function pdfPedido({ ref, incidencia = null, cliente, p, fecha = null, hor
   parrafo(cliente, { s: 11.5, f: FB, gap: 5 });
   for (const d of detalle.filter(x => !/^Pedido en el grupo|^Llamada del|^Correo de/.test(x))) parrafo(d);
   titulo('Cuándo y quién va');
-  parrafo(fecha ? `${fechaTxt(fecha)}${hora ? ' a las ' + hora : ''}` : 'Sin día: queda tú con el cliente y contesta en el grupo el día y la hora.', { f: FB });
+  parrafo(fecha ? `${fechaTxt(fecha)}${hora ? ' a las ' + hora : ''}` : esComunidad(cliente) ? 'Sin día: es una comunidad, ve cuando te vaya bien y di en el grupo qué día vas.' : 'Sin día: queda tú con el cliente y contesta en el grupo el día y la hora.', { f: FB });
   parrafo(`Va: ${operario}${equipo.length ? ' con ' + equipo.join(', ') : ''}`);
   titulo('Trabajo a realizar');
   parrafo(p.resumen || p.titulo || '', { s: 11 });

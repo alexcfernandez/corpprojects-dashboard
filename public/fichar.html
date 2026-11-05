@@ -176,6 +176,7 @@ textarea.obra-sel{resize:vertical;line-height:1.4}
 
 <!-- FICHAJE -->
 <div class="page" id="page-fichar"><div class="container">
+  <div id="mis-trabajos-top"></div>
   <div id="firma-aviso"></div>
   <div id="firmas-pend"></div>
   <div id="push-aviso"></div>
@@ -765,7 +766,8 @@ async function menuTrabajador(){if(_menuVisto)return;_menuVisto=true;
 async function misTrabajos(){
   const box=document.getElementById('mis-trabajos');if(!box)return;
   let l=[];try{const r=await fetchT('/api/workorders/mine',{headers:authH()},15000);if(!r.ok)return;l=(await r.json()).list||[];}catch(e){return;}
-  if(!l.length){box.innerHTML='';return;}
+  const top=document.getElementById('mis-trabajos-top');
+  if(!l.length){box.innerHTML='';if(top)top.innerHTML='';return;}
   const hoy=new Date().toLocaleDateString('en-CA',{timeZone:'Europe/Madrid'});
   const dif=f=>Math.round((Date.parse(f)-Date.parse(hoy))/86400000);
   const D=['dom','lun','mar','mié','jue','vie','sáb'];
@@ -775,6 +777,11 @@ async function misTrabajos(){
     if(c.fecha){const d=dif(c.fecha);if(d<0){col='var(--red)';txt='Era '+cuando(c).toLowerCase()+' · falta el parte';ord=0;}else{col='var(--green)';txt=cuando(c);ord=d===0?0.5:2+d;}}
     else if(!p.cita){col=p.alertLevel==='red'?'var(--red)':p.alertLevel==='amber'?'var(--amber)':'var(--green)';txt=(p.days||0)+' días abierto';ord=p.alertLevel==='red'?0:1.5;}
     return{p,c,col,txt,ord};}).sort((a,b)=>a.ord-b.ord);
+  // Arriba del todo (5/11/2026, Álex: «que arriba le aparezca algo de trabajos pendientes»): cuántos y el primero, de un toque al parte.
+  if(top){const f=it[0];top.innerHTML=`<div onclick="location.href='/parte'" style="cursor:pointer;margin:0 0 14px;padding:13px 15px;border-radius:14px;background:var(--bg3);border:1px solid var(--border);border-left:6px solid ${f.col}">
+    <div style="font-size:15px;font-weight:800">🔧 Tienes ${l.length} trabajo${l.length===1?'':'s'} pendiente${l.length===1?'':'s'}</div>
+    <div style="font-size:13.5px;margin-top:3px"><b style="color:${f.col}">${e(f.txt)}</b> · ${e(f.p.client||'')}</div>
+    <div style="font-size:13px;color:var(--blue);margin-top:6px;font-weight:700">Abrir mis trabajos y hacer el parte →</div></div>`;}
   box.innerHTML=`<div class="tramos"><h3>🔧 Mis trabajos pendientes (${l.length})</h3>${it.map(({p,c,col,txt})=>`<div onclick="location.href='/parte'" style="cursor:pointer;background:var(--bg3);border:1px solid var(--border);border-left:5px solid ${col};border-radius:10px;padding:11px 14px;margin-bottom:7px">
     <div style="font-size:13px;font-weight:700;color:${col}">📅 ${e(txt)}${p.deEquipo?' · vas de ayuda':''}</div>
     <div style="font-weight:600;margin-top:2px">${e(p.client||'')}</div>
