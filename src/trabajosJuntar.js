@@ -34,6 +34,9 @@ const linea = e => `• ${e.direccion ? e.direccion + ': ' : ''}${e.que}${e.inci
 async function juntar(a, { _db = null, por = 'Corpy', _stel = null } = {}) {
   const db = _db || await getDB();
   if (!a || !a.peticionId || a.status === 'done' || a.cerrado || a.observacion) return { extras: [], nuevos: [] };
+  // Pedido ya cerrado en StelOrder (se cerró allí sin parte, como PDT00560 el 6/11): no se le cuelga nada, y lo que
+  // tuviera vuelve a quedar suelto para que salga en el tablero y se le haga su propio pedido.
+  if (_stel !== false && a.workOrderId && await cerradoEnStel(a.workOrderId, _stel)) return { ...(await soltar(db, a)), cerradoStel: true };
   const pet = ObjectId.isValid(String(a.peticionId)) ? await db.collection('peticionesGrupo').findOne({ _id: new ObjectId(String(a.peticionId)) }, { projection: { clienteId: 1 } }) : null;
   if (!pet || !pet.clienteId) return { extras: a.extras || [], nuevos: [] };
   // Las que ya van con OTRO trabajo abierto no se repiten.
@@ -55,9 +58,32 @@ async function juntar(a, { _db = null, por = 'Corpy', _stel = null } = {}) {
     try {
       stel = await (_stel || require('./stelorder')).lineasMismaComunidad(a.workOrderId, extras, { requestedBy: `${por} (misma comunidad)` });
       await db.collection('workOrderAssignments').updateOne({ _id: a._id }, { $set: { extrasStel: extras.map(e => e.peticionId), extrasStelAt: new Date() } });
-    } catch (e) { console.warn('[Juntar] StelOrder:', e.message); stel = { error: e.message }; }
+    } catch (e) {
+      if (/E000152|cannot be edited/i.test(e.message)) return { ...(await soltar(db, a)), cerradoStel: true };
+      console.warn('[Juntar] StelOrder:', e.message); stel = { error: e.message };
+    }
   }
   return { extras, nuevos, fuera, stel };
+}
+
+// Estado del pedido en StelOrder desde la caché (1 h): no gasta llamadas en cada vuelta. Si no está, no se sabe: abierto.
+async function cerradoEnStel(workOrderId, _stel = null) {
+  try {
+    const S = _stel || require('./stelorder');
+    const [lista, estados] = await Promise.all([S.getAllWorkOrders(), S.getWorkOrderStateMap()]);
+    const w = (lista || []).find(x => String(x.id) === String(workOrderId));
+    return !!w && (w.deleted === true || /cerrad|factur|anulad|rechaz/i.test(estados[String(w['document-state-id'])] || ''));
+  } catch (e) { return false; }
+}
+
+// Quita los extras de un trabajo y suelta sus peticiones.
+async function soltar(db, a) {
+  const fuera = a.extras || [];
+  if (fuera.length) {
+    await db.collection('workOrderAssignments').updateOne({ _id: a._id }, { $set: { extras: [], extrasAt: new Date() } });
+    await db.collection('peticionesGrupo').updateMany({ _id: { $in: fuera.filter(e => ObjectId.isValid(e.peticionId)).map(e => new ObjectId(e.peticionId)) }, 'juntoA.workOrderId': String(a.workOrderId) }, { $unset: { juntoA: '' } });
+  }
+  return { extras: [], nuevos: [], fuera };
 }
 
 // Texto para el WhatsApp del trabajo nuevo.
@@ -91,4 +117,4 @@ async function revisar({ _db = null, _enviar = null, _stel = null, _archivo = nu
   return res;
 }
 
-module.exports = { juntar, revisar, pendientesDe, textoExtras, _linea: linea };
+module.exports = { juntar, revisar, pendientesDe, textoExtras, cerradoEnStel, _linea: linea };

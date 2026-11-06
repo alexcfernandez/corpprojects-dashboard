@@ -25,7 +25,7 @@ test('cuelga la 6ª planta del trabajo de la 5ª y no repite la segunda vez', as
   const asig = { _id: 1, workOrderId: '62172447', pedidoRef: 'PDT00560', userId: 'u1', userName: 'David Taladros', peticionId: String(id5) };
   const { db } = fakeDb({ pets, asig });
   const llamadas = [];
-  const stel = { lineasMismaComunidad: async (id, extras) => { llamadas.push([id, extras.map(e => e.incidencia)]); return { ok: true }; } };
+  const stel = { getAllWorkOrders: async () => [{ id: 62172447, 'document-state-id': 1 }], getWorkOrderStateMap: async () => ({ 1: 'Pendiente', 2: 'Cerrado' }), lineasMismaComunidad: async (id, extras) => { llamadas.push([id, extras.map(e => e.incidencia)]); return { ok: true }; } };
   const r = await J.juntar(asig, { _db: db, _stel: stel });
   assert.strictEqual(r.nuevos.length, 1);
   assert.deepStrictEqual(llamadas, [['62172447', ['INC00656']]]);   // la línea al pedido de StelOrder
@@ -51,4 +51,19 @@ test('el PDF del pedido lleva lo de la misma comunidad', async () => {
   const txt = [...raw.matchAll(/<([0-9A-F]+)> Tj/g)].map(m => Buffer.from(m[1], 'hex').toString('latin1')).join('\n');
   assert.match(txt, /6ª planta: Revisar la luz del rellano \(INC00656\)/);
   assert.match(txt, /misma visita/);
+});
+
+test('si el pedido ya está cerrado en StelOrder, no se le cuelga nada y se suelta lo que tuviera', async () => {
+  const id5 = new ObjectId(), id6 = new ObjectId();
+  const pets = [
+    { _id: id5, clienteId: '1', estado: 'pendiente', tipo: 'trabajo', pedido: { id: '9' }, fecha: new Date() },
+    { _id: id6, clienteId: '1', estado: 'pendiente', tipo: 'trabajo', queHacer: 'Luz 6ª', fecha: new Date(), juntoA: { workOrderId: '9' } },
+  ];
+  const asig = { _id: 1, workOrderId: '9', peticionId: String(id5), extras: [{ peticionId: String(id6), que: 'Luz 6ª' }] };
+  const { db, sets } = fakeDb({ pets, asig });
+  const stel = { getAllWorkOrders: async () => [{ id: 9, 'document-state-id': 2 }], getWorkOrderStateMap: async () => ({ 2: 'Cerrado' }), lineasMismaComunidad: async () => { throw new Error('no debería escribir'); } };
+  const r = await J.juntar(asig, { _db: db, _stel: stel });
+  assert.strictEqual(r.cerradoStel, true);
+  assert.deepStrictEqual(asig.extras, []);
+  assert.ok(sets.some(([n, u]) => n === 'peticionesGrupo' && u.$unset && 'juntoA' in u.$unset));
 });
