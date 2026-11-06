@@ -80,6 +80,7 @@ function cpUpdateBanner(){
 </header>
 <nav class="nav" id="nav-grupos" style="gap:4px">
   <button class="nav-btn active" onclick="showTab('inicio',this)" style="font-weight:700">🏠 Inicio</button>
+  <button class="nav-btn" onclick="location.href='/pendientes'">✅ Pendientes</button>
   <button class="nav-btn" onclick="showTab('llamadas',this)">📞 Llamadas <span id="badge-llamadas" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:2px">0</span></button>
   <button class="nav-grp" onclick="showGrupo('obras',this)">🏗️ Obras ▾</button>
   <button class="nav-grp" onclick="showGrupo('dinero',this)">💰 Dinero ▾</button>
@@ -151,6 +152,7 @@ function cpUpdateBanner(){
 <!-- INICIO -->
 <div id="tab-inicio" class="panel active">
   <div class="tools-quick">
+    <button class="tq" onclick="location.href='/pendientes'"><span class="em">✅</span><span class="lb">Pendientes</span></button>
     <button class="tq" onclick="location.href='/cobrar'"><span class="em">💶</span><span class="lb">Cobros y promesas</span></button>
     <button class="tq" onclick="location.href='/movimientos'"><span class="em">🧾</span><span class="lb">Movimientos y cuadre</span></button>
     <button class="tq" onclick="location.href='/trimestre'"><span class="em">📅</span><span class="lb">Cierre del trimestre</span></button>

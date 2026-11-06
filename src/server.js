@@ -1176,6 +1176,42 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
 // ── StelOrder ─────────────────────────────────────────────────────
 app.get('/api/summary',            requireAuth, async (req,res) => res.json(await getSummary()));
 
+// ✅ PENDIENTES (6/11/2026): la lista única de cosas por hacer. Misma colección que Corpy por WhatsApp, el resumen de la
+// mañana y el calendario: lo que se tacha aquí se tacha en todos (src/pendientes.js).
+app.get('/api/pendientes', requireAuthOficina, async (req, res) => {
+  try { const P = require('./pendientes'); const d = await P.listaPanel(); res.json({ ...d, hoy: P.hoyMadridISO() }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/pendientes', requireAuthOficina, express.json({ limit: '16kb' }), async (req, res) => {
+  try {
+    const b = req.body || {}; const f = b.paraISO && /^\d{4}-\d{2}-\d{2}$/.test(b.paraISO) ? b.paraISO : null;
+    const p = await require('./pendientes').addPendiente(b.texto, 'panel:' + (req.user?.name || req.user?.username || 'oficina'), { para: f, detalle: b.detalle, quien: b.quien, obra: b.obra, prioridad: !!b.prioridad });
+    if (!p) return res.status(400).json({ error: 'Escribe qué hay que hacer' });
+    res.json(p);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.patch('/api/pendientes/:id', requireAuthOficina, express.json({ limit: '16kb' }), async (req, res) => {
+  try { res.json(await require('./pendientes').actualizar(req.params.id, req.body || {}, req.user?.name || req.user?.username || 'Oficina')); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+// Lo que piden otros apartados (se va solo cuando se resuelve allí): cola de trabajos, compras, peticiones, partes, encargos.
+app.get('/api/pendientes/otros', requireAuthOficina, async (req, res) => {
+  const out = [];
+  const db = await require('./db').getDB();
+  await Promise.all([
+    (async () => { try { const d = await require('./colaTrabajos').datos();
+      for (const c of d.columnas) for (const t of c.tarjetas) if (!t.hecho && (t.alertas || []).length) out.push({ tipo: 'cola', icono: '🧱', texto: `${t.cliente}${t.ref ? ' (' + t.ref + ')' : ''}: ${t.alertas.join(' · ')}`, semaforo: t.semaforo, ir: '/?tab=ciclo' });
+    } catch (e) {} })(),
+    (async () => { try { const n = await require('./compras').contarPendientes(); if (n) out.push({ tipo: 'compras', icono: '🧾', texto: `${n} compra${n === 1 ? '' : 's'} por revisar`, ir: '/compras' }); } catch (e) {} })(),
+    (async () => { try { const n = await db.collection('peticionesGrupo').countDocuments({ estado: 'pendiente', situacion: 'nuevo' }); if (n) out.push({ tipo: 'peticiones', icono: '📨', texto: `${n} petición${n === 1 ? '' : 'es'} de clientes sin atender`, ir: '/?tab=ciclo' }); } catch (e) {} })(),
+    (async () => { try { const n = await db.collection('partes').countDocuments({ status: 'pendiente' }); if (n) out.push({ tipo: 'partes', icono: '📋', texto: `${n} parte${n === 1 ? '' : 's'} de trabajo por revisar`, ir: '/?tab=partes' }); } catch (e) {} })(),
+    (async () => { try { const l = await require('./encargos').lista(); if (l.length) out.push({ tipo: 'encargos', icono: '💬', texto: `${l.length} cosa${l.length === 1 ? '' : 's'} pedida${l.length === 1 ? '' : 's'} a trabajadores sin contestar (Corpy)`, ir: '/' }); } catch (e) {} })(),
+  ]);
+  const orden = { rojo: 0, ambar: 1 };
+  out.sort((a, b) => (orden[a.semaforo] ?? 2) - (orden[b.semaforo] ?? 2));
+  res.json(out);
+});
+
 // INICIO: resumen visual del negocio (cifras + gráficas + qué requiere atención).
 // Cada bloque va en su try/catch: si una fuente falla, las demás se muestran igual.
 app.get('/api/inicio', requireAuth, async (req, res) => {
@@ -5263,6 +5299,7 @@ app.get('/vehiculos', (req, res) => res.sendFile(path.join(__dirname, '../public
 app.get('/documentos', (req, res) => res.sendFile(path.join(__dirname, '../public/documentos.html')));
 app.get('/copias', (req, res) => res.sendFile(path.join(__dirname, '../public/copias.html')));
 app.get('/cobrar', (req, res) => res.sendFile(path.join(__dirname, '../public/cobrar.html')));
+app.get('/pendientes', (req, res) => res.sendFile(path.join(__dirname, '../public/pendientes.html')));
 app.get('/movimientos', (req, res) => res.sendFile(path.join(__dirname, '../public/movimientos.html')));
 app.get('/rrhh', (req, res) => res.sendFile(path.join(__dirname, '../public/rrhh.html')));
 app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));

@@ -21,13 +21,21 @@ function hoyMadridISO() {
 }
 
 // ── Almacén ──────────────────────────────────────────────────────
-async function addPendiente(texto, from, { para = null } = {}) {
-  const t = String(texto || '').trim();
+// Desde el 6/11/2026 es LA lista de cosas por hacer (Álex: «un To do para de un vistazo ver y poder hacer cosas y tachar,
+// y que se tache de todos los sitios»): la misma colección la ven el panel (/pendientes), Corpy («pendientes», «hecho el
+// pendiente 2»), el resumen de la mañana y el calendario (si tiene fecha). Campos extra del panel: detalle, quien
+// (alex/oficina/alfonso…), obra, prioridad.
+const QUIEN = ['alex', 'oficina', 'alfonso', 'claude'];
+const limpio = (v, n) => String(v || '').trim().slice(0, n);
+async function addPendiente(texto, from, { para = null, detalle = '', quien = null, obra = '', prioridad = false } = {}) {
+  const t = limpio(texto, 300);
   if (!t) return null;
   const db = await getDB();
   const doc = {
     texto: t, from: String(from || ''), estado: 'abierto', createdAt: new Date(),
     para: para ? new Date(para + 'T00:00:00Z') : null, paraISO: para || null, gcalEventId: null,
+    ...(detalle ? { detalle: limpio(detalle, 4000) } : {}), ...(QUIEN.includes(quien) ? { quien } : {}),
+    ...(obra ? { obra: limpio(obra, 80) } : {}), ...(prioridad ? { prioridad: true } : {}),
   };
   const r = await db.collection(COL).insertOne(doc);
   const id = String(r.insertedId);
@@ -49,7 +57,7 @@ async function listPendientes({ soloAbiertos = true } = {}) {
 }
 
 // Cierra por índice 1-based (el número que se muestra) o por id. Borra su evento.
-async function cerrarPendiente({ idx = null, id = null } = {}) {
+async function cerrarPendiente({ idx = null, id = null, por = '' } = {}) {
   const db = await getDB();
   let doc = null;
   if (id) {
@@ -65,12 +73,60 @@ async function cerrarPendiente({ idx = null, id = null } = {}) {
     if (!doc && !ids) { const abiertos = ordenar(await listPendientes({ soloAbiertos: true })); doc = abiertos[idx - 1] || null; }
   }
   if (!doc) return null;
-  await db.collection(COL).updateOne({ _id: doc._id }, { $set: { estado: 'hecho', doneAt: new Date() } });
+  await db.collection(COL).updateOne({ _id: doc._id }, { $set: { estado: 'hecho', doneAt: new Date(), ...(por ? { doneBy: String(por).slice(0, 60) } : {}) } });
   if (doc.gcalEventId) {
     try { await require('./calendar').deleteEvent(doc.gcalEventId); }
     catch (e) { console.error('[Pendientes] calendar delete:', e.message); }
   }
   return { id: String(doc._id), texto: doc.texto };
+}
+
+// ── Panel (/pendientes) ──────────────────────────────────────────
+// Abiertos (prioritarios y con fecha primero) y lo hecho en los últimos 14 días, para poder deshacer.
+async function listaPanel({ dias = 14 } = {}) {
+  const db = await getDB();
+  const abiertos = ordenar(await listPendientes({ soloAbiertos: true }));
+  abiertos.sort((a, b) => (b.prioridad ? 1 : 0) - (a.prioridad ? 1 : 0));
+  const hechos = await db.collection(COL).find({ estado: 'hecho', doneAt: { $gte: new Date(Date.now() - dias * 86400000) } }).sort({ doneAt: -1 }).limit(100).toArray();
+  return { abiertos, hechos };
+}
+
+// Cambiar uno desde el panel: texto, detalle, fecha, quién, obra, prioridad, o tachar / volver a abrir.
+// La fecha manda en el calendario: se crea, se mueve o se borra el evento (best-effort, como al crear).
+async function actualizar(id, cambios = {}, por = '') {
+  const { ObjectId } = require('mongodb');
+  if (!ObjectId.isValid(String(id))) throw new Error('Pendiente no válido');
+  const db = await getDB();
+  const doc = await db.collection(COL).findOne({ _id: new ObjectId(String(id)) });
+  if (!doc) throw new Error('No encuentro ese pendiente');
+  if (cambios.estado === 'hecho' && doc.estado !== 'hecho') return cerrarPendiente({ id: String(doc._id), por });
+  const $set = {}, $unset = {};
+  if (cambios.estado === 'abierto' && doc.estado !== 'abierto') { $set.estado = 'abierto'; $unset.doneAt = ''; $unset.doneBy = ''; }
+  if (cambios.texto !== undefined) { const t = limpio(cambios.texto, 300); if (!t) throw new Error('Escribe qué hay que hacer'); $set.texto = t; }
+  if (cambios.detalle !== undefined) { const d = limpio(cambios.detalle, 4000); if (d) $set.detalle = d; else $unset.detalle = ''; }
+  if (cambios.obra !== undefined) { const o = limpio(cambios.obra, 80); if (o) $set.obra = o; else $unset.obra = ''; }
+  if (cambios.quien !== undefined) { if (QUIEN.includes(cambios.quien)) $set.quien = cambios.quien; else $unset.quien = ''; }
+  if (cambios.prioridad !== undefined) { if (cambios.prioridad) $set.prioridad = true; else $unset.prioridad = ''; }
+  let fecha = doc.paraISO || null;
+  if (cambios.paraISO !== undefined) {
+    const f = cambios.paraISO ? String(cambios.paraISO).slice(0, 10) : null;
+    if (f && !/^\d{4}-\d{2}-\d{2}$/.test(f)) throw new Error('Fecha no válida');
+    fecha = f; $set.paraISO = f; $set.para = f ? new Date(f + 'T00:00:00Z') : null;
+  }
+  const abierto = ($set.estado || doc.estado) === 'abierto';
+  const texto = $set.texto || doc.texto;
+  // Calendario: evento solo si está abierto y tiene fecha.
+  try {
+    const cal = require('./calendar');
+    if (abierto && fecha && ($set.paraISO !== undefined || $set.texto || $set.estado || !doc.gcalEventId)) {
+      $set.gcalEventId = await cal.upsertEvent({ tipo: 'pendiente', client: texto, date: fecha, _id: String(doc._id), gcalEventId: doc.gcalEventId || null });
+    } else if ((!abierto || !fecha) && doc.gcalEventId) { await cal.deleteEvent(doc.gcalEventId); $set.gcalEventId = null; }
+  } catch (e) { console.error('[Pendientes] calendario:', e.message); }
+  const upd = {};
+  if (Object.keys($set).length) upd.$set = { ...$set, editadoAt: new Date(), ...(por ? { editadoPor: String(por).slice(0, 60) } : {}) };
+  if (Object.keys($unset).length) upd.$unset = $unset;
+  if (Object.keys(upd).length) await db.collection(COL).updateOne({ _id: doc._id }, upd);
+  return { id: String(doc._id), texto };
 }
 
 // ── Formato del resumen diario (colector). Marca vencido/hoy/futuro/sin fecha. ──
@@ -98,13 +154,24 @@ async function recordarOrden(lista) {
   try { const db = await getDB(); await db.collection('appSettings').updateOne({ key: 'pendientesOrden' }, { $set: { key: 'pendientesOrden', valor: { ids: lista.map(p => String(p._id)), at: new Date() } } }, { upsert: true }); } catch (e) {}
 }
 
+// Con muchos (desde el 6/11 la lista del panel trae decenas), la mañana solo enseña lo prioritario y lo que vence en
+// 3 días; el resto se ve en el panel. Los números siguen valiendo para «hecho el pendiente N».
+const MAX_RESUMEN = 12;
+function urgentes(orden, hoyISO) {
+  const lim = new Date(isoToDate(hoyISO).getTime() + 3 * 86400000).toISOString().slice(0, 10);
+  return orden.filter(p => p.prioridad || (p.paraISO && p.paraISO <= lim));
+}
 async function seccionResumen(hoyISO = hoyMadridISO()) {
   const abiertos = await listPendientes({ soloAbiertos: true }).catch(() => []);
   if (!abiertos.length) return null;
-  const orden = ordenar(abiertos);
+  let orden = ordenar(abiertos);
+  const resto = orden.length > MAX_RESUMEN ? orden.length - urgentes(orden, hoyISO).slice(0, MAX_RESUMEN).length : 0;
+  if (resto) orden = urgentes(orden, hoyISO).slice(0, MAX_RESUMEN);
   await recordarOrden(orden);
   const lineas = orden.map((p, i) => lineaPendiente(p, i, hoyISO)).join('\n');
-  return `📌 *Pendientes* (${abiertos.length}):\n${lineas}\n_Para cerrar uno: "hecho el pendiente 1"._`;
+  const base = (process.env.PUBLIC_URL || 'https://dashboard.corpprojects.es').replace(/\/+$/, '');
+  return `📌 *Pendientes* (${abiertos.length}${resto ? `; aquí lo urgente` : ''}):\n${lineas || '(nada urgente)'}` +
+    `${resto ? `\n…y ${resto} más en el panel: ${base}/pendientes` : ''}\n_Para cerrar uno: "hecho el pendiente 1"._`;
 }
 
 // ── Parser de fecha (PURO, testeable). hoyISO = 'YYYY-MM-DD'. ─────
@@ -188,6 +255,6 @@ function limpiarVerbo(texto) {
 function fechaConfirm(iso) { return 'el ' + fechaCorta(iso); }
 
 module.exports = { ordenar, recordarOrden,
-  addPendiente, listPendientes, cerrarPendiente, seccionResumen,
+  addPendiente, listPendientes, cerrarPendiente, seccionResumen, listaPanel, actualizar, QUIEN,
   detectarIntent, limpiarVerbo, parseFecha, fechaConfirm, hoyMadridISO,
 };

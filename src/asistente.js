@@ -2851,11 +2851,14 @@ async function handlerPendienteAdd(texto, from, ctx = {}) {
 
 async function handlerPendienteList(from, ctx = {}) {
   if (ctx.rol && ctx.rol !== 'owner') return '🔒 Esta acción la gestiona la oficina de Corp.';
-  const abiertos = pendientes.ordenar(await pendientes.listPendientes({ soloAbiertos: true }));
-  if (!abiertos.length) return '✅ No tienes pendientes abiertos.';
+  const todos = pendientes.ordenar(await pendientes.listPendientes({ soloAbiertos: true }));
+  if (!todos.length) return '✅ No tienes pendientes abiertos.';
+  // Los prioritarios primero; como mucho 25 (la lista del panel puede traer muchos más).
+  const abiertos = [...todos.filter(p => p.prioridad), ...todos.filter(p => !p.prioridad)].slice(0, 25);
   await pendientes.recordarOrden(abiertos);
-  return `📌 *Tus pendientes* (${abiertos.length}):\n` +
-    abiertos.map((p, i) => `${i + 1}. ${p.texto}`).join('\n') +
+  return `📌 *Tus pendientes* (${todos.length}):\n` +
+    abiertos.map((p, i) => `${i + 1}. ${p.prioridad ? '🔴 ' : ''}${p.texto}`).join('\n') +
+    (todos.length > abiertos.length ? `\n…y ${todos.length - abiertos.length} más en el panel (✅ Pendientes).` : '') +
     `\n\n_Para cerrar uno: "hecho el pendiente 1"._`;
 }
 

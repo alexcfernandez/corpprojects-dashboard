@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pendientes — Corp Projects</title><link rel="stylesheet" href="/tool-theme.css">
+<meta name="theme-color" content="#4d9cf8">
+<style>*{box-sizing:border-box;margin:0;padding:0}:root{--bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.15);--text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;--green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 18px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:10}
+.logo{width:32px;height:32px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;flex-shrink:0}
+.hbtn{margin-left:auto;background:none;border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:6px 12px;font-size:13px;text-decoration:none;white-space:nowrap}
+.wrap{max-width:900px;margin:0 auto;padding:16px}
+select,input,textarea,.btn{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;color:var(--text);padding:9px 12px;font:inherit;font-size:14px;max-width:100%}
+textarea{width:100%;min-height:70px;resize:vertical}
+.btn{cursor:pointer;display:inline-block;text-decoration:none}.btn.pri{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}.btn.peq{padding:5px 10px;font-size:12.5px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:12px}
+h3{font-size:12.5px;margin:0 0 10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;gap:8px}
+.alta{display:flex;gap:8px;flex-wrap:wrap}.alta #nTexto{flex:1;min-width:220px}
+.mas{display:none;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center}.mas.on{display:flex}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.chip{background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:20px;padding:5px 11px;font-size:12.5px;cursor:pointer}.chip.on{border-color:var(--blue);color:var(--text);background:rgba(77,156,248,.14)}
+.it{display:flex;gap:10px;align-items:flex-start;padding:10px 2px;border-bottom:1px solid var(--border)}
+.it:last-child{border-bottom:none}
+.ck{width:22px;height:22px;border:2px solid var(--border2);border-radius:6px;flex-shrink:0;margin-top:1px;cursor:pointer;background:none;color:#fff;font-size:14px;line-height:18px;text-align:center}
+.ck:hover{border-color:var(--green)}.it.hecho .ck{background:var(--green);border-color:var(--green)}
+.it .c{flex:1;min-width:0}.it .t{font-size:14.5px;line-height:1.4;cursor:pointer;word-wrap:break-word}
+.it.hecho .t{text-decoration:line-through;color:var(--text3)}
+.it.tachando{opacity:.45;transition:opacity .4s}
+.meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.b{font-size:11.5px;border-radius:20px;padding:1px 8px;border:1px solid var(--border2);color:var(--text2)}
+.b.rojo{color:var(--red);border-color:rgba(240,82,82,.5)}.b.ambar{color:var(--amber);border-color:rgba(245,158,11,.5)}.b.azul{color:var(--blue);border-color:rgba(77,156,248,.45)}
+.det{display:none;margin-top:8px}.det.on{display:block}
+.det .txt{font-size:13px;color:var(--text2);white-space:pre-wrap;line-height:1.5;margin-bottom:8px}
+.det .ed{display:grid;grid-template-columns:1fr 1fr;gap:8px}.det .ed .full{grid-column:1/-1}.det .ed input,.det .ed select{width:100%}
+@media(max-width:600px){.det .ed{grid-template-columns:1fr}}
+.otro{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--border);font-size:13.5px}.otro:last-child{border-bottom:none}
+.otro a{margin-left:auto;color:var(--blue);text-decoration:none;font-size:12.5px;white-space:nowrap}
+.vacio{color:var(--text3);font-size:13.5px;padding:6px 0}
+.sum{cursor:pointer;user-select:none}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--border2);padding:10px 16px;border-radius:10px;display:none;z-index:50;font-size:14px}
+#toast button{margin-left:10px;background:none;border:none;color:var(--blue);font:inherit;cursor:pointer;font-weight:600}
+</style><link rel="stylesheet" href="/cp-ui.css">
+<script src="/nav.js" defer></script>
+</head><body><script>try{if(localStorage.getItem("cp_theme")==="light")document.body.classList.add("light");}catch(e){}</script>
+<div class="header"><div class="logo">CP</div><div><div style="font-weight:600">✅ Pendientes</div><div style="font-size:12px;color:var(--text3)">Lo que se tacha aquí se tacha también en Corpy, el calendario y el resumen de la mañana</div></div><a class="hbtn" href="/">← Dashboard</a></div>
+<div id="toast"></div>
+<div class="wrap">
+  <div class="card">
+    <div class="alta"><input id="nTexto" placeholder="¿Qué hay que hacer?" onkeydown="if(event.key==='Enter')anadir()"><button class="btn pri" onclick="anadir()">＋ Añadir</button><button class="btn" onclick="document.getElementById('mas').classList.toggle('on')" title="Fecha, quién, detalle">⋯</button></div>
+    <div class="mas" id="mas">
+      <input type="date" id="nFecha" title="Fecha (va al calendario)">
+      <select id="nQuien"><option value="">Quién…</option><option value="alex">Álex</option><option value="oficina">Oficina</option><option value="alfonso">Alfonso</option></select>
+      <input id="nObra" placeholder="Obra / cliente" style="width:170px">
+      <label style="font-size:13px;color:var(--text2);display:flex;gap:6px;align-items:center"><input type="checkbox" id="nPrio" style="width:auto"> Urgente</label>
+      <textarea id="nDetalle" placeholder="Detalle (opcional)"></textarea>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="chips" id="chips"></div>
+    <input id="buscar" placeholder="Buscar…" style="width:100%;margin-bottom:6px" oninput="pintar()">
+    <div id="lista"><div class="vacio">Cargando…</div></div>
+  </div>
+
+  <div class="card"><h3>📥 Lo que piden otros apartados <span style="text-transform:none;letter-spacing:0;font-weight:400;color:var(--text3)">· desaparece solo cuando se resuelve allí</span></h3><div id="otros"><div class="vacio">Cargando…</div></div></div>
+
+  <div class="card"><h3 class="sum" onclick="document.getElementById('hechos').classList.toggle('on')">✔️ Hecho (últimos 14 días) <span id="nHechos" style="font-weight:400"></span> ▾</h3><div id="hechos" class="det"></div></div>
+</div>
+<script>
+const tok=localStorage.getItem('cp_token');const H={'Authorization':'Bearer '+tok,'Content-Type':'application/json'};
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const QUIEN={alex:'Álex',oficina:'Oficina',alfonso:'Alfonso',claude:'Claude'};
+const DIAS=['dom','lun','mar','mié','jue','vie','sáb'];
+let D={abiertos:[],hechos:[],hoy:''},filtro='todo',abierto=null;
+try{filtro=localStorage.getItem('cp_pend_filtro')||'todo';}catch(e){}
+function toast(t,deshacer){const e=document.getElementById('toast');e.innerHTML=esc(t)+(deshacer?'<button id="tUndo">Deshacer</button>':'');e.style.display='block';if(deshacer)document.getElementById('tUndo').onclick=()=>{e.style.display='none';deshacer();};clearTimeout(window._tt);window._tt=setTimeout(()=>e.style.display='none',deshacer?6000:3500);}
+function fechaB(f){if(!f)return'';const d=Math.round((Date.parse(f)-Date.parse(D.hoy))/864e5);const x=new Date(f+'T12:00:00Z');const t=d===0?'hoy':d===1?'mañana':d===-1?'ayer':`${DIAS[x.getUTCDay()]} ${x.getUTCDate()}/${x.getUTCMonth()+1}`;return `<span class="b ${d<0?'rojo':d<=2?'ambar':'azul'}">📅 ${t}${d<0?' · vencido':''}</span>`;}
+function origen(p){const f=String(p.from||'');if(f.startsWith('panel:'))return '';if(f==='claude')return '<span class="b">Claude</span>';if(/^\+?\d/.test(f))return '<span class="b">WhatsApp</span>';return '';}
+async function api(url,opt={}){const r=await fetch(url,{...opt,headers:H});if(r.status===401){document.querySelector('.wrap').innerHTML='<div class="card">Tu sesión del panel ha caducado. <a href="/">Vuelve a entrar en el dashboard</a> y abre otra vez Pendientes.</div>';throw new Error('sesión');}const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');return d;}
+async function cargar(){if(!tok){document.querySelector('.wrap').innerHTML='<div class="card">Abre esta página desde el dashboard.</div>';return;}
+  try{D=await api('/api/pendientes');pintar();}catch(e){if(e.message!=='sesión')document.getElementById('lista').innerHTML='<div class="vacio">'+esc(e.message)+'</div>';}
+  api('/api/pendientes/otros').then(l=>{document.getElementById('otros').innerHTML=l.length?l.map(o=>`<div class="otro"><span>${o.icono}</span><span${o.semaforo==='rojo'?' style="color:var(--red)"':''}>${esc(o.texto)}</span><a href="${esc(o.ir)}">Ir →</a></div>`).join(''):'<div class="vacio">Nada: todo al día en los demás apartados.</div>';}).catch(()=>{document.getElementById('otros').innerHTML='<div class="vacio">No se ha podido cargar.</div>';});}
+function pasa(p){const q=document.getElementById('buscar').value.trim().toLowerCase();
+  if(q&&!(p.texto+' '+(p.detalle||'')+' '+(p.obra||'')).toLowerCase().includes(q))return false;
+  if(filtro==='todo')return true;if(filtro==='urgente')return !!p.prioridad||(p.paraISO&&p.paraISO<=D.hoy);if(filtro==='fecha')return !!p.paraISO;if(filtro==='sin')return !p.quien;return p.quien===filtro;}
+function item(p,hecho){const id=String(p._id);const on=abierto===id;
+  return `<div class="it${hecho?' hecho':''}" id="i-${id}"><button class="ck" title="${hecho?'Volver a abrir':'Hecho'}" onclick="${hecho?`reabrir('${id}')`:`tachar('${id}')`}">${hecho?'✓':''}</button>
+  <div class="c"><div class="t" onclick="ver('${id}')">${p.prioridad&&!hecho?'🔴 ':''}${esc(p.texto)}</div>
+  <div class="meta">${hecho?`<span class="b">hecho ${p.doneAt?new Date(p.doneAt).toLocaleDateString('es-ES',{day:'numeric',month:'numeric'}):''}${p.doneBy?' · '+esc(p.doneBy):''}</span>`:fechaB(p.paraISO)}${p.quien?`<span class="b">👤 ${QUIEN[p.quien]||esc(p.quien)}</span>`:''}${p.obra?`<span class="b">🏗️ ${esc(p.obra)}</span>`:''}${p.detalle?'<span class="b" style="cursor:pointer" onclick="ver(\''+id+'\')">＋ detalle</span>':''}${origen(p)}</div>
+  ${hecho?'':`<div class="det${on?' on':''}" id="d-${id}">${p.detalle?`<div class="txt">${esc(p.detalle)}</div>`:''}
+    <div class="ed"><input class="full" id="e-t-${id}" value="${esc(p.texto)}"><input type="date" id="e-f-${id}" value="${esc(p.paraISO||'')}">
+    <select id="e-q-${id}"><option value="">Quién…</option>${Object.entries(QUIEN).filter(([k])=>k!=='claude').map(([k,v])=>`<option value="${k}"${p.quien===k?' selected':''}>${v}</option>`).join('')}</select>
+    <input id="e-o-${id}" value="${esc(p.obra||'')}" placeholder="Obra / cliente"><label style="font-size:13px;color:var(--text2);display:flex;gap:6px;align-items:center"><input type="checkbox" id="e-p-${id}" style="width:auto"${p.prioridad?' checked':''}> Urgente</label>
+    <textarea class="full" id="e-d-${id}" placeholder="Detalle">${esc(p.detalle||'')}</textarea>
+    <div class="full" style="display:flex;gap:8px"><button class="btn pri peq" onclick="guardar('${id}',this)">Guardar</button><button class="btn peq" onclick="ver('${id}')">Cerrar</button></div></div></div>`}
+  </div></div>`;}
+function pintar(){const ab=D.abiertos;const n=k=>ab.filter(p=>{const f=filtro;filtro=k;const r=pasa(p);filtro=f;return r;}).length;
+  const ch=[['todo','Todo'],['urgente','🔴 Urgente / vence'],['alex','Álex'],['oficina','Oficina'],['alfonso','Alfonso'],['fecha','Con fecha'],['sin','Sin asignar']];
+  document.getElementById('chips').innerHTML=ch.map(([k,t])=>`<button class="chip${filtro===k?' on':''}" onclick="setFiltro('${k}')">${t} · ${n(k)}</button>`).join('');
+  const l=ab.filter(pasa);
+  document.getElementById('lista').innerHTML=l.length?l.map(p=>item(p,false)).join(''):`<div class="vacio">${ab.length?'Nada con este filtro.':'🎉 No hay nada pendiente.'}</div>`;
+  document.getElementById('nHechos').textContent='· '+D.hechos.length;
+  document.getElementById('hechos').innerHTML=D.hechos.length?D.hechos.map(p=>item(p,true)).join(''):'<div class="vacio">Nada todavía.</div>';}
+function setFiltro(k){filtro=k;try{localStorage.setItem('cp_pend_filtro',k);}catch(e){}pintar();}
+function ver(id){abierto=abierto===id?null:id;pintar();if(abierto){const e=document.getElementById('e-t-'+id);if(e)e.focus();}}
+async function anadir(){const t=document.getElementById('nTexto');if(!t.value.trim())return t.focus();
+  const b={texto:t.value,paraISO:document.getElementById('nFecha').value||null,quien:document.getElementById('nQuien').value||null,obra:document.getElementById('nObra').value,detalle:document.getElementById('nDetalle').value,prioridad:document.getElementById('nPrio').checked};
+  try{await api('/api/pendientes',{method:'POST',body:JSON.stringify(b)});['nTexto','nFecha','nObra','nDetalle'].forEach(i=>document.getElementById(i).value='');document.getElementById('nQuien').value='';document.getElementById('nPrio').checked=false;toast(b.paraISO?'Añadido (y en el calendario)':'Añadido');cargar();}catch(e){toast(e.message);}}
+async function cambiar(id,body){return api('/api/pendientes/'+id,{method:'PATCH',body:JSON.stringify(body)});}
+async function tachar(id){const el=document.getElementById('i-'+id);if(el){el.classList.add('hecho','tachando');}
+  const p=D.abiertos.find(x=>String(x._id)===id);
+  try{await cambiar(id,{estado:'hecho'});setTimeout(async()=>{await cargar();},350);toast('✓ Hecho'+(p?': '+p.texto.slice(0,50):''),()=>reabrir(id));}catch(e){if(el)el.classList.remove('hecho','tachando');toast(e.message);}}
+async function reabrir(id){try{await cambiar(id,{estado:'abierto'});toast('Vuelve a estar pendiente');cargar();}catch(e){toast(e.message);}}
+async function guardar(id,b){b.disabled=true;
+  try{await cambiar(id,{texto:document.getElementById('e-t-'+id).value,paraISO:document.getElementById('e-f-'+id).value||null,quien:document.getElementById('e-q-'+id).value||null,obra:document.getElementById('e-o-'+id).value,detalle:document.getElementById('e-d-'+id).value,prioridad:document.getElementById('e-p-'+id).checked});abierto=null;toast('Guardado');cargar();}catch(e){toast(e.message);b.disabled=false;}}
+cargar();setInterval(()=>{if(!abierto&&document.visibilityState==='visible')cargar();},120000);
+</script></body></html>
