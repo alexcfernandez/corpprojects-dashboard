@@ -24,17 +24,31 @@ test('cuelga la 6ª planta del trabajo de la 5ª y no repite la segunda vez', as
   ];
   const asig = { _id: 1, workOrderId: '62172447', pedidoRef: 'PDT00560', userId: 'u1', userName: 'David Taladros', peticionId: String(id5) };
   const { db } = fakeDb({ pets, asig });
-  const r = await J.juntar(asig, { _db: db });
+  const llamadas = [];
+  const stel = { lineasMismaComunidad: async (id, extras) => { llamadas.push([id, extras.map(e => e.incidencia)]); return { ok: true }; } };
+  const r = await J.juntar(asig, { _db: db, _stel: stel });
   assert.strictEqual(r.nuevos.length, 1);
+  assert.deepStrictEqual(llamadas, [['62172447', ['INC00656']]]);   // la línea al pedido de StelOrder
+  assert.deepStrictEqual(asig.extrasStel, [String(id6)]);
   assert.strictEqual(r.extras[0].incidencia, 'INC00656');
   assert.strictEqual(pets[1].juntoA.pedidoRef, 'PDT00560');
   assert.match(J.textoExtras(r.extras), /6ª planta: Revisar la luz del rellano \(INC00656\)/);
-  const r2 = await J.juntar(asig, { _db: db });
+  const r2 = await J.juntar(asig, { _db: db, _stel: stel });
   assert.strictEqual(r2.nuevos.length, 0);
+  assert.strictEqual(llamadas.length, 1);   // ya está en StelOrder: no se vuelve a escribir
 });
 
 test('un trabajo hecho o en observación no junta nada', async () => {
   const { db } = fakeDb({ pets: [], asig: {} });
   assert.strictEqual((await J.juntar({ peticionId: 'x', status: 'done' }, { _db: db })).nuevos.length, 0);
   assert.strictEqual((await J.juntar({ peticionId: 'x', observacion: {} }, { _db: db })).nuevos.length, 0);
+});
+
+test('el PDF del pedido lleva lo de la misma comunidad', async () => {
+  const T = require('../src/trabajos');
+  const buf = await T.pdfPedido({ ref: 'PDT00560', incidencia: 'INC00659', cliente: 'Ctat. Prop. Joan Maragall 44-46', p: { resumen: 'Luz de la 5ª parpadea' }, operario: 'David', extras: [{ incidencia: 'INC00656', direccion: '6ª planta', que: 'Revisar la luz del rellano' }] });
+  const raw = require('zlib').inflateSync(buf.subarray(buf.indexOf('stream') + 7)).toString('latin1');
+  const txt = [...raw.matchAll(/<([0-9A-F]+)> Tj/g)].map(m => Buffer.from(m[1], 'hex').toString('latin1')).join('\n');
+  assert.match(txt, /6ª planta: Revisar la luz del rellano \(INC00656\)/);
+  assert.match(txt, /misma visita/);
 });

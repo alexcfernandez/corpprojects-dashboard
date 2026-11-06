@@ -6,6 +6,8 @@
 // que aún no tienen pedido propio. Salen en su parte («📌 En esta comunidad también»), en el WhatsApp del trabajo nuevo
 // y, si llegan después, en un WhatsApp aparte a su grupo. La petición queda marcada `juntoA` (en el tablero: «va con
 // PDT…»). Si después tiene su propio pedido o se cierra, sale de la lista sola.
+// También en el pedido de StelOrder (una línea a 0 € «Misma comunidad · INC…» por cosa) y en el PDF del pedido, que se
+// le vuelve a mandar al operario cuando cambia (6/11/2026, Álex: «el papel, el PDF, también; y en StelOrder»).
 // Cron cada 15 min de 8 a 20 (scheduler). Se apaga con JUNTAR_TRABAJOS=off.
 'use strict';
 const { ObjectId } = require('mongodb');
@@ -28,7 +30,8 @@ const extraDe = p => ({ peticionId: String(p._id), incidencia: p.incidencia || n
 const linea = e => `• ${e.direccion ? e.direccion + ': ' : ''}${e.que}${e.incidencia ? ` (${e.incidencia})` : ''}`;
 
 // Recalcula los extras de un trabajo. Devuelve { extras, nuevos }.
-async function juntar(a, { _db = null, por = 'Corpy' } = {}) {
+// `_stel`: false = no tocar StelOrder (pruebas).
+async function juntar(a, { _db = null, por = 'Corpy', _stel = null } = {}) {
   const db = _db || await getDB();
   if (!a || !a.peticionId || a.status === 'done' || a.cerrado || a.observacion) return { extras: [], nuevos: [] };
   const pet = ObjectId.isValid(String(a.peticionId)) ? await db.collection('peticionesGrupo').findOne({ _id: new ObjectId(String(a.peticionId)) }, { projection: { clienteId: 1 } }) : null;
@@ -45,23 +48,32 @@ async function juntar(a, { _db = null, por = 'Corpy' } = {}) {
     if (nuevos.length) await db.collection('peticionesGrupo').updateMany({ _id: { $in: nuevos.map(e => new ObjectId(e.peticionId)) } }, { $set: { juntoA: { workOrderId: String(a.workOrderId), pedidoRef: a.pedidoRef || null, userId: a.userId || null, userName: a.userName || null, at: new Date(), por } } });
     if (fuera.length) await db.collection('peticionesGrupo').updateMany({ _id: { $in: fuera.map(e => new ObjectId(e.peticionId)) }, 'juntoA.workOrderId': String(a.workOrderId) }, { $unset: { juntoA: '' } });
   }
-  return { extras, nuevos };
+  // StelOrder: solo si lo que tiene el pedido allí no es lo de ahora. Si falla, se reintenta en la próxima vuelta.
+  let stel = null;
+  const clave = extras.map(e => e.peticionId).join(',');
+  if (_stel !== false && a.workOrderId && clave !== (a.extrasStel || []).join(',') && (extras.length || (a.extrasStel || []).length)) {
+    try {
+      stel = await (_stel || require('./stelorder')).lineasMismaComunidad(a.workOrderId, extras, { requestedBy: `${por} (misma comunidad)` });
+      await db.collection('workOrderAssignments').updateOne({ _id: a._id }, { $set: { extrasStel: extras.map(e => e.peticionId), extrasStelAt: new Date() } });
+    } catch (e) { console.warn('[Juntar] StelOrder:', e.message); stel = { error: e.message }; }
+  }
+  return { extras, nuevos, fuera, stel };
 }
 
 // Texto para el WhatsApp del trabajo nuevo.
 const textoExtras = extras => extras.length ? `\n\n📌 *En esta comunidad también hay que* (hazlo en la misma visita):\n${extras.map(linea).join('\n')}` : '';
 
 // Cron: todos los trabajos abiertos; lo que se haya añadido, al grupo del operario.
-async function revisar({ _db = null, _enviar = null } = {}) {
+async function revisar({ _db = null, _enviar = null, _stel = null, _archivo = null } = {}) {
   if (process.env.JUNTAR_TRABAJOS === 'off') return { apagado: true };
   const db = _db || await getDB();
   const abiertos = await require('./trabajosSeguimiento').abiertos({ _db: db });
   const res = { trabajos: abiertos.length, avisos: [] };
   for (const a of abiertos) {
-    const { nuevos } = await juntar(a, { _db: db });
+    const { nuevos } = await juntar(a, { _db: db, _stel });
     if (!nuevos.length || !a.userId) continue;
     const txt = `📌 *Añadido a tu trabajo de ${corto(a.cliente, 45)}*${a.pedidoRef ? ` (${a.pedidoRef})` : ''}\n` +
-      `En la misma comunidad también ${nuevos.length === 1 ? 'hay que' : 'hay que hacer'}:\n${nuevos.map(linea).join('\n')}\n\nHazlo en la misma visita. Lo tienes en tu parte.`;
+      `En la misma comunidad también ${nuevos.length === 1 ? 'hay que' : 'hay que hacer'}:\n${nuevos.map(linea).join('\n')}\n\nHazlo en la misma visita. Lo tienes en tu parte y en el pedido actualizado (PDF).`;
     res.avisos.push({ workOrderId: a.workOrderId, cliente: a.cliente, nuevos: nuevos.length });
     try {
       const enviar = _enviar || require('./notifications').sendWhatsAppTo;
@@ -69,6 +81,11 @@ async function revisar({ _db = null, _enviar = null } = {}) {
       const u = g ? null : await db.collection('users').findOne({ _id: new ObjectId(String(a.userId)) }, { projection: { whatsapp: 1, telefono: 1 } });
       const to = g ? g._id : (u && (u.whatsapp || u.telefono));
       if (to) await enviar(to, txt, { importante: true, sinTraducir: true });
+      // El pedido en PDF otra vez, ya con lo añadido.
+      if (to && (_archivo || !_enviar)) {
+        const f = await require('./trabajos').pdfDeTrabajo(a.workOrderId, { _db: db });
+        if (f) await (_archivo || require('./canalWhatsapp').enviarArchivo)(to, `📄 Pedido ${a.pedidoRef || ''} actualizado · ${corto(a.cliente, 40)}`, { data: f.data, mime: 'application/pdf', nombre: f.nombre });
+      }
     } catch (e) { console.warn('[Juntar] aviso:', e.message); }
   }
   return res;

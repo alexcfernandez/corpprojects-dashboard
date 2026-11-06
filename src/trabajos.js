@@ -175,7 +175,7 @@ async function crear(peticionId, { userId, fecha = null, hora = null, urgente = 
   await db.collection('peticionesGrupo').updateOne({ _id: p._id }, { $set: { incidencia: incidencia.ref, incidenciaId: incidencia.id, situacion: 'ya_hay_incidencia', pedido: { id: String(ped.id), ref: ped.ref }, asignado: { userId: String(u._id), nombre: u.name, fecha, hora, equipo }, asignadoPor: por, asignadoAt: new Date() } });
   // 5b) Lo demás pendiente de la misma comunidad va en este parte (trabajosJuntar.js, 6/11/2026, Joan Maragall).
   let junto = { extras: [] };
-  try { junto = await require('./trabajosJuntar').juntar(await db.collection('workOrderAssignments').findOne({ workOrderId: String(ped.id) }), { _db: db, por }); } catch (e) { console.warn('[Trabajos] juntar:', e.message); }
+  try { junto = await require('./trabajosJuntar').juntar(await db.collection('workOrderAssignments').findOne({ workOrderId: String(ped.id) }), { _db: db, por, _stel: _stel ? false : null }); } catch (e) { console.warn('[Trabajos] juntar:', e.message); }
   // 6) Aviso al operario: en SU grupo de trabajos si lo tiene (bridgeGrupos.trabajosDe, «Reparaciones David Valencia»;
   // 2/11/2026, Álex: «que se vayan acumulando ahí»), si no por privado. Con las fotos del aviso.
   let avisado = false, enGrupo = null;
@@ -195,7 +195,7 @@ async function crear(peticionId, { userId, fecha = null, hora = null, urgente = 
     }
     // El pedido sin valorar, para que lo tenga con el mensaje (5/11/2026).
     if (avisado && !_enviar) {
-      try { const data = await pdfPedido({ ref: ped.ref, incidencia: incidencia.ref, cliente, p, fecha, hora, urgente: urg, operario: u.name, equipo, nota, detalle: det }); await require('./canalWhatsapp').enviarArchivo(g ? g._id : tel, `📄 Pedido ${ped.ref} · ${corto(cliente, 40)}`, { data, mime: 'application/pdf', nombre: `Pedido ${ped.ref}.pdf` }); } catch (e) { console.warn('[Trabajos] PDF del pedido:', e.message); }
+      try { const data = await pdfPedido({ ref: ped.ref, incidencia: incidencia.ref, cliente, p, fecha, hora, urgente: urg, operario: u.name, equipo, nota, detalle: det, extras: junto.extras }); await require('./canalWhatsapp').enviarArchivo(g ? g._id : tel, `📄 Pedido ${ped.ref} · ${corto(cliente, 40)}`, { data, mime: 'application/pdf', nombre: `Pedido ${ped.ref}.pdf` }); } catch (e) { console.warn('[Trabajos] PDF del pedido:', e.message); }
     }
     // Trabajo de un presupuesto aceptado con su lista de materiales: el PDF del parte con las instrucciones (materialesObra.js).
     if (avisado && !_enviar && p.origen === 'materiales') {
@@ -213,7 +213,7 @@ const esComunidad = c => /\b(ctat|c\.?\s?p\.?|com\.?\s?prop|comunitat|comunidad|
 // PDF del pedido SIN VALORAR para el operario (5/11/2026, Álex: «que lo mandemos sin valorar, que tenga también ese
 // pedido de trabajo»). El PDF de StelOrder sale valorado (precios a 0), así que se hace aquí: lo que hay que hacer, dónde,
 // contacto, día y quién va, sin ni un precio.
-async function pdfPedido({ ref, incidencia = null, cliente, p, fecha = null, hora = null, urgente = false, operario = '', equipo = [], nota = '', detalle = [] }) {
+async function pdfPedido({ ref, incidencia = null, cliente, p, fecha = null, hora = null, urgente = false, operario = '', equipo = [], nota = '', detalle = [], extras = [] }) {
   const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
   const { limpio } = require('./planificacionPdf');
   const doc = await PDFDocument.create();
@@ -238,10 +238,28 @@ async function pdfPedido({ ref, incidencia = null, cliente, p, fecha = null, hor
   titulo('Trabajo a realizar');
   parrafo(p.resumen || p.titulo || '', { s: 11 });
   if (nota) { y -= 4; parrafo(`Nota de oficina: ${nota}`, { c: C.gris }); }
+  // Lo demás pendiente de la misma comunidad (trabajosJuntar.js, 6/11/2026).
+  if (extras.length) {
+    titulo('En esta comunidad también (en la misma visita)');
+    for (const e of extras) { parrafo(`- ${e.direccion ? e.direccion + ': ' : ''}${e.que}${e.incidencia ? ` (${e.incidencia})` : ''}`, { s: 11, gap: 3 }); if (e.contacto) parrafo(`  Contacto: ${e.contacto}`, { c: C.gris }); y -= 3; }
+  }
   titulo('Al acabar');
   parrafo('Pon el parte en tu app (Mis trabajos): horas, material usado y fotos de antes y después.', { c: C.gris });
   pg.drawText(limpio(`${ref} · sin valorar`), { x: M, y: 28, size: 8, font: F, color: C.gris });
   return Buffer.from(await doc.save());
+}
+
+// El PDF del pedido otra vez, desde lo que ya hay guardado (para mandarlo actualizado cuando se le añade algo).
+async function pdfDeTrabajo(workOrderId, { _db = null } = {}) {
+  const db = _db || await getDB();
+  const a = await db.collection('workOrderAssignments').findOne({ workOrderId: String(workOrderId) });
+  if (!a || !a.pedidoRef) return null;
+  const p = a.peticionId && ObjectId.isValid(String(a.peticionId)) ? await db.collection('peticionesGrupo').findOne({ _id: new ObjectId(String(a.peticionId)) }) : null;
+  const S = require('./stelorder');
+  const clientMap = ((await S.getClients().catch(() => null)) || {}).clientMap || {};
+  const det = p ? require('./peticionesGrupo').detalle(p, { clientMap, incidencia: a.incidenciaRef }) : [];
+  const data = await pdfPedido({ ref: a.pedidoRef, incidencia: a.incidenciaRef, cliente: a.cliente || (p && (p.clienteStel || p.cliente)) || '', p: p || { resumen: a.resumen }, fecha: a.fecha || null, hora: a.hora || null, urgente: a.priority === 'urgent', operario: a.userName || '', equipo: a.equipo || [], nota: a.nota || '', detalle: det, extras: a.extras || [] });
+  return { data, nombre: `Pedido ${a.pedidoRef}.pdf` };
 }
 
 // El operario dice cuándo ha quedado (grupo, app o Álex por Corpy): día y hora en la asignación, en Planificación
@@ -310,4 +328,4 @@ async function fotoParaOperario(fotoId, workerId) {
   return require('./grupoWhatsapp').foto(fotoId);
 }
 
-module.exports = { propuesta, crear, fijarCita, observacion, operarios, diaPropuesto, fotoParaOperario, pdfPedido, _palabras: palabras, _fechaTxt: fechaTxt, _ocupadoEn: ocupadoEn };
+module.exports = { propuesta, crear, fijarCita, observacion, operarios, diaPropuesto, fotoParaOperario, pdfPedido, pdfDeTrabajo, _palabras: palabras, _fechaTxt: fechaTxt, _ocupadoEn: ocupadoEn };

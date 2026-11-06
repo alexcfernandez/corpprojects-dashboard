@@ -1512,6 +1512,31 @@ async function ponerLineasPedido(workOrderId, lineas, { requestedBy = null } = {
   }
 }
 
+// Lo de la misma comunidad que va en el mismo pedido (trabajosJuntar.js, 6/11/2026): una línea a 0 € por cosa,
+// con el nombre «Misma comunidad · INC…». Deja las líneas del pedido como están y cambia solo esas: quita las que ya
+// no van y pone las que faltan. Si ya está igual, no escribe nada.
+const MISMA_COMUNIDAD = 'Misma comunidad';
+async function lineasMismaComunidad(workOrderId, extras, { requestedBy = null } = {}) {
+  const before = await _findWorkOrderRaw(workOrderId);
+  if (!before || !before.id) throw new Error('No encuentro el pedido en StelOrder');
+  const esExtra = l => String(l['item-name'] || '').startsWith(MISMA_COMUNIDAD);
+  const itemId = await getProductoGenerico('actuacion');
+  const nuevas = _lineasStel(extras.map(e => ({ concepto: `${MISMA_COMUNIDAD}${e.incidencia ? ' · ' + e.incidencia : ''}`, descripcion: `${e.direccion ? e.direccion + ': ' : ''}${e.que}`, unidades: 1, precio: 0 })), itemId);
+  const firma = ls => ls.map(l => `${l['item-name']}|${l['item-description']}`).join('\n');
+  if (firma((before.lines || []).filter(esExtra)) === firma(nuevas)) return { ok: true, ref: before['full-reference'], sinCambios: true };
+  const db = await require('./db').getDB();
+  const ins = await db.collection('stelWriteLog').insertOne({ tipo: 'lineas-misma-comunidad', workOrderId: String(before.id), reference: before['full-reference'], before, lineas: nuevas, requestedBy, at: new Date(), result: 'pending' });
+  try {
+    const r = await client.put(`/workOrders/${before.id}`, { ...before, lines: [...(before.lines || []).filter(l => !esExtra(l)), ...nuevas] }, { headers: { 'Content-Type': 'application/json; charset=utf-8' }, timeout: 25000 });
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: 'ok', status: r.status } });
+    try { invalidate('workOrders'); } catch (e) {}
+    return { ok: true, ref: before['full-reference'], lineas: nuevas.length };
+  } catch (err) {
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: 'error', error: `${err.response?.status || ''} ${err.message}`, errorBody: err.response?.data || null } });
+    throw new Error(`StelOrder no aceptó las líneas del pedido: ${err.response?.status || ''} ${JSON.stringify(err.response?.data || err.message).slice(0, 200)}`);
+  }
+}
+
 // Persona de contacto de un cliente (StelOrder → ficha del cliente → Contactos). Sin reintentos: si no contesta,
 // queda «desconocido» en stelWriteLog y no se repite sola (evita duplicados).
 async function crearContacto({ accId, nombre, telefono = null, email = null, cargo = null, nota = null, requestedBy = null }) {
@@ -2208,5 +2233,5 @@ module.exports = { leerPresupuesto, setWorkEstimateState, setIncidentState, WORK
   getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap,
   getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA, diagLineaImpuesto, diagImpuestos,
   crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, crearPresupuestoStel, crearPresupuestoMultiSeccionPrueba, diagClienteCampos, diagCrearCliente, crearClienteStel, getAccountCategories, ultimaIncidencia, incidenciaPorRef, diagPresupuestoConLineas, diagCambiarIvaPrueba, getPresupuestoIva, cambiarIvaPresupuesto, getPresupuestoDetalle, modificarImportePresupuesto,
-  ponerLineasPedido, crearFacturaDesdePedido, crearContacto, IVA_TAX_IDS
+  ponerLineasPedido, lineasMismaComunidad, crearFacturaDesdePedido, crearContacto, IVA_TAX_IDS
 };
