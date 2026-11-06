@@ -126,7 +126,17 @@ async function procesar(p) {
       }
     } catch (e) { console.error('[Grupo] compra:', e.message); }
   }
-  if (fotoIds.length) await d.collection(MSG).updateOne({ _id: ins.insertedId }, { $set: { fotoIds } });
+  // Vídeos (6/11/2026: Madrenas los manda mucho): aparte, en grupoVideos (en disco), para la petición y StelOrder.
+  const videoIds = [];
+  for (const m of media.filter(m => /^video\//i.test(m.type))) {
+    try {
+      const buf = await require('./mediaPuente').leer(m.url);
+      if (!buf) continue;
+      const v = await d.collection('grupoVideos').insertOne(await require('./archivosDisco').guardar('grupoVideos', { jid, grupo: doc.grupo, msgId: ins.insertedId, from: p.from || null, quien: quien.name, texto: texto || null, mimetype: m.type, bytes: buf.length, data: buf, ts: new Date() }));
+      videoIds.push(String(v.insertedId));
+    } catch (e) { console.error('[Grupo] vídeo:', e.message); }
+  }
+  if (fotoIds.length || videoIds.length) await d.collection(MSG).updateOne({ _id: ins.insertedId }, { $set: { fotoIds, ...(videoIds.length ? { videoIds } : {}) } });
   await d.collection(COL).updateOne({ _id: jid }, { $inc: { nMensajes: 1, nCompras, nFotos: fotoIds.length }, $set: { ultimoMsgAt: new Date(), ...(p.groupName ? { nombre: p.groupName } : {}) } });
   if (docs.length) console.log(`[Grupo] ${doc.grupo}: ${quien.name} mandó ${docs.length} archivo(s) → ${nCompras} a Compras, ${fotoIds.length} fotos de obra`);
   // Grupo de trabajos de un operario («Reparaciones David Valencia»): lo que dice de sus trabajos (cita, hecho, fotos).

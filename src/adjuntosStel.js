@@ -1,5 +1,5 @@
 // src/adjuntosStel.js — Las fotos de las peticiones, adjuntas en StelOrder (6/11/2026, Álex: «las fotos y todo, que las
-// ponga, las adjunte en todo lo posible, en StelOrder»).
+// ponga, las adjunte en todo lo posible, en StelOrder»). También los vídeos (videoIds → grupoVideos).
 // Cada foto de una petición (fotoIds → grupoFotos) se sube a su incidencia y, cuando tiene pedido, también al pedido.
 // Lo subido queda en la petición (`fotosStel: { inc: [fotoId], ped: [fotoId] }`) para no repetir. Se llama al crear la
 // incidencia y el pedido, y un cron recoge lo que llegue después (fotos que mandan más tarde al grupo).
@@ -7,24 +7,27 @@
 'use strict';
 const { ObjectId } = require('mongodb');
 async function getDB() { return require('./db').getDB(); }
-const DIAS = 14, MAX_FOTOS = 10;
-const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'application/pdf': 'pdf', 'video/mp4': 'mp4' };
+const DIAS = 14, MAX_FOTOS = 10, MAX_VIDEOS = 3;
+const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'application/pdf': 'pdf', 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/3gpp': '3gp' };
 
 // Sube lo que falte de una petición. Devuelve cuántas fotos se han subido a cada sitio.
 async function subir(p, { _db = null, _stel = null, por = 'Corpy' } = {}) {
   if (process.env.ADJUNTOS_STEL === 'off') return { apagado: true };
   const db = _db || await getDB();
-  if (!p || !(p.fotoIds || []).length) return { inc: 0, ped: 0 };
+  if (!p || !((p.fotoIds || []).length || (p.videoIds || []).length)) return { inc: 0, ped: 0 };
+  // Fotos (grupoFotos) y vídeos (grupoVideos), con el mismo registro de lo subido.
+  const todos = [...(p.fotoIds || []).slice(0, MAX_FOTOS), ...(p.videoIds || []).slice(0, MAX_VIDEOS)].map(String);
   const hechas = p.fotosStel || {};
   const destinos = [
     p.incidenciaId && { clave: 'inc', tipo: 'INCIDENT', id: p.incidenciaId, ref: p.incidencia },
     p.pedido && p.pedido.id && { clave: 'ped', tipo: 'WORKORDER', id: p.pedido.id, ref: p.pedido.ref },
   ].filter(Boolean);
-  const faltan = d => (p.fotoIds || []).slice(0, MAX_FOTOS).filter(f => !(hechas[d.clave] || []).includes(String(f)));
+  const faltan = d => todos.filter(f => !(hechas[d.clave] || []).includes(f));
   const ids = [...new Set(destinos.flatMap(faltan))].filter(f => ObjectId.isValid(String(f)));
   const res = { inc: 0, ped: 0 };
   if (!ids.length) return res;
-  const fotos = await require('./archivosDisco').hidratar(await db.collection('grupoFotos').find({ _id: { $in: ids.map(f => new ObjectId(String(f))) } }).toArray());
+  const oids = ids.map(f => new ObjectId(String(f)));
+  const fotos = await require('./archivosDisco').hidratar([...await db.collection('grupoFotos').find({ _id: { $in: oids } }).toArray(), ...((p.videoIds || []).length ? await db.collection('grupoVideos').find({ _id: { $in: oids } }).toArray() : [])]);
   const S = _stel || require('./stelorder');
   for (const d of destinos) {
     for (const fid of faltan(d)) {
@@ -53,10 +56,10 @@ async function subirPorId(id, opts = {}) {
 async function revisar({ _db = null, _stel = null } = {}) {
   if (process.env.ADJUNTOS_STEL === 'off') return { apagado: true };
   const db = _db || await getDB();
-  const ps = await db.collection('peticionesGrupo').find({ incidenciaId: { $nin: [null, ''] }, 'fotoIds.0': { $exists: true }, fecha: { $gte: new Date(Date.now() - DIAS * 86400000) } }).toArray();
+  const ps = await db.collection('peticionesGrupo').find({ incidenciaId: { $nin: [null, ''] }, $or: [{ 'fotoIds.0': { $exists: true } }, { 'videoIds.0': { $exists: true } }], fecha: { $gte: new Date(Date.now() - DIAS * 86400000) } }).toArray();
   const out = [];
   for (const p of ps) {
-    const n = Math.min((p.fotoIds || []).length, MAX_FOTOS);
+    const n = Math.min((p.fotoIds || []).length, MAX_FOTOS) + Math.min((p.videoIds || []).length, MAX_VIDEOS);
     const listo = (p.fotosStel && p.fotosStel.inc || []).length >= n && (!(p.pedido && p.pedido.id) || (p.fotosStel && p.fotosStel.ped || []).length >= n);
     if (listo) continue;
     const r = await subir(p, { _db: db, _stel });

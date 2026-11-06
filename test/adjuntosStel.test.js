@@ -45,3 +45,12 @@ test('un grupo nuevo entra en escucha con incidencias y avisa a Álex; uno conoc
     assert.strictEqual(avisos.length, 1);
   } finally { dbm.getDB = orig; }
 });
+
+test('los vídeos del aviso también van a la incidencia', async () => {
+  const v1 = new ObjectId();
+  const subidas = [];
+  const db = { collection: name => ({ find: () => ({ toArray: async () => name === 'grupoVideos' ? [{ _id: v1, data: Buffer.from('v'), mimetype: 'video/mp4', ts: new Date() }] : [] }), updateOne: async () => {} }) };
+  const r = await A.subir({ _id: new ObjectId(), videoIds: [String(v1)], incidencia: 'INC1', incidenciaId: '1' }, { _db: db, _stel: { adjuntar: async o => { subidas.push(o.nombre); return { ok: true }; } } });
+  assert.deepStrictEqual(r, { inc: 1, ped: 0 });
+  assert.match(subidas[0], /\.mp4$/);
+});

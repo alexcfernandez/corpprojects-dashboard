@@ -104,6 +104,8 @@ function infoMedia(message) {
   if (c.imageMessage) return { kind: 'image', mimetype: c.imageMessage.mimetype || 'image/jpeg', fileName: null, bytes: Number(c.imageMessage.fileLength || 0) };
   if (c.documentMessage) return { kind: 'document', mimetype: c.documentMessage.mimetype || 'application/octet-stream', fileName: c.documentMessage.fileName || null, bytes: Number(c.documentMessage.fileLength || 0) };
   if (c.audioMessage) return { kind: 'audio', mimetype: c.audioMessage.mimetype || 'audio/ogg', fileName: null, bytes: Number(c.audioMessage.fileLength || 0) };
+  // Vídeo (6/11/2026): solo se descarga en los grupos (ver abajo); en 1-a-1 se sigue ignorando.
+  if (c.videoMessage) return { kind: 'video', mimetype: c.videoMessage.mimetype || 'video/mp4', fileName: null, bytes: Number(c.videoMessage.fileLength || 0) };
   return null;
 }
 async function descargarMedia(sock, m, info) {
@@ -266,7 +268,7 @@ async function start() {
         const jidReal = await jidRealDelMensaje(sock, m);
         const from = jidToPhone(jidReal);
         if (from) chatPorTelefono.set(soloDigitos(from), jid);
-        const media = info ? [await descargarMedia(sock, m, info)] : [];
+        const media = info && info.kind !== 'video' ? [await descargarMedia(sock, m, info)] : [];
         if (from && (body || media.length)) await reenviarEntrante(from, body, { chatId: jid, isGroup: false, pushName: m.pushName || null, msgId: m.key.id, media });
       } catch (e) { console.error('[Bridge] upsert error:', e.message); }
     }

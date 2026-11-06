@@ -128,6 +128,7 @@ ${cat.clientes.join('\n')}`;
     if (!ms.length) continue;
     const mensajes = ms.map(m => ({ fecha: m.fecha, quien: m.quien, texto: corto(m.texto, 1000) }));
     const fotoIds = ms.flatMap(m => m.fotoIds || []);
+    const videoIds = ms.flatMap(m => m.videoIds || []);
     const set = { tipo: TIPOS.includes(p.tipo) ? p.tipo : 'consulta', clienteId: p.cliente_id && /^\d+$/.test(String(p.cliente_id)) ? String(p.cliente_id) : null,
       cliente: corto(p.cliente, 120), titulo: corto(p.titulo, 60) || null, direccion: corto(p.direccion, 120) || null, contacto: corto(p.contacto, 120) || null, resumen: corto(p.resumen, 400), queHacer: corto(p.que_hacer, 300),
       urgente: !!p.urgente, respondimos: p.respondimos == null ? null : !!p.respondimos, hechoEnChat: p.hecho_en_chat == null ? null : !!p.hecho_en_chat, situacion: SITUACIONES.includes(p.situacion) ? p.situacion : 'nuevo', incidencia: corto(p.incidencia, 12) || null, presupuesto: corto(p.presupuesto, 12) || null, pedirContacto: p.pedir_contacto === true, actualizado: new Date() };
@@ -143,7 +144,7 @@ ${cat.clientes.join('\n')}`;
       const junta = { ...prev, ...set };
       if (fuente !== 'historial') await _citaAlCalendario(db, junta, prev.cita);
       if (prev.estado === 'archivo' && importa(set) && ms.some(m => !NUESTROS.test(m.quien || ''))) Object.assign(set, { estado: 'pendiente', reabiertaAt: new Date() });
-      await db.collection(COL).updateOne({ _id: prev._id }, { $set: set, $push: { mensajes: { $each: mensajes } }, $addToSet: { fotoIds: { $each: fotoIds }, archivos: { $each: ms.flatMap(m => m.archivos || []) } } });
+      await db.collection(COL).updateOne({ _id: prev._id }, { $set: set, $push: { mensajes: { $each: mensajes } }, $addToSet: { fotoIds: { $each: fotoIds }, videoIds: { $each: videoIds }, archivos: { $each: ms.flatMap(m => m.archivos || []) } } });
       actualizadas.push(junta);
     } else {
       // Del historial solo quedan a la vista (pendiente) las de los últimos 90 días que no se ven hechas; el resto, al archivo
@@ -151,7 +152,7 @@ ${cat.clientes.join('\n')}`;
       const reciente = Date.now() - new Date(ms[0].fecha).getTime() < 90 * 86400000;
       const estado = fuente !== 'historial' ? 'pendiente' : (reciente && !set.hechoEnChat && set.situacion !== 'ya_hay_presupuesto' ? 'pendiente' : 'archivo');
       const archivos = ms.flatMap(m => m.archivos || []);
-      const doc = { jid, grupo: grupo || null, ...set, quien: ms[0].quien, mensajes, fotoIds, archivos, fuente, fecha: ms[0].fecha, estado, creado: new Date() };
+      const doc = { jid, grupo: grupo || null, ...set, quien: ms[0].quien, mensajes, fotoIds, videoIds, archivos, fuente, fecha: ms[0].fecha, estado, creado: new Date() };
       const r = await db.collection(COL).insertOne(doc);
       const nueva = { ...doc, _id: r.insertedId };
       if (fuente !== 'historial') await _citaAlCalendario(db, nueva, null);
@@ -276,7 +277,7 @@ async function analizar({ avisar = true, _llamar = null, _cat = null } = {}) {
     // Se espera a que la persona acabe de escribir (el texto suele ir en varios mensajes y las fotos después).
     if (Date.now() - new Date(raw[raw.length - 1].ts).getTime() < 10 * 60 * 1000) continue;
     const { contexto, corpy } = await _contexto(db, g._id, raw[0].ts, raw[raw.length - 1].ts);
-    const msgs = [...raw.map(m => ({ _id: m._id, fecha: m.ts, quien: m.quien, texto: m.texto, fotoIds: m.fotoIds || [], nMedia: (m.media || []).length })), ...corpy]
+    const msgs = [...raw.map(m => ({ _id: m._id, fecha: m.ts, quien: m.quien, texto: m.texto, fotoIds: m.fotoIds || [], videoIds: m.videoIds || [], nMedia: (m.media || []).length })), ...corpy]
       .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
     const cat = _cat || await _catalogo();
     // Memoria de Corpy de los sitios que se nombran, SOLO de este grupo (lo de otros clientes o lo interno no entra).
@@ -658,7 +659,7 @@ async function crearIncidencia(id, por = '') {
   const r = await require('./stelorder').crearIncidencia({ accId: p.clienteId, descripcion, tipoId: p.tipo === 'presupuesto' ? TIPO_INC.presupuesto : TIPO_INC.otro, requestedBy: por || 'Peticiones del grupo' });
   await db.collection(COL).updateOne({ _id: p._id }, { $set: { incidencia: r.ref, incidenciaId: r.id || null, situacion: 'ya_hay_incidencia', incidenciaCreadaPor: por, incidenciaCreadaAt: new Date() }, $unset: { porConfirmar: '' } });
   // Sus fotos, adjuntas a la incidencia en StelOrder (adjuntosStel.js), sin esperar.
-  if (r.id && (p.fotoIds || []).length) require('./adjuntosStel').subirPorId(String(p._id), { _db: db, por: por || 'Corpy' }).catch(e => console.warn('[Peticiones] fotos a StelOrder:', e.message));
+  if (r.id && ((p.fotoIds || []).length || (p.videoIds || []).length)) require('./adjuntosStel').subirPorId(String(p._id), { _db: db, por: por || 'Corpy' }).catch(e => console.warn('[Peticiones] fotos a StelOrder:', e.message));
   return { ok: true, ref: r.ref, id: r.id || null };
 }
 
