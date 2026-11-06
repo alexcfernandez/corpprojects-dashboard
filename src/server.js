@@ -1863,6 +1863,22 @@ app.post('/api/ciclo/observacion/:woId', requireAuthOficina, express.json(), asy
   try { const b = req.body || {}; res.json(await require('./trabajos').observacion(req.params.woId, { on: b.on !== false, motivo: b.motivo, contacto: b.contacto, nota: b.nota }, req.user?.name || req.user?.username || 'Oficina')); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+// Mandar a un técnico desde el tablero (petición o incidencia de StelOrder sin petición) y avisos al grupo del cliente.
+app.post('/api/ciclo/asignar', requireAuthOficina, express.json(), async (req, res) => {
+  try { const b = req.body || {}; const q = (await _quienPush(req)) || {}; res.json(await require('./avisosCliente').asignar({ peticionId: b.peticionId || null, incRef: b.incRef || null, userId: b.userId, fecha: b.fecha || null, hora: b.hora || null, nota: b.nota || '' }, q.name || req.user?.name || 'Oficina')); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.get('/api/ciclo/operarios', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./trabajos').operarios()); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/api/avisos-cliente', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./avisosCliente').estado()); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/avisos-cliente', requireAuthOficina, express.json(), async (req, res) => {
+  try { const q = (await _quienPush(req)) || {}; const b = req.body || {};
+    res.json(b.jid ? await require('./avisosCliente').pausarGrupo(b.jid, !!b.pausa, q.name || '') : await require('./avisosCliente').pausar(!!b.pausa, q.name || req.user?.name || '')); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.post('/api/ciclo/ignorar', requireAuthOficina, express.json(), async (req, res) => {
   try { const b = req.body || {}; res.json(await require('./ciclo').ignorar(b.id, b.motivo, req.user?.name || req.user?.username)); }
   catch (err) { res.status(400).json({ error: err.message }); }

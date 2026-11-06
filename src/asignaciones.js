@@ -59,6 +59,7 @@ async function recordParteResult(workOrderId, { workerId, parteId, estadoTrabajo
       { $set: { workOrderId: woId, status: 'done', doneAt: new Date(), doneBy: String(workerId || ''), parteId: String(parteId || '') } },
       { upsert: true }
     );
+    require('./avisosCliente').pasoSinEsperar(woId, 'hecho');   // «ya está hecho» al grupo del cliente
     return { status: 'done' };
   }
   await db.collection('workOrderAssignments').updateOne(

@@ -17,6 +17,8 @@
   const SEM = { rojo: 'var(--red)', ambar: 'var(--amber)', verde: 'var(--green)' };
   const SEMBG = { rojo: 'var(--red-bg)', ambar: 'var(--amber-bg)', verde: 'var(--green-bg)' };
 
+  // Próximo día laborable (mañana, o el lunes si mañana es fin de semana).
+  const proxLaborable = () => { const d = new Date(); d.setDate(d.getDate() + 1); while ([0, 6].includes(d.getDay())) d.setDate(d.getDate() + 1); return d.toLocaleDateString('en-CA'); };
   const st = { d: null, cont: null, filtro: '', soloRojos: false, timer: null, cargadoEn: null };
 
   const CSS = `
@@ -91,6 +93,7 @@
         <button id="cy-rojos" onclick="CP.Ciclo.rojos()">🔴 Solo lo urgente</button>
         <button onclick="CP.Ciclo.cargar()">🔄</button>
         <button onclick="CP.Ciclo.tv()">📺 Modo pantalla</button>
+        <button id="cy-avisos" onclick="CP.Ciclo.pausaAvisos()" title="Avisos automáticos al grupo del cliente cuando un trabajo queda programado o hecho">💬 Avisos a clientes…</button>
       </div>
       <div id="cy-flujo" class="cy-flujo"></div>
       <div id="cy-board" class="cy-board"><div class="cy-vacio">Cargando…</div></div>
@@ -112,8 +115,10 @@
 
   async function cargar() {
     try {
-      [st.d, st.cola] = await Promise.all([api('/api/ciclo'), api('/api/cola').catch(() => null)]);
+      [st.d, st.cola, st.avisos] = await Promise.all([api('/api/ciclo'), api('/api/cola').catch(() => null), api('/api/avisos-cliente').catch(() => null)]);
       st.cargadoEn = new Date();
+      const ba = document.getElementById('cy-avisos');
+      if (ba && st.avisos) { ba.textContent = st.avisos.pausa ? '⏸ Avisos a clientes en pausa' : '💬 Avisos a clientes: sí'; ba.style.background = st.avisos.pausa ? 'var(--amber)' : ''; ba.style.color = st.avisos.pausa ? '#111' : ''; }
       opciones();
       pintar();
     } catch (e) {
@@ -209,7 +214,21 @@
     if (t.col === 'cobrar') acc.push(`<button onclick="location.href='/cobrar'" style="background:var(--amber);border-color:var(--amber);color:#111;font-weight:700">💬 Recordatorio al cliente</button>`);
     if (t.col === 'facturar' && t.woId) acc.push(`<button onclick="CP.Ciclo.facturar('${esc(t.woId)}')" style="background:var(--blue);border-color:var(--blue);color:#fff;font-weight:700">🧾 Facturar</button>`);
     if (t.col === 'facturar') acc.push(`<button onclick="CP.Ciclo.ignorar('${esc(t.id)}',this)">Ya está facturado / no se factura</button>`);
-    const ayuda = t.col === 'asignar' ? 'Para mandarlo a un técnico: contesta a Corpy «David» cuando te pregunte «¿Quién va?», o desde Inicio → Peticiones.'
+    // Mandarlo a un técnico desde aquí (6/11/2026): técnico + día → pedido, PDF y WhatsApp a su grupo.
+    let formAsignar = '';
+    if (t.col === 'asignar' && !t.woId && (t.peticionId || t.incRef) && !/va con/.test(t.etiqueta || '')) {
+      formAsignar = `<div style="margin-top:12px;padding:10px;border:1px solid var(--border2);border-radius:10px;background:var(--bg3)">
+        <div style="font-weight:700;font-size:13.5px;margin-bottom:6px">👷 Mandar a un técnico</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <select id="cy-as-op" style="flex:1;min-width:130px"><option value="">Cargando técnicos…</option></select>
+          <input id="cy-as-dia" type="date" value="${esc(proxLaborable())}" style="min-width:130px">
+          <input id="cy-as-hora" type="time" style="width:96px" placeholder="hora">
+        </div>
+        <input id="cy-as-nota" placeholder="Nota para el técnico (opcional)" style="width:100%;box-sizing:border-box;margin-top:6px">
+        <div style="font-size:11.5px;color:var(--text3);margin:6px 0">Sin día: queda él con el cliente. Le llega a su grupo con el PDF del pedido${t.contacto ? ' y el contacto (' + esc(t.contacto) + ')' : ''}. Si el aviso vino de un grupo de cliente, allí se dice qué día pasa.</div>
+        <button onclick="CP.Ciclo.asignar('${esc(t.peticionId || '')}','${esc(t.incRef || '')}',this,'${esc(t.id)}')" style="background:var(--blue);border-color:var(--blue);color:#fff;font-weight:700;width:100%">Mandar</button></div>`;
+    }
+    const ayuda = t.col === 'asignar' ? (formAsignar ? '' : 'Para mandarlo a un técnico: contesta a Corpy «David» cuando te pregunte «¿Quién va?», o desde Inicio → Peticiones.')
       : t.col === 'facturar' ? '«Facturar» monta la factura con el parte (horas, material y desplazamiento); la revisas, se pasa al pedido y se crea en StelOrder enlazada a él. La tarjeta pasa sola a «Por cobrar».'
       : t.col === 'cobrar' ? 'Al pasar a ámbar (30 días) y a rojo (60) te llega un WhatsApp. El recordatorio para el cliente está preparado en /cobrar.'
       : t.col === 'cita' ? 'El técnico pone el día en su app o contesta en el grupo; tú también: «David ha quedado con … el jueves».' : '';
@@ -227,9 +246,11 @@
       ${pasos ? `<div style="margin-top:6px">${pasos}</div>` : ''}
       ${(t.facturas || []).length ? `<div style="font-size:12.5px;color:var(--text2);margin-top:8px">${t.facturas.map(f => `${esc(f.ref)} · ${eur(f.total)}${f.pendiente ? ` · faltan ${eur(f.pendiente)}` : ' · cobrada'}`).join('<br>')}</div>` : ''}
       ${ayuda ? `<div style="font-size:12px;color:var(--text3);margin-top:10px">${esc(ayuda)}</div>` : ''}
+      ${formAsignar}
       ${acc.length ? `<div class="cy-acc">${acc.join('')}</div>` : ''}
     </div>`;
     document.body.appendChild(m);
+    if (formAsignar) api('/api/ciclo/operarios').then(ops => { const s = document.getElementById('cy-as-op'); if (s) s.innerHTML = '<option value="">¿Quién va?</option>' + ops.map(o => `<option value="${esc(o.id)}">${esc(o.name)}</option>`).join(''); }).catch(() => {});
   }
 
   // Trabajo aceptado de la cola: día previsto, medio (grúa/plataforma se reservan) y hecho.
@@ -394,6 +415,21 @@
       if (on && motivo === null) return;
       const nota = on ? '' : (document.getElementById('cy-obs-nota')?.value || '').trim();
       return accion(btn, async () => { const r = await api('/api/ciclo/observacion/' + woId, { method: 'POST', body: JSON.stringify({ on, motivo, nota }) }); document.getElementById('cy-modal')?.remove(); cargar(); if (!on && window.toast) toast(r && r.avisado ? 'Vuelve al técnico: le ha llegado por WhatsApp' : 'Vuelve al técnico (lo tiene en la app; WhatsApp no enviado)'); }, null, on ? 'En observación: ya no le llega al técnico' : '');
+    },
+    asignar(peticionId, incRef, btn, id) {
+      const userId = document.getElementById('cy-as-op')?.value;
+      if (!userId) { alert('Elige quién va'); return; }
+      const fecha = document.getElementById('cy-as-dia')?.value || null, hora = document.getElementById('cy-as-hora')?.value || null, nota = (document.getElementById('cy-as-nota')?.value || '').trim();
+      return accion(btn, async () => {
+        const r = await api('/api/ciclo/asignar', { method: 'POST', body: JSON.stringify({ peticionId: peticionId || null, incRef: incRef || null, userId, fecha, hora, nota }) });
+        document.getElementById('cy-modal')?.remove(); cargar();
+        if (window.toast) toast(`${r.pedido} para ${r.operario}${r.fechaTxt ? ' · ' + r.fechaTxt : ''}${r.avisado ? (r.enGrupo ? ' · mandado a «' + r.enGrupo + '»' : ' · mandado por WhatsApp') : ' · sin WhatsApp (lo tiene en la app)'}`);
+      }, null, '');
+    },
+    pausaAvisos() {
+      const on = !(st.avisos && st.avisos.pausa);
+      if (!confirm(on ? '¿Poner en pausa los avisos a los grupos de clientes («el lunes pasa David», «ya está hecho»)?' : '¿Volver a avisar a los grupos de clientes cuando un trabajo queda programado o hecho?')) return;
+      api('/api/avisos-cliente', { method: 'POST', body: JSON.stringify({ pausa: on }) }).then(() => cargar()).catch(e => alert(e.message));
     },
     ignorar(id, btn) { return accion(btn, () => api('/api/ciclo/ignorar', { method: 'POST', body: JSON.stringify({ id, motivo: 'facturado aparte o no se factura' }) }), id, 'Quitado del tablero'); },
     tv() {

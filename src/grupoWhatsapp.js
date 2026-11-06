@@ -51,7 +51,7 @@ async function gruposPermitidos() {
 }
 async function listaGrupos() {
   const d = await db();
-  return (await d.collection(COL).find({}).sort({ activo: -1, vistoAt: -1 }).toArray()).map(g => ({ jid: g._id, nombre: g.nombre, activo: !!g.activo, vistoAt: g.vistoAt, activadoPor: g.activadoPor || null, nMensajes: g.nMensajes || 0, nCompras: g.nCompras || 0, ultimoMsgAt: g.ultimoMsgAt || null }));
+  return (await d.collection(COL).find({}).sort({ activo: -1, vistoAt: -1 }).toArray()).map(g => ({ jid: g._id, nombre: g.nombre, activo: !!g.activo, vistoAt: g.vistoAt, activadoPor: g.activadoPor || null, avisosPausa: !!g.avisosPausa, nMensajes: g.nMensajes || 0, nCompras: g.nCompras || 0, ultimoMsgAt: g.ultimoMsgAt || null }));
 }
 async function setGrupo(jid, { activo }, por) {
   if (!String(jid).endsWith('@g.us')) throw new Error('Grupo no válido');

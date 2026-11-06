@@ -203,6 +203,8 @@ async function crear(peticionId, { userId, fecha = null, hora = null, urgente = 
     if (avisado && !_enviar && p.origen === 'materiales') {
       try { const f = await require('./materialesObra').pdfParaPeticion(String(p._id)); if (f) await require('./canalWhatsapp').enviarArchivo(g ? g._id : tel, `📋 Parte e instrucciones · ${corto(cliente, 40)}`, { data: f.data, mime: 'application/pdf', nombre: f.nombre }); } catch (e) { console.warn('[Trabajos] PDF del parte:', e.message); }
     }
+    // Al grupo del cliente, si vino de uno: «el lunes pasa David» (avisosCliente.js).
+    if (fecha && !_enviar) require('./avisosCliente').pasoSinEsperar(String(ped.id), 'programado');
     try { await require('./push').sendToWorker(String(u._id), { title: 'Trabajo nuevo', body: `${fecha ? fechaTxt(fecha) + (hora ? ' ' + hora : '') : 'Sin día'} · ${cliente}`, url: '/parte' }); } catch (e) {}
   } catch (e) { console.warn('[Trabajos] aviso:', e.message); }
   if (fecha && colaLista && colaLista.cola && colaLista.cola.eventoId) {
@@ -281,6 +283,7 @@ async function fijarCita(workOrderId, { fecha, hora = null, nota = null } = {}, 
     if (pl) await require('./planning').updatePlanning(String(pl._id), { date: fecha, horaInicio: hora || '' });
     else await require('./planning').createPlanning({ date: fecha, workerId: a.userId, workerName: a.userName, tipo: a.tipo === 'presupuesto' ? 'visita' : 'trabajo', client: a.cliente || '', address: a.direccion || '', workOrderId: String(workOrderId), workOrderNumber: a.pedidoRef || '', nota: a.resumen || '', horaInicio: hora || '' });
   } catch (e) { console.warn('[Trabajos] planificación cita:', e.message); }
+  require('./avisosCliente').pasoSinEsperar(String(workOrderId), 'programado');
   return { ok: true, cliente: a.cliente, pedido: a.pedidoRef, fecha, hora: hora || null, fechaTxt: fechaTxt(fecha), cambiada: !!antes };
 }
 
