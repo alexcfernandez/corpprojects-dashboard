@@ -263,13 +263,40 @@ async function fijarCita(workOrderId, { fecha, hora = null, nota = null } = {}, 
 // En observación (6/11/2026, Álex con Illa Verda: «a David no le tiene que llegar; lo seguimos yo o la oficina, a ver
 // cuando llueva»): el trabajo sigue abierto y asignado, pero el operario no lo ve en su app ni le llegan recordatorios;
 // sale en el tablero (columna «cita») como «en observación». on=false lo devuelve a su sitio.
-async function observacion(workOrderId, { on = true, motivo = '' } = {}, por = '') {
+async function observacion(workOrderId, { on = true, motivo = '', contacto = '', nota = '' } = {}, por = '', { _enviar = null } = {}) {
   const db = await getDB();
   const a = await db.collection('workOrderAssignments').findOne({ workOrderId: String(workOrderId) });
   if (!a) throw new Error('No encuentro ese trabajo');
-  if (on) await db.collection('workOrderAssignments').updateOne({ _id: a._id }, { $set: { observacion: { motivo: String(motivo || '').slice(0, 200), por, desde: new Date() } } });
-  else await db.collection('workOrderAssignments').updateOne({ _id: a._id }, { $unset: { observacion: '' }, $push: { observacionesAnteriores: { ...(a.observacion || {}), hasta: new Date(), por } } });
-  return { ok: true, cliente: a.cliente, pedido: a.pedidoRef, observacion: !!on };
+  if (on) {
+    await db.collection('workOrderAssignments').updateOne({ _id: a._id }, { $set: { observacion: { motivo: String(motivo || '').slice(0, 200), ...(contacto ? { contacto: String(contacto).slice(0, 120) } : {}), por, desde: new Date() } } });
+    return { ok: true, cliente: a.cliente, pedido: a.pedidoRef, observacion: true };
+  }
+  // Vuelve al técnico (Álex: «cuando se lo devuelva a David, lo que yo ponga que salga en el parte»): la nota es lo que
+  // tiene que hacer y sale en su app (📝 del trabajo); se le avisa por su grupo y el seguimiento vuelve a contar desde hoy.
+  const n = String(nota || '').trim().slice(0, 600);
+  const $set = { reabiertoAt: new Date(), ...(n ? { nota: n } : {}), ...(!a.contacto && a.observacion && a.observacion.contacto ? { contacto: a.observacion.contacto } : {}) };
+  await db.collection('workOrderAssignments').updateOne({ _id: a._id }, { $set, $unset: { observacion: '' }, $push: { observacionesAnteriores: { ...(a.observacion || {}), hasta: new Date(), por, ...(a.nota && n ? { notaAnterior: a.nota } : {}) } } });
+  let avisado = false;
+  if (a.userId) {
+    try {
+      const g = await db.collection('bridgeGrupos').findOne({ trabajosDe: String(a.userId), activo: true });
+      const u = await db.collection('users').findOne({ _id: new ObjectId(String(a.userId)) }, { projection: { name: 1, whatsapp: 1, telefono: 1, avisosWa: 1 } });
+      const to = g ? g._id : (u && u.avisosWa !== 'ninguno' ? (u.whatsapp || u.telefono) : null);
+      const contacto = $set.contacto || a.contacto;
+      if (to) avisado = await (_enviar || require('./notifications').sendWhatsAppTo)(to,
+        `🔧 ${u && u.name ? String(u.name).split(' ')[0] + ', ' : ''}*${a.cliente}*${a.direccion ? ' · ' + a.direccion : ''} (${a.pedidoRef || ''}) vuelve a ser tuyo.` +
+        `${n ? `
+
+📝 *Qué hay que hacer:*
+${n}` : ''}${contacto ? `
+
+👤 ${contacto}` : ''}
+
+Lo tienes en la app. ¿Cuándo puedes ir? Contesta «${String(a.cliente || '').split(/\s*[,–(]\s*/)[0].slice(0, 25)} el jueves a las 10».`,
+        { sinTraducir: true }) !== false;
+    } catch (e) { console.warn('[Trabajos] aviso al volver de observación:', e.message); }
+  }
+  return { ok: true, cliente: a.cliente, pedido: a.pedidoRef, observacion: false, avisado };
 }
 
 // Foto de la petición para el operario que tiene ese trabajo.

@@ -418,6 +418,8 @@ function startScheduler() {
   // Trabajos de cada operario en su grupo: por la mañana hoy / sin día / falta el parte; por la tarde lo de mañana.
   cron.schedule('30 8 * * 1-6', () => { if (process.env.SEGUIMIENTO_TRABAJOS !== 'off') require('./trabajosSeguimiento').seguimiento({ momento: 'manana' }).then(r => r.length && console.log('[Trabajos] seguimiento:', JSON.stringify(r))).catch(e => console.warn('[Trabajos] seguimiento:', e.message)); }, { timezone: 'Europe/Madrid' });
   cron.schedule('30 18 * * 0-5', () => { if (process.env.SEGUIMIENTO_TRABAJOS !== 'off') require('./trabajosSeguimiento').seguimiento({ momento: 'tarde' }).then(r => r.length && console.log('[Trabajos] mañana:', JSON.stringify(r))).catch(e => console.warn('[Trabajos] mañana:', e.message)); }, { timezone: 'Europe/Madrid' });
+  // Trabajos «en observación» por agua: si llueve en Girona, a Álex y oficina para llamar al cliente (lluviaObservacion.js, 6/11/2026).
+  cron.schedule('0 8-20 * * *', () => { if (process.env.AVISO_LLUVIA !== 'off') require('./lluviaObservacion').revisar().then(r => { if (r.llueve) console.log('[Lluvia]', JSON.stringify(r)); }).catch(e => console.warn('[Lluvia]', e.message)); }, { timezone: 'Europe/Madrid' });
   // PDF de trabajos (Gantt por operario) y presupuestos, cada mañana (L-S) por WhatsApp a Álex y oficina.
   cron.schedule('20 8 * * 1-6', () => { if (process.env.PDF_TRABAJOS !== 'off') require('./planificacionPdf').avisar().then(r => console.log('[PlanificacionPdf]', JSON.stringify(r))).catch(e => console.warn('[PlanificacionPdf]', e.message)); }, { timezone: 'Europe/Madrid' });
   // Incidencias abiertas cada mañana (L-S) a Álex y oficina: presupuestos por hacer y trabajos a los que ir, hasta que se cierran.

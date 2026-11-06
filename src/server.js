@@ -1824,7 +1824,7 @@ app.post('/api/ciclo/factura/:woId/desbloquear', requireAuthOficina, async (req,
   try { res.json(await require('./facturarParte').desbloquear(req.params.woId, req.user?.name || req.user?.username)); } catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.post('/api/ciclo/observacion/:woId', requireAuthOficina, express.json(), async (req, res) => {
-  try { const b = req.body || {}; res.json(await require('./trabajos').observacion(req.params.woId, { on: b.on !== false, motivo: b.motivo }, req.user?.name || req.user?.username || 'Oficina')); }
+  try { const b = req.body || {}; res.json(await require('./trabajos').observacion(req.params.woId, { on: b.on !== false, motivo: b.motivo, contacto: b.contacto, nota: b.nota }, req.user?.name || req.user?.username || 'Oficina')); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.post('/api/ciclo/ignorar', requireAuthOficina, express.json(), async (req, res) => {

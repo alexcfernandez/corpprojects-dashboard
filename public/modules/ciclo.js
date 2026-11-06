@@ -202,7 +202,9 @@
       acc.push(`<button onclick="CP.Ciclo.peticion('${esc(t.peticionId)}','descartado',this,'${esc(t.id)}')">✕ Descartar</button>`);
     }
     if (t.woId && t.conTecnico && (t.col === 'cita' || t.col === 'programado')) acc.push(t.observacion
-      ? `<button onclick="CP.Ciclo.observacion('${esc(t.woId)}',false,this,'${esc(t.id)}')">▶ Quitar de observación (vuelve al técnico)</button>`
+      ? `<div style="width:100%;margin:4px 0 2px"><div style="font-size:12.5px;color:var(--text2);margin-bottom:4px">Qué tiene que hacer ${esc((t.operario || 'el técnico').split(' ')[0])} (sale en su parte y le llega por WhatsApp):</div>
+          <textarea id="cy-obs-nota" rows="4" style="width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px;color:var(--text);font:inherit;font-size:13px" placeholder="Ej.: abrir el falso techo del baño, ver por dónde entra el agua y repararlo. Llevar el metro de Marta.">${esc(t.notaTecnico || '')}</textarea></div>
+        <button onclick="CP.Ciclo.observacion('${esc(t.woId)}',false,this,'${esc(t.id)}')" style="background:var(--blue);border-color:var(--blue);color:#fff;font-weight:700">▶ Devolver a ${esc((t.operario || 'el técnico').split(' ')[0])} con esta nota</button>`
       : `<button onclick="CP.Ciclo.observacion('${esc(t.woId)}',true,this,'${esc(t.id)}')">👁 En observación (que no le llegue al técnico)</button>`);
     if (t.col === 'cobrar') acc.push(`<button onclick="location.href='/cobrar'" style="background:var(--amber);border-color:var(--amber);color:#111;font-weight:700">💬 Recordatorio al cliente</button>`);
     if (t.col === 'facturar' && t.woId) acc.push(`<button onclick="CP.Ciclo.facturar('${esc(t.woId)}')" style="background:var(--blue);border-color:var(--blue);color:#fff;font-weight:700">🧾 Facturar</button>`);
@@ -272,7 +274,7 @@
 
   async function accion(btn, fn, id, ok) {
     if (btn) { btn.disabled = true; btn.textContent = '…'; }
-    try { await fn(); quitar(id); if (window.toast) toast(ok); }
+    try { await fn(); quitar(id); if (window.toast && ok) toast(ok); }
     catch (e) { if (btn) { btn.disabled = false; btn.textContent = 'Error: ' + e.message; } }
   }
 
@@ -388,9 +390,10 @@
     },
     peticion(pid, estado, btn, id) { return accion(btn, () => api('/api/peticiones/' + pid, { method: 'POST', body: JSON.stringify({ estado }) }), id, 'Hecho'); },
     observacion(woId, on, btn, id) {
-      const motivo = on ? prompt('¿Qué se está observando? (por ejemplo: «ver si entra agua cuando llueva»)', '') : '';
+      const motivo = on ? prompt('¿Qué se está observando? (por ejemplo: «ver si entra agua cuando llueva»). Si es por agua, cuando llueva en Girona te aviso para llamar.', '') : '';
       if (on && motivo === null) return;
-      return accion(btn, async () => { await api('/api/ciclo/observacion/' + woId, { method: 'POST', body: JSON.stringify({ on, motivo }) }); document.getElementById('cy-modal')?.remove(); cargar(); }, null, on ? 'En observación: ya no le llega al técnico' : 'Vuelve al técnico');
+      const nota = on ? '' : (document.getElementById('cy-obs-nota')?.value || '').trim();
+      return accion(btn, async () => { const r = await api('/api/ciclo/observacion/' + woId, { method: 'POST', body: JSON.stringify({ on, motivo, nota }) }); document.getElementById('cy-modal')?.remove(); cargar(); if (!on && window.toast) toast(r && r.avisado ? 'Vuelve al técnico: le ha llegado por WhatsApp' : 'Vuelve al técnico (lo tiene en la app; WhatsApp no enviado)'); }, null, on ? 'En observación: ya no le llega al técnico' : '');
     },
     ignorar(id, btn) { return accion(btn, () => api('/api/ciclo/ignorar', { method: 'POST', body: JSON.stringify({ id, motivo: 'facturado aparte o no se factura' }) }), id, 'Quitado del tablero'); },
     tv() {
