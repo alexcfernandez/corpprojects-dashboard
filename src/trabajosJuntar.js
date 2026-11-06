@@ -36,7 +36,8 @@ async function juntar(a, { _db = null, por = 'Corpy', _stel = null } = {}) {
   if (!a || !a.peticionId || a.status === 'done' || a.cerrado || a.observacion) return { extras: [], nuevos: [] };
   // Pedido ya cerrado en StelOrder (se cerró allí sin parte, como PDT00560 el 6/11): no se le cuelga nada, y lo que
   // tuviera vuelve a quedar suelto para que salga en el tablero y se le haga su propio pedido.
-  if (_stel !== false && a.workOrderId && await cerradoEnStel(a.workOrderId, _stel)) return { ...(await soltar(db, a)), cerradoStel: true };
+  // Además el trabajo pasa a hecho aquí: si no, el seguimiento seguía preguntando al operario cuándo iba.
+  if (_stel !== false && a.workOrderId && await cerradoEnStel(a.workOrderId, _stel)) return { ...(await soltar(db, a)), cerradoStel: await hechoPorStel(db, a) };
   const pet = ObjectId.isValid(String(a.peticionId)) ? await db.collection('peticionesGrupo').findOne({ _id: new ObjectId(String(a.peticionId)) }, { projection: { clienteId: 1 } }) : null;
   if (!pet || !pet.clienteId) return { extras: a.extras || [], nuevos: [] };
   // Las que ya van con OTRO trabajo abierto no se repiten.
@@ -59,7 +60,7 @@ async function juntar(a, { _db = null, por = 'Corpy', _stel = null } = {}) {
       stel = await (_stel || require('./stelorder')).lineasMismaComunidad(a.workOrderId, extras, { requestedBy: `${por} (misma comunidad)` });
       await db.collection('workOrderAssignments').updateOne({ _id: a._id }, { $set: { extrasStel: extras.map(e => e.peticionId), extrasStelAt: new Date() } });
     } catch (e) {
-      if (/E000152|cannot be edited/i.test(e.message)) return { ...(await soltar(db, a)), cerradoStel: true };
+      if (/E000152|cannot be edited/i.test(e.message)) return { ...(await soltar(db, a)), cerradoStel: await hechoPorStel(db, a) };
       console.warn('[Juntar] StelOrder:', e.message); stel = { error: e.message };
     }
   }
@@ -74,6 +75,12 @@ async function cerradoEnStel(workOrderId, _stel = null) {
     const w = (lista || []).find(x => String(x.id) === String(workOrderId));
     return !!w && (w.deleted === true || /cerrad|factur|anulad|rechaz/i.test(estados[String(w['document-state-id'])] || ''));
   } catch (e) { return false; }
+}
+
+// Pedido cerrado o facturado en StelOrder sin parte en el panel (Joan Maragall PDT00560, 6/11/2026): el trabajo queda hecho.
+async function hechoPorStel(db, a) {
+  await db.collection('workOrderAssignments').updateOne({ _id: a._id, status: { $nin: ['done', 'invoiced'] } }, { $set: { status: 'done', cerradoEnStelAt: new Date() } });
+  return true;
 }
 
 // Quita los extras de un trabajo y suelta sus peticiones.

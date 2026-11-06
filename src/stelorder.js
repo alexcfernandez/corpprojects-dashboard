@@ -796,6 +796,10 @@ function clearCache() { invalidate(); }
 // leemos la lista completa y filtramos (mismo método probado que la herramienta raw).
 
 async function _findWorkOrderRaw(idOrRef) {
+  // Por id hay GET /workOrders/{ID} (está en su openapi.json, 6/11/2026): 1 llamada en vez de la lista entera.
+  if (/^\d+$/.test(String(idOrRef || '').trim())) {
+    try { const r = await client.get(`/workOrders/${String(idOrRef).trim()}`, { timeout: 20000 }); const w = Array.isArray(r.data) ? r.data[0] : r.data; if (w && w.id) return w; } catch (e) {}
+  }
   const list = await fetchAllPages('/workOrders');
   const s = String(idOrRef || '').trim().toUpperCase();
   if (s.startsWith('PDT')) {
