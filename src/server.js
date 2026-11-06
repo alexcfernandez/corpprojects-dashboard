@@ -1879,6 +1879,10 @@ app.post('/api/avisos-cliente', requireAuthOficina, express.json(), async (req, 
     res.json(b.jid ? await require('./avisosCliente').pausarGrupo(b.jid, !!b.pausa, q.name || '') : await require('./avisosCliente').pausar(!!b.pausa, q.name || req.user?.name || '')); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+app.post('/api/ciclo/mover', requireAuthOficina, express.json(), async (req, res) => {
+  try { const b = req.body || {}; const q = (await _quienPush(req)) || {}; res.json(await require('./ciclo').mover(b.woId, b.destino, { userId: b.userId || null, fecha: b.fecha || null, hora: b.hora || null }, q.name || req.user?.name || 'Oficina')); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 // Limpieza del tablero (cicloLimpieza.js): lo viejo clasificado y aplicar de golpe.
 app.get('/api/ciclo/limpieza', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./cicloLimpieza').lista()); } catch (err) { res.status(500).json({ error: err.message }); }

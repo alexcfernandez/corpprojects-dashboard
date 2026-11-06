@@ -257,4 +257,53 @@ async function ignorar(id, motivo, por) {
   return { ok: true };
 }
 
-module.exports = { datos, pasos, cerrarIncidencia, ignorar, LIMITES, _ymd: ymd, _fechaCorta: fechaCorta };
+// Mover una tarjeta de pedido a otra columna con un clic (6/11/2026, Álex con PDT00550, Sant Narcís 98: «está en Por facturar
+// y debería ir a Sin cita; que lo clicara y lo pasara»).
+//   · cita / programado: si el pedido está Cerrado o Rechazado en StelOrder se reabre (Pendiente), se asigna el técnico
+//     y queda sin día (cita) o con su día (programado, por trabajos.fijarCita: planificación y calendario). Al técnico le
+//     llega un WhatsApp a su grupo.
+//   · facturar: el trabajo queda hecho (pendiente de factura).   · quitar: sale del tablero (cicloIgnorar).
+const ABIERTO_STEL = 1120651;   // «Pendiente» en los estados de pedido de StelOrder
+async function mover(woId, destino, { userId = null, fecha = null, hora = null } = {}, por = '', { _enviar = null } = {}) {
+  const id = String(woId || '');
+  if (!/^\d+$/.test(id)) throw new Error('Pedido no válido');
+  if (destino === 'quitar') return ignorar('wo:' + id, 'movido fuera del tablero', por);
+  const db = await require('./db').getDB();
+  const A = db.collection('workOrderAssignments');
+  let a = await A.findOne({ workOrderId: id });
+  if (destino === 'facturar') {
+    await A.updateOne({ workOrderId: id }, { $set: { workOrderId: id, status: 'done', doneAt: new Date(), doneBy: por || null, hechoDesdeTablero: true } }, { upsert: true });
+    return { ok: true, destino };
+  }
+  if (!['cita', 'programado'].includes(destino)) throw new Error('Destino no válido');
+  if (destino === 'programado' && !/^\d{4}-\d{2}-\d{2}$/.test(String(fecha || ''))) throw new Error('Pon el día');
+  const S = require('./stelorder');
+  const [wos, st] = await Promise.all([S.getAllWorkOrders(), S.getWorkOrderStateMap()]);
+  const w = (wos || []).find(x => String(x.id) === id);
+  if (!w) throw new Error('No encuentro el pedido en StelOrder');
+  await db.collection('cicloIgnorar').deleteOne({ _id: 'wo:' + id }).catch(() => {});   // si se había quitado, vuelve
+  let reabierto = false;
+  if (VIVO_NO.test(String(st[String(w['document-state-id'])] || ''))) { await S.setWorkOrderState(id, ABIERTO_STEL, `${por || 'Oficina'} (tablero: mover)`); reabierto = true; }
+  const uid = userId || (a && a.userId);
+  if (!uid) throw new Error('Elige el técnico');
+  if (!a || String(a.userId) !== String(uid)) await require('./asignaciones').setAssignment(id, String(uid), por || null, (a && a.priority) || 'normal');
+  const { clientMap } = await S.getClients().catch(() => ({ clientMap: {} }));
+  const cliente = (clientMap[String(w['account-id'])] || {}).name || (a && a.cliente) || '';
+  await A.updateOne({ workOrderId: id }, { $set: { pedidoRef: w['full-reference'], cliente, fecha: null, hora: null, citaPendiente: true, reabiertoAt: new Date(), reabiertoPor: por || null }, $unset: { status: '', doneAt: '', cerradoEnStelAt: '' } });
+  let cita = null;
+  if (destino === 'programado') cita = await require('./trabajos').fijarCita(id, { fecha, hora: hora || null }, por);
+  a = await A.findOne({ workOrderId: id });
+  // Al técnico, a su grupo de trabajos (o por privado).
+  let avisado = false;
+  try {
+    const que = corto(((w.lines || [])[0] || {})['item-description'] || w.title || '', 200);
+    const txt = `🔧 *${destino === 'programado' ? 'Trabajo para el ' + cita.fechaTxt + (hora ? ' a las ' + hora : '') : 'Trabajo pendiente: queda tú con el cliente'}*\n*${cliente}* · ${w['full-reference']}\n${que}\nLo tienes en tu app, en «Mis trabajos».`;
+    const g = await db.collection('bridgeGrupos').findOne({ trabajosDe: String(uid), activo: true });
+    const u = g ? null : await db.collection('users').findOne({ _id: new (require('mongodb').ObjectId)(String(uid)) }, { projection: { whatsapp: 1, telefono: 1 } });
+    const to = g ? g._id : (u && (u.whatsapp || u.telefono));
+    if (to) avisado = (await (_enviar || require('./notifications').sendWhatsAppTo)(to, txt, { importante: true, sinTraducir: true })) !== false;
+  } catch (e) { console.warn('[Ciclo] mover aviso:', e.message); }
+  return { ok: true, destino, reabierto, operario: a && a.userName, fechaTxt: cita && cita.fechaTxt, avisado };
+}
+
+module.exports = { mover, datos, pasos, cerrarIncidencia, ignorar, LIMITES, _ymd: ymd, _fechaCorta: fechaCorta };

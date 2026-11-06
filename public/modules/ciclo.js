@@ -229,6 +229,19 @@
         <div style="font-size:11.5px;color:var(--text3);margin:6px 0">Sin día: queda él con el cliente. Le llega a su grupo con el PDF del pedido${t.contacto ? ' y el contacto (' + esc(t.contacto) + ')' : ''}. Si el aviso vino de un grupo de cliente, allí se dice qué día pasa.</div>
         <button onclick="CP.Ciclo.asignar('${esc(t.peticionId || '')}','${esc(t.incRef || '')}',this,'${esc(t.id)}')" style="background:var(--blue);border-color:var(--blue);color:#fff;font-weight:700;width:100%">Mandar</button></div>`;
     }
+    // Mover el pedido a otra columna con un clic (6/11/2026).
+    let formMover = '';
+    if (t.woId && ['asignar', 'cita', 'programado', 'facturar'].includes(t.col)) {
+      const b = (d, txt) => t.col === d ? '' : `<button onclick="CP.Ciclo.mover('${esc(t.woId)}','${d}',this)">${txt}</button>`;
+      formMover = `<div style="margin-top:12px;padding:10px;border:1px solid var(--border2);border-radius:10px">
+        <div style="font-weight:700;font-size:13.5px;margin-bottom:6px">↔️ Mover a…</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+          <select id="cy-mv-op" style="flex:1;min-width:130px"><option value="">Cargando técnicos…</option></select>
+          <input id="cy-mv-dia" type="date" style="min-width:130px"><input id="cy-mv-hora" type="time" style="width:96px">
+        </div>
+        <div class="cy-acc" style="margin-top:0">${b('cita', '📞 Sin cita')}${b('programado', '📅 Programado (con el día)')}${b('facturar', '🧾 Hecho: por facturar')}<button onclick="CP.Ciclo.mover('${esc(t.woId)}','quitar',this)">✕ Quitar del tablero</button></div>
+        <div style="font-size:11.5px;color:var(--text3);margin-top:4px">Si el pedido está cerrado en StelOrder, al pasarlo a «Sin cita» o «Programado» se vuelve a abrir. Al técnico le llega a su grupo.</div></div>`;
+    }
     const ayuda = t.col === 'asignar' ? (formAsignar ? '' : 'Para mandarlo a un técnico: contesta a Corpy «David» cuando te pregunte «¿Quién va?», o desde Inicio → Peticiones.')
       : t.col === 'facturar' ? '«Facturar» monta la factura con el parte (horas, material y desplazamiento); la revisas, se pasa al pedido y se crea en StelOrder enlazada a él. La tarjeta pasa sola a «Por cobrar».'
       : t.col === 'cobrar' ? 'Al pasar a ámbar (30 días) y a rojo (60) te llega un WhatsApp. El recordatorio para el cliente está preparado en /cobrar.'
@@ -248,10 +261,14 @@
       ${(t.facturas || []).length ? `<div style="font-size:12.5px;color:var(--text2);margin-top:8px">${t.facturas.map(f => `${esc(f.ref)} · ${eur(f.total)}${f.pendiente ? ` · faltan ${eur(f.pendiente)}` : ' · cobrada'}`).join('<br>')}</div>` : ''}
       ${ayuda ? `<div style="font-size:12px;color:var(--text3);margin-top:10px">${esc(ayuda)}</div>` : ''}
       ${formAsignar}
+      ${formMover}
       ${acc.length ? `<div class="cy-acc">${acc.join('')}</div>` : ''}
     </div>`;
     document.body.appendChild(m);
-    if (formAsignar) api('/api/ciclo/operarios').then(ops => { const s = document.getElementById('cy-as-op'); if (s) s.innerHTML = '<option value="">¿Quién va?</option>' + ops.map(o => `<option value="${esc(o.id)}">${esc(o.name)}</option>`).join(''); }).catch(() => {});
+    if (formAsignar || formMover) api('/api/ciclo/operarios').then(ops => {
+      const s = document.getElementById('cy-as-op'); if (s) s.innerHTML = '<option value="">¿Quién va?</option>' + ops.map(o => `<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('');
+      const m = document.getElementById('cy-mv-op'); if (m) m.innerHTML = '<option value="">¿Quién va?</option>' + ops.map(o => `<option value="${esc(o.id)}"${t.operario && o.name === t.operario ? ' selected' : ''}>${esc(o.name)}</option>`).join('');
+    }).catch(() => {});
   }
 
   // Trabajo aceptado de la cola: día previsto, medio (grúa/plataforma se reservan) y hecho.
@@ -425,6 +442,18 @@
         const r = await api('/api/ciclo/asignar', { method: 'POST', body: JSON.stringify({ peticionId: peticionId || null, incRef: incRef || null, userId, fecha, hora, nota }) });
         document.getElementById('cy-modal')?.remove(); cargar();
         if (window.toast) toast(`${r.pedido} para ${r.operario}${r.fechaTxt ? ' · ' + r.fechaTxt : ''}${r.avisado ? (r.enGrupo ? ' · mandado a «' + r.enGrupo + '»' : ' · mandado por WhatsApp') : ' · sin WhatsApp (lo tiene en la app)'}`);
+      }, null, '');
+    },
+    mover(woId, destino, btn) {
+      const userId = document.getElementById('cy-mv-op')?.value || null;
+      const fecha = document.getElementById('cy-mv-dia')?.value || null, hora = document.getElementById('cy-mv-hora')?.value || null;
+      if ((destino === 'cita' || destino === 'programado') && !userId) { alert('Elige quién va'); return; }
+      if (destino === 'programado' && !fecha) { alert('Pon el día'); return; }
+      return accion(btn, async () => {
+        const r = await api('/api/ciclo/mover', { method: 'POST', body: JSON.stringify({ woId, destino, userId, fecha, hora }) });
+        document.getElementById('cy-modal')?.remove(); cargar();
+        const txt = { cita: 'Pasado a «Sin cita»', programado: `Programado${r.fechaTxt ? ' para el ' + r.fechaTxt : ''}`, facturar: 'Pasado a «Por facturar»', quitar: 'Quitado del tablero' }[destino];
+        if (window.toast) toast(`${txt}${r.reabierto ? ' · reabierto en StelOrder' : ''}${r.avisado ? ' · avisado ' + (r.operario || 'el técnico') : ''}`);
       }, null, '');
     },
     pausaAvisos() {
