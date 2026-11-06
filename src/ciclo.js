@@ -122,6 +122,7 @@ async function datos({ _S = null, _db = null } = {}) {
     } else if (vivo) {
       if (esPres && (!a || !a.userId)) { col = 'porHacer'; desde = (inc && inc.fecha) || ymd(w.date); lim = LIMITES.presupuesto; etiqueta = 'presupuesto por hacer'; }
       else if (!a || !a.userId) { col = 'asignar'; desde = ymd(w.date) || (inc && inc.fecha); lim = (a && a.priority === 'urgent') ? LIMITES.asignarUrgente : LIMITES.asignar; etiqueta = 'pedido sin técnico'; }
+      else if (a.observacion) { col = 'cita'; desde = ymd(a.observacion.desde); lim = [9999, 9999]; etiqueta = `👁 en observación${a.observacion.motivo ? ': ' + corto(a.observacion.motivo, 50) : ''} (no le llega a ${String(a.userName || 'el técnico').split(' ')[0]})`; }
       else if (!a.fecha) { col = 'cita'; desde = ymd(a.reabiertoAt || a.assignedAt || w.date); lim = LIMITES.cita; etiqueta = a.motivoPendiente ? `hay que volver: ${corto(a.motivoPendiente, 40)}` : 'queda con el cliente'; }
       else {
         col = 'programado';
@@ -147,6 +148,7 @@ async function datos({ _S = null, _db = null } = {}) {
       operario, equipo: (a && a.equipo) || [], urgente: !!(a && a.priority === 'urgent') || !!(pet && pet.urgente),
       tipo: (inc && inc.tipo) || estadoPed, estadoPedido: estadoPed,
       trabajandoAhora: t ? { quien: t.workerName, desde: t.startedAt } : null,
+      observacion: !!(a && a.observacion), conTecnico: !!(a && a.userId),
       importe: col === 'cobrar' ? pendFac : (facs.length ? totalFac : null),
       pasos: pasos({ inc, pet, w, a, ps, facs, hoy }),
     });

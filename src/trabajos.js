@@ -260,6 +260,18 @@ async function fijarCita(workOrderId, { fecha, hora = null, nota = null } = {}, 
   return { ok: true, cliente: a.cliente, pedido: a.pedidoRef, fecha, hora: hora || null, fechaTxt: fechaTxt(fecha), cambiada: !!antes };
 }
 
+// En observación (6/11/2026, Álex con Illa Verda: «a David no le tiene que llegar; lo seguimos yo o la oficina, a ver
+// cuando llueva»): el trabajo sigue abierto y asignado, pero el operario no lo ve en su app ni le llegan recordatorios;
+// sale en el tablero (columna «cita») como «en observación». on=false lo devuelve a su sitio.
+async function observacion(workOrderId, { on = true, motivo = '' } = {}, por = '') {
+  const db = await getDB();
+  const a = await db.collection('workOrderAssignments').findOne({ workOrderId: String(workOrderId) });
+  if (!a) throw new Error('No encuentro ese trabajo');
+  if (on) await db.collection('workOrderAssignments').updateOne({ _id: a._id }, { $set: { observacion: { motivo: String(motivo || '').slice(0, 200), por, desde: new Date() } } });
+  else await db.collection('workOrderAssignments').updateOne({ _id: a._id }, { $unset: { observacion: '' }, $push: { observacionesAnteriores: { ...(a.observacion || {}), hasta: new Date(), por } } });
+  return { ok: true, cliente: a.cliente, pedido: a.pedidoRef, observacion: !!on };
+}
+
 // Foto de la petición para el operario que tiene ese trabajo.
 async function fotoParaOperario(fotoId, workerId) {
   const db = await getDB();
@@ -268,4 +280,4 @@ async function fotoParaOperario(fotoId, workerId) {
   return require('./grupoWhatsapp').foto(fotoId);
 }
 
-module.exports = { propuesta, crear, fijarCita, operarios, diaPropuesto, fotoParaOperario, pdfPedido, _palabras: palabras, _fechaTxt: fechaTxt, _ocupadoEn: ocupadoEn };
+module.exports = { propuesta, crear, fijarCita, observacion, operarios, diaPropuesto, fotoParaOperario, pdfPedido, _palabras: palabras, _fechaTxt: fechaTxt, _ocupadoEn: ocupadoEn };

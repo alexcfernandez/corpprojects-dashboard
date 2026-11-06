@@ -1696,7 +1696,7 @@ app.get('/api/workorders/mine', async (req, res) => {
     const nrm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
     const yo = nrm(workerDoc.workerName), yo1 = yo.split(/\s+/)[0];
     const vaDeEquipo = p => !!yo1 && ((p.cita && p.cita.equipo) || []).some(e => { const x = nrm(e); return x === yo || x === yo1 || x.split(/\s+/)[0] === yo1; });
-    const mine = list.filter(p => (String(p.assignedUserId || '') === String(workerDoc.workerId) || vaDeEquipo(p)) && p.workStatus !== 'done' && p.workStatus !== 'invoiced');
+    const mine = list.filter(p => (String(p.assignedUserId || '') === String(workerDoc.workerId) || vaDeEquipo(p)) && p.workStatus !== 'done' && p.workStatus !== 'invoiced' && !p.observacion);
     mine.forEach(p => { p.deEquipo = String(p.assignedUserId || '') !== String(workerDoc.workerId); });
     // Adjuntar la sesión abierta (cronómetro) de cada pedido, si la hay
     const open = await asig.getOpenTimers(workerDoc.workerId);
@@ -1822,6 +1822,10 @@ app.post('/api/ciclo/factura/:woId', requireAuthOficina, express.json({ limit: '
 });
 app.post('/api/ciclo/factura/:woId/desbloquear', requireAuthOficina, async (req, res) => {
   try { res.json(await require('./facturarParte').desbloquear(req.params.woId, req.user?.name || req.user?.username)); } catch (err) { res.status(400).json({ error: err.message }); }
+});
+app.post('/api/ciclo/observacion/:woId', requireAuthOficina, express.json(), async (req, res) => {
+  try { const b = req.body || {}; res.json(await require('./trabajos').observacion(req.params.woId, { on: b.on !== false, motivo: b.motivo }, req.user?.name || req.user?.username || 'Oficina')); }
+  catch (err) { res.status(400).json({ error: err.message }); }
 });
 app.post('/api/ciclo/ignorar', requireAuthOficina, express.json(), async (req, res) => {
   try { const b = req.body || {}; res.json(await require('./ciclo').ignorar(b.id, b.motivo, req.user?.name || req.user?.username)); }
@@ -1979,7 +1983,7 @@ app.get('/api/campo/menu', async (req, res) => {
       try { const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' }); tieneParte = ((await require('./expedientes').getAsignacionesWorker(w.workerId, hoy)) || []).length > 0; } catch (e) {}
     }
     if (!tieneParte) {
-      try { const list = await getWorkOrdersLive(); await require('./asignaciones').attachAssignments(list); tieneParte = list.some(p => String(p.assignedUserId || '') === String(w.workerId) && p.workStatus !== 'done' && p.workStatus !== 'invoiced'); } catch (e) {}
+      try { const list = await getWorkOrdersLive(); await require('./asignaciones').attachAssignments(list); tieneParte = list.some(p => String(p.assignedUserId || '') === String(w.workerId) && p.workStatus !== 'done' && p.workStatus !== 'invoiced' && !p.observacion); } catch (e) {}
     }
     let misDocs = false; try { misDocs = !!(await require('./personalDocs').getConfig()).visibleTrabajadores; } catch (e) {}
     res.json({ workerId: w.workerId, name: w.workerName, rol, tieneParte, misDocs, puedeCrearObra: ['owner', 'oficina'].includes(rol) });

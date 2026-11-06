@@ -201,6 +201,9 @@
       acc.push(`<button onclick="CP.Ciclo.peticion('${esc(t.peticionId)}','hecho',this,'${esc(t.id)}')">✓ Ya está hecho</button>`);
       acc.push(`<button onclick="CP.Ciclo.peticion('${esc(t.peticionId)}','descartado',this,'${esc(t.id)}')">✕ Descartar</button>`);
     }
+    if (t.woId && t.conTecnico && (t.col === 'cita' || t.col === 'programado')) acc.push(t.observacion
+      ? `<button onclick="CP.Ciclo.observacion('${esc(t.woId)}',false,this,'${esc(t.id)}')">▶ Quitar de observación (vuelve al técnico)</button>`
+      : `<button onclick="CP.Ciclo.observacion('${esc(t.woId)}',true,this,'${esc(t.id)}')">👁 En observación (que no le llegue al técnico)</button>`);
     if (t.col === 'cobrar') acc.push(`<button onclick="location.href='/cobrar'" style="background:var(--amber);border-color:var(--amber);color:#111;font-weight:700">💬 Recordatorio al cliente</button>`);
     if (t.col === 'facturar' && t.woId) acc.push(`<button onclick="CP.Ciclo.facturar('${esc(t.woId)}')" style="background:var(--blue);border-color:var(--blue);color:#fff;font-weight:700">🧾 Facturar</button>`);
     if (t.col === 'facturar') acc.push(`<button onclick="CP.Ciclo.ignorar('${esc(t.id)}',this)">Ya está facturado / no se factura</button>`);
@@ -384,6 +387,11 @@
       }, id, `${ref} actualizada en StelOrder`);
     },
     peticion(pid, estado, btn, id) { return accion(btn, () => api('/api/peticiones/' + pid, { method: 'POST', body: JSON.stringify({ estado }) }), id, 'Hecho'); },
+    observacion(woId, on, btn, id) {
+      const motivo = on ? prompt('¿Qué se está observando? (por ejemplo: «ver si entra agua cuando llueva»)', '') : '';
+      if (on && motivo === null) return;
+      return accion(btn, async () => { await api('/api/ciclo/observacion/' + woId, { method: 'POST', body: JSON.stringify({ on, motivo }) }); document.getElementById('cy-modal')?.remove(); cargar(); }, null, on ? 'En observación: ya no le llega al técnico' : 'Vuelve al técnico');
+    },
     ignorar(id, btn) { return accion(btn, () => api('/api/ciclo/ignorar', { method: 'POST', body: JSON.stringify({ id, motivo: 'facturado aparte o no se factura' }) }), id, 'Quitado del tablero'); },
     tv() {
       const el = st.cont; if (!el) return;

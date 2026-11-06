@@ -133,10 +133,11 @@ async function asignar(p, { userId, fecha = null, hora = null, acompanan = [], n
 
 // ── 2. Trabajos abiertos de un operario ──
 // Abierto = asignado desde una petición y sin parte de «completado» (recordParteResult lo pasa a done). Un parte de
-// «queda pendiente» deja el trabajo abierto y sin día (alParte) hasta que diga la próxima visita.
+// «queda pendiente» deja el trabajo abierto y sin día (alParte) hasta que diga la próxima visita. Los que están «en
+// observación» (trabajos.observacion) no cuentan: no se le recuerdan al operario ni se escalan.
 async function abiertos({ userId = null, _db = null } = {}) {
   const db = _db || await getDB();
-  const q = { peticionId: { $exists: true }, status: { $ne: 'done' }, cerrado: { $ne: true } };
+  const q = { peticionId: { $exists: true }, status: { $ne: 'done' }, cerrado: { $ne: true }, observacion: { $exists: false } };
   if (userId) q.userId = String(userId);
   return db.collection('workOrderAssignments').find(q).toArray();
 }
