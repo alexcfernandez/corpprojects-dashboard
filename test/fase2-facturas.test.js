@@ -8,7 +8,7 @@ const root = path.join(__dirname, '..');
 let logRows = [];
 const dbPath = require.resolve(path.join(root, 'src/db.js'));
 require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: {
-  getDB: async () => ({ collection: () => ({ async insertOne(d) { logRows.push(d); return { insertedId: 'x' }; } }) }),
+  getDB: async () => ({ collection: (name) => ({ async insertOne(d) { logRows.push({ ...d, _col: name }); return { insertedId: 'x' }; } }) }),
 } };
 
 const facturaWA = require(path.join(root, 'src/facturaWhatsApp.js'));
@@ -43,8 +43,10 @@ test('reenviarFactura con PDF → sendEmail al buzón con 1 adjunto', async () =
   assert.equal(enviados[0].subject, 'Factura (WhatsApp)');
   assert.equal(enviados[0].attachments.length, 1);
   assert.equal(enviados[0].attachments[0].contentType, 'application/pdf');
-  assert.equal(logRows.length, 1);
-  assert.equal(logRows[0].nAdjuntos, 1);
+  // El registro es facturasObra (antes facturasWhatsApp con nAdjuntos); además entra en la cola de compras.
+  const reg = logRows.filter(x => x._col === 'facturasObra');
+  assert.equal(reg.length, 1);
+  assert.equal(reg[0].nFiles, 1);
 });
 
 test('reenviarFactura con varias fotos → UN solo factura.pdf (multipágina) que empieza por %PDF-', async () => {

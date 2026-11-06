@@ -29,9 +29,11 @@ const aviso = require(path.join(root, 'src/avisoPresencia.js'));
 
 const HOY = new Date().toISOString().slice(0, 10);
 
-test('identidad: los 5 números son rol trabajador', async () => {
+// Javi el largo salió de la lista el 31/8/2026 (dado de baja): ahora son 4.
+test('identidad: los números de la lista son rol trabajador', async () => {
   assert.equal(acceso.esTrabajador('whatsapp:+34672876051'), true);            // Jose
-  assert.equal(acceso.matchTrabajador('+34 689 936 384'), 'javi el largo');    // formato con espacios
+  assert.equal(acceso.matchTrabajador('+34 637 060 118'), 'david taladros');   // formato con espacios
+  assert.equal(acceso.matchTrabajador('+34 689 936 384'), null);               // Javi, de baja
   const id = await acceso.resolverIdentidad('whatsapp:+34642548108');          // Abdellah
   assert.equal(id.rol, 'trabajador');
 });
