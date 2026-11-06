@@ -258,7 +258,8 @@ async function pdfDeTrabajo(workOrderId, { _db = null } = {}) {
   const S = require('./stelorder');
   const clientMap = ((await S.getClients().catch(() => null)) || {}).clientMap || {};
   const det = p ? require('./peticionesGrupo').detalle(p, { clientMap, incidencia: a.incidenciaRef }) : [];
-  const data = await pdfPedido({ ref: a.pedidoRef, incidencia: a.incidenciaRef, cliente: a.cliente || (p && (p.clienteStel || p.cliente)) || '', p: p || { resumen: a.resumen }, fecha: a.fecha || null, hora: a.hora || null, urgente: a.priority === 'urgent', operario: a.userName || '', equipo: a.equipo || [], nota: a.nota || '', detalle: det, extras: a.extras || [] });
+  const data = await pdfPedido({ ref: a.pedidoRef, incidencia: a.incidenciaRef, cliente: a.cliente || (p && (p.clienteStel || p.cliente)) || '', p: { ...(p || {}), resumen: a.resumen || (p && p.resumen) || '' },   // el resumen de cuando se mandó: el de la petición cambia con lo que se dice después
+    fecha: a.fecha || null, hora: a.hora || null, urgente: a.priority === 'urgent', operario: a.userName || '', equipo: a.equipo || [], nota: a.nota || '', detalle: det, extras: a.extras || [] });
   return { data, nombre: `Pedido ${a.pedidoRef}.pdf` };
 }
 
