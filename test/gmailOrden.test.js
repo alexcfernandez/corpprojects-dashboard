@@ -22,24 +22,23 @@ function fakeGmail(msgs) {
   return { gmail, llamadas };
 }
 
-test('mueve las facturas reenviadas y los resúmenes, deja lo demás y no toca UNREAD', async () => {
+test('mueve las facturas reenviadas (a las 2 h) y los resúmenes, los marca leídos y deja lo demás', async () => {
   const { gmail, llamadas } = fakeGmail([
-    { id: 'a', asunto: 'Factura — obra: Bar Claudia', fecha: hace(60), labels: ['INBOX'] },
-    { id: 'b', asunto: 'Factura — gasto: gestoria', fecha: hace(60), labels: ['INBOX'] },
+    { id: 'a', asunto: 'Factura — obra: Bar Claudia', fecha: hace(150), labels: ['INBOX', 'UNREAD'] }, // n8n ya no marca leído
+    { id: 'b', asunto: 'Factura — gasto: gestoria', fecha: hace(150), labels: ['INBOX'] },
     { id: 'c', asunto: 'Grupos de clientes · 2 nuevas, 5 abiertas', fecha: hace(30), labels: ['INBOX', 'UNREAD'] },
     { id: 'd', asunto: 'Fwd: presupuesto Joan', fecha: hace(600), labels: ['INBOX'] },             // manual: se queda
-    { id: 'e', asunto: 'Factura — obra: Cartagena', fecha: hace(5), labels: ['INBOX'] },           // recién llegada: n8n
+    { id: 'e', asunto: 'Factura — obra: Cartagena', fecha: hace(60), labels: ['INBOX'] },          // menos de 2 h: n8n
   ]);
   const r = await G.ordenar({ _gmail: gmail, _ahora: AHORA });
   assert.strictEqual(r.movidos, 3);
   assert.deepStrictEqual(llamadas.creadas, ['Corp/Automáticos']);
   assert.deepStrictEqual(llamadas.modify[0].ids.sort(), ['a', 'b', 'c']);
-  assert.deepStrictEqual(llamadas.modify[0].removeLabelIds, ['INBOX']);
-  assert.ok(!JSON.stringify(llamadas.modify).includes('UNREAD'));
+  assert.deepStrictEqual(llamadas.modify[0].removeLabelIds, ['INBOX', 'UNREAD']);
 });
 
 test('en seco no mueve nada y el interruptor lo apaga', async () => {
-  const { gmail, llamadas } = fakeGmail([{ id: 'a', asunto: 'Factura (WhatsApp)', fecha: hace(90), labels: ['INBOX'] }]);
+  const { gmail, llamadas } = fakeGmail([{ id: 'a', asunto: 'Factura (WhatsApp)', fecha: hace(150), labels: ['INBOX'] }]);
   const r = await G.ordenar({ seco: true, _gmail: gmail, _ahora: AHORA });
   assert.strictEqual(r.movidos, 1);
   assert.strictEqual(llamadas.modify.length, 0);
