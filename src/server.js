@@ -1879,6 +1879,14 @@ app.post('/api/avisos-cliente', requireAuthOficina, express.json(), async (req, 
     res.json(b.jid ? await require('./avisosCliente').pausarGrupo(b.jid, !!b.pausa, q.name || '') : await require('./avisosCliente').pausar(!!b.pausa, q.name || req.user?.name || '')); }
   catch (err) { res.status(400).json({ error: err.message }); }
 });
+// Limpieza del tablero (cicloLimpieza.js): lo viejo clasificado y aplicar de golpe.
+app.get('/api/ciclo/limpieza', requireAuthOficina, async (req, res) => {
+  try { res.json(await require('./cicloLimpieza').lista()); } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.post('/api/ciclo/limpieza', requireAuthOficina, express.json({ limit: '256kb' }), async (req, res) => {
+  try { const q = (await _quienPush(req)) || {}; res.json(await require('./cicloLimpieza').aplicar((req.body || {}).acciones, q.name || req.user?.name || 'Oficina')); }
+  catch (err) { res.status(400).json({ error: err.message }); }
+});
 app.post('/api/ciclo/ignorar', requireAuthOficina, express.json(), async (req, res) => {
   try { const b = req.body || {}; res.json(await require('./ciclo').ignorar(b.id, b.motivo, req.user?.name || req.user?.username)); }
   catch (err) { res.status(400).json({ error: err.message }); }
@@ -5316,6 +5324,7 @@ app.get('/documentos', (req, res) => res.sendFile(path.join(__dirname, '../publi
 app.get('/copias', (req, res) => res.sendFile(path.join(__dirname, '../public/copias.html')));
 app.get('/cobrar', (req, res) => res.sendFile(path.join(__dirname, '../public/cobrar.html')));
 app.get('/pendientes', (req, res) => res.sendFile(path.join(__dirname, '../public/pendientes.html')));
+app.get('/limpieza', (req, res) => res.sendFile(path.join(__dirname, '../public/limpieza.html')));
 app.get('/movimientos', (req, res) => res.sendFile(path.join(__dirname, '../public/movimientos.html')));
 app.get('/rrhh', (req, res) => res.sendFile(path.join(__dirname, '../public/rrhh.html')));
 app.get('/parte', (req, res) => res.sendFile(path.join(__dirname, '../public/parte.html')));

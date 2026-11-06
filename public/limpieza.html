@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Limpieza del tablero — Corp Projects</title><link rel="stylesheet" href="/tool-theme.css">
+<meta name="theme-color" content="#4d9cf8">
+<style>*{box-sizing:border-box;margin:0;padding:0}:root{--bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e27;--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.15);--text:#f0f2f7;--text2:#8b92a8;--text3:#5a6278;--green:#22c487;--red:#f05252;--blue:#4d9cf8;--amber:#f59e0b}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:15px;min-height:100vh}
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 18px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:10}
+.logo{width:32px;height:32px;background:linear-gradient(135deg,#4d9cf8,#22c487);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;flex-shrink:0}
+.hbtn{margin-left:auto;background:none;border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:6px 12px;font-size:13px;text-decoration:none;white-space:nowrap}
+.wrap{max-width:900px;margin:0 auto;padding:16px}
+select,input,textarea,.btn{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;color:var(--text);padding:9px 12px;font:inherit;font-size:14px;max-width:100%}
+textarea{width:100%;min-height:70px;resize:vertical}
+.btn{cursor:pointer;display:inline-block;text-decoration:none}.btn.pri{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}.btn.peq{padding:5px 10px;font-size:12.5px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:12px}
+h3{font-size:12.5px;margin:0 0 10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;gap:8px}
+.alta{display:flex;gap:8px;flex-wrap:wrap}.alta #nTexto{flex:1;min-width:220px}
+.mas{display:none;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center}.mas.on{display:flex}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.chip{background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:20px;padding:5px 11px;font-size:12.5px;cursor:pointer}.chip.on{border-color:var(--blue);color:var(--text);background:rgba(77,156,248,.14)}
+.it{display:flex;gap:10px;align-items:flex-start;padding:10px 2px;border-bottom:1px solid var(--border)}
+.it:last-child{border-bottom:none}
+.ck{width:22px;height:22px;border:2px solid var(--border2);border-radius:6px;flex-shrink:0;margin-top:1px;cursor:pointer;background:none;color:#fff;font-size:14px;line-height:18px;text-align:center}
+.ck:hover{border-color:var(--green)}.it.hecho .ck{background:var(--green);border-color:var(--green)}
+.it .c{flex:1;min-width:0}.it .t{font-size:14.5px;line-height:1.4;cursor:pointer;word-wrap:break-word}
+.it.hecho .t{text-decoration:line-through;color:var(--text3)}
+.it.tachando{opacity:.45;transition:opacity .4s}
+.meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.b{font-size:11.5px;border-radius:20px;padding:1px 8px;border:1px solid var(--border2);color:var(--text2)}
+.b.rojo{color:var(--red);border-color:rgba(240,82,82,.5)}.b.ambar{color:var(--amber);border-color:rgba(245,158,11,.5)}.b.azul{color:var(--blue);border-color:rgba(77,156,248,.45)}
+.det{display:none;margin-top:8px}.det.on{display:block}
+.det .txt{font-size:13px;color:var(--text2);white-space:pre-wrap;line-height:1.5;margin-bottom:8px}
+.det .ed{display:grid;grid-template-columns:1fr 1fr;gap:8px}.det .ed .full{grid-column:1/-1}.det .ed input,.det .ed select{width:100%}
+@media(max-width:600px){.det .ed{grid-template-columns:1fr}}
+.otro{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--border);font-size:13.5px}.otro:last-child{border-bottom:none}
+.otro a{margin-left:auto;color:var(--blue);text-decoration:none;font-size:12.5px;white-space:nowrap}
+.vacio{color:var(--text3);font-size:13.5px;padding:6px 0}
+.sum{cursor:pointer;user-select:none}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--border2);padding:10px 16px;border-radius:10px;display:none;z-index:50;font-size:14px}
+#toast button{margin-left:10px;background:none;border:none;color:var(--blue);font:inherit;cursor:pointer;font-weight:600}
+</style><link rel="stylesheet" href="/cp-ui.css">
+<script src="/nav.js" defer></script>
+<style>
+.fila{display:flex;gap:10px;align-items:flex-start;padding:10px 2px;border-bottom:1px solid var(--border)}.fila:last-child{border-bottom:none}
+.fila .c{flex:1;min-width:0}.fila .t{font-size:14px;font-weight:600}.fila .q{font-size:12.5px;color:var(--text2);margin-top:2px;line-height:1.4}
+.fila select{min-width:170px;font-size:13px;padding:6px 8px}
+.res{position:sticky;bottom:0;background:var(--bg2);border-top:1px solid var(--border);padding:12px 16px;display:flex;gap:10px;align-items:center;justify-content:space-between}
+.intro{font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:8px}
+@media(max-width:600px){.fila{flex-wrap:wrap}.fila select{width:100%}}
+</style>
+</head><body><script>try{if(localStorage.getItem("cp_theme")==="light")document.body.classList.add("light");}catch(e){}</script>
+<div class="header"><div class="logo">CP</div><div><div style="font-weight:600">🧹 Limpieza del tablero</div><div style="font-size:12px;color:var(--text3)">Lo viejo del ciclo de trabajos: decide qué sale y aplícalo de golpe</div></div><a class="hbtn" href="/?tab=ciclo">← Tablero</a></div>
+<div id="toast"></div>
+<div class="wrap">
+  <div class="card"><h3>✅ Ya facturado aparte (probablemente) <span id="n-facturado" style="font-weight:400"></span></h3>
+    <div class="intro">El cliente tiene una factura de después (hasta 4 meses). Viene marcado «quitar»: mira que la factura cuadre con el trabajo.</div><div id="g-facturado" class="vacio">Cargando…</div></div>
+  <div class="card"><h3>⚠️ Cerrado en StelOrder y sin ninguna factura <span id="n-sinFactura" style="font-weight:400"></span></h3>
+    <div class="intro">El cliente no tiene ninguna factura de después. O no se cobra (garantía, visita, presupuesto) o <b>se nos pasó facturarlo</b>. «Hay que facturarlo» lo apunta en Pendientes para la oficina.</div><div id="g-sinFactura" class="vacio">Cargando…</div></div>
+  <div class="card"><h3>🕸 Por asignar desde hace más de 30 días <span id="n-viejo" style="font-weight:400"></span></h3>
+    <div class="intro">Avisos que nadie cerró. Si ya se hizo o ya no va, ciérralo.</div><div id="g-viejo" class="vacio">Cargando…</div></div>
+</div>
+<div class="res"><span id="cuenta" style="font-size:13.5px;color:var(--text2)"></span><button class="btn pri" id="aplicar" onclick="aplicar()">Aplicar</button></div>
+<script>
+const tok=localStorage.getItem('cp_token');const H={'Authorization':'Bearer '+tok,'Content-Type':'application/json'};
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const TXT={ignorar:'Quitar del tablero',cerrar:'Cerrar la incidencia en StelOrder',hecho:'Marcar como hecho',facturar:'Hay que facturarlo (a Pendientes)'};
+const eur=n=>(Number(n)||0).toLocaleString('es-ES',{maximumFractionDigits:2})+' €';
+let D=null;const elegido={};
+function toast(t){const e=document.getElementById('toast');e.textContent=t;e.style.display='block';clearTimeout(window._tt);window._tt=setTimeout(()=>e.style.display='none',4000);}
+async function api(url,opt={}){const r=await fetch(url,{...opt,headers:H});if(r.status===401){document.querySelector('.wrap').innerHTML='<div class="card">Tu sesión del panel ha caducado. <a href="/">Vuelve a entrar en el dashboard</a>.</div>';throw new Error('sesión');}const d=await r.json();if(!r.ok)throw new Error(d.error||'Error');return d;}
+function fila(x){
+  const ops=['<option value="">Dejarlo como está</option>',...x.acciones.map(a=>`<option value="${a}"${elegido[x.id]===a?' selected':''}>${TXT[a]}</option>`)].join('');
+  const fac=x.facturas.length?`<div class="q">🧾 ${x.facturas.map(f=>`${esc(f.ref)} · ${esc(f.fecha)} · ${eur(f.total)}`).join(' &nbsp;·&nbsp; ')}</div>`:'';
+  return `<div class="fila"><div class="c"><div class="t">${esc(x.ref)} · ${esc(x.cliente||'¿cliente?')} <span class="b ${x.dias>90?'rojo':'ambar'}">${x.dias} d</span></div><div class="q">${esc(x.que||'')}</div>${fac}</div>
+    <select onchange="elegir('${esc(x.id)}',this.value)">${ops}</select></div>`;
+}
+function pintar(){
+  for(const k of ['facturado','sinFactura','viejo']){const l=D[k];document.getElementById('n-'+k).textContent='· '+l.length;document.getElementById('g-'+k).innerHTML=l.length?l.map(fila).join(''):'<div class="vacio">Nada aquí 👌</div>';document.getElementById('g-'+k).className='';}
+  const n=Object.values(elegido).filter(Boolean).length;document.getElementById('cuenta').textContent=n?`${n} cambio${n>1?'s':''} para aplicar`:'Nada marcado';
+}
+function elegir(id,v){elegido[id]=v;pintar();}
+async function cargar(){D=await api('/api/ciclo/limpieza');for(const x of D.facturado)if(x.sugerida&&elegido[x.id]===undefined)elegido[x.id]=x.sugerida;pintar();}
+async function aplicar(){
+  const todos=[...D.facturado,...D.sinFactura,...D.viejo];
+  const acc=todos.filter(x=>elegido[x.id]).map(x=>({id:x.id,tipo:x.tipo,ref:x.ref,incRef:x.incRef,peticionId:x.peticionId,cliente:x.cliente,que:x.que,accion:elegido[x.id]}));
+  if(!acc.length)return toast('No has marcado nada');
+  const cierres=acc.filter(a=>a.accion==='cerrar').length;
+  if(!confirm(`¿Aplicar ${acc.length} cambio${acc.length>1?'s':''}?${cierres?`\n${cierres} incidencia${cierres>1?'s':''} pasa${cierres>1?'n':''} a Cerrada en StelOrder.`:''}`))return;
+  const b=document.getElementById('aplicar');b.disabled=true;b.textContent='Aplicando…';
+  try{const r=await api('/api/ciclo/limpieza',{method:'POST',body:JSON.stringify({acciones:acc})});for(const k in elegido)delete elegido[k];toast(`Hecho: ${r.hechas}${r.errores.length?` · ${r.errores.length} con error (${r.errores.map(e=>e.error).join('; ').slice(0,120)})`:''}`);await cargar();}
+  catch(e){toast('Error: '+e.message);}
+  b.disabled=false;b.textContent='Aplicar';
+}
+cargar().catch(e=>{document.querySelector('.wrap').insertAdjacentHTML('afterbegin',`<div class="card">No se ha podido cargar: ${esc(e.message)}</div>`);});
+</script></body></html>

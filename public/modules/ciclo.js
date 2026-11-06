@@ -93,6 +93,7 @@
         <button id="cy-rojos" onclick="CP.Ciclo.rojos()">🔴 Solo lo urgente</button>
         <button onclick="CP.Ciclo.cargar()">🔄</button>
         <button onclick="CP.Ciclo.tv()">📺 Modo pantalla</button>
+        <button onclick="location.href='/limpieza'" title="Lo viejo: ya facturado aparte, cerrado sin factura o sin asignar desde hace más de 30 días">🧹 Limpieza</button>
         <button id="cy-avisos" onclick="CP.Ciclo.pausaAvisos()" title="Avisos automáticos al grupo del cliente cuando un trabajo queda programado o hecho">💬 Avisos a clientes…</button>
       </div>
       <div id="cy-flujo" class="cy-flujo"></div>
