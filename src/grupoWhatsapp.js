@@ -27,10 +27,23 @@ async function db() {
   return d;
 }
 
-async function grupoVisto(jid, nombre) {
+// Grupo NUEVO (Corpy acaba de entrar): se activa solo en modo escucha, con peticiones e incidencias automáticas
+// (6/11/2026, Álex: «he añadido a Corpy a más grupos: que escuche, cree incidencia y nos lo vaya organizando»). Corpy no
+// escribe en él (sin corpyResponde). Se avisa a Álex por si no lo quiere. Los grupos que ya existían no cambian.
+// El primer mensaje solo sirve para conocer el grupo (el puente lo reenvía cuando el grupo ya está permitido, en ≤5 min).
+// Se apaga con GRUPOS_AUTO=off (entonces entran desactivados, como antes).
+async function grupoVisto(jid, nombre, { _enviar = null } = {}) {
   if (!String(jid || '').endsWith('@g.us')) return;
   const d = await db();
-  await d.collection(COL).updateOne({ _id: jid }, { $set: { nombre: nombre || null, vistoAt: new Date() }, $setOnInsert: { activo: false, nMensajes: 0, nCompras: 0 } }, { upsert: true });
+  const auto = process.env.GRUPOS_AUTO !== 'off';
+  const ins = auto ? { activo: true, peticiones: true, autoIncidencia: true, autoActivadoAt: new Date(), autoActivadoPor: 'Corpy (grupo nuevo)', activadoAt: new Date(), activadoPor: 'Corpy (grupo nuevo)' } : { activo: false };
+  const r = await d.collection(COL).updateOne({ _id: jid }, { $set: { nombre: nombre || null, vistoAt: new Date() }, $setOnInsert: { ...ins, nMensajes: 0, nCompras: 0 } }, { upsert: true });
+  if (auto && r.upsertedCount) {
+    const N = require('./notifications');
+    const txt = `👂 Corpy está en un grupo nuevo: *${nombre || jid}*.\nLo escucho desde ya: lo que pidan pasa a Peticiones, se crea la incidencia en StelOrder con sus fotos y te pregunto quién va. No escribo nada en el grupo.\nSi este grupo no es de trabajo, desactívalo en el panel: dashboard.corpprojects.es/diag → Grupos de WhatsApp.`;
+    try { await (_enviar || N.sendWhatsAppTo)(N.destinoDueno(), txt, { sinTraducir: true }); } catch (e) { console.warn('[Grupo] aviso grupo nuevo:', e.message); }
+  }
+  return { nuevo: !!r.upsertedCount };
 }
 async function gruposPermitidos() {
   const d = await db();

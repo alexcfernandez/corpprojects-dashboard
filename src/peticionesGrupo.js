@@ -657,6 +657,8 @@ async function crearIncidencia(id, por = '') {
   const descripcion = [tituloPeticion(p), '', p.resumen, ...detalle(p, { clientMap }), '', ...original(p)].join('\n').slice(0, 3800);
   const r = await require('./stelorder').crearIncidencia({ accId: p.clienteId, descripcion, tipoId: p.tipo === 'presupuesto' ? TIPO_INC.presupuesto : TIPO_INC.otro, requestedBy: por || 'Peticiones del grupo' });
   await db.collection(COL).updateOne({ _id: p._id }, { $set: { incidencia: r.ref, incidenciaId: r.id || null, situacion: 'ya_hay_incidencia', incidenciaCreadaPor: por, incidenciaCreadaAt: new Date() }, $unset: { porConfirmar: '' } });
+  // Sus fotos, adjuntas a la incidencia en StelOrder (adjuntosStel.js), sin esperar.
+  if (r.id && (p.fotoIds || []).length) require('./adjuntosStel').subirPorId(String(p._id), { _db: db, por: por || 'Corpy' }).catch(e => console.warn('[Peticiones] fotos a StelOrder:', e.message));
   return { ok: true, ref: r.ref, id: r.id || null };
 }
 

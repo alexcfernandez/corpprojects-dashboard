@@ -1541,6 +1541,24 @@ async function lineasMismaComunidad(workOrderId, extras, { requestedBy = null } 
   }
 }
 
+// Adjuntar un archivo (foto, PDF, vídeo) a una incidencia, pedido, presupuesto… (POST /entityAttachments con base64; está en su
+// openapi.json, 6/11/2026). entityType: 'INCIDENT' | 'WORKORDER' | 'WORKESTIMATE' | … Una llamada por archivo.
+async function adjuntar({ entityType, entityId, data, nombre, requestedBy = null }) {
+  if (!entityType || !entityId || !data || !data.length) throw new Error('Faltan datos para adjuntar');
+  const db = await require('./db').getDB();
+  const ins = await db.collection('stelWriteLog').insertOne({ tipo: 'adjunto', entityType, entityId: String(entityId), nombre, bytes: data.length, requestedBy, at: new Date(), result: 'pending' });
+  try {
+    const r = await client.post('/entityAttachments', { 'entity-type': entityType, 'entity-id': Number(entityId), 'file-name': String(nombre || 'archivo').slice(0, 120), 'file-base64': Buffer.from(data).toString('base64') },
+      { headers: { 'Content-Type': 'application/json; charset=utf-8' }, timeout: 60000, maxBodyLength: Infinity, maxContentLength: Infinity });
+    const d = Array.isArray(r.data) ? r.data[0] : r.data;
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: 'ok', status: r.status, attachmentId: d && d.id ? String(d.id) : null } });
+    return { ok: true, id: d && d.id ? String(d.id) : null };
+  } catch (err) {
+    await db.collection('stelWriteLog').updateOne({ _id: ins.insertedId }, { $set: { result: 'error', error: `${err.response?.status || ''} ${err.message}`, errorBody: err.response?.data || null } });
+    throw new Error(`StelOrder no aceptó el adjunto: ${err.response?.status || ''} ${JSON.stringify(err.response?.data || err.message).slice(0, 200)}`);
+  }
+}
+
 // Persona de contacto de un cliente (StelOrder → ficha del cliente → Contactos). Sin reintentos: si no contesta,
 // queda «desconocido» en stelWriteLog y no se repite sola (evita duplicados).
 async function crearContacto({ accId, nombre, telefono = null, email = null, cargo = null, nota = null, requestedBy = null }) {
@@ -2237,5 +2255,5 @@ module.exports = { leerPresupuesto, setWorkEstimateState, setIncidentState, WORK
   getAllWorkOrders, getWorkOrderStateMap, getEmployeeMap,
   getIncidentTypeMaps, getAllIncidents, getIncidentStateMap, diagEscritura, diagCrearEnlace, diagLineaLibre, diagCaminoA, diagLineaImpuesto, diagImpuestos,
   crearIncidencia, accountIdByName, crearProducto, getProductoGenerico, generarPedidoDesdeIncidencia, crearPresupuestoStel, crearPresupuestoMultiSeccionPrueba, diagClienteCampos, diagCrearCliente, crearClienteStel, getAccountCategories, ultimaIncidencia, incidenciaPorRef, diagPresupuestoConLineas, diagCambiarIvaPrueba, getPresupuestoIva, cambiarIvaPresupuesto, getPresupuestoDetalle, modificarImportePresupuesto,
-  ponerLineasPedido, lineasMismaComunidad, crearFacturaDesdePedido, crearContacto, IVA_TAX_IDS
+  ponerLineasPedido, lineasMismaComunidad, adjuntar, crearFacturaDesdePedido, crearContacto, IVA_TAX_IDS
 };

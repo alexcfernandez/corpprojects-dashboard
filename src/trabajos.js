@@ -173,6 +173,8 @@ async function crear(peticionId, { userId, fecha = null, hora = null, urgente = 
   catch (e) { console.warn('[Trabajos] planificación:', e.message); }
   // 5) Petición
   await db.collection('peticionesGrupo').updateOne({ _id: p._id }, { $set: { incidencia: incidencia.ref, incidenciaId: incidencia.id, situacion: 'ya_hay_incidencia', pedido: { id: String(ped.id), ref: ped.ref }, asignado: { userId: String(u._id), nombre: u.name, fecha, hora, equipo }, asignadoPor: por, asignadoAt: new Date() } });
+  // Las fotos del aviso, adjuntas también al pedido en StelOrder (adjuntosStel.js), sin esperar.
+  if (!_stel && (p.fotoIds || []).length) require('./adjuntosStel').subirPorId(String(p._id), { _db: db, por: por || 'Crear trabajo' }).catch(e => console.warn('[Trabajos] fotos a StelOrder:', e.message));
   // 5b) Lo demás pendiente de la misma comunidad va en este parte (trabajosJuntar.js, 6/11/2026, Joan Maragall).
   let junto = { extras: [] };
   try { junto = await require('./trabajosJuntar').juntar(await db.collection('workOrderAssignments').findOne({ workOrderId: String(ped.id) }), { _db: db, por, _stel: _stel ? false : null }); } catch (e) { console.warn('[Trabajos] juntar:', e.message); }
