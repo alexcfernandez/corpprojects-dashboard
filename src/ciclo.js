@@ -165,7 +165,7 @@ async function datos({ _S = null, _db = null } = {}) {
     const t = {
       id: 'inc:' + x.ref, col: esPres ? 'porHacer' : 'asignar', dias,
       semaforo: color(dias, esPres ? LIMITES.presupuesto : urg ? LIMITES.asignarUrgente : LIMITES.asignar),
-      etiqueta: esPres ? 'presupuesto por hacer' : (pet && pet.quienPreguntadoAt ? 'Corpy te ha preguntado quién va' : 'sin pedido ni técnico'),
+      etiqueta: esPres ? 'presupuesto por hacer' : pet && pet.juntoA ? `📌 va con ${pet.juntoA.pedidoRef || 'otro trabajo'}${pet.juntoA.userName ? ' (' + String(pet.juntoA.userName).split(' ')[0] + ')' : ''}: misma comunidad` : (pet && pet.quienPreguntadoAt ? 'Corpy te ha preguntado quién va' : 'sin pedido ni técnico'),
       ref: x.ref, incRef: x.ref, incId: x.id, cliente: x.cliente || (pet && pet.cliente) || '', que: corto((pet && pet.resumen) || x.que, 160),
       direccion: (pet && pet.direccion) || '', urgente: urg, tipo: x.tipo, estadoInc: x.estado, origen: pet ? (pet.grupo || 'grupo') : 'StelOrder',
       pasos: pasos({ inc: x, pet, hoy }), cerrable: true,

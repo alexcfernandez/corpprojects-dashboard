@@ -173,6 +173,9 @@ async function crear(peticionId, { userId, fecha = null, hora = null, urgente = 
   catch (e) { console.warn('[Trabajos] planificación:', e.message); }
   // 5) Petición
   await db.collection('peticionesGrupo').updateOne({ _id: p._id }, { $set: { incidencia: incidencia.ref, incidenciaId: incidencia.id, situacion: 'ya_hay_incidencia', pedido: { id: String(ped.id), ref: ped.ref }, asignado: { userId: String(u._id), nombre: u.name, fecha, hora, equipo }, asignadoPor: por, asignadoAt: new Date() } });
+  // 5b) Lo demás pendiente de la misma comunidad va en este parte (trabajosJuntar.js, 6/11/2026, Joan Maragall).
+  let junto = { extras: [] };
+  try { junto = await require('./trabajosJuntar').juntar(await db.collection('workOrderAssignments').findOne({ workOrderId: String(ped.id) }), { _db: db, por }); } catch (e) { console.warn('[Trabajos] juntar:', e.message); }
   // 6) Aviso al operario: en SU grupo de trabajos si lo tiene (bridgeGrupos.trabajosDe, «Reparaciones David Valencia»;
   // 2/11/2026, Álex: «que se vayan acumulando ahí»), si no por privado. Con las fotos del aviso.
   let avisado = false, enGrupo = null;
@@ -180,7 +183,7 @@ async function crear(peticionId, { userId, fecha = null, hora = null, urgente = 
     const url = (await require('./fichajeAvisos').enlacePersonal(String(u._id))) + '&ir=parte';
     // Comunidad sin día: se puede ir cuando vaya bien, no hace falta quedar (5/11/2026, Álex).
     const cuando = fecha ? `para el *${fechaTxt(fecha)}${hora ? ' a las ' + hora : ''}*` : esComunidad(cliente) ? '— *es una comunidad: ve cuando te vaya bien y di aquí qué día vas*' : '— *queda tú con el cliente*';
-    const txt = `🔧 *Trabajo nuevo* ${cuando}${urg ? ' (URGENTE)' : ''}\n*${cliente}*${p.direccion ? ' · ' + p.direccion : ''}\n${p.resumen}${p.contacto ? `\nContacto: ${p.contacto}` : ''}${equipo.length ? `\nVas con: ${equipo.join(', ')}` : ''}${nota ? `\nNota: ${nota}` : ''}\nPedido ${ped.ref} · ${incidencia.ref}\n\n${fecha ? '' : 'Cuando quedes, contesta aquí el día y la hora (p. ej. «' + corto(cliente, 25) + ' el jueves a las 10») o ponlo en la app.\n'}En tu app, con las fotos, en «Mis trabajos»:\n${url}`;
+    const txt = `🔧 *Trabajo nuevo* ${cuando}${urg ? ' (URGENTE)' : ''}\n*${cliente}*${p.direccion ? ' · ' + p.direccion : ''}\n${p.resumen}${p.contacto ? `\nContacto: ${p.contacto}` : ''}${equipo.length ? `\nVas con: ${equipo.join(', ')}` : ''}${nota ? `\nNota: ${nota}` : ''}\nPedido ${ped.ref} · ${incidencia.ref}${require('./trabajosJuntar').textoExtras(junto.extras)}\n\n${fecha ? '' : 'Cuando quedes, contesta aquí el día y la hora (p. ej. «' + corto(cliente, 25) + ' el jueves a las 10») o ponlo en la app.\n'}En tu app, con las fotos, en «Mis trabajos»:\n${url}`;
     const enviar = _enviar || require('./notifications').sendWhatsAppTo;
     const g = await db.collection('bridgeGrupos').findOne({ trabajosDe: String(u._id), activo: true });
     const tel = u.whatsapp || u.telefono;
@@ -203,7 +206,7 @@ async function crear(peticionId, { userId, fecha = null, hora = null, urgente = 
   if (fecha && colaLista && colaLista.cola && colaLista.cola.eventoId) {
     try { await require('./calendar').deleteEvent(colaLista.cola.eventoId); await db.collection('listasMateriales').updateOne({ _id: colaLista._id }, { $set: { 'cola.eventoId': null } }); } catch (e) { console.warn('[Trabajos] evento de la cola:', e.message); }
   }
-  return { ok: true, incidencia: incidencia.ref, pedido: ped.ref, pedidoId: String(ped.id), operario: u.name, equipo, fecha, hora, fechaTxt: fecha ? fechaTxt(fecha) : null, avisado, enGrupo };
+  return { ok: true, incidencia: incidencia.ref, pedido: ped.ref, pedidoId: String(ped.id), operario: u.name, equipo, fecha, hora, fechaTxt: fecha ? fechaTxt(fecha) : null, avisado, enGrupo, juntos: junto.extras.length };
 }
 
 const esComunidad = c => /\b(ctat|c\.?\s?p\.?|com\.?\s?prop|comunitat|comunidad|propietaris|propietarios)\b/i.test(String(c || ''));
