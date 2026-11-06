@@ -118,7 +118,7 @@
       [st.d, st.cola, st.avisos] = await Promise.all([api('/api/ciclo'), api('/api/cola').catch(() => null), api('/api/avisos-cliente').catch(() => null)]);
       st.cargadoEn = new Date();
       const ba = document.getElementById('cy-avisos');
-      if (ba && st.avisos) { ba.textContent = st.avisos.pausa ? '⏸ Avisos a clientes en pausa' : '💬 Avisos a clientes: sí'; ba.style.background = st.avisos.pausa ? 'var(--amber)' : ''; ba.style.color = st.avisos.pausa ? '#111' : ''; }
+      if (ba && st.avisos) { ba.textContent = st.avisos.nuncaActivado ? '💬 Activar avisos a clientes' : st.avisos.pausa ? '⏸ Avisos a clientes en pausa' : '💬 Avisos a clientes: sí'; ba.style.background = st.avisos.pausa ? 'var(--amber)' : ''; ba.style.color = st.avisos.pausa ? '#111' : ''; }
       opciones();
       pintar();
     } catch (e) {
